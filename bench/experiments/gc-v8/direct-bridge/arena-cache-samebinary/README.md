@@ -43,3 +43,6 @@ Crucially, **`gc-fresh-struct-get-forward` is zero for every function in the act
 No demonstrated arena-cache gain: struct on/off is1.0056× by process medians and1.0084× by paired ratios, with pair directions mixed. The byte-identical nonadmitted fill control also varies around parity. This controlled same-binary result does not substantiate the earlier different-binary apparent7.6%gain. Keep cache off/experimental; do not promote. No new V8 or overall-GC-performance conclusion follows from this two-case diagnostic.
 
 Reproduction artifact paths are relative to an experiment workspace root; local execution prefixes are omitted. Runtime measurements and binary hashes are unchanged.
+## Reproduction source
+
+`candidate.patch` preserves the unpromoted compiler option, explicit runtime/compile switches, and active-path tests from source `85d533a1`. It applies to this evidence checkpoint with `git apply --check`. Apply only in an isolated worktree: the patch is research evidence, not enabled production code. The original source hashes may differ from published commit IDs; the patch is the reproducible source delta.

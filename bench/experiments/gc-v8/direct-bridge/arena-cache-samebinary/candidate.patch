@@ -1,0 +1,888 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 2bca8514..c7437eb8 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1317,6 +1317,19 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
+ // globals are also synced around the call: the host may read or write the
+ // instance's globals through their cells.
+ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
++	// Retire the certificate across helper lowering. Direct-slot paths reload
++	// only on the collecting slow branch, then recertify at their common join.
++	arenaReloadAtReturn := true
++	if directArenaCacheEnabled && f.directArenaCache {
++		f.suspendDirectArenaCache()
++		defer func() {
++			if arenaReloadAtReturn {
++				f.loadDirectArenaCache()
++			} else {
++				f.certifyDirectArenaCache()
++			}
++		}()
++	}
+ 	f.invalidateGCResolvedObject()
+ 	f.stats.call(callKindHostSync)
+ 	// Blocking waits use the complete host frame and GC callsite maps. Other
+@@ -1430,23 +1443,27 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 	f.flush() // operands to canonical slot-width slots
+ 	if directArrayAlloc != 0 {
+ 		if localStates, ok := f.snapshotLocalStates(); ok {
++			arenaReloadAtReturn = false
+ 			return f.callNativeStructDirectSlots(importIdx, ft, directArrayAlloc-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, directArrayDefault, false, true)
+ 		}
+ 	}
+ 	if directArraySet != 0 {
+ 		if localStates, ok := f.snapshotLocalStates(); ok {
++			arenaReloadAtReturn = false
+ 			return f.callNativeStructDirectSlots(importIdx, ft, directArraySet-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, true, false)
+ 		}
+ 	}
+ 	if directStructType != 0 {
+ 		if localStates, ok := f.snapshotLocalStates(); ok {
+ 			f.nativeStructDirectUsed = true
++			arenaReloadAtReturn = false
+ 			return f.callNativeStructDirectSlots(importIdx, ft, directStructType-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, true, directDefault, false, false)
+ 		}
+ 	}
+ 	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
+ 		if localStates, ok := f.snapshotLocalStates(); ok {
+ 			f.nativeStructDirectUsed = true
++			arenaReloadAtReturn = false
+ 			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, false, false)
+ 		}
+ 	}
+@@ -1760,6 +1777,12 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
+ 		}
+ 	}
+ 	f.restoreLocalStates(localStates)
++	// Native success preserves the reserved arena register and skips these
++	// dependent loads. Only a real parked helper transition refreshes backing.
++	f.reloadDirectArenaBase()
++	if f.directArenaCache {
++		f.stats.peep("gc-direct-arena-cache-slow-reload")
++	}
+ 	f.a.PatchRel32(nativeDone, f.a.Len())
+ 
+ 	finalTypes := f.tmpTypes[:0]
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 2af1c0da..a9cd7df8 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -360,6 +360,7 @@ type fn struct {
+ 	gcSubtypeProofs     [4]gcSubtypeProof
+ 	gcSubtypeProofN     uint8
+ 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
++	directArenaCache    bool  // activation-local cache; shares existing padding
+ 	nLocalSlots         int   // total local frame slots in 8-byte units
+ 
+ 	// WARP-style per-local storage metadata. localType remains as the compact
+@@ -3955,8 +3956,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		f.memSizeRegionalLease = true
+ 		f.stats.peep("memsize-regional-lease")
+ 	}
++	f.directArenaCache = directArenaCacheEnabled && f.arenaCacheSelected() && gcTrustedDirectReads && gcTrustedDirectAllocation &&
++		!moduleEH && !interruptible && !moduleHasSIMD && len(custom) == 0 && len(inlinedCallees) == 0 &&
++		m.ImportedFuncCount() == 0 && !f.selfTailLoop && directArenaBodyAdmitted(c.BodyBytes)
++	if f.directArenaCache {
++		f.reserved = f.reserved.add(RBP)
++		f.regMerge = false // RBP is also the ordinary control-merge register.
++		f.stats.peep("gc-direct-arena-cache-admit")
++	}
+ 	f.moduleGlobalRegionalLease = selectModuleGlobalRegionalLease(
+-		f.opt(optModuleGlobalRegionLease), touchesMemory, pinLocals, regABI,
++		f.opt(optModuleGlobalRegionLease) && !f.directArenaCache, touchesMemory, pinLocals, regABI,
+ 		hasCall, len(inlinedCallees), hints.flags, modGlobals, hints.sparseGlobals,
+ 	)
+ 	if f.moduleGlobalRegionalLease != regNone {
+@@ -3992,6 +4001,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	}
+ 	var gpPoolStorage [16]Reg
+ 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
++	if f.directArenaCache {
++		gpPool = withoutReg(gpPool, RBP)
++	}
+ 	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.flags.has(hintHasControlFlow) {
+ 		preferPinReg(gpPool, RBP)
+ 	}
+@@ -4122,7 +4134,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	f.noteResidencyEvents(hints)
+ 	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
+ 		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
+-	intervalEligible := pinLocals && regABI && !f.localTailLeaf && len(inlinedCallees) == 0 &&
++	intervalEligible := !f.directArenaCache && pinLocals && regABI && !f.localTailLeaf && len(inlinedCallees) == 0 &&
+ 		((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || intervalControl)
+ 	f.intervalControl = intervalControl
+ 	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
+@@ -4444,6 +4456,7 @@ func (f *fn) finalizeStats(codeLen int) {
+ // runBody opens the function control frame, lowers the body, and patches every
+ // return/br-to-function site to the (current) epilogue position.
+ func (f *fn) runBody(c *wasm.Func) error {
++	f.loadDirectArenaCache() // Both wrapper and internal entries have established RBX.
+ 	if f.scalarSummary.Eligible {
+ 		f.ctrl = f.sc.ctrl[:0]
+ 		return f.scalarBody(c)
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache.go b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache.go
+new file mode 100644
+index 00000000..8fc5d335
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache.go
+@@ -0,0 +1,109 @@
++//go:build amd64
++
++package amd64
++
++import (
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/src/core/runtime/abi"
++	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
++)
++
++// Decode a bounded subset rather than treating hintHasCall as guest calls: that
++// hint also includes the GC helper transitions that this experiment must allow.
++// The ordinary validator has already established operand and type correctness.
++func directArenaBodyAdmitted(body []byte) bool {
++	if len(body) == 0 || len(body) > 1024 {
++		return false
++	}
++	r := wasm.ReaderFrom(body)
++	allocation, read := false, false
++	for ops := 0; r.BytesLeft() > 0; ops++ {
++		if ops >= 256 {
++			return false
++		}
++		op, err := r.Byte()
++		if err != nil {
++			return false
++		}
++		immediates := 0
++		switch op {
++		case 0x00, 0x01, 0x05, 0x0b, 0x0f, 0x1a, 0x1b, 0xd1:
++		case 0x02, 0x03, 0x04:
++			block, e := r.I64()
++			if e != nil || (block != -64 && block != -1 && block != -2) {
++				return false
++			}
++		case 0x0c, 0x0d, 0x20, 0x21, 0x22, 0x23, 0x24:
++			immediates = 1
++		case 0x41:
++			if _, e := r.I32(); e != nil {
++				return false
++			}
++		case 0x42, 0xd0:
++			if _, e := r.I64(); e != nil {
++				return false
++			}
++		case 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
++			0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
++			0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
++			0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
++			0xa7, 0xac, 0xad:
++		case 0xfb:
++			sub, e := r.U32()
++			if e != nil {
++				return false
++			}
++			switch sub {
++			case 0, 1:
++				allocation = true
++				immediates = 1
++			case 2, 3, 4:
++				read = true
++				immediates = 2
++			case 5:
++				immediates = 2
++			case 6, 7, 11, 12, 13, 14:
++				immediates = 1
++			case 15, 28, 29, 30:
++			default:
++				return false
++			}
++		default:
++			return false // Includes ALL guest/tail/ref calls, memory, EH and SIMD.
++		}
++		for i := 0; i < immediates; i++ {
++			if _, e := r.U32(); e != nil {
++				return false
++			}
++		}
++	}
++	return allocation && read
++}
++
++func (f *fn) loadDirectArenaCache() {
++	f.reloadDirectArenaBase()
++	f.certifyDirectArenaCache()
++}
++
++func (f *fn) reloadDirectArenaBase() {
++	if !f.directArenaCache {
++		return
++	}
++	// Only arena backing is cached. Bumps, occupied ranges, headers, type maps and
++	// object addresses retain their existing per-operation lifetime contracts.
++	f.a.Load64(RBP, RBX, -int32(abi.GCNativeViewPtrOffset))
++	f.a.Load64(RBP, RBP, gc.DirectInstanceCollectorOffset)
++	f.a.Load64(RBP, RBP, gc.DirectViewArenaOffset)
++	f.stats.peep("gc-direct-arena-cache-load")
++}
++
++func (f *fn) certifyDirectArenaCache() {
++	if f.directArenaCache && regallocCheckEnabled {
++		f.checkImmutable(RBP, false, 8)
++	}
++}
++func (f *fn) suspendDirectArenaCache() {
++	if f.directArenaCache && regallocCheckEnabled {
++		f.checkReleaseImmutable(RBP, false)
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_disabled.go b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_disabled.go
+new file mode 100644
+index 00000000..3a9ee14b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_disabled.go
+@@ -0,0 +1,12 @@
++//go:build amd64 && !wago_gc_direct_arena_cache
++
++package amd64
++
++import "github.com/wago-org/wago/src/core/compiler/optimization"
++
++const directArenaCacheEnabled = false
++
++func withArenaCacheBinding(bindings []optimization.BindingSpec) []optimization.BindingSpec {
++	return bindings
++}
++func (f *fn) arenaCacheSelected() bool { return false }
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_enabled.go b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_enabled.go
+new file mode 100644
+index 00000000..b561d618
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_enabled.go
+@@ -0,0 +1,17 @@
++//go:build amd64 && wago_gc_direct_arena_cache
++
++package amd64
++
++import "github.com/wago-org/wago/src/core/compiler/optimization"
++
++const directArenaCacheEnabled = true
++
++// The ordinary immutable per-compilation policy owns the selection. The probe
++// never mutates process defaults or the backend's global knobs.
++var directArenaCacheDefault bool
++var optDirectArenaCache = optimizationBindings.Option("gc-direct-arena-cache")
++
++func withArenaCacheBinding(bindings []optimization.BindingSpec) []optimization.BindingSpec {
++	return append(bindings, optimization.Bind("gc-direct-arena-cache", &directArenaCacheDefault))
++}
++func (f *fn) arenaCacheSelected() bool { return f.opt(optDirectArenaCache) }
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_test.go b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_test.go
+new file mode 100644
+index 00000000..750c3b53
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_arena_cache_test.go
+@@ -0,0 +1,34 @@
++//go:build amd64
++
++package amd64
++
++import "testing"
++
++func TestDirectArenaBodyAdmission(t *testing.T) {
++	body := []byte{0x20, 0, 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x0b}
++	if !directArenaBodyAdmitted(body) {
++		t.Fatal("simple constructor/read rejected")
++	}
++	for _, prefix := range [][]byte{{0x10, 0}, {0x11, 0, 0}, {0x12, 0}, {0x14, 0}, {0xfe, 0}, {0xfd, 0}, {0xfc, 0}, {0x3f, 0}, {0x06, 0x40}, {0x02, 0}} {
++		input := append(append([]byte(nil), prefix...), body...)
++		if directArenaBodyAdmitted(input) {
++			t.Fatalf("unsupported prefix%x admitted", prefix)
++		}
++	}
++	if directArenaBodyAdmitted([]byte{0xfb, 0}) || directArenaBodyAdmitted([]byte{0xfb, 2, 0, 0, 0x0b}) {
++		t.Fatal("truncated/no-allocation body admitted")
++	}
++	many := make([]byte, 1025)
++	copy(many, body)
++	if directArenaBodyAdmitted(many) {
++		t.Fatal("unbounded body")
++	}
++	many = make([]byte, 257)
++	for i := range many {
++		many[i] = 1
++	}
++	many = append(many, body...)
++	if directArenaBodyAdmitted(many) {
++		t.Fatal("unbounded instruction count")
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
+index 1120c987..eab1cc41 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
+@@ -134,7 +134,12 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
+ 	a.Sub32(RCX, R10)
+ 	a.AluRI(cmpDigit, RCX, int32(stride), false)
+ 	guard(condB)
+-	a.Load64(R11, R8, gc.DirectViewArenaOffset)
++	if f.directArenaCache {
++		a.MovReg64(R11, RBP)
++		f.stats.peep("gc-direct-arena-cache-allocation-use")
++	} else {
++		a.Load64(R11, R8, gc.DirectViewArenaOffset)
++	}
+ 	if !gcTrustedDirectAllocation {
+ 		a.TestSelf(R11, true)
+ 		guard(condE)
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_array_alloc.go b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_array_alloc.go
+index d2eb32a3..49653df7 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_array_alloc.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_array_alloc.go
+@@ -131,7 +131,12 @@ func (f *fn) emitDirectOffsetArrayAlloc(t uint32, zero bool, argSlot, resultSlot
+ 	a.Sub32(RCX, R10)
+ 	a.AluRM(cmpRMcode, RCX, RSP, 0, true)
+ 	guard(condB)
+-	a.Load64(R11, R8, gc.DirectViewArenaOffset)
++	if f.directArenaCache {
++		a.MovReg64(R11, RBP)
++		f.stats.peep("gc-direct-arena-cache-allocation-use")
++	} else {
++		a.Load64(R11, R8, gc.DirectViewArenaOffset)
++	}
+ 	if !gcTrustedDirectAllocation {
+ 		a.TestSelf(R11, true)
+ 		guard(condE)
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_read.go b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_read.go
+index 60e97ee6..e4df191c 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_read.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_read.go
+@@ -201,9 +201,14 @@ func (f *fn) emitTrustedDirectOffset(object *elem) (Reg, func()) {
+ 	f.a.MovRegReg32(ref, ref)
+ 	obj := f.allocReg(maskOf(ref))
+ 	f.pinned = f.pinned.add(obj)
+-	f.a.Load64(obj, RBX, -int32(abi.GCNativeViewPtrOffset))
+-	f.a.Load64(obj, obj, gc.DirectInstanceCollectorOffset)
+-	f.a.Load64(obj, obj, gc.DirectViewArenaOffset)
++	if f.directArenaCache {
++		f.a.MovReg64(obj, RBP)
++		f.stats.peep("gc-direct-arena-cache-use")
++	} else {
++		f.a.Load64(obj, RBX, -int32(abi.GCNativeViewPtrOffset))
++		f.a.Load64(obj, obj, gc.DirectInstanceCollectorOffset)
++		f.a.Load64(obj, obj, gc.DirectViewArenaOffset)
++	}
+ 	f.a.Add64(obj, ref)
+ 	f.pinned = f.pinned.remove(ref)
+ 	f.release(ref)
+diff --git a/src/core/compiler/backend/railshot/amd64/knobs.go b/src/core/compiler/backend/railshot/amd64/knobs.go
+index d24fe096..87bb2979 100644
+--- a/src/core/compiler/backend/railshot/amd64/knobs.go
++++ b/src/core/compiler/backend/railshot/amd64/knobs.go
+@@ -16,7 +16,7 @@ import (
+ 
+ // The binding inventory is checked against the amd64 Optimization Definitions
+ // during package initialization. Public sense is always "on = enabled".
+-var optimizationBindings = optimization.NewBindings("amd64",
++var optimizationBindings = optimization.NewBindings("amd64", withArenaCacheBinding([]optimization.BindingSpec{
+ 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+ 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
+ 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
+@@ -105,7 +105,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
+ 	optimization.Bind("inline", &inlineEnabled),
+ 	optimization.BindInverted("stack-fence", &noStackFence),
+ 	optimization.BindInverted("stack-reg", &noStackReg),
+-)
++})...)
+ 
+ var (
+ 	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
+diff --git a/src/core/compiler/optimization/arena_cache_disabled.go b/src/core/compiler/optimization/arena_cache_disabled.go
+new file mode 100644
+index 00000000..7592b07c
+--- /dev/null
++++ b/src/core/compiler/optimization/arena_cache_disabled.go
+@@ -0,0 +1,5 @@
++//go:build !wago_gc_direct_arena_cache
++
++package optimization
++
++func withArenaCacheDefinition(definitions []Definition) []Definition { return definitions }
+diff --git a/src/core/compiler/optimization/arena_cache_disabled_test.go b/src/core/compiler/optimization/arena_cache_disabled_test.go
+new file mode 100644
+index 00000000..1ced0612
+--- /dev/null
++++ b/src/core/compiler/optimization/arena_cache_disabled_test.go
+@@ -0,0 +1,13 @@
++//go:build !wago_gc_direct_arena_cache
++
++package optimization
++
++import "testing"
++
++func TestArenaCacheAbsentFromDefaultCatalog(t *testing.T) {
++	for _, d := range All() {
++		if d.Name == "gc-direct-arena-cache" {
++			t.Fatal("experimental cache leaked into default catalog")
++		}
++	}
++}
+diff --git a/src/core/compiler/optimization/arena_cache_enabled.go b/src/core/compiler/optimization/arena_cache_enabled.go
+new file mode 100644
+index 00000000..2efec975
+--- /dev/null
++++ b/src/core/compiler/optimization/arena_cache_enabled.go
+@@ -0,0 +1,7 @@
++//go:build wago_gc_direct_arena_cache
++
++package optimization
++
++func withArenaCacheDefinition(definitions []Definition) []Definition {
++	return append(definitions, Definition{Name: "gc-direct-arena-cache", Label: "Direct GC arena cache", Description: "reserve an activation-local arena base for admitted direct GC functions", Experimental: true, Architectures: catalogAMD64Architectures})
++}
+diff --git a/src/core/compiler/optimization/arena_cache_enabled_test.go b/src/core/compiler/optimization/arena_cache_enabled_test.go
+new file mode 100644
+index 00000000..5cbc90bf
+--- /dev/null
++++ b/src/core/compiler/optimization/arena_cache_enabled_test.go
+@@ -0,0 +1,17 @@
++//go:build wago_gc_direct_arena_cache
++
++package optimization
++
++import "testing"
++
++func TestArenaCacheOptInCatalog(t *testing.T) {
++	d, ok := Lookup("amd64", "gc-direct-arena-cache")
++	if !ok || d.Default || !d.Experimental {
++		t.Fatal("cache must be an explicit experimental selection")
++	}
++	for _, arch := range []string{"arm64", "riscv64"} {
++		if _, ok := Lookup(arch, "gc-direct-arena-cache"); ok {
++			t.Fatalf("cache exposed on %s", arch)
++		}
++	}
++}
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index 765c878b..89bc31b7 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -403,7 +403,7 @@ var (
+ 	catalogARM64Architectures = []string{"arm64"}
+ )
+ 
+-var catalog = []Definition{
++var catalog = withArenaCacheDefinition([]Definition{
+ 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
+ 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
+ 	amd64("simd-reduction-borrow", "Read-only vector reductions", "read pinned vector inputs without copying them for bitmasks and any-true reductions"),
+@@ -552,7 +552,7 @@ var catalog = []Definition{
+ 	both("inline", "Inlining", "inline eligible callees"),
+ 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
+ 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
+-}
++})
+ 
+ func both(name, label, description string) Definition {
+ 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: catalogBothArchitectures}
+diff --git a/src/wago/gc_direct_arena_cache_amd64_test.go b/src/wago/gc_direct_arena_cache_amd64_test.go
+new file mode 100644
+index 00000000..c8bc69aa
+--- /dev/null
++++ b/src/wago/gc_direct_arena_cache_amd64_test.go
+@@ -0,0 +1,188 @@
++//go:build linux && amd64 && wago_gc_direct_arena_cache && wago_gc_direct_trusted_alloc
++
++package wago
++
++import (
++	"fmt"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func directArenaPressureModule() []byte {
++	ft := []byte{0x60, 12}
++	for i := 0; i < 12; i++ {
++		ft = append(ft, 0x7f)
++	}
++	ft = append(ft, 1, 0x7f)
++	body := []byte{}
++	// Eleven scalar operands survive every constructor/helper below. The retained
++	// global is moved repeatedly while those operands force register/spill pressure.
++	for i := 1; i < 12; i++ {
++		body = append(body, 0x20, byte(i))
++	}
++	body = append(body, 0x20, 0, 0xfb, 0, 0, 0x24, 0)
++	for i := 0; i < 16; i++ {
++		body = append(body, 0x41, 0, 0xfb, 0, 0, 0x1a)
++	}
++	body = append(body, 0x23, 0, 0xfb, 2, 0, 0)
++	for i := 0; i < 11; i++ {
++		body = append(body, 0x6a)
++	}
++	body = append(body, 0x0b)
++	caller := []byte{}
++	for i := 0; i < 12; i++ {
++		caller = append(caller, 0x20, byte(i))
++	}
++	caller = append(caller, 0x10, 0, 0x0b)
++	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, ft)), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{1})), wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(caller))))
++}
++func TestDirectGCArenaCachePressureMovingRootsAndInstances(t *testing.T) {
++	assertArenaCacheActive(t, directArenaPressureModule())
++	c, err := Compile(NewRuntimeConfig().WithOptimization("gc-direct-arena-cache", true).WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false), directArenaPressureModule())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	instances := make([]*Instance, 2)
++	for i := range instances {
++		rt := NewRuntime()
++		defer rt.Close()
++		in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10, ForceMajorEveryMinor: true}})
++		if e != nil {
++			t.Fatal(e)
++		}
++		defer in.Close()
++		instances[i] = in
++	}
++	for n := 0; n < 24; n++ {
++		for index, in := range instances {
++			args := make([]uint64, 12)
++			var want uint32
++			for i := range args {
++				args[i] = uint64(uint32(0x80000000 + uint32(n*37+index*997+i)))
++				want += uint32(args[i])
++			}
++			got, e := in.Invoke("run", args...)
++			if e != nil || len(got) != 1 || uint32(got[0]) != want {
++				t.Fatal(n, index, got, want, e)
++			}
++		}
++	}
++	for _, in := range instances {
++		if s := in.gc.Stats(); s.FullCollections == 0 || s.Allocations != 24*17 {
++			t.Fatalf("collection/allocation proof %+v", s)
++		}
++	}
++}
++
++func TestDirectGCArenaCacheZeroTripAndNullTrap(t *testing.T) {
++	// An admitted function must not allocate or trap merely by entering it.
++	body := []byte{0x20, 0, 0x45, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 19, 0xfb, 0, 0, 0x1a, 0xd0, 0, 0xfb, 2, 0, 0, 0x0b, 0x0b}
++	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x60, 1, 0x7f, 1, 0x7f})), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
++	assertArenaCacheActive(t, data)
++	c, err := Compile(NewRuntimeConfig().WithOptimization("gc-direct-arena-cache", true).WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false), data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	rt := NewRuntime()
++	defer rt.Close()
++	in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	for i := 0; i < 2; i++ {
++		got, err := in.Invoke("run", 0)
++		if err != nil || len(got) != 1 || got[0] != 7 {
++			t.Fatal(got, err)
++		}
++		if in.gc.Stats().Allocations != uint64(i) {
++			t.Fatal(in.gc.Stats())
++		}
++		_, err = in.Invoke("run", 1)
++		if err == nil {
++			t.Fatal("null struct.get did not trap")
++		}
++	}
++}
++
++func TestDirectGCArenaCacheAllocationFailureRecovery(t *testing.T) {
++	// A scalar object remains on the operand stack while an oversized array
++	// requests collection and fails. The next invocation must reinitialize RBP.
++	body := []byte{0x41, 19, 0xfb, 0, 0, 0x41, 0, 0x20, 0, 0xfb, 6, 1, 0x1a, 0xfb, 2, 0, 0, 0x0b}
++	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x5e, 0x7f, 1}, []byte{0x60, 1, 0x7f, 1, 0x7f})), wasmtest.Section(3, wasmtest.Vec([]byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
++	assertArenaCacheActive(t, data)
++	c, err := Compile(NewRuntimeConfig().WithOptimization("gc-direct-arena-cache", true).WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false), data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	rt := NewRuntime()
++	defer rt.Close()
++	in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 256, ForceMajorEveryMinor: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer in.Close()
++	for i := 0; i < 4; i++ {
++		if _, err := in.Invoke("run", 1<<20); err == nil {
++			t.Fatal("oversized array succeeded")
++		}
++		got, err := in.Invoke("run", 0)
++		if err != nil || len(got) != 1 || got[0] != 19 {
++			t.Fatal(got, err)
++		}
++	}
++}
++
++func TestDirectGCArenaCacheConfigIsolation(t *testing.T) {
++	base := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false)
++	selected := func(cfg *RuntimeConfig) bool {
++		for _, info := range cfg.OptimizationInfos() {
++			if info.Name == "gc-direct-arena-cache" {
++				return info.On
++			}
++		}
++		t.Fatal("missing opt-in cache option")
++		return false
++	}
++	initial := selected(base)
++	for index, enabled := range []bool{false, true, false, true} {
++		cfg := base.WithOptimization("gc-direct-arena-cache", enabled)
++		if selected(cfg) != enabled || selected(base) != initial {
++			t.Fatal("configuration selection leaked")
++		}
++		t.Run(fmt.Sprintf("%d-%v", index, enabled), func(t *testing.T) {
++			t.Parallel()
++			c, err := Compile(cfg, directArenaPressureModule())
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer c.Close()
++			rt := NewRuntime()
++			defer rt.Close()
++			in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10, ForceMajorEveryMinor: true}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer in.Close()
++			for n := 0; n < 8; n++ {
++				args := make([]uint64, 12)
++				for i := range args {
++					args[i] = uint64(index + 1)
++				}
++				got, err := in.Invoke("run", args...)
++				if err != nil || len(got) != 1 || got[0] != uint64(12*(index+1)) {
++					t.Fatal(got, err)
++				}
++			}
++			if in.gc.Stats().Allocations != 8*17 {
++				t.Fatal("allocation accounting changed")
++			}
++			if selected(cfg) != enabled || selected(base) != initial {
++				t.Fatal("compilation changed config")
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_direct_arena_cache_no_stats_amd64_test.go b/src/wago/gc_direct_arena_cache_no_stats_amd64_test.go
+new file mode 100644
+index 00000000..d3bfe3cd
+--- /dev/null
++++ b/src/wago/gc_direct_arena_cache_no_stats_amd64_test.go
+@@ -0,0 +1,9 @@
++//go:build linux && amd64 && wago_gc_direct_arena_cache && wago_gc_direct_trusted_alloc && !wago_codegenstats
++
++package wago
++
++import "testing"
++
++// The codegenstats qualification independently compiles each runtime fixture
++// and asserts its activation receipt; ordinary builds retain execution coverage.
++func assertArenaCacheActive(t *testing.T, data []byte) {}
+diff --git a/src/wago/gc_direct_arena_cache_stats_amd64_test.go b/src/wago/gc_direct_arena_cache_stats_amd64_test.go
+new file mode 100644
+index 00000000..afb22c94
+--- /dev/null
++++ b/src/wago/gc_direct_arena_cache_stats_amd64_test.go
+@@ -0,0 +1,128 @@
++//go:build linux && amd64 && wago_gc_direct_arena_cache && wago_gc_direct_trusted_alloc && wago_codegenstats
++
++package wago
++
++import (
++	"bytes"
++	"crypto/sha256"
++	backend "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/codegen"
++	"github.com/wago-org/wago/src/core/compiler/frontend"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	wruntime "github.com/wago-org/wago/src/core/runtime"
++	"os"
++	"testing"
++)
++
++func arenaCacheReceipt(t *testing.T, data []byte, interruptible bool) (admit, loads, uses int) {
++	enabled := true
++	admit, loads, uses, _ = arenaCacheCompilation(t, data, interruptible, &enabled, true)
++	return
++}
++func arenaCacheCompilation(t *testing.T, data []byte, interruptible bool, enabled *bool, disableInline bool) (admit, loads, uses int, code []byte) {
++	t.Helper()
++	m, e := wasm.DecodeModule(data)
++	if e != nil {
++		t.Fatal(e)
++	}
++	if e = wasm.ValidateModule(m); e != nil {
++		t.Fatal(e)
++	}
++	meta, e := frontend.BuildGCTypeMetadata(m)
++	if e != nil {
++		t.Fatal(e)
++	}
++	var diagnostic string
++	plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
++	if diagnostic != "" {
++		t.Fatal(diagnostic)
++	}
++	opts := map[string]bool{"dead-gc-new": false}
++	if disableInline {
++		opts["inline"] = false
++	}
++	if enabled != nil {
++		opts["gc-direct-arena-cache"] = *enabled
++	}
++	var stats backend.ModuleStats
++	cm, e := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, GCFrameRoots: plan, Interruptible: interruptible, Optimizations: opts, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: meta.Descs, GCTypeLayouts: meta.Layouts}}})
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer cm.CodeImage.Close()
++	code = append([]byte(nil), cm.Code...)
++	for _, s := range stats.Funcs {
++		admit += s.Peephole["gc-direct-arena-cache-admit"]
++		loads += s.Peephole["gc-direct-arena-cache-load"]
++		uses += s.Peephole["gc-direct-arena-cache-use"]
++		if s.Peephole["gc-direct-arena-cache-admit"] != 0 {
++			t.Logf("cache allocation-uses=%d slow-reloads=%d", s.Peephole["gc-direct-arena-cache-allocation-use"], s.Peephole["gc-direct-arena-cache-slow-reload"])
++			if s.Peephole["gc-direct-arena-cache-slow-reload"] == 0 {
++				t.Fatal("admitted constructor has no cold reload receipt")
++			}
++		}
++	}
++	return
++}
++func TestDirectGCArenaCacheArtifactReceipts(t *testing.T) {
++	for _, name := range []string{"struct-allocation-access", "array-allocation-access", "array-fill", "array-copy-checksum", "array-loop-copy-checksum", "tree-survival"} {
++		data, e := os.ReadFile("../../bench/experiments/gc-v8/gc-" + name + ".wasm")
++		if e != nil {
++			t.Fatal(e)
++		}
++		a, l, u := arenaCacheReceipt(t, data, !wruntime.HostInterruptSupported())
++		t.Logf("%s admitted=%d loads=%d uses=%d host_interrupt=%v", name, a, l, u, wruntime.HostInterruptSupported())
++		if name == "struct-allocation-access" && wruntime.HostInterruptSupported() && (a == 0 || l == 0 || u == 0) {
++			t.Fatal("target struct artifact did not activate cache")
++		}
++		if name != "struct-allocation-access" && a != 0 {
++			t.Fatalf("unexpected admission for %s: %d", name, a)
++		}
++	}
++	a, _, u := arenaCacheReceipt(t, directArenaPressureModule(), false)
++	if a != 1 || u == 0 {
++		t.Fatal("pressure fixture cache inactive")
++	}
++	a, _, _ = arenaCacheReceipt(t, directArenaPressureModule(), true)
++	if a != 0 {
++		t.Fatal("interruptible fixture admitted")
++	}
++}
++
++func TestDirectGCArenaCacheSameBinaryReceipts(t *testing.T) {
++	for _, name := range []string{"struct-allocation-access", "array-allocation-access", "array-fill", "array-copy-checksum", "array-loop-copy-checksum", "tree-survival"} {
++		data, err := os.ReadFile("../../bench/experiments/gc-v8/gc-" + name + ".wasm")
++		if err != nil {
++			t.Fatal(err)
++		}
++		var off []byte
++		for _, enabled := range []bool{false, true, false} {
++			a, _, u, code := arenaCacheCompilation(t, data, !wruntime.HostInterruptSupported(), &enabled, false)
++			t.Logf("%s enabled=%v admitted=%d read-uses=%d code=%d sha256=%x", name, enabled, a, u, len(code), sha256.Sum256(code))
++			want := 0
++			if enabled && name == "struct-allocation-access" && wruntime.HostInterruptSupported() {
++				want = 1
++			}
++			if a != want {
++				t.Fatalf("cache receipt %d want %d", a, want)
++			}
++			if off == nil {
++				off = code
++			} else if want == 0 && !bytes.Equal(off, code) {
++				t.Fatal("non-admitted generated code changed")
++			}
++			if want == 1 && bytes.Equal(off, code) {
++				t.Fatal("admitted struct code unchanged")
++			}
++		}
++	}
++}
++
++func assertArenaCacheActive(t *testing.T, data []byte) {
++	t.Helper()
++	enabled := true
++	a, _, uses, _ := arenaCacheCompilation(t, data, !wruntime.HostInterruptSupported(), &enabled, true)
++	if wruntime.HostInterruptSupported() && (a != 1 || uses == 0) {
++		t.Fatalf("runtime fixture cache inactive: admitted=%d uses=%d", a, uses)
++	}
++}
+diff --git a/src/wago/gc_direct_bridge_probe_amd64_test.go b/src/wago/gc_direct_bridge_probe_amd64_test.go
+index 01d9ec00..859669f9 100644
+--- a/src/wago/gc_direct_bridge_probe_amd64_test.go
++++ b/src/wago/gc_direct_bridge_probe_amd64_test.go
+@@ -1,4 +1,4 @@
+-//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || ((wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop) || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2) || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
++//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2 || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
+ 
+ package wago
+ 
+@@ -78,6 +78,14 @@ func TestGCDirectBridgeProbe(t *testing.T) {
+ 		t.Fatal("unknown case", name)
+ 	}
+ 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++	arenaCache := os.Getenv("GC_BRIDGE_ARENA_CACHE")
++	if arenaCache != "" {
++		enabled, err := strconv.ParseBool(arenaCache)
++		if err != nil {
++			t.Fatal("invalid GC_BRIDGE_ARENA_CACHE")
++		}
++		cfg = cfg.WithOptimization("gc-direct-arena-cache", enabled)
++	}
+ 	rt := NewRuntime(WithRuntimeConfig(cfg))
+ 	defer rt.Close()
+ 	mod, e := rt.Compile(data)
+@@ -170,6 +178,7 @@ func TestGCDirectBridgeProbe(t *testing.T) {
+ 			}
+ 		}
+ 	}
++	out["arena_cache_override"] = arenaCache
+ 	b, e := json.Marshal(out)
+ 	if e != nil {
+ 		t.Fatal(e)
+diff --git a/src/wago/gc_direct_compile_probe_amd64_test.go b/src/wago/gc_direct_compile_probe_amd64_test.go
+index 2d9928e5..26ff039a 100644
+--- a/src/wago/gc_direct_compile_probe_amd64_test.go
++++ b/src/wago/gc_direct_compile_probe_amd64_test.go
+@@ -8,6 +8,7 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"strconv"
+ 	"testing"
+ )
+ 
+@@ -44,6 +45,13 @@ func BenchmarkGCDirectCompileProbe(b *testing.B) {
+ 		}
+ 		b.Run(tc.Name, func(b *testing.B) {
+ 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++			if value := os.Getenv("GC_COMPILE_ARENA_CACHE"); value != "" {
++				enabled, err := strconv.ParseBool(value)
++				if err != nil {
++					b.Fatal("invalid GC_COMPILE_ARENA_CACHE")
++				}
++				cfg = cfg.WithOptimization("gc-direct-arena-cache", enabled)
++			}
+ 			size := 0
+ 			b.ReportAllocs()
+ 			b.ResetTimer()
