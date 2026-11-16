@@ -15,7 +15,6 @@ p.add_argument('--node', default='node')
 p.add_argument('--eden', type=int, default=2097152)
 p.add_argument('--audit', action='store_true')
 a = p.parse_args()
-raise SystemExit('Preparation only: qualified range source and tag required')
 warmup = 128 if a.audit and a.eden >= 2097152 else 100
 root = pathlib.Path(__file__).resolve().parents[5]
 base = pathlib.Path(a.binary_dir).resolve()
@@ -24,7 +23,7 @@ out.mkdir(parents=True, exist_ok=True)
 corpus = root / 'bench/experiments/gc-v8'
 manifest = {c['name']: c for c in json.loads((corpus / 'cases.json').read_text())}
 cases = ['array-loop-copy-checksum']
-variants = [('candidate', 'PENDING_RANGE_TAG,wago_gc_compact_refstruct'), ('v8', '--no-liftoff')]
+variants = [('candidate', 'wago_gc_compact_range_loop,wago_gc_compact_refstruct'), ('v8', '--no-liftoff')]
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:

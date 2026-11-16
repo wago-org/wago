@@ -1,6 +1,6 @@
 # Guarded range-versioning protocol preparation
 
-Pending qualified source/tag. Drivers intentionally refuse execution until pinned. Baseline paired+refstruct versus guarded range+refstruct, shared_checks OFF both. No trusted mode or allocation elision.
+Pinned qualified canonical `d0c35039`, range tag `wago_gc_compact_range_loop`. Baseline paired+refstruct versus guarded range+refstruct, shared_checks OFF both. No trusted mode or allocation elision.
 
 All six exact artifacts: explicit 2 MiB Eden, two 8 MiB old semispaces, separate 128-warmup actual-GC audits; bounded three warmups/five timed calls/three rotating processes. Preserve checksums, exact allocation counts, controls and outliers. Separate Compile+Close/code-size measurement. Require exact target-site selection proof, not inferred loop attribution.
 
