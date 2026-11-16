@@ -41,3 +41,47 @@ func TestDirectFillSSE2Instructions(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectFillSSE2NoFreeXMMFallsBack(t *testing.T) {
+	m, e := wasm.DecodeModule(gcArrayFillReductionModuleBytes(true))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = wasm.ValidateModule(m); e != nil {
+		t.Fatal(e)
+	}
+	for _, owned := range []bool{false, true} {
+		sc := newScratch()
+		f := fn{a: sc.asm, sc: sc, s: sc.stack, m: m, spillFloor: 4, maxSpill: 4}
+		if diagnosticsEnabled {
+			f.stats = &CodegenStats{}
+		}
+		for r := Reg(0); r < 16; r++ {
+			if owned {
+				f.fregUser[r] = &elem{st: storage{kind: stReg, typ: mtF64, reg: r}}
+			} else {
+				f.fpinned = f.fpinned.add(r)
+			}
+		}
+		beforePins, beforeOwners := f.fpinned, f.fregUser
+		for slot, typ := range []machineType{mtI64, mtI32, mtI32, mtI32} {
+			f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		}
+		if !f.emitDirectOffsetArrayFill(0) {
+			t.Fatal("numeric fill unexpectedly declined")
+		}
+		if f.fpinned != beforePins || f.fregUser != beforeOwners {
+			t.Fatal("scalar fallback changed XMM ownership")
+		}
+		if f.stats != nil && f.stats.Peephole["gc-fill-sse2"] != 0 {
+			t.Fatal("vector path selected without a free XMM")
+		}
+		listing := disasm(t, f.a.B)
+		if strings.Contains(listing, "xmm") {
+			t.Fatal("scalar fallback emitted XMM instructions", listing)
+		}
+		if len(f.a.B) == 0 || f.s.logicalDepth != 0 {
+			t.Fatal("scalar fill was not emitted or operands remained")
+		}
+	}
+}
