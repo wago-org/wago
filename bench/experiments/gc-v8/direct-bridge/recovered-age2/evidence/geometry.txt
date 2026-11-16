@@ -1,0 +1,4 @@
+=== RUN   TestGCCompactAge2GeometryProbe
+    gc_compact_age2_geometry_probe_test.go:32: AGE2_GEOMETRY_RESULT {"age2":{"Arena":18874399,"Starts":2359298,"Dirty":2359298,"Marks":147464,"Queue":4718596,"Remembered":4096,"Collector":248,"Descriptors":144,"ReferenceOffsets":8},"age2_active_bytes":1048576,"age2_survivor_cap_bytes":524288,"baseline":{"Arena":18874399,"Starts":2359298,"Dirty":2359298,"Marks":147464,"Queue":4718596,"Remembered":4096,"Collector":248,"Descriptors":144,"ReferenceOffsets":8},"baseline_active_bytes":2097152,"fixed_backing_bytes":28463151,"scope":"independent equal descriptors; excludes runtime adapter metadata, see workload Go heap/RSS","total_young_bytes":2097152}
+--- PASS: TestGCCompactAge2GeometryProbe (0.00s)
+PASS
