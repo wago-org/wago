@@ -16,7 +16,6 @@ p.add_argument('--eden', type=int, default=2097152)
 p.add_argument('--audit', action='store_true')
 p.add_argument('--matched', action='store_true', help='Short same-source baseline versus loop+copy comparison, not V8')
 a = p.parse_args()
-raise SystemExit('Preparation only: pin qualified source and paired tag before execution')
 warmup = 128 if a.audit else 3
 sample_count = 0 if a.audit else 1
 batch = 5
@@ -27,7 +26,7 @@ out.mkdir(parents=True, exist_ok=True)
 corpus = root / 'bench/experiments/gc-v8'
 manifest = {c['name']: c for c in json.loads((corpus / 'cases.json').read_text())}
 cases = ['struct-allocation-access', 'array-allocation-access', 'array-fill', 'array-copy-checksum', 'array-loop-copy-checksum', 'tree-survival']
-variants = [('baseline', 'wago_gc_compact_loop,wago_gc_compact_refstruct'), ('paired', 'PENDING_QUALIFIED_PAIRED_TAG,wago_gc_compact_refstruct')]
+variants = [('baseline', 'wago_gc_compact_loop,wago_gc_compact_refstruct'), ('paired', 'wago_gc_compact_pair_loop,wago_gc_compact_refstruct')]
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
