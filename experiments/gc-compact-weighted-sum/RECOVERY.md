@@ -14,3 +14,14 @@ Go 1.27.1, serial `-p 1`, tags `wago_gc_compact_weighted_sum wago_gc_compact_ref
 This is the first tested reconstruction, not a restoration of historical weighted test results. No performance measurements have been made. Additional dedicated multi-loop stale-state and matcher-negative fixtures remain useful follow-up coverage.
 
 Dedicated follow-up regressions in `fe8eb3cd` subsequently passed with the same Go version, tags, serial flags and filters: backend 0.014s, applicable runtime matrix 1.096s. This qualifies canonical/rejected/canonical matcher resets (including every truncated prefix), and sequential matching/nonmatching/matching loops with distinct bounds/weights, repeated invocations, wrapping results and a late middle-loop bounds trap. No production fixes were required and no performance timing was performed.
+
+## Integrated ABI4 qualification
+
+At canonical `4ffe2f5e`, the weighted + refstruct + regalloc runtime matrix
+passed (1.176s), and weighted/range/pair/loop backend tests with codegenstats
+passed (0.013s). Full default Wago (50.882s), native collector (3.515s), and
+amd64 backend (11.533s) passed. Native compact tag unions were independently
+checked against all 65,536 mode combinations; weighted does not imply age2.
+This is correctness qualification, not a measured performance gain. The next
+matched comparison keeps age2 and all collector diagnostics disabled in both
+variants and uses fresh builds on the same recovered Intel host.
