@@ -3,7 +3,7 @@ package directgc
 // Retirement happens only after successful preflight, copying and edge/root
 // rewriting. No source start bit is needed after this point. Only promote-all
 // mode uses this helper: age-bearing survivor copies need separate accounting.
-// Previous-cycle density is deliberately conservative: only <=32-byte mean
+// Previous-cycle density is deliberately conservative: only <=48-byte mean
 // stride has positive microbenchmark evidence. Workload changes incur one-cycle
 // prediction lag. Empty retirement resets prediction rather than dividing by0.
 func (c *Collector) retireUsingMap() bool {
@@ -18,7 +18,7 @@ func (c *Collector) retireNursery() {
 	}
 	c.retiredNurseryAllocations += count
 	if retireAdaptive {
-		c.retirementDense = count != 0 && uint64(c.nurseryBump-c.nurseryStart) <= count*32
+		c.retirementDense = count != 0 && uint64(c.nurseryBump-c.nurseryStart) <= count*48
 	}
 }
 func (c *Collector) retireNurseryHeaders() (count uint64) {

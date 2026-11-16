@@ -13,7 +13,7 @@ func TestAdaptiveRetirementChangingSizes(t *testing.T) {
 		t.Fatal("first cycle must headerwalk")
 	}
 	var total uint64
-	for _, w := range []uint32{1, 128, 1, 128, 0, 1} {
+	for _, w := range []uint32{1, 128, 3, 128, 0, 1} {
 		before := c.retireUsingMap()
 		for i := 0; i < 3; i++ {
 			obj(t, c, 0, w)
@@ -22,7 +22,7 @@ func TestAdaptiveRetirementChangingSizes(t *testing.T) {
 		if e := c.Minor(nil); e != nil {
 			t.Fatal(e)
 		}
-		dense := w <= 1
+		dense := w <= 3
 		if c.retireUsingMap() != dense {
 			t.Fatal("density prediction", w, before, c.retirementDense)
 		}

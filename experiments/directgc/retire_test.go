@@ -62,11 +62,16 @@ func TestRetirementCollectionAccounting(t *testing.T) {
 // Each iteration includes identical restoration of the start-map input. This
 // isolates header-vs-map retirement plus a common copy cost, not complete GC.
 func BenchmarkRetirementTraversal(b *testing.B) {
+	realistic := make([]uint32, 4097)
+	for i := 0; i < 4096; i++ {
+		realistic[i] = 1
+	}
+	realistic[4096] = 2048
 	for _, shape := range []struct {
 		name  string
 		words []uint32
 	}{
-		{"tiny16", []uint32{0}}, {"small32", []uint32{1}}, {"large1040", []uint32{128}}, {"mixed", []uint32{0, 1, 7, 31, 128}},
+		{"tiny16", []uint32{0}}, {"small32", []uint32{1}}, {"medium48", []uint32{3}}, {"medium64", []uint32{5}}, {"medium80", []uint32{7}}, {"structRoot", realistic}, {"large1040", []uint32{128}}, {"mixed", []uint32{0, 1, 7, 31, 128}},
 	} {
 		b.Run(shape.name, func(b *testing.B) {
 			c, e := New(2<<20, 2<<20)

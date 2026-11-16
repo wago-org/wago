@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: AMD EPYC 9V74 80-Core Processor                
+BenchmarkRetirementTraversal/medium48/headers-9 	     735	    165237 ns/op	12691.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers-9 	     694	    164888 ns/op	12718.46 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers-9 	     651	    171254 ns/op	12245.68 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map-9     	    1357	     92092 ns/op	22772.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map-9     	    1458	     86242 ns/op	24316.56 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map-9     	    1372	     90714 ns/op	23117.87 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers-9 	     897	    122709 ns/op	17090.45 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers-9 	     865	    133142 ns/op	15751.25 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers-9 	     892	    128645 ns/op	16301.87 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map-9     	    1267	    113910 ns/op	18410.67 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map-9     	    1420	     85731 ns/op	24461.96 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map-9     	    1431	     94850 ns/op	22110.25 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers-9 	    1153	    103892 ns/op	20185.64 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers-9 	    1034	    102972 ns/op	20366.02 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers-9 	    1148	    102453 ns/op	20469.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map-9     	    1383	     91553 ns/op	22906.04 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map-9     	    1388	     85814 ns/op	24437.99 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map-9     	    1292	     97588 ns/op	21489.62 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers-9         	     546	    236524 ns/op	8866.56 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers-9         	     535	    211933 ns/op	9895.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers-9         	     507	    219170 ns/op	9568.62 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map-9             	    1419	    121667 ns/op	17236.77 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map-9             	    1284	     98760 ns/op	21234.79 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map-9             	    1446	     87126 ns/op	24070.47 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/experiments/directgc	3.772s
