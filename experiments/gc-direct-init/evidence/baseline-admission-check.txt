@@ -1,0 +1,10 @@
+--- FAIL: TestArenaRecycleBeforeGCAndExceptionCalls (0.01s)
+    --- FAIL: TestArenaRecycleBeforeGCAndExceptionCalls/gc (0.01s)
+        arena_recycle_exec_amd64_test.go:91: wago: native direct-read artifact requires direct-offset collector
+    --- FAIL: TestArenaRecycleBeforeGCAndExceptionCalls/exception-gc (0.01s)
+        arena_recycle_exec_amd64_test.go:91: wago: native direct-read artifact requires direct-offset collector
+--- FAIL: TestDirectReferenceABIPrivateHostBoundary (0.00s)
+    direct_reference_abi_amd64_test.go:144: wago: native direct-read artifact requires direct-offset collector
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.035s
+FAIL
