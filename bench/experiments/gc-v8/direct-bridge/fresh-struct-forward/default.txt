@@ -1,0 +1,20 @@
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	19.956s
+--- FAIL: TestDirectGCFreshStructForwardEffects (0.00s)
+    --- FAIL: TestDirectGCFreshStructForwardEffects/forward (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:35: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+    --- FAIL: TestDirectGCFreshStructForwardEffects/source_overwritten (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:35: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+    --- FAIL: TestDirectGCFreshStructForwardEffects/field_mutated (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:35: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+    --- FAIL: TestDirectGCFreshStructForwardEffects/root_store_trap (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:35: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+--- FAIL: TestDirectGCFreshStructScalarBitsAndNullOverwrite (0.00s)
+    --- FAIL: TestDirectGCFreshStructScalarBitsAndNullOverwrite/i64 (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:108: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+    --- FAIL: TestDirectGCFreshStructScalarBitsAndNullOverwrite/f32 (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:108: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+    --- FAIL: TestDirectGCFreshStructScalarBitsAndNullOverwrite/f64 (0.00s)
+        gc_fresh_struct_direct_amd64_test.go:108: wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	53.782s
+FAIL

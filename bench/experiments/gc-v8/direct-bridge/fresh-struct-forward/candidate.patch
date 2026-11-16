@@ -1,0 +1,630 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_disabled.go b/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_disabled.go
+new file mode 100644
+index 00000000..1d303595
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_disabled.go
+@@ -0,0 +1,10 @@
++//go:build amd64 && !wago_gc_fresh_struct_probe
++
++package amd64
++
++import "github.com/wago-org/wago/src/core/compiler/optimization"
++
++func withFreshStructProbeBinding(bindings []optimization.BindingSpec) []optimization.BindingSpec {
++	return bindings
++}
++func (f *fn) freshStructForwardEnabled() bool { return !gcHelperOnly || gcDirectReads }
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_enabled.go b/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_enabled.go
+new file mode 100644
+index 00000000..34097eb5
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_fresh_struct_probe_enabled.go
+@@ -0,0 +1,15 @@
++//go:build amd64 && wago_gc_fresh_struct_probe
++
++package amd64
++
++import "github.com/wago-org/wago/src/core/compiler/optimization"
++
++var freshStructProbeDefault bool
++var optFreshStructProbe = optimizationBindings.Option("gc-fresh-struct-forward")
++
++func withFreshStructProbeBinding(bindings []optimization.BindingSpec) []optimization.BindingSpec {
++	return append(bindings, optimization.Bind("gc-fresh-struct-forward", &freshStructProbeDefault))
++}
++func (f *fn) freshStructForwardEnabled() bool {
++	return (!gcHelperOnly || gcDirectReads) && f.opt(optFreshStructProbe)
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index 1e123967..32ad6b03 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -170,7 +170,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 			} else {
+ 				f.stats.peep("gc-constructor-get-forward")
+ 			}
+-		} else if !gcHelperOnly && freshOK {
++		} else if f.freshStructForwardEnabled() && freshOK {
+ 			f.setGCFreshStructFact(gcFreshStructFact{
+ 				objectLocal: -1,
+ 				typeIndex:   typeIndex,
+@@ -235,6 +235,14 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 		} else if field.Storage().Packed() {
+ 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
+ 		}
++		// A preserved fresh-value fact is stronger than a native field load.
++		// Keep constructor/root-store effects, but reuse its unchanged scalar
++		// initializer before direct or compact lowering consumes the receiver.
++		// Direct pipelines inherit gcHelperOnly to exclude handle-specific paths;
++		// this scalar-local fact is representation-independent and retains allocation.
++		if f.freshStructForwardEnabled() && sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
++			return nil
++		}
+ 		if sub == 2 && f.emitTrustedDirectStructRefGet(typeIndex, fieldIndex) {
+ 			return nil
+ 		}
+@@ -244,9 +252,6 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 		if gcDirectReads && f.emitDirectOffsetStructGet(typeIndex, fieldIndex, helper) {
+ 			return nil
+ 		}
+-		if !gcHelperOnly && sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
+-			return nil
+-		}
+ 		if !gcHelperOnly && f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
+ 			return nil
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/knobs.go b/src/core/compiler/backend/railshot/amd64/knobs.go
+index d24fe096..e23b885d 100644
+--- a/src/core/compiler/backend/railshot/amd64/knobs.go
++++ b/src/core/compiler/backend/railshot/amd64/knobs.go
+@@ -16,7 +16,7 @@ import (
+ 
+ // The binding inventory is checked against the amd64 Optimization Definitions
+ // during package initialization. Public sense is always "on = enabled".
+-var optimizationBindings = optimization.NewBindings("amd64",
++var optimizationBindings = optimization.NewBindings("amd64", withFreshStructProbeBinding([]optimization.BindingSpec{
+ 	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
+ 	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
+ 	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
+@@ -105,7 +105,7 @@ var optimizationBindings = optimization.NewBindings("amd64",
+ 	optimization.Bind("inline", &inlineEnabled),
+ 	optimization.BindInverted("stack-fence", &noStackFence),
+ 	optimization.BindInverted("stack-reg", &noStackReg),
+-)
++})...)
+ 
+ var (
+ 	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
+diff --git a/src/core/compiler/optimization/catalog.go b/src/core/compiler/optimization/catalog.go
+index 765c878b..01164f26 100644
+--- a/src/core/compiler/optimization/catalog.go
++++ b/src/core/compiler/optimization/catalog.go
+@@ -403,7 +403,7 @@ var (
+ 	catalogARM64Architectures = []string{"arm64"}
+ )
+ 
+-var catalog = []Definition{
++var catalog = withFreshStructProbeDefinition([]Definition{
+ 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
+ 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
+ 	amd64("simd-reduction-borrow", "Read-only vector reductions", "read pinned vector inputs without copying them for bitmasks and any-true reductions"),
+@@ -552,7 +552,7 @@ var catalog = []Definition{
+ 	both("inline", "Inlining", "inline eligible callees"),
+ 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
+ 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
+-}
++})
+ 
+ func both(name, label, description string) Definition {
+ 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: catalogBothArchitectures}
+diff --git a/src/core/compiler/optimization/fresh_struct_probe_disabled.go b/src/core/compiler/optimization/fresh_struct_probe_disabled.go
+new file mode 100644
+index 00000000..fb8c3ffe
+--- /dev/null
++++ b/src/core/compiler/optimization/fresh_struct_probe_disabled.go
+@@ -0,0 +1,5 @@
++//go:build !wago_gc_fresh_struct_probe
++
++package optimization
++
++func withFreshStructProbeDefinition(definitions []Definition) []Definition { return definitions }
+diff --git a/src/core/compiler/optimization/fresh_struct_probe_disabled_test.go b/src/core/compiler/optimization/fresh_struct_probe_disabled_test.go
+new file mode 100644
+index 00000000..4fa296bf
+--- /dev/null
++++ b/src/core/compiler/optimization/fresh_struct_probe_disabled_test.go
+@@ -0,0 +1,13 @@
++//go:build !wago_gc_fresh_struct_probe
++
++package optimization
++
++import "testing"
++
++func TestFreshStructProbeAbsentFromDefaultCatalog(t *testing.T) {
++	for _, d := range All() {
++		if d.Name == "gc-fresh-struct-forward" {
++			t.Fatal("probe leaked into ordinary catalog")
++		}
++	}
++}
+diff --git a/src/core/compiler/optimization/fresh_struct_probe_enabled.go b/src/core/compiler/optimization/fresh_struct_probe_enabled.go
+new file mode 100644
+index 00000000..c3526395
+--- /dev/null
++++ b/src/core/compiler/optimization/fresh_struct_probe_enabled.go
+@@ -0,0 +1,7 @@
++//go:build wago_gc_fresh_struct_probe
++
++package optimization
++
++func withFreshStructProbeDefinition(definitions []Definition) []Definition {
++	return append(definitions, Definition{Name: "gc-fresh-struct-forward", Label: "Fresh struct forwarding probe", Description: "enable fresh scalar struct forwarding in same-binary experimental comparisons", Experimental: true, Architectures: catalogAMD64Architectures})
++}
+diff --git a/src/core/compiler/optimization/fresh_struct_probe_enabled_test.go b/src/core/compiler/optimization/fresh_struct_probe_enabled_test.go
+new file mode 100644
+index 00000000..f8320bdf
+--- /dev/null
++++ b/src/core/compiler/optimization/fresh_struct_probe_enabled_test.go
+@@ -0,0 +1,17 @@
++//go:build wago_gc_fresh_struct_probe
++
++package optimization
++
++import "testing"
++
++func TestFreshStructProbeCatalog(t *testing.T) {
++	d, ok := Lookup("amd64", "gc-fresh-struct-forward")
++	if !ok || d.Default || !d.Experimental {
++		t.Fatal("probe must require explicit selection")
++	}
++	for _, arch := range []string{"arm64", "riscv64"} {
++		if _, ok := Lookup(arch, d.Name); ok {
++			t.Fatal("wrong target", arch)
++		}
++	}
++}
+diff --git a/src/wago/gc_direct_bridge_probe_amd64_test.go b/src/wago/gc_direct_bridge_probe_amd64_test.go
+index 01d9ec00..865523c4 100644
+--- a/src/wago/gc_direct_bridge_probe_amd64_test.go
++++ b/src/wago/gc_direct_bridge_probe_amd64_test.go
+@@ -1,4 +1,4 @@
+-//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || ((wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop) || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2) || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
++//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2 || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
+ 
+ package wago
+ 
+@@ -78,6 +78,14 @@ func TestGCDirectBridgeProbe(t *testing.T) {
+ 		t.Fatal("unknown case", name)
+ 	}
+ 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++	freshForward := os.Getenv("GC_BRIDGE_FRESH_STRUCT_FORWARD")
++	if freshForward != "" {
++		enabled, err := strconv.ParseBool(freshForward)
++		if err != nil {
++			t.Fatal("invalid GC_BRIDGE_FRESH_STRUCT_FORWARD")
++		}
++		cfg = cfg.WithOptimization("gc-fresh-struct-forward", enabled)
++	}
+ 	rt := NewRuntime(WithRuntimeConfig(cfg))
+ 	defer rt.Close()
+ 	mod, e := rt.Compile(data)
+@@ -170,6 +178,7 @@ func TestGCDirectBridgeProbe(t *testing.T) {
+ 			}
+ 		}
+ 	}
++	out["fresh_struct_forward_override"] = freshForward
+ 	b, e := json.Marshal(out)
+ 	if e != nil {
+ 		t.Fatal(e)
+diff --git a/src/wago/gc_direct_compile_probe_amd64_test.go b/src/wago/gc_direct_compile_probe_amd64_test.go
+index 2d9928e5..028d41ff 100644
+--- a/src/wago/gc_direct_compile_probe_amd64_test.go
++++ b/src/wago/gc_direct_compile_probe_amd64_test.go
+@@ -8,6 +8,7 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"strconv"
+ 	"testing"
+ )
+ 
+@@ -44,6 +45,13 @@ func BenchmarkGCDirectCompileProbe(b *testing.B) {
+ 		}
+ 		b.Run(tc.Name, func(b *testing.B) {
+ 			cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++			if value := os.Getenv("GC_COMPILE_FRESH_STRUCT_FORWARD"); value != "" {
++				enabled, err := strconv.ParseBool(value)
++				if err != nil {
++					b.Fatal("invalid GC_COMPILE_FRESH_STRUCT_FORWARD")
++				}
++				cfg = cfg.WithOptimization("gc-fresh-struct-forward", enabled)
++			}
+ 			size := 0
+ 			b.ReportAllocs()
+ 			b.ResetTimer()
+diff --git a/src/wago/gc_fresh_struct_direct_amd64_test.go b/src/wago/gc_fresh_struct_direct_amd64_test.go
+new file mode 100644
+index 00000000..8ba4a36b
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_direct_amd64_test.go
+@@ -0,0 +1,141 @@
++//go:build linux && amd64 && !tinygo && !wago_guardpage && wago_gc_direct_trusted_alloc
++
++package wago
++
++import (
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++// These cases retain allocation and root-array publication, unlike scalar
++// replacement. Overwriting the initializer or mutating its field kills the fact.
++func TestDirectGCFreshStructForwardEffects(t *testing.T) {
++	for _, tc := range []struct {
++		name                    string
++		overwrite, mutate, trap bool
++	}{
++		{name: "forward"}, {name: "source overwritten", overwrite: true},
++		{name: "field mutated", mutate: true}, {name: "root store trap", trap: true},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			length := byte(1)
++			if tc.trap {
++				length = 0
++			}
++			data := gcFreshStructLocalForwardBytes(tc.overwrite, tc.mutate, length)
++			wantForward := 1
++			if tc.overwrite || tc.mutate {
++				wantForward = 0
++			}
++			assertFreshStructReceipt(t, data, wantForward)
++			c, err := Compile(freshStructTestConfig(), data)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer c.Close()
++			for _, forced := range []bool{false, true} {
++				rt := NewRuntime()
++				defer rt.Close()
++				in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10, CollectEveryAlloc: forced, ForceMajorEveryMinor: true}})
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer in.Close()
++				for i := 0; i < 24; i++ {
++					input := uint64(uint32(i*17 - 33))
++					want := input
++					if tc.mutate {
++						want = 7
++					}
++					got, err := in.Invoke("run", input)
++					if tc.trap {
++						if err == nil {
++							t.Fatal("root-array bounds trap disappeared", got)
++						}
++					} else if err != nil || len(got) != 1 || got[0] != want {
++						t.Fatal(i, forced, got, want, err)
++					}
++				}
++				if s := in.gc.Stats(); s.Allocations != 48 || s.FullCollections == 0 {
++					t.Fatalf("allocation/collection effects %+v", s)
++				}
++			}
++		})
++	}
++}
++
++func freshStructScalarBitsModule(kind byte, nullObject bool) []byte {
++	result := kind
++	if kind == 0x7d {
++		result = 0x7f
++	}
++	if kind == 0x7c {
++		result = 0x7e
++	}
++	body := []byte{2, 1, 0x63, 1, 1, 0x63, 0,
++		0x41, 1, 0xfb, 7, 1, 0x21, 1,
++		0x20, 0, 0xfb, 0, 0, 0x21, 2,
++		0x20, 1, 0x41, 0, 0x20, 2, 0xfb, 14, 1}
++	if nullObject {
++		body = append(body, 0xd0, 0, 0x21, 2)
++	}
++	body = append(body, 0x20, 2, 0xfb, 2, 0, 0)
++	if kind == 0x7d {
++		body = append(body, 0xbc)
++	}
++	if kind == 0x7c {
++		body = append(body, 0xbd)
++	}
++	body = append(body, 0x0b)
++	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, kind, 0}, []byte{0x5e, 0x63, 0, 1}, []byte{0x60, 1, kind, 1, result})), wasmtest.Section(3, wasmtest.Vec([]byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
++}
++
++func TestDirectGCFreshStructScalarBitsAndNullOverwrite(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		kind byte
++		bits []uint64
++	}{
++		{"i64", 0x7e, []uint64{0, 1, 0xffffffffffffffff, 0x8123456789abcdef}},
++		{"f32", 0x7d, []uint64{0, 0x80000000, 0x7fc12345, 0xff800000}},
++		{"f64", 0x7c, []uint64{0, 0x8000000000000000, 0x7ff8123456789abc, 0xfff0000000000000}},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			for _, nullObject := range []bool{false, true} {
++				data := freshStructScalarBitsModule(tc.kind, nullObject)
++				wantForward := 1
++				if nullObject {
++					wantForward = 0
++				}
++				assertFreshStructReceipt(t, data, wantForward)
++				c, err := Compile(freshStructTestConfig(), data)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer c.Close()
++				rt := NewRuntime()
++				defer rt.Close()
++				in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10, CollectEveryAlloc: true, ForceMajorEveryMinor: true}})
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer in.Close()
++				for round := 0; round < 8; round++ {
++					for _, bits := range tc.bits {
++						got, err := in.Invoke("run", bits)
++						if nullObject {
++							if err == nil {
++								t.Fatal("overwritten null receiver forwarded", got)
++							}
++						} else if err != nil || len(got) != 1 || got[0] != bits {
++							t.Fatal(got, bits, err)
++						}
++					}
++				}
++				if got := in.gc.Stats().Allocations; got != 64 {
++					t.Fatal("allocation count", got)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_fresh_struct_no_stats_amd64_test.go b/src/wago/gc_fresh_struct_no_stats_amd64_test.go
+new file mode 100644
+index 00000000..a09bcf92
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_no_stats_amd64_test.go
+@@ -0,0 +1,7 @@
++//go:build linux && amd64 && !wago_codegenstats
++
++package wago
++
++import "testing"
++
++func assertFreshStructReceipt(t *testing.T, data []byte, want int) {}
+diff --git a/src/wago/gc_fresh_struct_policy_amd64_test.go b/src/wago/gc_fresh_struct_policy_amd64_test.go
+new file mode 100644
+index 00000000..dca2b632
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_policy_amd64_test.go
+@@ -0,0 +1,74 @@
++//go:build linux && amd64 && !tinygo && !wago_guardpage && wago_gc_direct_trusted_alloc && wago_gc_fresh_struct_probe
++
++package wago
++
++import (
++	"fmt"
++	"os"
++	"sync"
++	"testing"
++)
++
++func TestDirectGCFreshStructPolicyIsolation(t *testing.T) {
++	data, err := os.ReadFile("../../bench/experiments/gc-v8/gc-struct-allocation-access.wasm")
++	if err != nil {
++		t.Fatal(err)
++	}
++	base := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++	selected := func(cfg *RuntimeConfig) bool {
++		for _, info := range cfg.OptimizationInfos() {
++			if info.Name == "gc-fresh-struct-forward" {
++				return info.On
++			}
++		}
++		t.Fatal("missing probe option")
++		return false
++	}
++	if selected(base) {
++		t.Fatal("probe default must remain off")
++	}
++	var mu sync.Mutex
++	sizes := map[bool]int{}
++	t.Cleanup(func() {
++		mu.Lock()
++		defer mu.Unlock()
++		if len(sizes) != 2 || sizes[false] == sizes[true] {
++			t.Errorf("actual per-config generated sizes did not differ: %v", sizes)
++		}
++	})
++	for index, enabled := range []bool{false, true, false, true} {
++		cfg := base.WithOptimization("gc-fresh-struct-forward", enabled)
++		t.Run(fmt.Sprintf("%d-%v", index, enabled), func(t *testing.T) {
++			t.Parallel()
++			c, err := Compile(cfg, data)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer c.Close()
++			mu.Lock()
++			old, seen := sizes[enabled]
++			sizes[enabled] = c.CodeSize()
++			mu.Unlock()
++			if seen && old != c.CodeSize() {
++				t.Fatal("same policy produced different code size")
++			}
++			rt := NewRuntime()
++			defer rt.Close()
++			in, err := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 256, ThroughputHeapBytes: 64 << 10, ForceMajorEveryMinor: true}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer in.Close()
++			got, err := in.Invoke("performance", 16)
++			if err != nil || len(got) != 1 || got[0] != 7680 {
++				t.Fatal(got, err)
++			}
++			if s := in.gc.Stats(); s.Allocations != 1088 || s.FullCollections == 0 {
++				t.Fatal("effects", s)
++			}
++			if selected(cfg) != enabled || selected(base) {
++				t.Fatal("config isolation lost")
++			}
++		})
++	}
++}
+diff --git a/src/wago/gc_fresh_struct_receipt_amd64_test.go b/src/wago/gc_fresh_struct_receipt_amd64_test.go
+new file mode 100644
+index 00000000..9ea49cbb
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_receipt_amd64_test.go
+@@ -0,0 +1,70 @@
++//go:build linux && amd64 && wago_codegenstats
++
++package wago
++
++import (
++	backend "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/codegen"
++	"github.com/wago-org/wago/src/core/compiler/frontend"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	wruntime "github.com/wago-org/wago/src/core/runtime"
++	"os"
++	"testing"
++)
++
++func TestGCFreshStructExactArtifactReceipt(t *testing.T) {
++	data, err := os.ReadFile("../../bench/experiments/gc-v8/gc-struct-allocation-access.wasm")
++	if err != nil {
++		t.Fatal(err)
++	}
++	forwarded, code := freshStructReceipt(t, data, nil)
++	t.Logf("fresh-struct-forward=%d generated-bytes=%d", forwarded, len(code))
++	if forwarded != 1 {
++		t.Fatalf("exact retained struct artifact forwarding=%d, want1", forwarded)
++	}
++}
++
++func freshStructReceipt(t *testing.T, data []byte, enabled *bool) (forwarded int, code []byte) {
++	t.Helper()
++	m, err := wasm.DecodeModule(data)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	metadata, err := frontend.BuildGCTypeMetadata(m)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var diagnostic string
++	plan := newGCFrameRootPlan(m, true, true, &diagnostic, nil)
++	if diagnostic != "" {
++		t.Fatal(diagnostic)
++	}
++	opts := map[string]bool{"dead-gc-new": false}
++	if freshStructProbeAvailable() {
++		opts["gc-fresh-struct-forward"] = true
++	}
++	if enabled != nil {
++		opts["gc-fresh-struct-forward"] = *enabled
++	}
++	var stats backend.ModuleStats
++	compiled, err := backend.CompileModuleWith(m, backend.CompileOptions{Stats: &stats, GCStructHelpers: true, GCArrayHelpers: true, GCFrameRoots: plan, Interruptible: !wruntime.HostInterruptSupported(), Optimizations: opts, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts}}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer compiled.CodeImage.Close()
++	for _, fn := range stats.Funcs {
++		forwarded += fn.Peephole["gc-fresh-struct-get-forward"]
++	}
++	return forwarded, append([]byte(nil), compiled.Code...)
++}
++
++func assertFreshStructReceipt(t *testing.T, data []byte, want int) {
++	t.Helper()
++	n, _ := freshStructReceipt(t, data, nil)
++	if n != want {
++		t.Fatalf("fresh scalar fixture receipt=%d want%d", n, want)
++	}
++}
+diff --git a/src/wago/gc_fresh_struct_samebinary_amd64_test.go b/src/wago/gc_fresh_struct_samebinary_amd64_test.go
+new file mode 100644
+index 00000000..70de7412
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_samebinary_amd64_test.go
+@@ -0,0 +1,39 @@
++//go:build linux && amd64 && wago_codegenstats && wago_gc_fresh_struct_probe
++
++package wago
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"os"
++	"testing"
++)
++
++func TestGCFreshStructSameBinaryReceipts(t *testing.T) {
++	for _, name := range []string{"struct-allocation-access", "array-allocation-access", "array-fill", "array-copy-checksum", "array-loop-copy-checksum", "tree-survival"} {
++		data, err := os.ReadFile("../../bench/experiments/gc-v8/gc-" + name + ".wasm")
++		if err != nil {
++			t.Fatal(err)
++		}
++		var off []byte
++		for _, enabled := range []bool{false, true, false} {
++			n, code := freshStructReceipt(t, data, &enabled)
++			want := 0
++			if enabled && name == "struct-allocation-access" {
++				want = 1
++			}
++			t.Logf("%s enabled=%v forwarded=%d code=%d sha256=%x", name, enabled, n, len(code), sha256.Sum256(code))
++			if n != want {
++				t.Fatalf("forwarded=%d want%d", n, want)
++			}
++			if off == nil {
++				off = code
++			} else if want == 0 && !bytes.Equal(off, code) {
++				t.Fatal("non-forwarded code differs")
++			}
++			if want == 1 && bytes.Equal(off, code) {
++				t.Fatal("forwarded struct code unchanged")
++			}
++		}
++	}
++}
+diff --git a/src/wago/gc_fresh_struct_test_config_amd64_test.go b/src/wago/gc_fresh_struct_test_config_amd64_test.go
+new file mode 100644
+index 00000000..3c18750f
+--- /dev/null
++++ b/src/wago/gc_fresh_struct_test_config_amd64_test.go
+@@ -0,0 +1,19 @@
++//go:build linux && amd64
++
++package wago
++
++func freshStructProbeAvailable() bool {
++	for _, info := range NewRuntimeConfig().OptimizationInfos() {
++		if info.Name == "gc-fresh-struct-forward" {
++			return true
++		}
++	}
++	return false
++}
++func freshStructTestConfig() *RuntimeConfig {
++	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false)
++	if freshStructProbeAvailable() {
++		cfg = cfg.WithOptimization("gc-fresh-struct-forward", true)
++	}
++	return cfg
++}

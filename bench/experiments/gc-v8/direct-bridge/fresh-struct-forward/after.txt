@@ -1,0 +1,7 @@
+=== RUN   TestGCFreshStructExactArtifactReceipt
+    gc_fresh_struct_receipt_amd64_test.go:46: fresh-struct-forward=0 generated-bytes=1775
+    gc_fresh_struct_receipt_amd64_test.go:48: exact retained struct artifact forwarding=0, want1
+--- FAIL: TestGCFreshStructExactArtifactReceipt (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.007s
+FAIL

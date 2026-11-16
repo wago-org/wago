@@ -1,0 +1,17 @@
+core 0
+core-race 0
+wago_gc_retire_startmap 0
+wago_gc_retire_adaptive 0
+wago_gc_compact_age2 0
+wago_gc_compact_eden 0
+wago_gc_compact_age2,wago_gc_compact_eden 0
+wago_gc_compact_cohort 0
+wago_gc_compact_shadow 0
+wago_gc_compact_age2,wago_gc_compact_age2_metrics 0
+wago_gc_compact_age2,wago_gc_compact_age2_queue_reuse 0
+wago_gc_compact8 0
+coexist-race 0
+tinygo-default 0
+tinygo-coexist 0
+baseline-direct-backend 1
+applicable-direct-backend 0

@@ -1,0 +1,20 @@
+=== RUN   TestDirectGCFreshStructPolicyIsolation
+=== RUN   TestDirectGCFreshStructPolicyIsolation/0-false
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/0-false
+=== RUN   TestDirectGCFreshStructPolicyIsolation/1-true
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/1-true
+=== RUN   TestDirectGCFreshStructPolicyIsolation/2-false
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/2-false
+=== RUN   TestDirectGCFreshStructPolicyIsolation/3-true
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/3-true
+=== CONT  TestDirectGCFreshStructPolicyIsolation/0-false
+=== CONT  TestDirectGCFreshStructPolicyIsolation/1-true
+=== CONT  TestDirectGCFreshStructPolicyIsolation/2-false
+=== CONT  TestDirectGCFreshStructPolicyIsolation/3-true
+--- PASS: TestDirectGCFreshStructPolicyIsolation (0.00s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/1-true (0.02s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/0-false (0.03s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/3-true (0.04s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/2-false (0.05s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.108s

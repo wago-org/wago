@@ -1,0 +1,8 @@
+--- FAIL: TestSingleClearFailureRetry (0.00s)
+    --- FAIL: TestSingleClearFailureRetry/promote (0.00s)
+        single_clear_test.go:67: expected bounds panic
+    --- FAIL: TestSingleClearFailureRetry/age2 (0.00s)
+        single_clear_test.go:67: expected bounds panic
+FAIL
+FAIL	github.com/wago-org/wago/experiments/compactgc	0.034s
+FAIL

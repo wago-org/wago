@@ -1,0 +1,326 @@
+diff --git a/experiments/compactgc/age2_enabled.go b/experiments/compactgc/age2_enabled.go
+index 3cbf7d87..b917b84b 100644
+--- a/experiments/compactgc/age2_enabled.go
++++ b/experiments/compactgc/age2_enabled.go
+@@ -55,7 +55,8 @@ func (c *Collector) collectAge2(roots []*Ref, full bool) (result error) {
+ 		metric = c.beginAge2Metric(full)
+ 		defer func() { c.finishAge2Metric(metric, result) }()
+ 	}
+-	clear(c.mark)
++	// New zeroes mark storage; every serialized collection clears it on exit.
++	// Retain unconditional deferred cleanup for errors and panics.
+ 	defer clear(c.mark)
+ 	oldTarget := c.active
+ 	oldNext := c.oldBump
+diff --git a/experiments/compactgc/collector.go b/experiments/compactgc/collector.go
+index 9dc15531..4766a3a2 100644
+--- a/experiments/compactgc/collector.go
++++ b/experiments/compactgc/collector.go
+@@ -124,8 +124,8 @@ func (c *Collector) collect(roots []*Ref, full bool) (result error) {
+ 		diagnostic = c.beginCohortCycle(full)
+ 		defer func() { c.finishCohortCycle(diagnostic, result) }()
+ 	}
+-	// Scratch is not authoritative heap state and is cleared on ALL outcomes.
+-	clear(c.mark)
++	// New zeroes mark storage; serialized collection is its only writer.
++	// Keep cleanup on every return and panic, so entry already has zero marks.
+ 	defer clear(c.mark)
+ 	target := c.active
+ 	next := c.oldBump
+diff --git a/experiments/compactgc/eden_enabled.go b/experiments/compactgc/eden_enabled.go
+index 5c9cce46..e5bf36d7 100644
+--- a/experiments/compactgc/eden_enabled.go
++++ b/experiments/compactgc/eden_enabled.go
+@@ -44,7 +44,8 @@ func (c *Collector) EdenBudget() (total, fresh, survivor uint32) {
+ }
+ 
+ func (c *Collector) collectEden(roots []*Ref, full bool) error {
+-	clear(c.mark)
++	// New zeroes mark storage; every serialized collection clears it on exit.
++	// Retain unconditional deferred cleanup for errors and panics.
+ 	defer clear(c.mark)
+ 	oldTarget := c.active
+ 	oldNext := c.oldBump
+diff --git a/experiments/compactgc/single_clear_test.go b/experiments/compactgc/single_clear_test.go
+new file mode 100644
+index 00000000..9d500dc4
+--- /dev/null
++++ b/experiments/compactgc/single_clear_test.go
+@@ -0,0 +1,131 @@
++package compactgc
++
++import (
++	"errors"
++	"testing"
++)
++
++// These deliberately corrupt private state only to exercise error/panic cleanup.
++// Public callers cannot write the mark bitmap or immutable type descriptors.
++func TestSingleClearFailureRetry(t *testing.T) {
++	factories := map[string]func(uint32) (*Collector, error){
++		"promote": func(old uint32) (*Collector, error) {
++			return NewWithTypes(1024, old, []Descriptor{{Kind: KindStruct, Align: 8, PayloadBytes: 16, RefOffsets: []uint32{0}}})
++		},
++		"age2": func(old uint32) (*Collector, error) {
++			return NewAge2WithTypes(1024, old, 256, []Descriptor{{Kind: KindStruct, Align: 8, PayloadBytes: 16, RefOffsets: []uint32{0}}})
++		},
++		"eden": func(old uint32) (*Collector, error) {
++			return NewEdenWithTypes(1024, 128, old, []Descriptor{{Kind: KindStruct, Align: 8, PayloadBytes: 16, RefOffsets: []uint32{0}}})
++		},
++	}
++	for name, newHeap := range factories {
++		t.Run(name, func(t *testing.T) {
++			c, e := newHeap(1024)
++			if errors.Is(e, ErrConfig) {
++				t.Skip("policy not enabled")
++			}
++			if e != nil {
++				t.Fatal(e)
++			}
++			check := func() {
++				t.Helper()
++				for i, v := range c.mark {
++					if v != 0 {
++						t.Fatalf("mark[%d]=%x", i, v)
++					}
++				}
++			}
++			check()
++			root, e := c.NewStruct(0)
++			if e != nil {
++				t.Fatal(e)
++			}
++			child, e := c.NewStruct(0)
++			if e != nil {
++				t.Fatal(e)
++			}
++			if e = c.SetRef(root, 0, child); e != nil {
++				t.Fatal(e)
++			}
++			// Mark both nodes, then reject the invalid edge; retry with repaired edge.
++			c.put32(c.payloadBase(child), 0xfffffff0)
++			for _, collect := range []func([]*Ref) error{c.Minor, c.Full} {
++				if e = collect([]*Ref{&root}); !errors.Is(e, ErrRef) {
++					t.Fatal(e)
++				}
++				check()
++			}
++			c.put32(c.payloadBase(child), 0)
++			// Inject an impossible private pointer-map slot after the valid child.
++			// Normal tracing marks root and child before the out-of-bounds read.
++			// Merely shortening arena length retains capacity and need not panic.
++			offsets := c.types[0].RefOffsets
++			c.types[0].RefOffsets = []uint32{0, 1 << 30}
++			func() {
++				defer func() {
++					if recover() == nil {
++						t.Error("expected bounds panic")
++					}
++				}()
++				_ = c.Full([]*Ref{&root})
++			}()
++			check()
++			c.types[0].RefOffsets = offsets
++			if e = c.Full([]*Ref{&root}); e != nil {
++				t.Fatal(e)
++			}
++			check()
++			if next, e := c.RefField(root, 0); e != nil || next == 0 {
++				t.Fatal("lost repaired child", e)
++			}
++			for i := 0; i < 4; i++ {
++				if e = c.Minor([]*Ref{&root}); e != nil {
++					t.Fatal(e)
++				}
++				check()
++				if e = c.Full([]*Ref{&root}); e != nil {
++					t.Fatal(e)
++				}
++				check()
++			}
++			// Full preflight runs out of old capacity after marking several nodes.
++			d, e := newHeap(128)
++			if e != nil {
++				t.Fatal(e)
++			}
++			var r Ref
++			for i := 0; i < 6; i++ {
++				n, e := d.NewStruct(0)
++				if e != nil {
++					t.Fatal(e)
++				}
++				if e = d.SetRef(n, 0, r); e != nil {
++					t.Fatal(e)
++				}
++				r = n
++			}
++			for i := 0; i < 2; i++ {
++				if e = d.Full([]*Ref{&r}); !errors.Is(e, ErrOOM) {
++					t.Fatal(e)
++				}
++				for j, v := range d.mark {
++					if v != 0 {
++						t.Fatalf("OOM mark[%d]=%x", j, v)
++					}
++				}
++			}
++			if e = d.SetRef(r, 0, 0); e != nil {
++				t.Fatal(e)
++			}
++			if e = d.Full([]*Ref{&r}); e != nil {
++				t.Fatal(e)
++			}
++			for j, v := range d.mark {
++				if v != 0 {
++					t.Fatalf("retry mark[%d]=%x", j, v)
++				}
++			}
++		})
++	}
++}
+diff --git a/experiments/directgc/collector.go b/experiments/directgc/collector.go
+index c0bb842c..a4455eea 100644
+--- a/experiments/directgc/collector.go
++++ b/experiments/directgc/collector.go
+@@ -112,8 +112,8 @@ func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
+ func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
+ 
+ func (c *Collector) collect(roots []*Ref, full bool) error {
+-	// Scratch is not authoritative heap state and is cleared on ALL outcomes.
+-	clear(c.mark)
++	// New zeroes mark storage; serialized collection is its only writer.
++	// Keep cleanup on every return and panic, so entry already has zero marks.
+ 	defer clear(c.mark)
+ 	target := c.active
+ 	next := c.oldBump
+diff --git a/experiments/directgc/single_clear_test.go b/experiments/directgc/single_clear_test.go
+new file mode 100644
+index 00000000..1ff6ff9f
+--- /dev/null
++++ b/experiments/directgc/single_clear_test.go
+@@ -0,0 +1,125 @@
++package directgc
++
++import (
++	"errors"
++	"testing"
++)
++
++// These deliberately corrupt private state only to exercise error/panic cleanup.
++// Public callers cannot write the mark bitmap or immutable type descriptors.
++func TestSingleClearFailureRetry(t *testing.T) {
++	factories := map[string]func(uint32) (*Collector, error){
++		"promote": func(old uint32) (*Collector, error) {
++			return NewWithTypes(1024, old, []Descriptor{{Kind: KindStruct, Align: 8, PayloadBytes: 16, RefOffsets: []uint32{0}}})
++		},
++	}
++	for name, newHeap := range factories {
++		t.Run(name, func(t *testing.T) {
++			c, e := newHeap(1024)
++			if errors.Is(e, ErrConfig) {
++				t.Skip("policy not enabled")
++			}
++			if e != nil {
++				t.Fatal(e)
++			}
++			check := func() {
++				t.Helper()
++				for i, v := range c.mark {
++					if v != 0 {
++						t.Fatalf("mark[%d]=%x", i, v)
++					}
++				}
++			}
++			check()
++			root, e := c.NewStruct(0)
++			if e != nil {
++				t.Fatal(e)
++			}
++			child, e := c.NewStruct(0)
++			if e != nil {
++				t.Fatal(e)
++			}
++			if e = c.SetRef(root, 0, child); e != nil {
++				t.Fatal(e)
++			}
++			// Mark both nodes, then reject the invalid edge; retry with repaired edge.
++			c.put32(uint32(child)+header, 0xfffffff0)
++			for _, collect := range []func([]*Ref) error{c.Minor, c.Full} {
++				if e = collect([]*Ref{&root}); !errors.Is(e, ErrRef) {
++					t.Fatal(e)
++				}
++				check()
++			}
++			c.put32(uint32(child)+header, 0)
++			// Inject an impossible private pointer-map slot after the valid child.
++			// Normal tracing marks root and child before the out-of-bounds read.
++			// Merely shortening arena length retains capacity and need not panic.
++			offsets := c.types[0].RefOffsets
++			c.types[0].RefOffsets = []uint32{0, 1 << 30}
++			func() {
++				defer func() {
++					if recover() == nil {
++						t.Error("expected bounds panic")
++					}
++				}()
++				_ = c.Full([]*Ref{&root})
++			}()
++			check()
++			c.types[0].RefOffsets = offsets
++			if e = c.Full([]*Ref{&root}); e != nil {
++				t.Fatal(e)
++			}
++			check()
++			if next, e := c.RefField(root, 0); e != nil || next == 0 {
++				t.Fatal("lost repaired child", e)
++			}
++			for i := 0; i < 4; i++ {
++				if e = c.Minor([]*Ref{&root}); e != nil {
++					t.Fatal(e)
++				}
++				check()
++				if e = c.Full([]*Ref{&root}); e != nil {
++					t.Fatal(e)
++				}
++				check()
++			}
++			// Full preflight runs out of old capacity after marking several nodes.
++			d, e := newHeap(128)
++			if e != nil {
++				t.Fatal(e)
++			}
++			var r Ref
++			for i := 0; i < 6; i++ {
++				n, e := d.NewStruct(0)
++				if e != nil {
++					t.Fatal(e)
++				}
++				if e = d.SetRef(n, 0, r); e != nil {
++					t.Fatal(e)
++				}
++				r = n
++			}
++			for i := 0; i < 2; i++ {
++				if e = d.Full([]*Ref{&r}); !errors.Is(e, ErrOOM) {
++					t.Fatal(e)
++				}
++				for j, v := range d.mark {
++					if v != 0 {
++						t.Fatalf("OOM mark[%d]=%x", j, v)
++					}
++				}
++			}
++			if e = d.SetRef(r, 0, 0); e != nil {
++				t.Fatal(e)
++			}
++			if e = d.Full([]*Ref{&r}); e != nil {
++				t.Fatal(e)
++			}
++			for j, v := range d.mark {
++				if v != 0 {
++					t.Fatalf("retry mark[%d]=%x", j, v)
++				}
++			}
++		})
++	}
++}

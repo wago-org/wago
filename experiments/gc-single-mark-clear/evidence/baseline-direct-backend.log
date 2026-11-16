@@ -1,0 +1,24 @@
+--- FAIL: TestDirectGCStructReferenceReadRetainsRoot (0.00s)
+panic: amd64: native GC lowering in helper-only bridge [recovered, repanicked]
+
+goroutine 16 [running]:
+testing.tRunner.func1.2({0x10aeda8, 0xb47890})
+	toolchains/go127/src/testing/testing.go:2123 +0x232
+testing.tRunner.func1()
+	toolchains/go127/src/testing/testing.go:2126 +0x329
+panic({0x10aeda8?, 0xb47890?})
+	toolchains/go127/src/runtime/panic.go:859 +0x125
+github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitDirectGCObjectWithStub(...)
+	wago-gc-single-clear-baseline/src/core/compiler/backend/railshot/amd64/gc_direct.go:607
+github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitDirectGCObjectWithSubtype(...)
+	wago-gc-single-clear-baseline/src/core/compiler/backend/railshot/amd64/gc_direct.go:600
+github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitDirectGCStructGet(0x239eb1435408, 0x0, 0x0, 0x0, 0x2)
+	wago-gc-single-clear-baseline/src/core/compiler/backend/railshot/amd64/gc_direct.go:3040 +0x69c
+github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.TestDirectGCStructReferenceReadRetainsRoot(0x239eb1506008)
+	wago-gc-single-clear-baseline/src/core/compiler/backend/railshot/amd64/gc_reference_read_test.go:20 +0x1f7
+testing.tRunner(0x239eb1506008, 0x11134a0)
+	toolchains/go127/src/testing/testing.go:2193 +0xea
+created by testing.(*T).Run in goroutine 1
+	toolchains/go127/src/testing/testing.go:2258 +0x4d4
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.017s
+FAIL

@@ -1,0 +1,15 @@
+=== RUN   TestDirectGCFreshStructForwardEffects
+=== RUN   TestDirectGCFreshStructForwardEffects/forward
+=== RUN   TestDirectGCFreshStructForwardEffects/source_overwritten
+=== RUN   TestDirectGCFreshStructForwardEffects/field_mutated
+=== RUN   TestDirectGCFreshStructForwardEffects/root_store_trap
+--- PASS: TestDirectGCFreshStructForwardEffects (0.02s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/forward (0.01s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/source_overwritten (0.00s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/field_mutated (0.00s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/root_store_trap (0.00s)
+=== RUN   TestGCFreshStructExactArtifactReceipt
+    gc_fresh_struct_receipt_amd64_test.go:46: fresh-struct-forward=1 generated-bytes=1711
+--- PASS: TestGCFreshStructExactArtifactReceipt (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.108s
