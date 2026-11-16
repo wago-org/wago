@@ -47,7 +47,7 @@ func (c *Collector) Verify(roots []*Ref) error {
 			}
 			old := off >= c.oldStart[c.active] && off < c.oldBump
 			pointerFree := !d.ElementRef && len(d.RefOffsets) == 0
-			if flags & ^uint32(FlagPointerFree|FlagOld|FlagLarge) != 0 || (flags&FlagOld != 0) != old || (flags&FlagPointerFree != 0) != pointerFree || (flags&FlagLarge != 0 && !old) {
+			if flags & ^uint32(FlagPointerFree|FlagOld|FlagLarge) != 0 || (flags&FlagOld != 0) != old || (flags&FlagPointerFree != 0) != pointerFree || ((flags&FlagLarge != 0) != (stride > uint64(c.nurseryEnd-c.nurseryStart))) {
 				return bad("object flags")
 			}
 			objects[Ref(off)] = old

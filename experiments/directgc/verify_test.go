@@ -184,3 +184,32 @@ func TestVerifyArrayExtentAndInactiveStart(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestVerifyLargeFlagMatchesExtent(t *testing.T) {
+	c, r := verifyFixture(t)
+	if e := c.Minor([]*Ref{&r}); e != nil {
+		t.Fatal(e)
+	}
+	flags := c.u32(uint32(r) + 12)
+	c.put32(uint32(r)+12, flags|FlagLarge)
+	if e := c.Verify(nil); e == nil {
+		t.Fatal("small old object marked large accepted")
+	}
+	c.put32(uint32(r)+12, flags)
+	bigID, e := c.AddTypes([]Descriptor{{Kind: KindArray, Align: 8, ElementSize: 8}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	big, e := c.NewArray(bigID, 20)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Verify(nil); e != nil {
+		t.Fatal(e)
+	}
+	flags = c.u32(uint32(big) + 12)
+	c.put32(uint32(big)+12, flags&^FlagLarge)
+	if e = c.Verify(nil); e == nil {
+		t.Fatal("large object without large flag accepted")
+	}
+}
