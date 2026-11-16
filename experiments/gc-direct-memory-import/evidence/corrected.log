@@ -1,0 +1,24 @@
+=== RUN   TestDirectGCMemoryImportGrowthAndRoots
+--- PASS: TestDirectGCMemoryImportGrowthAndRoots (0.00s)
+=== RUN   TestDirectGCMemoryImportRejectsBacking
+--- PASS: TestDirectGCMemoryImportRejectsBacking (0.00s)
+=== RUN   TestDirectGCMemoryImportSharedContextLifetime
+    gc_direct_memory_import_amd64_test.go:268: owners roots=0/0 closed=true/true
+--- PASS: TestDirectGCMemoryImportSharedContextLifetime (0.00s)
+=== RUN   TestDirectGCMemoryImportRetainsProducer
+    gc_direct_memory_import_amd64_test.go:324: producer/consumer roots=0/0 closed=true/true
+--- PASS: TestDirectGCMemoryImportRetainsProducer (0.00s)
+=== RUN   TestDirectMemoryImportPolicy
+=== RUN   TestDirectMemoryImportPolicy/ordinary
+=== RUN   TestDirectMemoryImportPolicy/memory64
+=== RUN   TestDirectMemoryImportPolicy/threaded
+=== RUN   TestDirectMemoryImportPolicy/multiple
+=== RUN   TestDirectMemoryImportPolicy/importPlusLocal
+--- PASS: TestDirectMemoryImportPolicy (0.00s)
+    --- PASS: TestDirectMemoryImportPolicy/ordinary (0.00s)
+    --- PASS: TestDirectMemoryImportPolicy/memory64 (0.00s)
+    --- PASS: TestDirectMemoryImportPolicy/threaded (0.00s)
+    --- PASS: TestDirectMemoryImportPolicy/multiple (0.00s)
+    --- PASS: TestDirectMemoryImportPolicy/importPlusLocal (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.010s

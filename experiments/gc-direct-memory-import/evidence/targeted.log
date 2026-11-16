@@ -1,0 +1,7 @@
+--- FAIL: TestDirectGCMemoryImportSharedContextLifetime (0.00s)
+    gc_direct_memory_import_amd64_test.go:244: attachment leaked: wago: memory has 2 live importer(s); close consumers before the memory
+--- FAIL: TestDirectGCMemoryImportRetainsProducer (0.00s)
+    gc_direct_memory_import_amd64_test.go:294: producer retained after final importer close
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.010s
+FAIL

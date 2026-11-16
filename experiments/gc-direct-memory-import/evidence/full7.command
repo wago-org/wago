@@ -1,0 +1,1 @@
+go test -p=1 -tags wago_gc_direct_trusted\,wago_gc_direct_trusted_alloc\,wago_gc_direct_trusted_store\,wago_gc_direct_trusted_arrays\,wago_gc_direct_array_alloc\,wago_gc_direct_trusted_refstruct\,wago_gc_direct_copy ./src/wago -run \^\(TestDirectGC\|TestTrustedDirect\|TestDirectMemoryImportPolicy\) -count=1 

@@ -1,0 +1,4 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/gc_direct_memory_import_amd64_test.go:108:22: prepared.Call undefined (type *WasmFunc has no field or method Call)
+FAIL	github.com/wago-org/wago/src/wago [build failed]
+FAIL
