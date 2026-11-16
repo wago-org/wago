@@ -13,6 +13,9 @@ func NewAge2WithTypes(uint32, uint32, uint32, []Descriptor) (*Collector, error) 
 	return nil, ErrConfig
 }
 func (c *Collector) YoungBudget() (total, active, cap uint32) {
+	if c.EdenEnabled() {
+		return c.EdenBudget()
+	}
 	if c == nil {
 		return 0, 0, 0
 	}
