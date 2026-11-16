@@ -176,3 +176,29 @@ the 1.15x target. Fill native code grows 64 bytes; measured Go compile bytes and
 allocation count are unchanged. This small shared-host effect does not justify
 a universal speedup or default-enablement claim. All raw samples and the weaker
 512 KiB-policy result are retained.
+
+### Retirement and payload-boundary checkpoint
+
+At runtime source `192443d`, the composed adaptive-retirement/SSE2-fill/trusted
+reference-struct/allocation/loop/numeric-copy mode passed applicable direct and
+trusted tests with register checking (0.457 s). Unfiltered default suites passed:
+Wago 38.823 s, native GC 2.001 s, checked GC 0.003 s, AMD64 backend 6.767 s,
+direct substrate 0.020 s, compact substrate 0.031 s. Native `wagodebug` passed
+(2.130 s); TinyGo host native/checked tests passed (2.229 / 0.003 s).
+
+Retirement remains independently opt-in. Matched long runs at 2 MiB showed the
+struct workload improving from 4.041 ms with header walking to 3.479 ms with
+start-map traversal and 3.569 ms with previous-cycle adaptive selection. Other
+controls mostly overlap. Large-object microcases regress under unconditional
+map scanning; the adaptive selector has an explicit one-cycle prediction lag.
+No default or universal improvement is implied. Every workload still missed the
+V8 target in the contemporaneous comparison; raw evidence is under
+`bench/experiments/gc-v8/direct-bridge/matched-retirement/evidence`.
+
+The payload-boundary refactor preserves real mutable storage and capped logical
+host borrows, rather than fabricating expanded header buffers. Its matched
+Throughput/Tiny microcomparison found no consistent material regression and
+reported zero Go allocations throughout; provenance and all samples are under
+`bench/experiments/gc-payload/evidence`. The separate compact-header substrate
+passes normal/race tests but is not enabled in the runtime or compiler by this
+checkpoint. Smaller standalone objects are not a measured runtime speedup.
