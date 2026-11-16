@@ -31,3 +31,7 @@ Independent source review found no blocker. Go1.27 tests passed: default core
 Regression cases cover overflow/age-one classification, old-direct intervals,
 minor failure, full OOM/retry, and repeated snapshots. No performance
 claim, default enablement, or scan optimization accompanies these counters.
+
+Canonical composition at `bd4a4685` also passed fresh default core (0.025s),
+age2+metrics core (0.019s), and tagged race (1.235s). No workload observation
+or speed conclusion is implied by these tests. Timing binaries exclude this tag.
