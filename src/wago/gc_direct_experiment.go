@@ -35,8 +35,13 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 	if (!compact && !c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() != gc.DirectABIVersion) || b.opts.store == nil || b.opts.store.private || !c.needsRuntimeGCCollectorDomain() || !c.sharedGCPersistentDomainSafe() || c.genericGCFrameRoots() == nil {
 		return errors.New("wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain")
 	}
-	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryImport != "" || c.usesManagedFunctionStorage() || c.hasOpaqueExternFrames() || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.usesAtomicWaitHelpers() || len(c.customInstructions) != 0 || (b.opts.runtime != nil && len(b.opts.runtime.plugins) != 0) {
+	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || (compact && c.memoryImportCount() != 0) || c.usesManagedFunctionStorage() || c.hasOpaqueExternFrames() || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.usesAtomicWaitHelpers() || len(c.customInstructions) != 0 || (b.opts.runtime != nil && len(b.opts.runtime.plugins) != 0) {
 		return errors.New("wago: direct-offset GC does not admit imports, tables, exceptions, custom collectors, or managed external references")
+	}
+	if !compact {
+		if err := b.admitDirectMemoryImport(); err != nil {
+			return err
+		}
 	}
 	// Managed-reference arguments use authenticated same-instance public tokens,
 	// exact argument roots and the existing compiler frame-root receipt.
@@ -106,4 +111,39 @@ func directManagedArgumentType(v ValueTypeDescriptor, types []DefinedTypeDescrip
 		return !v.Ref.Exact
 	}
 	return false
+}
+
+// A linear memory has no collector references, but its backing also carries
+// native invocation context. Admit only the ordinary single-memory path whose
+// construction and entry leases rebind each instance's exact GC view.
+func (b *instanceBuilder) admitDirectMemoryImport() error {
+	c := b.c
+	if c.memoryImportCount() == 0 {
+		return nil
+	}
+	def, ok := c.memoryImportAt(0)
+	if !ok || c.memoryImportCount() != 1 || c.memoryCount() != 1 || def.Addr64 || def.Shared {
+		return errors.New("wago: direct-offset GC requires a single ordinary memory32 import")
+	}
+	memory, ok := b.imports.memory(c.memoryImportBindingKey(0))
+	if !ok || !memory.directOrdinaryBacking() {
+		return errors.New("wago: direct-offset GC requires a known live ordinary memory32 backing")
+	}
+	return nil
+}
+
+// Ownership sharing is allowed: exported ordinary memory retains its producer
+// and uses serialized context rebinding. Wasm thread-shared backing is not.
+func (m *Memory) directOrdinaryBacking() bool {
+	if m == nil {
+		return false
+	}
+	s := m.state.Load()
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return m.jm != nil && !s.has(memoryStateClosed) && s.has(memoryStateLimitsKnown) &&
+		!s.has(memoryStateAddr64) && !s.has(memoryStateWasmShared) && !s.has(memoryStateDeclaredShared)
 }
