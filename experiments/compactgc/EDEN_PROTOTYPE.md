@@ -21,3 +21,16 @@ preflight repair and exact allocation accounting. Remembered overflow, zero-allo
 source regions also have unexecuted tests. Random graph/property checks and
 TinyGo core build remain additional qualification work. No performance or V8 comparison has been run. Full test and
 fixed-total/equal-Eden benchmark gates are required before any conclusions.
+
+## Core qualification checkpoint
+
+Source6c3ed225 including deterministic randomized graph model passed Go1.27.1
+normal/race/coexisting-age2 compact core and TinyGo0.42 task-scheduler core.
+Default Wago, AMD64 backend, native GC, wrapper and direct core regressions pass;
+incompatible constructor-tag rejection passes. Initial default-footprint fixture
+and readonly-cache failures, fixes and successful reruns are preserved under
+bench/experiments/gc-v8/direct-bridge/eden-core-qualification. No collector semantic
+failure was observed. Above source-stage notes describe the earlier checkpoint;
+all listed source tests now ran, including remembered overflow, minimumgeometry,
+fullrollback, directoldthreshold, zeroallocation and randomized model checks.
+This qualifies the isolated core, NOT a native runtime adapter or V8 performance.

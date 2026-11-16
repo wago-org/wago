@@ -14,5 +14,5 @@ and XDG_CACHE_HOME. Initial failures retained in *-first.log/status-first.txt.
 
 Pinned spec-v3 corpus was copied from the established canonical checkout before
 the default Wago suite. Qualification uses existing admission restrictions; it is
-not proof of unrestricted WasmGC support. Randomized model qualification is pending
-at this documentation checkpoint. Logs report test durations, not throughput.
+not proof of unrestricted WasmGC support. Randomized model6c3ed225 subsequently passed full compact core normal/race,
+Eden+age2 coexistence, and TinyGo core reruns; see model-*.log. Logs report test durations, not throughput.
