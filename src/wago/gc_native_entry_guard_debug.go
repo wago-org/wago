@@ -23,6 +23,12 @@ const nativeGCEntryValidationEnabled = true
 // only immutable ABI/view facts; mutable collector backing remains dynamically
 // validated by generated semantic access code.
 func validateNativeGCEntry(in *Instance) error {
+	if in != nil && in.gcDirectView != nil {
+		if in.gcNativeView != nil || in.jm == nil || in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(in.gcDirectView)) {
+			return fmt.Errorf("wagodebug: direct GC basedata mismatch")
+		}
+		return gc.ValidateDirectInstanceView(in.gcDirectView, in.gc)
+	}
 	if in == nil || in.gcNativeView == nil {
 		return nil
 	}

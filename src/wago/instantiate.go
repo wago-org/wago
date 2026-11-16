@@ -292,6 +292,9 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 }
 
 func (b *instanceBuilder) prepareCollector() error {
+	if b.c.gcDirectReadABIReceipt() != 0 && b.c.needsNativeGCABI() && !b.opts.GC.ExperimentalDirectOffsets {
+		return errors.New("wago: native direct-read artifact requires direct-offset collector")
+	}
 	if b.opts.GC.ExperimentalDirectOffsets {
 		if err := b.admitDirectGCExperiment(); err != nil {
 			return err
@@ -1874,7 +1877,8 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
-	if b.collector != nil && !b.collector.UsesDirectOffsets() && c.needsNativeGCABI() {
+	var gcDirectView *gc.DirectInstanceView
+	if b.collector != nil && c.needsNativeGCABI() && (!b.collector.UsesDirectOffsets() || c.gcDirectReadABIReceipt() != 0) {
 		gcNativeTypes = make([]gc.TypeID, len(c.Types))
 		for local := range gcNativeTypes {
 			domain, ok := b.gcTypeMap.domain(uint32(local))
@@ -1883,14 +1887,28 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 			gcNativeTypes[local] = domain
 		}
-		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
+		if b.collector.UsesDirectOffsets() {
+			gcDirectView, err = gc.BuildDirectInstanceView(b.collector, gcNativeTypes)
+			if err == nil {
+				err = gc.ValidateDirectInstanceView(gcDirectView, b.collector)
+			}
+		} else {
+			gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
+		}
 		if err != nil {
 			return nil, wrapContextError("instantiate: native GC metadata view", err)
 		}
-		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
+		if gcDirectView != nil {
+			jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcDirectView)))
+		} else {
+			jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
+		}
 	}
 	jm.CaptureInstanceContextBytes(nativeContext)
 	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
+	if gcDirectView != nil {
+		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcDirectView))))
+	}
 	if gcNativeView != nil {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
@@ -1899,7 +1917,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		finishMemoryContext = nil
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView, gcDirectView: gcDirectView,
 		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),

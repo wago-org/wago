@@ -10,7 +10,7 @@ import (
 // narrow until every host/cross-instance storage edge has a relocation contract.
 func (b *instanceBuilder) admitDirectGCExperiment() error {
 	c := b.c
-	if !c.hasGCHelperOnlyReceipt() || b.opts.store == nil || b.opts.store.private || !c.needsRuntimeGCCollectorDomain() || !c.sharedGCPersistentDomainSafe() || c.genericGCFrameRoots() == nil {
+	if (!c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() != gc.DirectABIVersion) || b.opts.store == nil || b.opts.store.private || !c.needsRuntimeGCCollectorDomain() || !c.sharedGCPersistentDomainSafe() || c.genericGCFrameRoots() == nil {
 		return errors.New("wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain")
 	}
 	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryImport != "" || c.usesManagedFunctionStorage() || c.hasOpaqueExternFrames() || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.usesAtomicWaitHelpers() || len(c.customInstructions) != 0 || b.opts.pluginGC != nil {

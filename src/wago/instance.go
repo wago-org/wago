@@ -53,6 +53,7 @@ type Instance struct {
 	gc                      *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	gcTypeMap               *gcTypeMapping
 	gcNativeView            *gc.NativeInstanceView
+	gcDirectView            *gc.DirectInstanceView
 	serArgs, results, trap  []byte
 	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
 	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
