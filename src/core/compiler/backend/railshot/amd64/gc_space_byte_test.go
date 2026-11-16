@@ -66,8 +66,15 @@ func TestGCResolversLoadSpaceByte(t *testing.T) {
 				t.Fatalf("objdump: %v\n%s", err, out)
 			}
 			matches := spaceLoad.FindAllStringSubmatch(string(out), -1)
-			if len(matches) != 1 {
-				t.Fatalf("native space byte loads = %d, want 1; old metadata shift/mask must be removed\n%s", len(matches), out)
+			want := 1
+			if gcHelperOnly {
+				want = 0
+			}
+			if len(matches) != want {
+				t.Fatalf("native space byte loads = %d, want %d\n%s", len(matches), want, out)
+			}
+			if gcHelperOnly {
+				return
 			}
 			if tc.name != "inline-struct" {
 				// Keep both original space guards before the branchless exact

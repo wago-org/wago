@@ -1252,8 +1252,10 @@ type compiledTagDef struct {
 // no new instances are needed; existing instances retain their executable image
 // until they close.
 type Compiled struct {
-	code  []byte
-	Entry []int // host-wrapper offset, or the internal offset for direct-only functions
+	// gcHelperOnlyReceipt is intentionally absent from the artifact codec.
+	gcHelperOnlyReceipt bool
+	code                []byte
+	Entry               []int // host-wrapper offset, or the internal offset for direct-only functions
 	// InternalEntry mirrors Entry with each function's register-ABI internal
 	// entry offset. Entry[i] == InternalEntry[i] for a direct-only register-ABI
 	// function whose unreachable host adapter was omitted.

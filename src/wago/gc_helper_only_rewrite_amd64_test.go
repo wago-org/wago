@@ -28,6 +28,9 @@ func TestGCHelperOnlyResumesRewrittenRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close()
+		if !c.hasGCHelperOnlyReceipt() {
+			t.Fatal("missing helper-only compiler receipt")
+		}
 		for _, cfg := range []GCConfig{{CollectEveryAlloc: true, VerifyAfterCollect: true}, {Profile: GCProfileTiny, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}} {
 			rt := NewRuntime()
 			var in *Instance

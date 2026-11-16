@@ -1840,6 +1840,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	} else {
 		compiled, err = compileModuleWith(m, opts)
 	}
+	if err == nil && compiled != nil {
+		compiled.GCHelperOnlyReceipt = gcHelperOnly
+	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)
 	return compiled, err
