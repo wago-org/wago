@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "exclude_hypervisor": true,
+  "exclude_kernel": true,
+  "mmap": false,
+  "operation": "disabled self-thread cpu-clock open/close",
+  "sampling": false,
+  "success": true
+}

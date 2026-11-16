@@ -1,0 +1,240 @@
+{
+  "case": "array-copy-checksum",
+  "config": {
+    "NurseryBytes": 2097152,
+    "SurvivorBytes": 0,
+    "MinorPauseTargetMicros": 0,
+    "OldBlockBytes": 0,
+    "LargeObjectBytes": 0,
+    "StressNurseryBytes": 0,
+    "TinyHeapBytes": 0,
+    "TinyBlockBytes": 0,
+    "TinyStepBudget": 0,
+    "TinyPacingStepLimit": 0,
+    "ThroughputHeapBytes": 8388608,
+    "ThroughputPageBytes": 0,
+    "ThroughputClassLimit": 0,
+    "Profile": 0,
+    "Allocator": 0,
+    "Runtime": 0,
+    "ExperimentalDirectOffsets": true,
+    "ExperimentalCompactOffsets": false,
+    "ExperimentalCompactAge2": false,
+    "CollectEveryAlloc": false,
+    "ForceMajorEveryMinor": false,
+    "VerifyAfterCollect": false,
+    "PoisonFreed": false,
+    "StressBarriers": false,
+    "DisableMovingNursery": false,
+    "DisableCollection": false,
+    "TinyCollectEveryAlloc": false,
+    "TinyStepEveryAlloc": false
+  },
+  "different_offsets_common_extent": null,
+  "events": [
+    {
+      "thread_id": 147,
+      "sequence": 1,
+      "timestamp_ns": 24989605214545,
+      "kind": "load",
+      "image_id": 1,
+      "image": {
+        "id": 1,
+        "module_id": "53667f9e93b1ee082bb65ee584a3d29e317b25e62d88c5f3b0656d42ac8e3881",
+        "artifact_id": "480681187f0f7c29384dc3ac4b1732f73eddfe76121f3483886e231014f6a9bc",
+        "base": 140463305187328,
+        "size": 4719,
+        "target": "linux/amd64",
+        "regions": [
+          {
+            "offset": 0,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 0,
+            "name": "checksum"
+          },
+          {
+            "offset": 17,
+            "size": 398,
+            "kind": "guest-body",
+            "function": 0,
+            "name": "checksum"
+          },
+          {
+            "offset": 415,
+            "size": 1,
+            "kind": "padding",
+            "function": -1
+          },
+          {
+            "offset": 416,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 1,
+            "name": "performance_kernel"
+          },
+          {
+            "offset": 433,
+            "size": 2409,
+            "kind": "guest-body",
+            "function": 1,
+            "name": "performance_kernel"
+          },
+          {
+            "offset": 2842,
+            "size": 6,
+            "kind": "padding",
+            "function": -1
+          },
+          {
+            "offset": 2848,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 2,
+            "name": "array-loop-copy-checksum"
+          },
+          {
+            "offset": 2865,
+            "size": 1633,
+            "kind": "guest-body",
+            "function": 2,
+            "name": "array-loop-copy-checksum"
+          },
+          {
+            "offset": 4498,
+            "size": 46,
+            "kind": "padding",
+            "function": -1
+          },
+          {
+            "offset": 4544,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 3,
+            "name": "performance"
+          },
+          {
+            "offset": 4561,
+            "size": 158,
+            "kind": "guest-body",
+            "function": 3,
+            "name": "performance"
+          }
+        ],
+        "functions": [
+          {
+            "index": 0,
+            "name": "checksum",
+            "native_bytes": 415,
+            "frame_bytes": 56,
+            "emitted_spills": 0,
+            "emitted_reloads": 2,
+            "emitted_bounds_checks": 0,
+            "compiler_decisions": {
+              "cmp-branch-fuse": 1,
+              "commute-mem-left": 1,
+              "compact-i32-frame": 1,
+              "compact-loop-align32": 1,
+              "frame-header-elide": 1,
+              "gc-direct-loop-hoist": 1,
+              "gc-direct-loop-reuse": 1,
+              "gc-direct-weighted-sum": 1,
+              "local-set-get-tee": 1
+            }
+          },
+          {
+            "index": 1,
+            "name": "performance_kernel",
+            "native_bytes": 2426,
+            "frame_bytes": 120,
+            "emitted_spills": 0,
+            "emitted_reloads": 11,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "gcnative": 2,
+              "hostsync": 2,
+              "mixed": 1
+            },
+            "compiler_decisions": {
+              "br-pair-fold": 3,
+              "cmp-branch-fuse": 3,
+              "commute-mem-left": 1,
+              "frame-header-elide": 1,
+              "gc-direct-loop-hoist": 1,
+              "gc-direct-loop-no-plan": 1,
+              "gc-direct-loop-reuse": 1,
+              "local-set-get-tee": 2,
+              "mixed-call-reg-arg": 1,
+              "tree-order": 2,
+              "tree-order-candidate": 2
+            }
+          },
+          {
+            "index": 2,
+            "name": "array-loop-copy-checksum",
+            "native_bytes": 1650,
+            "frame_bytes": 88,
+            "emitted_spills": 0,
+            "emitted_reloads": 11,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "gcnative": 2,
+              "hostsync": 2,
+              "mixed": 1
+            },
+            "compiler_decisions": {
+              "br-pair-fold": 4,
+              "cmp-branch-fuse": 4,
+              "commute-mem-left": 1,
+              "frame-header-elide": 1,
+              "gc-direct-loop-hoist": 1,
+              "gc-direct-loop-no-plan": 2,
+              "gc-direct-loop-reuse": 1,
+              "local-set-get-tee": 3,
+              "mixed-call-reg-arg": 1,
+              "tree-order": 2,
+              "tree-order-candidate": 2
+            }
+          },
+          {
+            "index": 3,
+            "name": "performance",
+            "native_bytes": 175,
+            "frame_bytes": 40,
+            "emitted_spills": 0,
+            "emitted_reloads": 0,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "regabi": 1
+            },
+            "compiler_decisions": {
+              "br-pair-fold": 1,
+              "cmp-branch-fuse": 1,
+              "commute-mem-left": 1,
+              "compact-loop-align32": 1,
+              "frame-header-elide": 1,
+              "gc-direct-loop-no-plan": 1,
+              "local-set-get-tee": 1
+            }
+          }
+        ],
+        "code": "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"
+      }
+    }
+  ],
+  "exact_parity": true,
+  "guest_invocations": 0,
+  "plain_bytes": 4719,
+  "plain_sha256": "27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497",
+  "profile_bytes": 4719,
+  "profile_sha256": "27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497",
+  "samples": false,
+  "source_maps": false,
+  "status": {
+    "clock": "monotonic",
+    "dropped_spans": 0,
+    "dropped_records": 0,
+    "retained_bytes": 10215,
+    "closed": false
+  }
+}
