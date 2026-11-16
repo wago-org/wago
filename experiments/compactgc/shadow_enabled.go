@@ -12,6 +12,7 @@ type ShadowCycle struct {
 	ReachableBytes, ReachableObjects uint64
 }
 type ShadowSnapshot struct {
+	ScratchBytes                                               uint64
 	MinorSuccesses, MinorFailures, FullSuccesses, FullFailures uint64
 	CoveredCycles, InvalidCycles, UncoveredCycles              uint64
 	Last, Totals                                               ShadowCycle
@@ -29,7 +30,11 @@ type shadowCycle struct {
 	oldBefore   uint32
 }
 
-func (c *Collector) ShadowDiagnostics() ShadowSnapshot { return c.shadow }
+func (c *Collector) ShadowDiagnostics() ShadowSnapshot {
+	s := c.shadow
+	s.ScratchBytes = uint64(len(c.shadowMark))*8 + uint64(len(c.shadowQueue))*4
+	return s
+}
 
 func (c *Collector) beginShadowCycle(roots []*Ref, full bool) shadowCycle {
 	d := shadowCycle{full: full, oldBefore: c.oldBump}
