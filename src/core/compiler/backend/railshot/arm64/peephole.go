@@ -74,9 +74,20 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	lineageEligible := f.opt(optCsetLineage) && n <= csetLineageFunctionLimit && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
+	scratchReloadEligible := f.opt(optRepeatedStoreRegion) && f.hasLoop && !f.threadedMemory0 && !f.moduleEH && !f.interruptible && !f.opaqueFragments && !profileEnabled && len(f.customInstructions) == 0
+	var scratchReloadSites [64]uint32
+	scratchReloadN := 0
+	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		if scratchReloadEligible && w&0x7f80001f == 0x52800011 {
+			if scratchReloadN < len(scratchReloadSites) && w == lastScratchMove && pc-lastScratchMoveAt <= maxScratchConstantReloadDistance {
+				scratchReloadSites[scratchReloadN] = uint32(pc)
+				scratchReloadN++
+			}
+			lastScratchMove, lastScratchMoveAt = w, pc
+		}
 		if addressEligible && addressSiteN < len(addressSites) && pc+20 <= n && w&0xffe0fc00 == 0x8b000000 && w&31 == 16 && w>>5&31 == 26 && rdWord(b, pc+12) == w {
 			addressSites[addressSiteN] = uint32(pc)
 			addressSiteN++
@@ -163,6 +174,11 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if f.opt(optRepeatedStoreRegion) {
 		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
+	}
+	for _, site := range scratchReloadSites[:scratchReloadN] {
+		if scratchConstantReloadAt(b, int(site), targets, entryOffsets) {
+			f.stats.peep("scratch-constant-reload")
+		}
 	}
 }
 

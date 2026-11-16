@@ -228,3 +228,55 @@ func TestRepeatedStoreOriginsDiscardedAcrossWords(t *testing.T) {
 		}
 	}
 }
+
+func TestScratchConstantReload(t *testing.T) {
+	words := []uint32{
+		0xd2800031, 0xb9000611, nopWord, // MOV X17,#1; STR W17,[X16,#4].
+		0xd2800031, 0xb9000e11, // MOV X17,#1; STR W17,[X16,#12].
+	}
+	code := make([]byte, len(words)*4)
+	for i, w := range words {
+		binary.LittleEndian.PutUint32(code[i*4:], w)
+	}
+	if !scratchConstantReloadAt(code, 12, nil, nil) {
+		t.Fatal("redundant scratch reload rejected")
+	}
+	if got := rdWord(code, 12); got != nopWord {
+		t.Fatalf("reload = %#x, want nop", got)
+	}
+}
+
+func TestScratchConstantReloadSafety(t *testing.T) {
+	base := []uint32{
+		0xd2800031, 0xb9000611, nopWord,
+		0xd2800031, 0xb9000e11,
+	}
+	check := func(words []uint32, targets, entries []int, want bool) {
+		t.Helper()
+		code := make([]byte, len(words)*4)
+		for i, w := range words {
+			binary.LittleEndian.PutUint32(code[i*4:], w)
+		}
+		var targetBits [1]uint64
+		for _, pc := range targets {
+			branchTargetAdd(targetBits[:], pc, len(code))
+		}
+		if got := scratchConstantReloadAt(code, 12, targetBits[:], entries); got != want {
+			t.Fatalf("match=%v, want %v", got, want)
+		}
+	}
+	check(base, nil, nil, true)
+	check(base, []int{12}, nil, false)
+	check(base, nil, []int{12}, false)
+	check(base, []int{8}, nil, false)
+	check(base, nil, []int{8}, false)
+	clobber := append([]uint32{}, base...)
+	clobber[2] = 0xd2800051 // MOV X17,#2.
+	check(clobber, nil, nil, false)
+	different := append([]uint32{}, base...)
+	different[3] = 0xd2800051 // Current materialization is MOV X17,#2.
+	check(different, nil, nil, false)
+	branch := append([]uint32{}, base...)
+	branch[2] = 0x14000001 // B to the current MOVZ.
+	check(branch, nil, nil, false)
+}

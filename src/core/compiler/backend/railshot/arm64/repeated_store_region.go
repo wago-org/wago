@@ -23,6 +23,10 @@ const minRepeatedStoreBranchWords = 8
 // never scans a multi-kilobyte window just to find the next repeated block.
 const maxRepeatedStoreDistance = 384
 
+// Keep scratch-constant reuse local to one short straight-line expression
+// group; longer-lived constants belong in the ordinary allocator.
+const maxScratchConstantReloadDistance = 64
+
 // truncateNativeCode preserves the assembler's existing rollback behavior and
 // discards provenance for bytes that may subsequently be reused for other code.
 func (f *fn) truncateNativeCode(n int) {
@@ -224,6 +228,52 @@ func removeRepeatedStoreRegion(b []byte, second, words int) {
 	for at := clearFrom; at < endSecond; at += 4 {
 		wrWord(b, at, nopWord)
 	}
+}
+
+func nativeEntryAt(entries []int, at int) bool {
+	for _, entry := range entries {
+		if entry == at {
+			return true
+		}
+	}
+	return false
+}
+
+// scratchConstantReloadAt removes a redundant one-instruction MOVZ into X17.
+// The nearest earlier write to X17 must be the exact same MOVZ, and every
+// intervening instruction must be straight-line code that preserves X17.
+// Removing a nontrapping register write leaves all memory effects and trap
+// positions unchanged.
+func scratchConstantReloadAt(b []byte, moveAt int, targets []uint64, entries []int) bool {
+	if moveAt < 4 || moveAt+4 > len(b) {
+		return false
+	}
+	move := rdWord(b, moveAt)
+	if move&0x7f80001f != 0x52800011 || branchTargeted(targets, moveAt) || nativeEntryAt(entries, moveAt) {
+		return false
+	}
+	limit := moveAt - maxScratchConstantReloadDistance
+	if limit < 0 {
+		limit = 0
+	}
+	for at := moveAt - 4; at >= limit; at -= 4 {
+		w := rdWord(b, at)
+		effect, ok := nativeLoopConstExitWord(w)
+		if !ok {
+			return false
+		}
+		if effect.writes&uint32(1<<X17) != 0 {
+			if w != move {
+				return false
+			}
+			wrWord(b, moveAt, nopWord)
+			return true
+		}
+		if branchTargeted(targets, at) || nativeEntryAt(entries, at) {
+			return false
+		}
+	}
+	return false
 }
 
 // repeatStoreRegionAt removes the second of two identical bounded store
