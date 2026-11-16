@@ -361,7 +361,11 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			available++
 		}
 	}
-	if available < 2 {
+	neededVectors := 2
+	if p.lanes > 4 {
+		neededVectors++
+	}
+	if available < neededVectors {
 		return
 	}
 	read := func(local int, dst Reg) {
@@ -390,6 +394,11 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.fpinned = f.fpinned.add(va)
 	vb := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(vb)
+	vc := regNone
+	if p.lanes > 4 {
+		vc = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vc)
+	}
 	loop := f.a.Len()
 	f.cmpImm(counter, 1, false)
 	done := f.a.Bcond(condBE)
@@ -410,14 +419,21 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
 	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		f.a.LdrQ(va, a, off)
+		part := va
+		if off != 0 {
+			part = vc
+		}
+		f.a.LdrQ(part, a, off)
 		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(va, va, vb)
-		f.a.NeonAbsS(va, va)
-		f.a.NeonAddvS(va, va)
-		f.a.FmovToGpr(X16, va, false)
-		f.a.Add32(acc, acc, X16)
+		f.a.NeonSubS(part, part, vb)
+		f.a.NeonAbsS(part, part)
+		if off != 0 {
+			f.a.NeonAddS(va, va, part)
+		}
 	}
+	f.a.NeonAddvS(va, va)
+	f.a.FmovToGpr(X16, va, false)
+	f.a.Add32(acc, acc, X16)
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
@@ -444,6 +460,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	}
 	f.releaseF(va)
 	f.releaseF(vb)
+	if vc != regNone {
+		f.releaseF(vc)
+	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("abs-reduce-loop-vector")
