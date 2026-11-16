@@ -246,6 +246,11 @@ func (c *Collector) ArraySetRef(r Ref, index uint32, v Ref) error {
 // eachRef visits exact pointer-map slots; headers and descriptors are immutable
 // outside collector-owned operations, even when Payload is borrowed.
 func (c *Collector) eachRef(off uint32, fn func(uint32) error) error {
+	// Tracing flags are immutable layout metadata published with the object.
+	// Scalar-only objects need no descriptor lookup or callback traversal.
+	if c.u32(off+12)&FlagPointerFree != 0 {
+		return nil
+	}
 	d := c.types[c.u32(off)]
 	if d.Kind == KindArray {
 		if d.ElementRef {
