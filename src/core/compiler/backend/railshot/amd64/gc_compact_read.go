@@ -152,6 +152,7 @@ func (f *fn) emitCompactStructGet(t, fieldIndex, helper uint32) bool {
 	floor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	obj, done := f.emitCheckedCompactOffset(f.popValue(), t, 4, uint32(stride), 0, 0)
+	f.stats.peep("gc-compact-struct-read")
 	disp := int32(payload + uint64(off))
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
@@ -185,6 +186,7 @@ func (f *fn) emitCompactArrayLen(t uint32) bool {
 	obj, done := f.emitCheckedCompactOffset(f.popValue(), t, 8, 0, payload, size)
 	r := f.allocReg(maskOf(obj))
 	f.a.Load32(r, obj, 4)
+	f.stats.peep("gc-compact-array-len")
 	done()
 	f.spillFloor = floor
 	f.pushReg(r, mtI32)

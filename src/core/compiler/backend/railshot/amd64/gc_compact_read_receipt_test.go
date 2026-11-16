@@ -3,7 +3,10 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"strings"
 	"testing"
 )
 
@@ -25,5 +28,42 @@ func TestCompactNativeReadArtifactReceipt(t *testing.T) {
 	}
 	if cm.GCHelperOnlyReceipt || cm.GCCompactHelperVersion != 0 || cm.GCDirectReadABIVersion != 0 || uint32(cm.GCCompactNativeVersion) != gc.CompactNativeABIVersion {
 		t.Fatalf("helper=%v direct=%d", cm.GCHelperOnlyReceipt, cm.GCDirectReadABIVersion)
+	}
+}
+
+func TestCompactNativeReadInstructions(t *testing.T) {
+	if gcDirectReads {
+		t.Skip("mixed mode separately rejects")
+	}
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x60, 1, 0x63, 0, 1, 0x7f})), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 2, 0, 0, 0x0b}))))
+	m, e := wasm.DecodeModule(data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = wasm.ValidateModule(m); e != nil {
+		t.Fatal(e)
+	}
+	var stats *ModuleStats
+	if diagnosticsEnabled {
+		stats = &ModuleStats{}
+	}
+	cm, e := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: stats})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer cm.CodeImage.Close()
+	if stats != nil && stats.Funcs[0].Peephole["gc-compact-struct-read"] != 1 {
+		t.Fatal("missing compact scalar lowering", stats.Funcs[0].Peephole)
+	}
+	listing := disasm(t, cm.Code)
+	found := false
+	for _, line := range strings.Split(listing, "\n") {
+		if strings.Contains(line, "mov") && strings.Contains(line, "dword ptr [") && strings.Contains(line, "+0x4]") {
+			found = true
+			t.Log(line)
+		}
+	}
+	if !found {
+		t.Fatal("missing compact payload-offset4 load", listing)
 	}
 }
