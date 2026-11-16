@@ -1,0 +1,16 @@
+{
+  "measured_binary_source": "ba95cd3043274f6a26814872436ea82c28f5659d",
+  "binary_sha256": "daea5730d2ef654083d030cc99ca441a6055f8ba22ed583aeb27cb73be9fa6f5",
+  "started_utc": "2026-11-16T11:20:30Z",
+  "mode": "untimed CPU sampling, not benchmark evidence",
+  "eden_bytes": 2097152,
+  "old_semispace_bytes": 8388608,
+  "rows": [
+    {
+      "case": "struct-allocation-access",
+      "returncode": 0,
+      "stdout": "=== RUN   TestGCDirectBridgeProbe\n    gc_direct_bridge_probe_amd64_test.go:164: DIRECT_BRIDGE_RESULT {\"after\":{\"Allocations\":167813120,\"MinorCollections\":2834,\"FullCollections\":50,\"MinorObjectsScanned\":0,\"MinorRememberedScanned\":0,\"YoungBytesCopied\":0,\"PromotedBytes\":0,\"LiveObjects\":233529,\"TenuringThreshold\":0},\"allocation_elision\":false,\"artifact_sha256\":\"27468789ca552b5a12cceaa65fafe966cd395fa7e3a14cc45ebce0d2a182eace\",\"batch\":512,\"before\":{\"Allocations\":33562624,\"MinorCollections\":566,\"FullCollections\":10,\"MinorObjectsScanned\":0,\"MinorRememberedScanned\":0,\"YoungBytesCopied\":0,\"PromotedBytes\":0,\"LiveObjects\":81940,\"TenuringThreshold\":0},\"case\":\"struct-allocation-access\",\"checksum\":536739840,\"compiler_mode\":\"profile_abi3\",\"config\":{\"NurseryBytes\":2097152,\"SurvivorBytes\":0,\"MinorPauseTargetMicros\":0,\"OldBlockBytes\":0,\"LargeObjectBytes\":0,\"StressNurseryBytes\":0,\"TinyHeapBytes\":0,\"TinyBlockBytes\":0,\"TinyStepBudget\":0,\"TinyPacingStepLimit\":0,\"ThroughputHeapBytes\":8388608,\"ThroughputPageBytes\":0,\"ThroughputClassLimit\":0,\"Profile\":0,\"Allocator\":0,\"Runtime\":0,\"ExperimentalDirectOffsets\":true,\"CollectEveryAlloc\":false,\"ForceMajorEveryMinor\":false,\"VerifyAfterCollect\":false,\"PoisonFreed\":false,\"StressBarriers\":false,\"DisableMovingNursery\":false,\"DisableCollection\":false,\"TinyCollectEveryAlloc\":false,\"TinyStepEveryAlloc\":false},\"direct_arena_bytes\":18874384,\"direct_old_semispaces\":2,\"go_after\":{\"HeapAlloc\":30233512,\"HeapInuse\":30744576,\"HeapSys\":41615360,\"MallocsDelta\":14089,\"Sys\":46303512,\"TotalAllocDelta\":300560},\"go_before\":{\"HeapAlloc\":29932952,\"HeapInuse\":30449664,\"HeapSys\":41582592,\"Sys\":46303512},\"go_version\":\"go1.27.1\",\"gomaxprocs\":1,\"maxrss_kib\":40324,\"mode\":\"direct\",\"native_direct_view_installed\":true,\"proc_VmHWM_kib\":40588,\"proc_VmRSS_kib\":40588,\"runtime_owned\":true,\"samples\":1,\"samples_ns\":[4960390.76171875],\"timed_collections\":2308,\"unimplemented_direct_stats\":\"copied/promoted bytes and scan counters are not instrumented; zeros are not measured zero work\",\"warmup_calls\":128}\n--- PASS: TestGCDirectBridgeProbe (3.14s)\nPASS\n",
+      "stderr": ""
+    }
+  ]
+}

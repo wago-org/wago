@@ -1,0 +1,48 @@
+File: candidate.test
+Build ID: 0dc96a00283399ccdcf28d28f5d57d15f75ca3c9
+Type: cpu
+Time: 2026-11-16 06:20:52 EST
+Duration: 814.60ms, Total samples = 800ms (98.21%)
+Showing nodes accounting for 800ms, 100% of 800ms total
+Showing top 40 nodes out of 91
+      flat  flat%   sum%        cum   cum%
+     210ms 26.25% 26.25%      210ms 26.25%  runtime._ExternalCode
+     100ms 12.50% 38.75%      530ms 66.25%  github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostLoop
+      80ms 10.00% 48.75%      160ms 20.00%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).ArrayCopy
+      30ms  3.75% 52.50%       30ms  3.75%  github.com/wago-org/wago/experiments/directgc.(*Collector).valid (inline)
+      30ms  3.75% 56.25%      100ms 12.50%  github.com/wago-org/wago/src/core/runtime.resumeNative
+      30ms  3.75% 60.00%      100ms 12.50%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).refDesc
+      30ms  3.75% 63.75%       30ms  3.75%  runtime.getcallerfp
+      20ms  2.50% 66.25%       20ms  2.50%  github.com/wago-org/wago/src/core/runtime.enterNativeRaw
+      20ms  2.50% 68.75%       20ms  2.50%  github.com/wago-org/wago/src/core/runtime.loadTrap (inline)
+      20ms  2.50% 71.25%       20ms  2.50%  github.com/wago-org/wago/src/core/runtime.resumeNativeRaw
+      20ms  2.50% 73.75%       70ms  8.75%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).ObjectType (inline)
+      20ms  2.50% 76.25%       70ms  8.75%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).refDescPtrBytes
+      10ms  1.25% 77.50%       20ms  2.50%  encoding/binary.littleEndian.Uint32 (inline)
+      10ms  1.25% 78.75%       40ms  5.00%  github.com/wago-org/wago/experiments/directgc.(*Collector).ObjectBytes
+      10ms  1.25% 80.00%       10ms  1.25%  github.com/wago-org/wago/src/core/runtime.clearTrapUnlessInterrupted (inline)
+      10ms  1.25% 81.25%       50ms  6.25%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).bytes
+      10ms  1.25% 82.50%       10ms  1.25%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).validObjectRef
+      10ms  1.25% 83.75%       10ms  1.25%  github.com/wago-org/wago/src/core/runtime/gc/native.isOpaqueRefKind (inline)
+      10ms  1.25% 85.00%      300ms 37.50%  github.com/wago-org/wago/src/wago.(*Instance).dispatchGCArrayHelperParked
+      10ms  1.25% 86.25%       80ms 10.00%  github.com/wago-org/wago/src/wago.(*Instance).gcCheckArray
+      10ms  1.25% 87.50%       30ms  3.75%  github.com/wago-org/wago/src/wago.(*referenceStore).lockGCCollector
+      10ms  1.25% 88.75%       10ms  1.25%  internal/runtime/atomic.(*Uint32).CompareAndSwap (inline)
+      10ms  1.25% 90.00%       10ms  1.25%  internal/runtime/atomic.(*UnsafePointer).Load (inline)
+      10ms  1.25% 91.25%       10ms  1.25%  internal/sync.(*Mutex).Lock (inline)
+      10ms  1.25% 92.50%       10ms  1.25%  internal/sync.(*Mutex).Unlock (inline)
+      10ms  1.25% 93.75%       10ms  1.25%  runtime.asyncPreempt
+      10ms  1.25% 95.00%       30ms  3.75%  runtime.exitsyscall
+      10ms  1.25% 96.25%       10ms  1.25%  runtime.memmove
+      10ms  1.25% 97.50%       10ms  1.25%  runtime.nilinterhash
+      10ms  1.25% 98.75%       10ms  1.25%  runtime.reentersyscall
+      10ms  1.25%   100%       10ms  1.25%  runtime.traceAcquire (inline)
+         0     0%   100%       10ms  1.25%  encoding/json.Marshal
+         0     0%   100%       10ms  1.25%  encoding/json/v2.Marshal
+         0     0%   100%       10ms  1.25%  encoding/json/v2.getStrings
+         0     0%   100%       10ms  1.25%  encoding/json/v2.makeMapArshaler.func2
+         0     0%   100%       10ms  1.25%  encoding/json/v2.marshalEncode
+         0     0%   100%       20ms  2.50%  github.com/wago-org/wago/experiments/directgc.(*Collector).Minor (inline)
+         0     0%   100%       20ms  2.50%  github.com/wago-org/wago/experiments/directgc.(*Collector).collect
+         0     0%   100%       20ms  2.50%  github.com/wago-org/wago/experiments/directgc.(*Collector).stride (inline)
+         0     0%   100%       20ms  2.50%  github.com/wago-org/wago/experiments/directgc.(*Collector).u32 (inline)
