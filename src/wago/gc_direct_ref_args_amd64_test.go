@@ -32,9 +32,9 @@ func directRefArgsBytes() []byte {
 		{0x00, 0x41, 0}, // trap
 		{0x41, 0, 0x41, 0xc0, 0x84, 0x3d, 0xfb, 6, 1, 0x1a, 0x20, 0, 0xfb, 2, 0, 0}, // OOM
 	}
-	bodies = append(bodies, []byte{0x20, 0, 0xd1}, []byte{0x20, 0, 0x10, 1})
-	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3, 3}
-	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull", "call"}
+	bodies = append(bodies, []byte{0x20, 0, 0xd1}, []byte{0x20, 0, 0x10, 1}, []byte{0x42, 1, 0xfb, 0, 9})
+	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3, 3, 10}
+	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull", "call", "newOther"}
 	funcs := make([][]byte, len(sig))
 	exports := make([][]byte, len(sig))
 	codes := make([][]byte, len(sig))
@@ -46,7 +46,7 @@ func directRefArgsBytes() []byte {
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)), wasmtest.Section(3, wasmtest.Vec(funcs...)), wasmtest.Section(7, wasmtest.Vec(exports...)), wasmtest.Section(10, wasmtest.Vec(codes...)))
 }
 func TestDirectGCManagedReferenceArguments(t *testing.T) {
-	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), directRefArgsBytes())
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false), directRefArgsBytes())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -99,16 +99,22 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 	}
 	check()
 	for i := 0; i < 8; i++ {
+		collections := in.gc.Stats().FullCollections
+		oldRef := in.gc.GlobalSlot(entry.slot)
 		got, e := in.Invoke("read", token.token)
 		if e != nil || got[0] != 91 {
 			t.Fatal(got, e)
 		}
 		check()
+		if in.gc.Stats().FullCollections <= collections || in.gc.GlobalSlot(entry.slot) == oldRef {
+			t.Fatal("callee did not move the argument")
+		}
 		got, e = in.Invoke("call", token.token)
 		if e != nil || got[0] != 91 {
 			t.Fatal(got, e)
 		}
 		check()
+
 		typed, e := in.InvokeValues(context.Background(), "nonnull", result[0])
 		if e != nil || typed[0].Bits() != 91 {
 			t.Fatal(typed, e)
@@ -124,6 +130,19 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 		}
 		check()
 	}
+	different, e := in.InvokeValues(context.Background(), "newOther")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.ReleaseGCRef(different[0].GCRef())
+	if _, e = in.Invoke("read", different[0].Bits()); e == nil {
+		t.Fatal("wrong indexed struct type accepted")
+	}
+	check()
+	if _, e = in.Invoke("i31", token.token); e == nil {
+		t.Fatal("object accepted as i31")
+	}
+	check()
 	array, e := in.InvokeValues(context.Background(), "newArray", ValueI32(37))
 	if e != nil {
 		t.Fatal(e)
