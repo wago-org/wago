@@ -223,11 +223,11 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 		*c.checkedHandles = append(*c.checkedHandles, 1)
 	}
 	c.mark = append(c.mark, false)
-	// The handle is unpublished until the profile-specific post-allocation path.
-	// Tiny overwrites this byte with its current-epoch gray/black state; keeping
-	// the shared Throughput handle-growth path at a zero append avoids irrelevant
-	// epoch encoding work.
-	c.tinyGC.color = append(c.tinyGC.color, 0)
+	// Profiles are immutable. Only Tiny traces through the color table; the
+	// Throughput collector uses mark instead and must not allocate both tables.
+	if c.cfg.Profile == ProfileTiny {
+		c.tinyGC.color = append(c.tinyGC.color, 0)
+	}
 	h := uint32(len(c.handles) - 1)
 	c.noteMajorHandle(h)
 	return h
