@@ -102,11 +102,11 @@ func TestMajorBlocksReservationWordRevisits(t *testing.T) {
 
 func TestMajorBlocksFlagUsesExistingPadding(t *testing.T) {
 	const batchBytes = (512 - nativeStructHandleBatch) * 4
-	if unsafe.Offsetof(Collector{}.checkedHandles) != 3088-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3104-batchBytes {
+	if unsafe.Offsetof(Collector{}.checkedHandles) != 3096-batchBytes || unsafe.Offsetof(Collector{}.majorBlocks) != 3112-batchBytes {
 		t.Fatal("native index changed existing collector offsets")
 	}
-	if unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) != 3128-batchBytes || unsafe.Sizeof(Collector{}) != 3128-batchBytes+unsafe.Sizeof(int(0)) {
-		t.Fatal("large-array list hint must add one word after the existing collector state")
+	if unsafe.Offsetof(Collector{}.nativeLargeArrayNurseryIndex) != 3136-batchBytes || unsafe.Sizeof(Collector{}) != 3136-batchBytes+unsafe.Sizeof(int(0))+unsafe.Sizeof(uintptr(0)) {
+		t.Fatal("large-array list hint and optional direct backend must add two words after existing state")
 	}
 	if unsafe.Offsetof(Collector{}.majorYoungDirty) >= unsafe.Offsetof(Collector{}.checkedHandles) {
 		t.Fatal("flag does not use existing padding")

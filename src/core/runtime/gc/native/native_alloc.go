@@ -73,7 +73,7 @@ const (
 )
 
 func (c *Collector) nativeAllocationAllowed(minObjectBytes uint32) bool {
-	return c != nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
+	return c != nil && c.direct == nil && !c.closed && c.cfg.Profile == ProfileThroughput && !c.cfg.DisableCollection && !c.cfg.CollectEveryAlloc &&
 		minObjectBytes < c.cfg.LargeObjectBytes && minObjectBytes <= NativeAllocationChunkBytes && minObjectBytes <= ^uint32(0)-15
 }
 

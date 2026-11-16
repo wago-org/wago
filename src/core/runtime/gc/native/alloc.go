@@ -14,6 +14,9 @@ import (
 )
 
 func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
+	if c.direct != nil {
+		return c.directAlloc(d, aux, roots)
+	}
 	if c.nativeStructAlloc.Count != 0 || c.nativeStructAlloc.ChunkEnd != 0 {
 		c.discardNativeStructHandles()
 	}
@@ -259,8 +262,7 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 	if !r.IsObj() {
 		return nil, nil, errors.New("gc: ref is not object")
 	}
-	h := handleOf(r)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if !c.validObjectRef(r) {
 		return nil, nil, errors.New("gc: invalid object ref")
 	}
 	object := c.bytes(r)
@@ -271,6 +273,9 @@ func (c *Collector) refDescPtrBytes(r Ref) (*TypeDesc, []byte, error) {
 	return &c.types[id], object, nil
 }
 func (c *Collector) validObjectRef(r Ref) bool {
+	if c.direct != nil {
+		return r.IsObj() && c.direct.IsValid(directRef(r))
+	}
 	if !r.IsObj() {
 		return false
 	}
@@ -306,6 +311,10 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 
 func (c *Collector) entry(r Ref) *handleEntry { return &c.handles[handleOf(r)] }
 func (c *Collector) bytes(r Ref) []byte {
+	if c.direct != nil {
+		b, _ := c.direct.ObjectBytes(directRef(r))
+		return b
+	}
 	e := c.entry(r)
 	switch e.space {
 	case spaceNursery:
@@ -331,6 +340,12 @@ func (c *Collector) writeHeader(r Ref, h ObjHeader) {
 }
 
 func (c *Collector) zeroObjectPayload(r Ref) {
+	if c.direct != nil {
+		if c.validObjectRef(r) {
+			clear(c.bytes(r)[PayloadOffset:])
+		}
+		return
+	}
 	if !c.validObjectRef(r) {
 		return
 	}

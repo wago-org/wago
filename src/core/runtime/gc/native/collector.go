@@ -12,6 +12,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+
+	directgc "github.com/wago-org/wago/experiments/directgc"
 )
 
 // Profile selects a supported allocator/runtime preset.
@@ -80,12 +82,14 @@ type Config struct {
 	Allocator AllocatorKind
 	Runtime   RuntimeKind
 
-	CollectEveryAlloc    bool
-	ForceMajorEveryMinor bool
-	VerifyAfterCollect   bool
-	PoisonFreed          bool
-	StressBarriers       bool
-	DisableMovingNursery bool
+	// ExperimentalDirectOffsets requires helper-only compiled artifacts and an owned Runtime.
+	ExperimentalDirectOffsets bool
+	CollectEveryAlloc         bool
+	ForceMajorEveryMinor      bool
+	VerifyAfterCollect        bool
+	PoisonFreed               bool
+	StressBarriers            bool
+	DisableMovingNursery      bool
 	// DisableCollection keeps every object in the bounded throughput heap and
 	// returns an allocation error on exhaustion. It is used by general WasmGC
 	// code until native frame roots can be published at every safepoint.
@@ -180,6 +184,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
+	direct                       *directgc.Collector
 }
 
 const defaultNursery = 64 << 10
@@ -190,6 +195,9 @@ var denseNurseryPregrowEnabled = nativeCollectorFastPaths && os.Getenv("WAGO_"+s
 var errCollectorClosed = errors.New("gc: collector closed")
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
+	if config.ExperimentalDirectOffsets {
+		return NewExperimentalDirectCollector(config, types)
+	}
 	if err := ValidateNativeABI(); err != nil {
 		return nil, err
 	}
@@ -254,6 +262,7 @@ func (c *Collector) Close() {
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
 	c.closed = true
+	c.direct = nil
 	c.nursery = nil
 	c.tiny.Close()
 	c.throughput.Close()
@@ -336,6 +345,13 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 			return err
 		}
 	}
+	if c.direct != nil {
+		if _, err := c.direct.AddTypes(directDescriptors(types)); err != nil {
+			c.types, c.subtypeIntervals = oldTypes, oldIntervals
+			clear(combined[oldCount:])
+			return err
+		}
+	}
 	c.refreshNativeView()
 	return nil
 }
@@ -370,6 +386,9 @@ func (c *Collector) Stats() Stats {
 		s.Allocations += uint64(used)
 	}
 	s.LiveObjects = c.liveCount()
+	if c.direct != nil {
+		s.LiveObjects = c.direct.LiveObjects()
+	}
 	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle() {
 		s.LiveObjects += c.stats.LiveObjects
 	}

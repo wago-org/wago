@@ -14,6 +14,9 @@ import (
 )
 
 func (c *Collector) Verify(roots RootSet) error {
+	if c.direct != nil {
+		return errors.New("gc: direct-offset Verify not implemented")
+	}
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}

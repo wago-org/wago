@@ -16,7 +16,7 @@ func (c *Collector) EnableCheckedHandles() error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
-	if len(c.handles) != 1 || c.stats.Allocations != 0 {
+	if c.direct != nil || len(c.handles) != 1 || c.stats.Allocations != 0 {
 		return fmt.Errorf("gc: checked handles require a new collector")
 	}
 	generations := make([]uint64, 1)

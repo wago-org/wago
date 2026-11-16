@@ -42,6 +42,10 @@ const (
 // identify the mutated field. It conservatively dirties the complete payload;
 // typed struct/array stores use writeBarrierObjectRange with the exact bytes.
 func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
+	if c.direct != nil {
+		c.directRemember(parent)
+		return
+	}
 	if !parent.IsObj() || !child.IsObj() || !c.validObjectRef(parent) || !c.validObjectRef(child) {
 		return
 	}
@@ -67,6 +71,10 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 // payload-byte interval. Collection is synchronous, so publishing the store
 // before its card cannot race a collector.
 func (c *Collector) writeBarrierObjectRange(parent Ref, child Ref, start, end uint32) {
+	if c.direct != nil {
+		c.directRemember(parent)
+		return
+	}
 	c.objectEdgesMutated(parent)
 	// Typed callers have already resolved the parent and validated the stored
 	// child. Check parent generation before decoding the child so ordinary
@@ -124,6 +132,9 @@ func (c *Collector) WriteBarrierRoot(child Ref) {
 // store young refs. Frame slots are intentionally unsupported until the runtime
 // has exact frame-root metadata; frame refs must be supplied through RootSet.
 func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
+	if c.direct != nil {
+		return
+	}
 	if !child.IsObj() || !c.validObjectRef(child) {
 		return
 	}
@@ -159,6 +170,10 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
+	if c.direct != nil {
+		c.directRemember(array)
+		return
+	}
 	c.objectEdgesMutated(array)
 	if c.cfg.Profile == ProfileTiny || !array.IsObj() || !c.validObjectRef(array) {
 		return
@@ -192,6 +207,10 @@ func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
 // write. Callers must invoke it only after the destination range contains the
 // new refs so the remembered-set scan can observe old/large-to-nursery edges.
 func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
+	if c.direct != nil {
+		c.directRemember(dst)
+		return
+	}
 	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
 		return
 	}
@@ -534,6 +553,9 @@ func (c *Collector) clearRememberedMetadata() {
 	c.remembered = c.remembered[:0]
 }
 func (c *Collector) isNurseryRef(r Ref) bool {
+	if c.direct != nil {
+		return c.direct.IsYoung(directRef(r))
+	}
 	if !r.IsObj() || !c.validObjectRef(r) {
 		return false
 	}
@@ -603,6 +625,9 @@ func (c *Collector) CardCount() int {
 	return count
 }
 func (c *Collector) ForcePromote(r Ref) error {
+	if c.direct != nil {
+		return errors.New("gc: direct offsets require rooted collection, not ForcePromote")
+	}
 	defer c.invalidateNativeResolution()
 	if err := c.errIfClosed(); err != nil {
 		return err

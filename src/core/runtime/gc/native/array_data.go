@@ -36,6 +36,9 @@ func (c *Collector) NewArrayDataWithRoots(typeID TypeID, length uint32, data []b
 	}
 	payloadEnd := uint32(uint64(PayloadOffset) + bytes)
 	copy(c.bytes(r)[PayloadOffset:payloadEnd], data[uint64(source):end])
+	if c.direct != nil {
+		return r, nil
+	}
 	// Clear alignment and size-class padding without overwriting the payload.
 	e := c.entry(r)
 	start, limit := e.off+payloadEnd, e.off+e.size

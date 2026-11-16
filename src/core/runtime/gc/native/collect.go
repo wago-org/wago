@@ -16,6 +16,9 @@ import (
 )
 
 func (c *Collector) CollectFull(roots RootSet) error {
+	if c.direct != nil {
+		return c.directCollect(roots, true)
+	}
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
@@ -44,6 +47,9 @@ func (c *Collector) CollectFull(roots RootSet) error {
 }
 
 func (c *Collector) CollectMinor(roots RootSet) error {
+	if c.direct != nil {
+		return c.directCollect(roots, false)
+	}
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}

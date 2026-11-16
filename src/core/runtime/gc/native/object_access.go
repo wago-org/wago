@@ -81,7 +81,10 @@ func (c *Collector) NewStructWordsPrevalidatedWithRootScratch(typeID TypeID, wor
 		storeWordsUnchecked(payload, uint64(field.Offset), field.Kind, words[cursor:cursor+slots])
 		cursor += slots
 	}
-	if d.HasRefs && c.cfg.Profile != ProfileTiny {
+	if d.HasRefs && c.direct != nil {
+		c.directRemember(r)
+	}
+	if d.HasRefs && c.cfg.Profile != ProfileTiny && c.direct == nil {
 		h := handleOf(r)
 		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
 			c.remember(h)
@@ -141,7 +144,10 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 	// Initialization publishes the complete payload at once. A large allocation
 	// is born outside the nursery, so reconcile one remembered-set entry after all
 	// direct stores instead of paying a barrier per field.
-	if hasRefs && c.cfg.Profile != ProfileTiny {
+	if hasRefs && c.direct != nil {
+		c.directRemember(r)
+	}
+	if hasRefs && c.cfg.Profile != ProfileTiny && c.direct == nil {
 		h := handleOf(r)
 		if (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) && c.handleContainsNurseryRef(h) {
 			c.remember(h)
@@ -245,7 +251,11 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 	if size > ^uint32(0)-15 {
 		return ErrAllocationTooLarge
 	}
-	if uint64(Align16(size)) > uint64(c.throughput.limit) {
+	limit := c.throughput.limit
+	if c.direct != nil {
+		limit = max(c.cfg.NurseryBytes, c.cfg.ThroughputHeapBytes)
+	}
+	if uint64(Align16(size)) > uint64(limit) {
 		return errThroughputHeapExhausted
 	}
 	return nil
@@ -632,8 +642,7 @@ func (c *Collector) StructGetFinalRef(ref Ref, required TypeID, field uint32) (v
 	if !ref.IsObj() {
 		return Null(), false, errors.New("gc: ref is not object")
 	}
-	h := handleOf(ref)
-	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+	if !c.validObjectRef(ref) {
 		return Null(), false, errors.New("gc: invalid object ref")
 	}
 	b := c.bytes(ref)
@@ -672,7 +681,7 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
 			return err
 		}
-		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+		if c.needsObjectBarrier(ref) {
 			c.writeBarrierObjectRange(ref, value.Ref, f.Offset, f.Offset+3)
 		}
 		return nil
@@ -710,7 +719,7 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
 			return actual, true, err
 		}
-		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+		if c.needsObjectBarrier(ref) {
 			c.writeBarrierObjectRange(ref, value.Ref, f.Offset, f.Offset+3)
 		}
 		return actual, true, nil
@@ -1067,7 +1076,7 @@ func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Val
 			return err
 		}
 		off := index * d.ElemSize
-		if sp := c.entry(ref).space; c.cfg.Profile == ProfileTiny || sp == spaceOld || sp == spaceLarge {
+		if c.needsObjectBarrier(ref) {
 			c.writeBarrierObjectRange(ref, value.Ref, off, off+d.ElemSize-1)
 		}
 		return nil

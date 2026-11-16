@@ -442,8 +442,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(objectCard{}); got != 16 {
 		t.Fatalf("objectCard size=%d, want 16", got)
 	}
-	if got := unsafe.Sizeof(Config{}); got != 64 {
-		t.Fatalf("Config size=%d, want 64", got)
+	if got := unsafe.Sizeof(Config{}); got != 68 {
+		t.Fatalf("Config size=%d, want 68 (explicit experimental mode)", got)
 	}
 	if got := unsafe.Sizeof(tinyScanCursor{}); got != 8 {
 		t.Fatalf("tinyScanCursor size=%d, want 8", got)
@@ -462,7 +462,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
 	// fixed descriptor costs. The hint does not change the native state layout.
-	wantCollector := uintptr(1168) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	// Explicit direct-mode Config alignment and the optional backend pointer add16 bytes.
+	wantCollector := uintptr(1184) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

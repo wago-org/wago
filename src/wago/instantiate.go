@@ -292,6 +292,11 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 }
 
 func (b *instanceBuilder) prepareCollector() error {
+	if b.opts.GC.ExperimentalDirectOffsets {
+		if err := b.admitDirectGCExperiment(); err != nil {
+			return err
+		}
+	}
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
 	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
@@ -1869,7 +1874,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
-	if b.collector != nil && c.needsNativeGCABI() {
+	if b.collector != nil && !b.collector.UsesDirectOffsets() && c.needsNativeGCABI() {
 		gcNativeTypes = make([]gc.TypeID, len(c.Types))
 		for local := range gcNativeTypes {
 			domain, ok := b.gcTypeMap.domain(uint32(local))
