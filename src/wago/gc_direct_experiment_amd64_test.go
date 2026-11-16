@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -129,5 +130,29 @@ func TestDirectGCRejectsHandleCollectorForNativeReads(t *testing.T) {
 			in.Close()
 			t.Fatal("native offset artifact admitted to handle collector")
 		}
+	}
+}
+
+func TestDirectGCPublicRuntimeWithGC(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+	defer rt.Close()
+	mod, e := rt.Compile(helperInitializerRewriteModule("fixed"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer mod.Close()
+	in, e := rt.Instantiate(context.Background(), mod, WithGC(GCConfig{ExperimentalDirectOffsets: true, CollectEveryAlloc: true, ForceMajorEveryMinor: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10}))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	for i := 0; i < 5; i++ {
+		got, e := in.Invoke("run")
+		if e != nil || len(got) != 1 || got[0] != 74 {
+			t.Fatal(got, e)
+		}
+	}
+	if !in.gc.UsesDirectOffsets() || in.gc.Stats().FullCollections == 0 {
+		t.Fatal("public API did not run moving collector")
 	}
 }
