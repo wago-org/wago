@@ -1,6 +1,6 @@
 # Direct16 paired/range attribution
 
-Source-only protocol, awaiting qualified source and CPU release.
+Recovered measurements are in [RESULTS.md](RESULTS.md). The audit and bounded comparison completed; the full V8 gate is partial (6/72 receipts), not a passing gate. The following is the intended protocol.
 
 Three same-source binaries: baseline.test (direct trusted loop + scalar weighted reduction), paired.test (+ direct_pair_loop), range.test (+ direct_range_loop). Identical checked allocation/fill/copy configuration and 2 MiB young / 2 × 8 MiB old budget. Age2 and elision OFF.
 
