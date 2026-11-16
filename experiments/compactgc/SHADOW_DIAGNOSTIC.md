@@ -30,3 +30,15 @@ cohort from missing evidence.
 The native adapter returns `CompactShadowDiagnostics` by value, without heap
 pointers. Qualification and workload reruns are pending. Neither performance nor
 an age2 survivor-policy benefit follows from this source alone.
+
+## New reconstruction qualification
+
+Go1.27.1 serial package qualification passed: default core0.026s, shadow-enabled
+core0.015s, shadow race1.177s, and combined cohort+shadow core0.033s. The default
+collector remains224 bytes with no enabled diagnostic state and first regular
+field at offset0. Initial tagged qualification exposed two fixture assumptions:
+the cohort-only footprint assertion did not account for deliberately enabled
+shadow state, and a32-byte old heap fit two16-byte test nodes rather than causing
+OOM. Tests were corrected to distinguish enabled shadow state and use a16-byte
+old heap. No collector/shadow algorithm change was required. The native adapter
+wrapper and workload diagnostic rerun are not yet qualified by these core tests.

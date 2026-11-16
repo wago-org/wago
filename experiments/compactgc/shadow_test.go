@@ -63,7 +63,7 @@ func TestShadowReachabilityCyclesAliasesAndI31(t *testing.T) {
 }
 
 func TestShadowFailuresAndFullInvalidate(t *testing.T) {
-	c := heap(t, 64, 32, node)
+	c := heap(t, 64, 16, node)
 	live := obj(t, c, 0)
 	if e := c.Minor([]*Ref{&live}); e != nil {
 		t.Fatal(e)
