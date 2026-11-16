@@ -24,13 +24,21 @@ func (f *fn) compactStructAllocLayout(t uint32) ([]nativeGCStructAllocField, uin
 		return nil, 0, 0, false
 	}
 	fields, _, _, pointerFree, ok := nativeGCStructAllocLayout(f.m, t)
-	if !ok || !pointerFree {
+	if !ok || (!pointerFree && !gcCompactRefStruct) {
 		return nil, 0, 0, false
 	}
 	align := uint32(1)
 	end := uint32(0)
-	for _, field := range fields {
-		if field.ref || field.size != 4 && field.size != 8 {
+	for i, field := range fields {
+		if field.ref {
+			if !gcCompactRefStruct {
+				return nil, 0, 0, false
+			}
+			if _, ok := f.compactStructChildType(t, uint32(i)); !ok {
+				return nil, 0, 0, false
+			}
+		}
+		if field.size != 4 && field.size != 8 {
 			return nil, 0, 0, false
 		}
 		if field.size > align {
@@ -79,6 +87,34 @@ func (f *fn) emitCompactStructAlloc(t uint32, zero bool, argSlot, resultSlot int
 	}
 	var fail []int
 	guard := func(cond x64.Cond) { fail = append(fail, a.JccPlaceholder(cond)) }
+	// Child validation runs before parent bump/header/start publication. Re-read
+	// canonical slots in the original helper on any failure or capacity miss.
+	for i, field := range fields {
+		if !field.ref {
+			continue
+		}
+		if zero {
+			if !field.nullable {
+				fail = append(fail, a.JmpPlaceholder())
+			}
+			continue
+		}
+		child, valid := f.compactStructChildType(t, uint32(i))
+		if !valid {
+			panic("amd64: unchecked compact child")
+		}
+		null := -1
+		if field.nullable {
+			a.Load32(R10, RSP, f.spillOff(argSlot+int(field.slot))+delta)
+			a.TestSelf(R10, false)
+			null = a.JccPlaceholder(condE)
+		}
+		f.emitCompactConstructorChild(child, argSlot+int(field.slot), delta, guard)
+		if null >= 0 {
+			a.PatchRel32(null, a.Len())
+		}
+	}
+
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	{
 		a.TestSelf(R8, true)
