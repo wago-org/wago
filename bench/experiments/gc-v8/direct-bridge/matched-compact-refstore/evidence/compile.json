@@ -1,0 +1,47 @@
+{
+  "source": "285c05f7",
+  "rows": [
+    {
+      "round": 0,
+      "variant": "alloc",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    272219 ns/op\t      2415 code-B\t   58866 B/op\t     241 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    140330 ns/op\t      1391 code-B\t   51434 B/op\t     213 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    145153 ns/op\t      1519 code-B\t   52058 B/op\t     215 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    168696 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    177313 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    151761 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 0,
+      "variant": "refstore",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    163719 ns/op\t      3183 code-B\t   68067 B/op\t     250 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    131617 ns/op\t      2223 code-B\t   56939 B/op\t     222 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    145325 ns/op\t      2351 code-B\t   58075 B/op\t     224 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    170754 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    186218 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    147224 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "refstore",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    179206 ns/op\t      3183 code-B\t   68067 B/op\t     250 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    188034 ns/op\t      2223 code-B\t   56939 B/op\t     222 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    154541 ns/op\t      2351 code-B\t   58075 B/op\t     224 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    172824 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    167326 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    159421 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "alloc",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    149945 ns/op\t      2415 code-B\t   58867 B/op\t     241 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    142610 ns/op\t      1391 code-B\t   51434 B/op\t     213 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    138672 ns/op\t      1519 code-B\t   52058 B/op\t     215 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    166609 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    177487 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    148163 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "alloc",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    136759 ns/op\t      2415 code-B\t   58867 B/op\t     241 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    115077 ns/op\t      1391 code-B\t   51434 B/op\t     213 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    124843 ns/op\t      1519 code-B\t   52058 B/op\t     215 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    149809 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    152298 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    136773 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "refstore",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/struct-allocation-access         \t     256\t    231473 ns/op\t      3183 code-B\t   68066 B/op\t     250 allocs/op\nBenchmarkGCDirectCompileProbe/array-allocation-access          \t     256\t    257516 ns/op\t      2223 code-B\t   56939 B/op\t     222 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                       \t     256\t    165080 ns/op\t      2351 code-B\t   58075 B/op\t     224 allocs/op\nBenchmarkGCDirectCompileProbe/array-copy-checksum              \t     256\t    211690 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/array-loop-copy-checksum         \t     256\t    183995 ns/op\t      2287 code-B\t   59251 B/op\t     245 allocs/op\nBenchmarkGCDirectCompileProbe/tree-survival                    \t     256\t    161802 ns/op\t      1455 code-B\t   58427 B/op\t     269 allocs/op\nPASS\n",
+      "stderr": ""
+    }
+  ]
+}
