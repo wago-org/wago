@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_compact_helpers
+//go:build linux && amd64 && (wago_gc_compact_helpers || wago_gc_compact_reads)
 
 package wago
 

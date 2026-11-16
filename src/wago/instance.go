@@ -28,6 +28,7 @@ func offHeapPtr(addr uintptr) unsafe.Pointer {
 
 // Instance is ready for repeated Invoke calls.
 type Instance struct {
+	compactState            compactRuntimeState
 	c                       *Compiled
 	eng                     *runtime.Engine
 	jm                      *runtime.JobMemory

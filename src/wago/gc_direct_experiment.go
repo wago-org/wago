@@ -12,10 +12,10 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 	c := b.c
 	compact := b.opts.GC.ExperimentalCompactOffsets
 	if compact {
-		if c.gcCompactHelperReceipt() != gc.CompactABIVersion || c.hasGCHelperOnlyReceipt() || c.gcDirectReadABIReceipt() != 0 || c.gcTrustedDirectVersion != 0 || c.loadValidateMemo().executionView() != c {
+		if !validCompactReceipts(c) || c.hasGCHelperOnlyReceipt() || c.gcDirectReadABIReceipt() != 0 || c.gcTrustedDirectVersion != 0 || c.loadValidateMemo().executionView() != c {
 			return errors.New("wago: compact helper GC requires a fresh private compact compiler snapshot")
 		}
-	} else if c.gcCompactHelperReceipt() != 0 {
+	} else if c.gcCompactHelperReceipt() != 0 || c.gcCompactNativeReceipt() != 0 {
 		return errors.New("wago: compact artifact cannot use direct layout")
 	}
 
@@ -73,4 +73,10 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 		}
 	}
 	return nil
+}
+
+func validCompactReceipts(c *Compiled) bool {
+	h, n := c.gcCompactHelperReceipt(), c.gcCompactNativeReceipt()
+	return (h == gc.CompactABIVersion && n == 0) ||
+		(h == 0 && n == gc.CompactNativeABIVersion && compactNativeRuntimeEnabled)
 }

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_compact_helpers
+//go:build linux && amd64 && (wago_gc_compact_helpers || wago_gc_compact_reads)
 
 package wago
 
@@ -100,7 +100,9 @@ func TestCompactGCRejectsMissingAdmission(t *testing.T) {
 			opts := InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true}}
 			if mode == "receipt" {
 				c.gcCompactHelperVersion = 0
+				c.gcCompactNativeVersion = 0
 				c.executionView().gcCompactHelperVersion = 0
+				c.executionView().gcCompactNativeVersion = 0
 				c.gcDirectReadABIVersion = 0
 				c.executionView().gcDirectReadABIVersion = 0
 			} else {
@@ -120,7 +122,7 @@ func TestCompactGCRejectsHandleCollectorForNativeReads(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	if c.gcCompactHelperReceipt() != 1 {
+	if !validCompactReceipts(c) {
 		t.Fatal("missing compact receipt")
 	}
 	rt := NewRuntime()

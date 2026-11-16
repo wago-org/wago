@@ -295,14 +295,14 @@ func (b *instanceBuilder) prepareCollector() error {
 	if b.opts.GC.ExperimentalDirectOffsets && b.opts.GC.ExperimentalCompactOffsets {
 		return errors.New("wago: offset layouts are mutually exclusive")
 	}
-	if b.c.gcCompactHelperReceipt() != 0 && !b.opts.GC.ExperimentalCompactOffsets {
+	if (b.c.gcCompactHelperReceipt() != 0 || b.c.gcCompactNativeReceipt() != 0) && !b.opts.GC.ExperimentalCompactOffsets {
 		return errors.New("wago: compact artifact requires compact collector")
 	}
 	if b.opts.GC.ExperimentalCompactOffsets {
 		if err := gc.ValidateConfig(b.opts.GC); err != nil {
 			return err
 		}
-		if b.c.gcCompactHelperReceipt() != gc.CompactABIVersion {
+		if !validCompactReceipts(b.c) {
 			return errors.New("wago: compact collector requires fresh compact helper artifact")
 		}
 	}
@@ -1893,7 +1893,8 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
 	var gcDirectView *gc.DirectInstanceView
-	if b.collector != nil && c.needsNativeGCABI() && (!b.collector.UsesDirectOffsets() || c.gcDirectReadABIReceipt() != 0) {
+	var compactState compactRuntimeState
+	if b.collector != nil && c.needsNativeGCABI() && (!b.collector.UsesDirectOffsets() || c.gcDirectReadABIReceipt() != 0 || c.gcCompactNativeReceipt() != 0) {
 		gcNativeTypes = make([]gc.TypeID, len(c.Types))
 		for local := range gcNativeTypes {
 			domain, ok := b.gcTypeMap.domain(uint32(local))
@@ -1902,7 +1903,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 			gcNativeTypes[local] = domain
 		}
-		if b.collector.UsesDirectOffsets() {
+		if c.gcCompactNativeReceipt() != 0 {
+			compactState, err = buildCompactRuntimeState(b.collector, gcNativeTypes)
+		} else if b.collector.UsesDirectOffsets() {
 			gcDirectView, err = gc.BuildDirectInstanceView(b.collector, gcNativeTypes)
 			if err == nil {
 				err = gc.ValidateDirectInstanceView(gcDirectView, b.collector)
@@ -1913,13 +1916,18 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if err != nil {
 			return nil, wrapContextError("instantiate: native GC metadata view", err)
 		}
-		if gcDirectView != nil {
+		if compactState.pointer() != 0 {
+			jm.SetGCNativeViewPtr(compactState.pointer())
+		} else if gcDirectView != nil {
 			jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcDirectView)))
 		} else {
 			jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
 		}
 	}
 	jm.CaptureInstanceContextBytes(nativeContext)
+	if compactState.pointer() != 0 {
+		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(compactState.pointer()))
+	}
 	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
 	if gcDirectView != nil {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcDirectView))))
@@ -1932,7 +1940,8 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		finishMemoryContext = nil
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView, gcDirectView: gcDirectView,
+		compactState: compactState,
+		c:            c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView, gcDirectView: gcDirectView,
 		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),
