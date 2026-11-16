@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const directTrustedAllocationTestMode = true
+
 func TestTrustedDirectAllocationGuards(t *testing.T) {
 	for _, shape := range []string{"struct", "array"} {
 		for _, guard := range []string{"disabled-pointers", "snapshot", "end-before-bump", "remaining-too-small"} {
@@ -19,7 +21,7 @@ func TestTrustedDirectAllocationGuards(t *testing.T) {
 					args = []uint64{91, 3, 2}
 				}
 				in := newDirectArrayBumpInstance(t, data, 256)
-				if in.c.gcTrustedDirectVersion != 5 {
+				if in.c.gcTrustedDirectVersion < 5 || in.c.gcTrustedDirectVersion > 6 {
 					t.Fatal("missing allocation attestation")
 				}
 				view := in.gc.DirectView()

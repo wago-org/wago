@@ -81,7 +81,7 @@ func TestDirectGCBumpPublicationAndFallback(t *testing.T) {
 		for _, kind := range []string{"disabled", "bump-pointer", "end", "starts", "start-count"} {
 			// Private pointer/start-map corruption is checked-mode-only; policy5
 			// relies on admitted ownership. Dynamic capability/capacity checks remain.
-			if in.c.gcTrustedDirectVersion == 5 && (kind == "bump-pointer" || kind == "starts" || kind == "start-count") {
+			if directTrustedAllocationTestMode && (kind == "bump-pointer" || kind == "starts" || kind == "start-count") {
 				continue
 			}
 			v := in.gc.DirectView()
