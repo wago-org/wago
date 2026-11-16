@@ -156,3 +156,29 @@ func TestDirectGCPublicRuntimeWithGC(t *testing.T) {
 		t.Fatal("public API did not run moving collector")
 	}
 }
+
+func TestDirectGCOptionDoesNotRequireHeapForScalarModules(t *testing.T) {
+	data, e := os.ReadFile("../../bench/experiments/gc-v8/gc-access-scalar-baseline.wasm")
+	if e != nil {
+		t.Fatal(e)
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+	defer rt.Close()
+	mod, e := rt.Compile(data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer mod.Close()
+	in, e := rt.Instantiate(context.Background(), mod, WithGC(GCConfig{ExperimentalDirectOffsets: true}))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	got, e := in.Invoke("performance", 4096)
+	if e != nil || len(got) != 1 || got[0] != 536739840 {
+		t.Fatal(got, e)
+	}
+	if in.gc != nil {
+		t.Fatal("scalar module unexpectedly allocated collector")
+	}
+}

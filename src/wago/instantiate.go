@@ -295,11 +295,6 @@ func (b *instanceBuilder) prepareCollector() error {
 	if b.c.gcDirectReadABIReceipt() != 0 && b.c.needsNativeGCABI() && !b.opts.GC.ExperimentalDirectOffsets {
 		return errors.New("wago: native direct-read artifact requires direct-offset collector")
 	}
-	if b.opts.GC.ExperimentalDirectOffsets {
-		if err := b.admitDirectGCExperiment(); err != nil {
-			return err
-		}
-	}
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
 	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
 	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
@@ -312,6 +307,11 @@ func (b *instanceBuilder) prepareCollector() error {
 	}
 	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.stagedGCI31Product() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
+	}
+	if b.opts.GC.ExperimentalDirectOffsets {
+		if err := b.admitDirectGCExperiment(); err != nil {
+			return err
+		}
 	}
 	gcConfig := b.opts.GC
 	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
