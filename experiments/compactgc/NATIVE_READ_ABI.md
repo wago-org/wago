@@ -65,3 +65,20 @@ Its three warmup plus five timed calls per process are explicitly not the full
 V8 gate. Real-GC audits run separately; short copy samples may legitimately have
 zero collections. Allocation, stores, bulk operations and many reads still use
 helpers. No broad speedup or V8 parity is established.
+
+## Checked reference-valued struct getters
+
+Final containing structs may also load four-byte collector-reference fields.
+Supported storage includes typed struct/array references and nullable heap
+references/i31; opaque extern and managed function references remain excluded.
+The same checked receiver type, start, active-region, complete stride and null
+validation applies. Child values are not revalidated at load, matching
+StructGetTyped and StructGetFinalRef helper semantics. They are zero-extended
+into 64-bit value slots and explicitly marked as exact GC references.
+
+Compact reads + regalloc qualification passed: new reference-root/null/i31/
+malformed-receiver cases0.042s; complete applicable compact GC/native matrix
+3.201s. A no-helper getter sentinel proves selection, and tests discard the
+parent before allocating internal callees, including local/select/branch/call/
+return flows. Constructors are unchanged in this qualification. No performance
+claim is made.
