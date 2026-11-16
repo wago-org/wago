@@ -2818,6 +2818,30 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
+	// The instance-owned certificate is an optimization only: misses run the
+	// complete resolver, and mutable barrier metadata is always read below.
+	cacheResolved := -1
+	if gcParentResolverCacheEnabled {
+		var misses [4]int
+		a.AluRM(cmpRMcode, RAX, R8, gc.NativeInstanceParentRefOffset, false)
+		misses[0] = a.JccPlaceholder(condNE)
+		a.AluRM(cmpRMcode, RDX, R8, gc.NativeInstanceParentTypeOffset, false)
+		misses[1] = a.JccPlaceholder(condNE)
+		a.Load64(R10, R8, gc.NativeInstanceViewCollectorOffset)
+		a.Load64(RCX, R10, gc.NativeViewRefreshGenerationOffset)
+		a.AluRI(cmpDigit, RCX, -1, true)
+		misses[3] = a.JccPlaceholder(condE)
+		a.AluRM(cmpRMcode, RCX, R8, gc.NativeInstanceParentGenerationOffset, true)
+		misses[2] = a.JccPlaceholder(condNE)
+		a.Load64(R9, R8, gc.NativeInstanceParentHandleOffset)
+		a.Load64(R11, R8, gc.NativeInstanceParentObjectOffset)
+		a.Load32(RCX, R8, gc.NativeInstanceParentExtentOffset)
+		a.MovReg64(R8, R10)
+		cacheResolved = a.JmpPlaceholder()
+		for _, site := range misses {
+			a.PatchRel32(site, a.Len())
+		}
+	}
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
@@ -2848,6 +2872,20 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Load32(R10, R11, 0)
 	a.Cmp32(R10, RDX)
 	addFallback(a.JccPlaceholder(condNE))
+	if gcParentResolverCacheEnabled {
+		// Complete semantic resolution before publishing a certificate. It is
+		// not a root, and its generation expires on collector mutation.
+		a.Load64(RAX, RBX, -int32(abi.GCNativeViewPtrOffset))
+		a.Load32(R10, RSP, 0)
+		a.Store32(RAX, gc.NativeInstanceParentRefOffset, R10)
+		a.Store32(RAX, gc.NativeInstanceParentTypeOffset, RDX)
+		a.Store64(RAX, gc.NativeInstanceParentObjectOffset, R11)
+		a.Store64(RAX, gc.NativeInstanceParentHandleOffset, R9)
+		a.Store32(RAX, gc.NativeInstanceParentExtentOffset, RCX)
+		a.Load64(R10, R8, gc.NativeViewRefreshGenerationOffset)
+		a.Store64(RAX, gc.NativeInstanceParentGenerationOffset, R10)
+		a.PatchRel32(cacheResolved, a.Len())
+	}
 	a.Load32(R10, R11, 8)
 	a.Cmp32(RSI, R10)
 	trapIf(condAE, trapBuiltin)
