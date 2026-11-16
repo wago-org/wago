@@ -157,3 +157,36 @@ V8-competitive collector. Raw results, process ranges and binary hash are in
 `bench/experiments/gc-v8/integrated-*`; correctness coverage is recorded in
 `validation-20261116.md` there. Future work must address native allocation/access
 costs and broader workloads, not hide these misses behind an aggregate score.
+
+## Later experiments: retained and rejected
+
+An exact parent-array resolver cache is available only with the explicit
+`wago_gc_parent_cache` build tag. It caches neither payload nor roots, and keeps
+index checks, child validation, and dynamic write-barrier logic. The collector
+lifetime epoch now also expires on ForcePromote and Tiny incremental steps,
+using only a saturating counter update; zero and saturated epochs never hit.
+The instance ABI prefix adds 40 bytes even when emission is disabled.
+
+Keep this cache off by default: stable-parent struct workloads improved 5–10%
+in the measured prototype, but alternating parents regressed 4–13%. The final
+zero-epoch safety guard was added after those timing measurements. Native code
+in the measured module grew by 128 bytes; compile allocations were unchanged.
+See `experiments/gc-parent-cache/README.md` for the precise revision, raw evidence,
+and adversarial control. This is not another claimed V8 gate pass.
+
+Two additional allocation experiments were rejected, not integrated:
+
+- Normalizing recycled descending handle batches enabled an existing contiguous
+  array path, but array time increased from about 7.04 to 7.40 ms and fill from
+  6.89 to 7.01 ms in three alternating rounds.
+- Preinitializing fixed-layout scalar struct batches moved metadata work into a
+  Go refill and shortened native publication. Both full-fallback and
+  helper-fallback variants regressed the struct workload (roughly 6–21%). The
+  extra reservation state and code are deliberately absent from this branch.
+
+The remaining large misses are structural generated-code and reference-access
+costs, not evidence that a new collector alone reaches V8. A selective or
+per-site parent cache is one bounded next experiment; a compressed direct-object
+reference design would be a much larger roots/host-token/snapshot/backend ABI
+project. Neither has a measured benefit here. The requested <=1.15 per-workload
+performance target remains unmet.
