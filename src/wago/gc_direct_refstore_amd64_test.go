@@ -10,20 +10,35 @@ import (
 	"testing"
 )
 
-func directRefStoreModule() []byte {
-	types := wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x5e, 0x63, 0, 1}, []byte{0x60, 0, 0}, []byte{0x60, 1, 0x7f, 1, 0x7f}, []byte{0x60, 1, 0x7f, 0}, []byte{0x60, 0, 1, 0x7f})
-	init := []byte{0x41, 4, 0xfb, 7, 1, 0x24, 0, 0x41, 0xdb, 0, 0xfb, 0, 0, 0x24, 1, 0x0b}
+func directRefStoreModule() []byte           { return directRefStoreTypedChildModule(false) }
+func directRefStoreArrayChildModule() []byte { return directRefStoreTypedChildModule(true) }
+func directRefStoreTypedChildModule(arrayChild bool) []byte {
+	childType := []byte{0x5f, 1, 0x7f, 0}
+	ctor, defaultCtor, getValue := []byte{0xfb, 0, 0}, []byte{0xfb, 1, 0}, []byte{0xfb, 2, 0, 0}
+	if arrayChild {
+		childType = []byte{0x5e, 0x7f, 1}
+		ctor = []byte{0x41, 2, 0xfb, 6, 0}
+		defaultCtor = []byte{0x41, 2, 0xfb, 7, 0}
+		getValue = []byte{0x41, 0, 0xfb, 11, 0}
+	}
+	types := wasmtest.Vec(childType, []byte{0x5e, 0x63, 0, 1}, []byte{0x60, 0, 0}, []byte{0x60, 1, 0x7f, 1, 0x7f}, []byte{0x60, 1, 0x7f, 0}, []byte{0x60, 0, 1, 0x7f})
+	init := append([]byte{0x41, 4, 0xfb, 7, 1, 0x24, 0, 0x41, 0xdb, 0}, ctor...)
+	init = append(init, 0x24, 1, 0x0b)
 	store := []byte{0x23, 0, 0x20, 0, 0x23, 1, 0xfb, 14, 1, 0x20, 0, 0x41, 7, 0x6a, 0x0b}
-	get := []byte{0x23, 0, 0x20, 0, 0xfb, 11, 1, 0xfb, 2, 0, 0, 0x0b}
+	get := append([]byte{0x23, 0, 0x20, 0, 0xfb, 11, 1}, getValue...)
+	get = append(get, 0x0b)
 	churn := []byte{}
 	for i := 0; i < 40; i++ {
-		churn = append(churn, 0xfb, 1, 0, 0x1a)
+		churn = append(churn, defaultCtor...)
+		churn = append(churn, 0x1a)
 	}
 	churn = append(churn, 0x0b)
-	child := []byte{0x20, 0, 0xfb, 0, 0, 0x24, 1, 0x0b}
+	child := append([]byte{0x20, 0}, ctor...)
+	child = append(child, 0x24, 1, 0x0b)
 	null := []byte{0xd0, 0, 0x24, 1, 0x0b}
 	isnull := []byte{0x23, 0, 0x20, 0, 0xfb, 11, 1, 0xd1, 0x0b}
-	hold := []byte{0x23, 1, 0x23, 0, 0x41, 0, 0x23, 1, 0xfb, 14, 1, 0xfb, 2, 0, 0, 0x0b}
+	hold := append([]byte{0x23, 1, 0x23, 0, 0x41, 0, 0x23, 1, 0xfb, 14, 1}, getValue...)
+	hold = append(hold, 0x0b)
 	names := []string{"init", "store", "get", "churn", "child", "null", "isnull", "hold"}
 	exports := [][]byte{}
 	for i, n := range names {
@@ -33,7 +48,13 @@ func directRefStoreModule() []byte {
 }
 
 func TestDirectGCRefStoreRememberedFastPath(t *testing.T) {
-	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), directRefStoreModule())
+	testDirectRefStoreRememberedFastPath(t, directRefStoreModule())
+}
+func TestDirectGCRefStoreArrayChildFastPath(t *testing.T) {
+	testDirectRefStoreRememberedFastPath(t, directRefStoreArrayChildModule())
+}
+func testDirectRefStoreRememberedFastPath(t *testing.T, data []byte) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -88,7 +109,13 @@ func TestDirectGCRefStoreRememberedFastPath(t *testing.T) {
 }
 
 func TestDirectGCRefStoreRejectsInvalidInputs(t *testing.T) {
-	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), directRefStoreModule())
+	testDirectRefStoreRejectsInvalidInputs(t, directRefStoreModule())
+}
+func TestDirectGCRefStoreArrayChildRejectsInvalidInputs(t *testing.T) {
+	testDirectRefStoreRejectsInvalidInputs(t, directRefStoreArrayChildModule())
+}
+func testDirectRefStoreRejectsInvalidInputs(t *testing.T, data []byte) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
 	if e != nil {
 		t.Fatal(e)
 	}

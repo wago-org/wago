@@ -35,7 +35,7 @@ func (f *fn) directOffsetRefArrayChild(t uint32) (uint32, bool) {
 		child += base
 	}
 	target, ok := f.stagedGCType(child)
-	return child, ok && target.Final && target.Comp.Kind == wasm.CompStruct && child <= math.MaxInt32/4
+	return child, ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) && child <= math.MaxInt32/4
 }
 
 // This leaf never mutates the remembered queue or its dirty bytes. A clean old
