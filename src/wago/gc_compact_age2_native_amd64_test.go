@@ -48,6 +48,11 @@ func TestCompactAge2NativeConstructorAfterFlip(t *testing.T) {
 		if in.gc.CompactView().NurseryStart != want {
 			t.Fatal("no alternating flip")
 		}
+		// Explicit low-level collection is outside the runtime frame-root bridge.
+		// Republish the authoritative retained token before reading the native cell.
+		if e = in.SetGlobalValue("root", v[0]); e != nil {
+			t.Fatal(e)
+		}
 		got, e := in.Invoke("read")
 		if e != nil || len(got) != 1 || got[0] != uint64(i) {
 			t.Fatal(got, e)
