@@ -11,7 +11,7 @@ import (
 func (b *instanceBuilder) admitDirectGCExperiment() error {
 	c := b.c
 	if c.gcTrustedDirectVersion != 0 {
-		if c.gcTrustedDirectVersion > 3 || c.gcDirectReadABIReceipt() != gc.DirectABIVersion || c.hasGCHelperOnlyReceipt() || c.loadValidateMemo().executionView() != c {
+		if c.gcTrustedDirectVersion > 4 || c.gcDirectReadABIReceipt() != gc.DirectABIVersion || c.hasGCHelperOnlyReceipt() || c.loadValidateMemo().executionView() != c {
 			return errors.New("wago: trusted direct reads require a fresh private compiler snapshot and matching direct ABI")
 		}
 	}

@@ -20,11 +20,11 @@ func (f *fn) directOffsetStructAllocLayout(t uint32) ([]nativeGCStructAllocField
 		return nil, 0, false
 	}
 	fields, size, _, pointerFree, ok := nativeGCStructAllocLayout(f.m, t)
-	if !ok || !pointerFree || len(fields) > 8 || size > 128 {
+	if !ok || (!pointerFree && !gcTrustedDirectRefStructs) || len(fields) > 8 || size > 128 {
 		return nil, 0, false
 	}
 	for _, field := range fields {
-		if field.ref || field.size != 4 && field.size != 8 {
+		if (field.ref && !gcTrustedDirectRefStructs) || field.size != 4 && field.size != 8 {
 			return nil, 0, false
 		}
 	}
@@ -37,6 +37,15 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
 	fields, size, ok := f.directOffsetStructAllocLayout(t)
 	if !ok {
 		panic("amd64: invalid direct bump layout")
+	}
+	pointerFree := int32(1)
+	for _, field := range fields {
+		if field.ref {
+			pointerFree = 0
+			if zero && !field.nullable {
+				panic("amd64: invalid non-nullable default constructor")
+			}
+		}
 	}
 	stride := (size + 15) &^ uint32(15)
 	a := f.a
@@ -142,7 +151,7 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
 	a.Store32(R11, 0, RDX)
 	a.StoreImm32Mem(R11, 4, int32(size))
 	a.StoreImm32Mem(R11, 8, 0)
-	a.StoreImm32Mem(R11, 12, 1) // pointer-free flag
+	a.StoreImm32Mem(R11, 12, pointerFree) // descriptor-derived pointer-free flag
 	a.MovImm32(RAX, 0)
 	for off := uint32(16); off < stride; off += 8 {
 		a.Store64(R11, int32(off), RAX)

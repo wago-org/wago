@@ -235,6 +235,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
+		if sub == 2 && f.emitTrustedDirectStructRefGet(typeIndex, fieldIndex) {
+			return nil
+		}
 		if gcDirectReads && f.emitDirectOffsetStructGet(typeIndex, fieldIndex, helper) {
 			return nil
 		}

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_trusted_arrays
+//go:build linux && amd64 && (wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_refstruct)
 
 package wago
 
