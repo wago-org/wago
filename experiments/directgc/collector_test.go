@@ -86,7 +86,7 @@ func TestBarrierRetainsYoungAndOverwriteReclaims(t *testing.T) {
 	if e := c.Full([]*Ref{&parent}); e != nil {
 		t.Fatal(e)
 	}
-	if c.oldBump-c.oldStart[c.active] != 24 {
+	if c.oldBump-c.oldStart[c.active] != 32 {
 		t.Fatal("unreachable child retained")
 	}
 	// A dirty old object whose edge was overwritten with null must not retain a
@@ -149,7 +149,7 @@ func TestRejectBadRootsAndDirtyEdgesAtomically(t *testing.T) {
 	if !bytes.Equal(before, c.arena) {
 		t.Fatal("failed plan mutated heap")
 	}
-	bad := Ref(1)
+	bad := Ref(2)
 	if e := c.Full([]*Ref{&bad}); !errors.Is(e, ErrRef) {
 		t.Fatal(e)
 	}

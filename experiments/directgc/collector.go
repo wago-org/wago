@@ -11,6 +11,7 @@ package directgc
 import (
 	"encoding/binary"
 	"errors"
+	"unsafe"
 )
 
 type Ref uint32
@@ -31,34 +32,40 @@ type Collector struct {
 	oldStart                              [2]uint32
 	oldSize, oldBump                      uint32
 	active                                int
+	types                                 []Descriptor
+	generic                               map[[2]uint32]TypeID
 }
 
 // New allocates all arena and tracing scratch upfront. OldBytes is usable
-// capacity of EACH old semispace; the total arena is 8+NurseryBytes+2*OldBytes.
+// capacity of EACH old semispace; the total arena is 16+NurseryBytes+2*OldBytes.
 // Go allocation failures are not recovered; ErrOOM refers to arena capacity.
 func New(nurseryBytes, oldBytes uint32) (*Collector, error) {
-	total := uint64(8) + uint64(nurseryBytes) + 2*uint64(oldBytes)
-	if nurseryBytes < header || oldBytes < header || nurseryBytes%8 != 0 || oldBytes%8 != 0 || total > uint64(^uint32(0)) || total > uint64(^uint(0)>>1) {
+	total := uint64(16) + uint64(nurseryBytes) + 2*uint64(oldBytes)
+	if nurseryBytes < header || oldBytes < header || nurseryBytes%16 != 0 || oldBytes%16 != 0 || total > uint64(^uint32(0)) || total > uint64(^uint(0)>>1)-15 {
 		return nil, ErrConfig
 	}
-	c := &Collector{arena: make([]byte, int(total)), starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), forward: make([]Ref, int(total/8)), queue: make([]Ref, int(total/uint64(header))), nurseryStart: 8, nurseryEnd: 8 + nurseryBytes, nurseryBump: 8, oldSize: oldBytes}
+	raw := make([]byte, int(total)+15)
+	start := int((16 - uintptr(unsafe.Pointer(&raw[0]))%16) % 16)
+	arena := raw[start : start+int(total) : start+int(total)]
+	c := &Collector{arena: arena, starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), forward: make([]Ref, int(total/8)), queue: make([]Ref, int(total/uint64(header))), nurseryStart: 16, nurseryEnd: 16 + nurseryBytes, nurseryBump: 16, oldSize: oldBytes}
 	c.oldStart = [2]uint32{c.nurseryEnd, c.nurseryEnd + oldBytes}
 	c.oldBump = c.oldStart[0]
 	return c, nil
 }
 
-// FixedBytes reports allocated arena and scalar tracing metadata bytes, excluding
+// FixedBytes reports allocated arena (including alignment slack) and scalar
+// tracing metadata bytes, excluding registered descriptors/generic shapes and
 // Go slice/object headers. Scratch deliberately favors a simple bounded proof of
 // correctness, not low memory overhead.
 func (c *Collector) FixedBytes() uint64 {
-	return uint64(len(c.arena)) + uint64(len(c.starts)) + uint64(len(c.dirty)) + 4*uint64(len(c.forward)) + 4*uint64(len(c.queue))
+	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 4*uint64(len(c.forward)) + 4*uint64(len(c.queue))
 }
 func (c *Collector) young(r Ref) bool {
 	return uint32(r) >= c.nurseryStart && uint32(r) < c.nurseryBump
 }
 func (c *Collector) valid(r Ref) bool {
 	x := uint32(r)
-	return x != 0 && x%8 == 0 && int(x/8) < len(c.starts) && c.starts[x/8] && (c.young(r) || (x >= c.oldStart[c.active] && x < c.oldBump))
+	return x != 0 && x%16 == 0 && int(x/8) < len(c.starts) && c.starts[x/8] && (c.young(r) || (x >= c.oldStart[c.active] && x < c.oldBump))
 }
 func (c *Collector) u32(off uint32) uint32 { return binary.LittleEndian.Uint32(c.arena[off : off+4]) }
 func (c *Collector) put32(off, v uint32)   { binary.LittleEndian.PutUint32(c.arena[off:off+4], v) }
@@ -66,66 +73,28 @@ func objectSize(refs, words uint32) uint64 {
 	refEnd := (uint64(header) + uint64(refs)*4 + 7) &^ uint64(7)
 	return refEnd + uint64(words)*8
 }
-func (c *Collector) NewObject(refs, words uint32) (Ref, error) {
-	size := objectSize(refs, words)
-	if size > uint64(c.nurseryEnd-c.nurseryBump) {
-		return 0, ErrOOM
-	}
-	off := c.nurseryBump
-	c.nurseryBump += uint32(size)
-	clear(c.arena[off:c.nurseryBump])
-	c.put32(off, uint32(size))
-	c.put32(off+4, refs)
-	c.put32(off+8, words)
-	c.starts[off/8] = true
-	return Ref(off), nil
-}
 func (c *Collector) RefField(r Ref, index uint32) (Ref, error) {
-	if !c.valid(r) {
-		return 0, ErrRef
+	at, e := c.refOffset(r, index)
+	if e != nil {
+		return 0, e
 	}
-	if index >= c.u32(uint32(r)+4) {
-		return 0, ErrField
-	}
-	return Ref(c.u32(uint32(r) + header + index*4)), nil
+	return Ref(c.u32(at)), nil
 }
 func (c *Collector) SetRef(r Ref, index uint32, v Ref) error {
-	if !c.valid(r) || (v != 0 && !c.valid(v)) {
+	at, e := c.refOffset(r, index)
+	if e != nil {
+		return e
+	}
+	if !c.IsValid(v) {
 		return ErrRef
 	}
-	if index >= c.u32(uint32(r)+4) {
-		return ErrField
-	}
-	c.put32(uint32(r)+header+index*4, uint32(v))
-	if !c.young(r) && c.young(v) {
+	c.put32(at, uint32(v))
+	if !c.young(r) && v.IsObj() && c.young(v) {
 		c.dirty[uint32(r)/8] = true
 	}
 	return nil
 }
-func (c *Collector) wordOffset(r Ref, index uint32) (uint32, error) {
-	if !c.valid(r) {
-		return 0, ErrRef
-	}
-	if index >= c.u32(uint32(r)+8) {
-		return 0, ErrField
-	}
-	return uint32((uint64(r)+uint64(header)+uint64(c.u32(uint32(r)+4))*4+7)&^uint64(7)) + index*8, nil
-}
-func (c *Collector) Word(r Ref, index uint32) (uint64, error) {
-	off, e := c.wordOffset(r, index)
-	if e != nil {
-		return 0, e
-	}
-	return binary.LittleEndian.Uint64(c.arena[off : off+8]), nil
-}
-func (c *Collector) SetWord(r Ref, index uint32, v uint64) error {
-	off, e := c.wordOffset(r, index)
-	if e != nil {
-		return e
-	}
-	binary.LittleEndian.PutUint64(c.arena[off:off+8], v)
-	return nil
-}
+func (c *Collector) stride(off uint32) uint32 { return (c.u32(off+4) + 15) &^ 15 }
 
 // Minor evacuates all reachable nursery objects into active old space. Dirty
 // old objects are conservative roots even when no longer globally reachable.
@@ -148,7 +117,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	limit := c.oldStart[target] + c.oldSize
 	count := 0
 	visit := func(r Ref) error {
-		if r == 0 {
+		if r == 0 || r.IsI31() {
 			return nil
 		}
 		if !c.valid(r) {
@@ -160,7 +129,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		if c.forward[uint32(r)/8] != 0 {
 			return nil
 		}
-		size := c.u32(uint32(r))
+		size := c.stride(uint32(r))
 		if size > limit-next {
 			return ErrOOM
 		}
@@ -173,15 +142,8 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		count++
 		return nil
 	}
-	scan := func(r Ref) error {
-		n := c.u32(uint32(r) + 4)
-		for i := uint32(0); i < n; i++ {
-			if err := visit(Ref(c.u32(uint32(r) + header + i*4))); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
+	scan := func(r Ref) error { return c.eachRef(uint32(r), func(at uint32) error { return visit(Ref(c.u32(at))) }) }
+
 	for _, p := range roots {
 		if p == nil {
 			return ErrRef
@@ -191,7 +153,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		}
 	}
 	if !full {
-		for off := c.oldStart[c.active]; off < c.oldBump; off += c.u32(off) {
+		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
 			if c.dirty[off/8] {
 				if err := scan(Ref(off)); err != nil {
 					return err
@@ -207,8 +169,8 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	// No fallible work follows: all object fields and roots were validated,
 	// destinations are disjoint from sources, and capacity is reserved in scratch.
 	rewrite := func(r Ref) Ref {
-		if r == 0 {
-			return 0
+		if r == 0 || r.IsI31() {
+			return r
 		}
 		if f := c.forward[uint32(r)/8]; f != 0 {
 			return f
@@ -218,19 +180,18 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	for i := 0; i < count; i++ {
 		src := uint32(c.queue[i])
 		dst := uint32(c.forward[src/8])
-		copy(c.arena[dst:dst+c.u32(src)], c.arena[src:src+c.u32(src)])
+		copy(c.arena[dst:dst+c.stride(src)], c.arena[src:src+c.stride(src)])
+		c.put32(dst+12, c.u32(dst+12)|FlagOld)
 	}
 	fix := func(off uint32) {
-		for i, n := uint32(0), c.u32(off+4); i < n; i++ {
-			at := off + header + i*4
-			c.put32(at, uint32(rewrite(Ref(c.u32(at)))))
-		}
+		_ = c.eachRef(off, func(at uint32) error { c.put32(at, uint32(rewrite(Ref(c.u32(at))))); return nil })
 	}
+
 	for i := 0; i < count; i++ {
 		fix(uint32(c.forward[uint32(c.queue[i])/8]))
 	}
 	if !full {
-		for off := c.oldStart[c.active]; off < c.oldBump; off += c.u32(off) {
+		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
 			if c.dirty[off/8] {
 				fix(off)
 			}
@@ -241,11 +202,11 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	for _, p := range roots {
 		*p = rewrite(*p)
 	}
-	for off := c.nurseryStart; off < c.nurseryBump; off += c.u32(off) {
+	for off := c.nurseryStart; off < c.nurseryBump; off += c.stride(off) {
 		c.starts[off/8] = false
 	}
 	if full {
-		for off := c.oldStart[c.active]; off < c.oldBump; off += c.u32(off) {
+		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
 			c.starts[off/8] = false
 		}
 	}
