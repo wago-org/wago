@@ -142,3 +142,18 @@ compile-latency improvement is claimed. Raw data and the standalone probe are
 The policy probe is `policy-probe.go.txt`, copied into `src/wago` as a temporary
 `*_test.go` for reproduction; set `GC_CASE` and run `TestGCPolicyProbe` from that
 package, then remove it. Probes are excluded from normal builds.
+
+## Final integrated V8 gate
+
+The integrated implementation was rerun against Node 24.22.1 / V8
+13.6.233.17-node.58 on the same shared EPYC host, three alternating fresh-process
+launches per workload, allocation elision off, identical checksummed binaries.
+All 36 processes returned correct results. Median candidate/V8 invocation-time
+ratios were: struct **4.371x**, array **1.259x**, fill **0.973x**, bulk-copy checksum
+**1.842x**, scalar-copy checksum **8.913x**, retained tree **3.089x**.
+Only fill met the observed <=1.15 gate. The requested performance target is
+**not achieved**; this is a tested experimental checkpoint, not a completed
+V8-competitive collector. Raw results, process ranges and binary hash are in
+`bench/experiments/gc-v8/integrated-*`; correctness coverage is recorded in
+`validation-20261116.md` there. Future work must address native allocation/access
+costs and broader workloads, not hide these misses behind an aggregate score.
