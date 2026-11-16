@@ -1,0 +1,2787 @@
+{
+  "provenance": {
+    "source": "b893312c",
+    "harness_source": "6ad64d8b",
+    "binary_sha256": "b6b9bd261bb9a11b036c233733cdd3237936aaf9ae589071d47d3b59a7d2363c",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "cpu": "processor\t: 0\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 0\ncpu cores\t: 9\napicid\t\t: 0\ninitial apicid\t: 0\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 1\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 1\ncpu cores\t: 9\napicid\t\t: 1\ninitial apicid\t: 1\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 2\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 2\ncpu cores\t: 9\napicid\t\t: 2\ninitial apicid\t: 2\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 3\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 3\ncpu cores\t: 9\napicid\t\t: 3\ninitial apicid\t: 3\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 4\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 4\ncpu cores\t: 9\napicid\t\t: 4\ninitial apicid\t: 4\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 5\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 5\ncpu cores\t: 9\napicid\t\t: 5\ninitial apicid\t: 5\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 6\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 6\ncpu cores\t: 9\napicid\t\t: 6\ninitial apicid\t: 6\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 7\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 7\ncpu cores\t: 9\napicid\t\t: 7\ninitial apicid\t: 7\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\nprocessor\t: 8\nvendor_id\t: GenuineIntel\ncpu family\t: 6\nmodel\t\t: 207\nmodel name\t: INTEL(R) XEON(R) PLATINUM 8573C\nstepping\t: 2\nmicrocode\t: 0x1\ncpu MHz\t\t: 2300.000\ncache size\t: 266240 KB\nphysical id\t: 0\nsiblings\t: 9\ncore id\t\t: 8\ncpu cores\t: 9\napicid\t\t: 8\ninitial apicid\t: 8\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 28\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves avx_vnni avx512_bf16 arat avx512vbmi umip waitpkg avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid cldemote movdiri movdir64b fsrm serialize tsxldtrk avx512_fp16 arch_capabilities\nbugs\t\t: spectre_v1 spectre_v2 spec_store_bypass swapgs retbleed bhi spectre_v2_user its\nbogomips\t: 4600.00\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 46 bits physical, 57 bits virtual\npower management:\n\n",
+    "affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "tags": [
+      "wago_gc_compact_eden",
+      "wago_gc_compact_age2"
+    ],
+    "protocol": "20 audits1x then5 rotating rounds fixed8epochs, core-only same-source"
+  },
+  "rows": [
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:00.921196+00:00",
+      "end_utc": "2026-11-16T19:48:01.024497+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.1033635999992839,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       1\t   4702660 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.025187+00:00",
+      "end_utc": "2026-11-16T19:48:01.038594+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.013426560999505455,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       1\t   3832129 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.039005+00:00",
+      "end_utc": "2026-11-16T19:48:01.075878+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03689179600041825,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       1\t   2768353 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.077141+00:00",
+      "end_utc": "2026-11-16T19:48:01.091629+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.014504914001008729,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       1\t   2597936 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.092022+00:00",
+      "end_utc": "2026-11-16T19:48:01.108585+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.01657890499882342,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       1\t   4433824 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.109268+00:00",
+      "end_utc": "2026-11-16T19:48:01.122752+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.013500439999916125,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       1\t   3550457 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.124176+00:00",
+      "end_utc": "2026-11-16T19:48:01.138612+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.014451367000219761,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       1\t   2616770 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.138988+00:00",
+      "end_utc": "2026-11-16T19:48:01.185768+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.04679940399910265,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       1\t   4063603 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.186235+00:00",
+      "end_utc": "2026-11-16T19:48:01.200630+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.01441035700008797,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       1\t   3085525 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.201045+00:00",
+      "end_utc": "2026-11-16T19:48:01.232201+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.031171553999229218,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       1\t  15833999 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.232840+00:00",
+      "end_utc": "2026-11-16T19:48:01.266558+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03380101599941554,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       1\t  14695839 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.267587+00:00",
+      "end_utc": "2026-11-16T19:48:01.284373+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.01680321900130366,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       1\t   3927056 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.285187+00:00",
+      "end_utc": "2026-11-16T19:48:01.310197+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.025024672999279574,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       1\t   2694008 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.310692+00:00",
+      "end_utc": "2026-11-16T19:48:01.346084+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03540887100098189,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       1\t   2952680 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.346769+00:00",
+      "end_utc": "2026-11-16T19:48:01.368345+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.021591017000901047,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       1\t   4416239 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.368893+00:00",
+      "end_utc": "2026-11-16T19:48:01.407913+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03903803899993363,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       1\t  12525836 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.409735+00:00",
+      "end_utc": "2026-11-16T19:48:01.532846+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.12314264099950378,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       1\t   5714374 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.533851+00:00",
+      "end_utc": "2026-11-16T19:48:01.572333+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03850745099953201,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       1\t   6008616 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.575980+00:00",
+      "end_utc": "2026-11-16T19:48:01.656391+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08111131500118063,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       1\t  10807714 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "audit",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 1,
+      "start_utc": "2026-11-16T19:48:01.663226+00:00",
+      "end_utc": "2026-11-16T19:48:01.700623+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.03744259300037811,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       1\t  10181040 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:01.702020+00:00",
+      "end_utc": "2026-11-16T19:48:01.805651+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.10366200400130765,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       8\t   1937306 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:01.807991+00:00",
+      "end_utc": "2026-11-16T19:48:01.914230+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.10626886200043373,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       8\t   1822457 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:01.915042+00:00",
+      "end_utc": "2026-11-16T19:48:01.971467+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.056450725000104285,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       8\t   2161155 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:01.972484+00:00",
+      "end_utc": "2026-11-16T19:48:02.051942+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07948722499895666,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       8\t   1713247 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.053071+00:00",
+      "end_utc": "2026-11-16T19:48:02.128983+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07594421199974022,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       8\t   2223348 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.133078+00:00",
+      "end_utc": "2026-11-16T19:48:02.194086+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06103709099988919,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       8\t   2178448 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.194981+00:00",
+      "end_utc": "2026-11-16T19:48:02.243431+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.048476473999471636,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       8\t   1392141 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.244502+00:00",
+      "end_utc": "2026-11-16T19:48:02.336525+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.09208078399933584,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       8\t   2920556 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.337921+00:00",
+      "end_utc": "2026-11-16T19:48:02.399743+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06184690400004911,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       8\t   1428110 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.400618+00:00",
+      "end_utc": "2026-11-16T19:48:02.534343+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.13375772099971073,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       8\t   1639671 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=16384 minor=64 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.535315+00:00",
+      "end_utc": "2026-11-16T19:48:02.600511+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06525297400003183,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       8\t   1265603 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.250 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=16384 minor=42 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.602632+00:00",
+      "end_utc": "2026-11-16T19:48:02.659878+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05727126199963095,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       8\t   1665822 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.661622+00:00",
+      "end_utc": "2026-11-16T19:48:02.720500+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05890358199940238,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       8\t   1967886 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.722378+00:00",
+      "end_utc": "2026-11-16T19:48:02.787480+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06512766500054568,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       8\t   2562030 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=524296 minor=16 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.790143+00:00",
+      "end_utc": "2026-11-16T19:48:02.851088+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06097176900038903,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       8\t   2644784 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.852455+00:00",
+      "end_utc": "2026-11-16T19:48:02.924002+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07163801299975603,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       8\t   2531924 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:02.926727+00:00",
+      "end_utc": "2026-11-16T19:48:03.008293+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08159859799889091,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       8\t   4579281 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.009854+00:00",
+      "end_utc": "2026-11-16T19:48:03.111573+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.10175251500004379,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       8\t   4332541 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.113113+00:00",
+      "end_utc": "2026-11-16T19:48:03.191150+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07806889099992986,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       8\t   3934057 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 0,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.193173+00:00",
+      "end_utc": "2026-11-16T19:48:03.262939+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06979685800070001,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       8\t   3680882 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.264152+00:00",
+      "end_utc": "2026-11-16T19:48:03.320511+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05641058599940152,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       8\t   1807937 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.321684+00:00",
+      "end_utc": "2026-11-16T19:48:03.381896+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06023805900076695,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       8\t   2438054 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.384914+00:00",
+      "end_utc": "2026-11-16T19:48:03.438765+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05387852800049586,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       8\t   1984081 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.440953+00:00",
+      "end_utc": "2026-11-16T19:48:03.497963+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.057039082999835955,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       8\t   1978042 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.499064+00:00",
+      "end_utc": "2026-11-16T19:48:03.558260+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05922527800066746,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       8\t   1886161 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=16384 minor=64 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.560174+00:00",
+      "end_utc": "2026-11-16T19:48:03.636062+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07591669700013881,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       8\t   1732066 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.250 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=16384 minor=42 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.638897+00:00",
+      "end_utc": "2026-11-16T19:48:03.701260+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06238730699988082,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       8\t   1792598 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.703511+00:00",
+      "end_utc": "2026-11-16T19:48:03.786884+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08340438300001551,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       8\t   2590567 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.789033+00:00",
+      "end_utc": "2026-11-16T19:48:03.851311+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06230330300058995,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       8\t   1987075 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=524296 minor=16 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.852779+00:00",
+      "end_utc": "2026-11-16T19:48:03.921922+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06916899400130205,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       8\t   2190811 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.924050+00:00",
+      "end_utc": "2026-11-16T19:48:03.986070+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.062045120999755454,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       8\t   2636294 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:03.987449+00:00",
+      "end_utc": "2026-11-16T19:48:04.056858+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07021372300005169,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       8\t   1957800 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.059709+00:00",
+      "end_utc": "2026-11-16T19:48:04.130632+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.0709586320008384,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       8\t   3330807 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.132496+00:00",
+      "end_utc": "2026-11-16T19:48:04.206594+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07412771599956613,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       8\t   3819785 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.208515+00:00",
+      "end_utc": "2026-11-16T19:48:04.283351+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.07486722900102905,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       8\t   4108437 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.285300+00:00",
+      "end_utc": "2026-11-16T19:48:04.365857+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08059127300111868,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       8\t   3765376 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.367498+00:00",
+      "end_utc": "2026-11-16T19:48:04.499860+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.13239508100014064,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       8\t   1750160 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.502596+00:00",
+      "end_utc": "2026-11-16T19:48:04.582794+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08022853799957375,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       8\t   1508710 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.584722+00:00",
+      "end_utc": "2026-11-16T19:48:04.682860+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.09816875900105515,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       8\t   1653984 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 1,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.684793+00:00",
+      "end_utc": "2026-11-16T19:48:04.753812+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06905222999921534,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       8\t   1486196 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.756455+00:00",
+      "end_utc": "2026-11-16T19:48:04.908077+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.15170979199865542,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       8\t   1590102 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.250 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=16384 minor=42 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:04.909717+00:00",
+      "end_utc": "2026-11-16T19:48:05.014597+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.10491179200107581,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       8\t   1488857 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.017979+00:00",
+      "end_utc": "2026-11-16T19:48:05.074061+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05610960699959833,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       8\t   1333024 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.076563+00:00",
+      "end_utc": "2026-11-16T19:48:05.135253+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.058719365999422735,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       8\t   1695871 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=16384 minor=64 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.139255+00:00",
+      "end_utc": "2026-11-16T19:48:05.224494+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08527354699981515,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       8\t   1936717 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.227430+00:00",
+      "end_utc": "2026-11-16T19:48:05.291581+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06418225100060226,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       8\t   2199612 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.293851+00:00",
+      "end_utc": "2026-11-16T19:48:05.344798+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.05098186999930476,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       8\t   1625740 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.349589+00:00",
+      "end_utc": "2026-11-16T19:48:05.413963+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.06440443000064988,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       8\t   2034622 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=524296 minor=16 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.416596+00:00",
+      "end_utc": "2026-11-16T19:48:05.488334+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.071768952999264,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       8\t   3563110 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.492390+00:00",
+      "end_utc": "2026-11-16T19:48:05.566218+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.0738591589997668,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       8\t   3701660 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.568154+00:00",
+      "end_utc": "2026-11-16T19:48:05.651397+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "wall_seconds": 0.08327372800158628,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       8\t   4193213 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.654962+00:00",
+      "end_utc": "2026-11-16T19:48:05.755249+00:00",
+      "start_loadavg": [
+        0.43310546875,
+        1.2021484375,
+        1.599609375
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.10031891999824438,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       8\t   4324915 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.758292+00:00",
+      "end_utc": "2026-11-16T19:48:05.810106+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05184040200037998,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       8\t   1585781 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.811966+00:00",
+      "end_utc": "2026-11-16T19:48:05.862187+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05024932100059232,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       8\t   1766291 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.863988+00:00",
+      "end_utc": "2026-11-16T19:48:05.916674+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.0527132100014569,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       8\t   1718512 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.918266+00:00",
+      "end_utc": "2026-11-16T19:48:05.971033+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05279692099975364,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       8\t   1783621 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:05.976090+00:00",
+      "end_utc": "2026-11-16T19:48:06.029936+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.053871807000177796,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       8\t   1595827 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.032226+00:00",
+      "end_utc": "2026-11-16T19:48:06.086262+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.054060233998825424,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       8\t   1660415 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.087978+00:00",
+      "end_utc": "2026-11-16T19:48:06.142958+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05500815100094769,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       8\t   1570605 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 2,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.145483+00:00",
+      "end_utc": "2026-11-16T19:48:06.208702+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.0632467400009773,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       8\t   1879247 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.210454+00:00",
+      "end_utc": "2026-11-16T19:48:06.266166+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.055738366001605755,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       8\t   2128598 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.268246+00:00",
+      "end_utc": "2026-11-16T19:48:06.320061+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05184020399974543,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       8\t   1636716 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.323076+00:00",
+      "end_utc": "2026-11-16T19:48:06.391338+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06829456699961156,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       8\t   2175570 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=524296 minor=16 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.405464+00:00",
+      "end_utc": "2026-11-16T19:48:06.458100+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.052667378999103676,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       8\t   2010100 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.462343+00:00",
+      "end_utc": "2026-11-16T19:48:06.540793+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.07848693699997966,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       8\t   4115011 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.543261+00:00",
+      "end_utc": "2026-11-16T19:48:06.610923+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06769261400040705,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       8\t   3307370 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.614374+00:00",
+      "end_utc": "2026-11-16T19:48:06.678202+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06385808800041559,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       8\t   3918412 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.681205+00:00",
+      "end_utc": "2026-11-16T19:48:06.744984+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06381093299933127,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       8\t   3507255 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.748946+00:00",
+      "end_utc": "2026-11-16T19:48:06.800173+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.051253986999654444,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       8\t   1913106 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.803631+00:00",
+      "end_utc": "2026-11-16T19:48:06.846752+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.04323282599943923,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       8\t   1446635 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.850188+00:00",
+      "end_utc": "2026-11-16T19:48:06.897898+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.047738819001097,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       8\t   1762534 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.900299+00:00",
+      "end_utc": "2026-11-16T19:48:06.966036+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06577006200132018,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       8\t   1775719 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:06.982806+00:00",
+      "end_utc": "2026-11-16T19:48:07.062355+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.07960704800098028,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       8\t   1764202 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.066595+00:00",
+      "end_utc": "2026-11-16T19:48:07.121016+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05445282300024701,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       8\t   1516175 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.124420+00:00",
+      "end_utc": "2026-11-16T19:48:07.180579+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05618454800060135,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       8\t   1727792 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.183578+00:00",
+      "end_utc": "2026-11-16T19:48:07.238572+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05504399299934448,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       8\t   1603288 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.241031+00:00",
+      "end_utc": "2026-11-16T19:48:07.299084+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05810226900030102,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       8\t   2294781 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.311672+00:00",
+      "end_utc": "2026-11-16T19:48:07.381120+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.0694770600002812,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       8\t   1620259 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.385931+00:00",
+      "end_utc": "2026-11-16T19:48:07.438773+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05287055400003737,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       8\t   1733222 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=16384 minor=64 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 3,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.440875+00:00",
+      "end_utc": "2026-11-16T19:48:07.490296+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.049447026000052574,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       8\t   1713368 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.250 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=16384 minor=42 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "promote",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.492575+00:00",
+      "end_utc": "2026-11-16T19:48:07.583918+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.09137500299948442,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/old-young-mutation         \t       8\t   6308324 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/old-young-mutation\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "age2",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.587256+00:00",
+      "end_utc": "2026-11-16T19:48:07.665801+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.0786414699996385,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/old-young-mutation         \t       8\t   3752578 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/old-young-mutation\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=old-young-mutation allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.668037+00:00",
+      "end_utc": "2026-11-16T19:48:07.774157+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.10635922199980996,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/old-young-mutation         \t       8\t   7032137 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/old-young-mutation\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=old-young-mutation allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden-same-fresh",
+      "shape": "old-young-mutation",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.785191+00:00",
+      "end_utc": "2026-11-16T19:48:07.896144+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.11098538799888047,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/old-young-mutation         \t       8\t   3715814 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/old-young-mutation\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=old-young-mutation allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "promote",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.900551+00:00",
+      "end_utc": "2026-11-16T19:48:07.959606+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.059113346998856287,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dead-heavy         \t       8\t   1672177 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dead-heavy\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "age2",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:07.963862+00:00",
+      "end_utc": "2026-11-16T19:48:08.044136+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.08030302400038636,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dead-heavy         \t       8\t   2296612 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dead-heavy\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dead-heavy allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.049920+00:00",
+      "end_utc": "2026-11-16T19:48:08.179844+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.13005642899952363,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dead-heavy         \t       8\t   1889170 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dead-heavy\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dead-heavy allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden-same-fresh",
+      "shape": "dead-heavy",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.184375+00:00",
+      "end_utc": "2026-11-16T19:48:08.248768+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06442428400077915,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dead-heavy         \t       8\t   1454034 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dead-heavy\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dead-heavy allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "promote",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.252684+00:00",
+      "end_utc": "2026-11-16T19:48:08.304294+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.0516365820003557,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/retain344KiB         \t       8\t   1558228 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/retain344KiB\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "age2",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.306786+00:00",
+      "end_utc": "2026-11-16T19:48:08.366288+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05952908700055559,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/retain344KiB         \t       8\t   2336244 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/retain344KiB\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=65537 minor=2 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=retain344KiB allocations=524296 minor=16 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.370471+00:00",
+      "end_utc": "2026-11-16T19:48:08.423408+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05296564300078899,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/retain344KiB         \t       8\t   1631102 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.250 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/retain344KiB\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=retain344KiB allocations=524296 minor=10 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden-same-fresh",
+      "shape": "retain344KiB",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.426410+00:00",
+      "end_utc": "2026-11-16T19:48:08.521910+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.09553407400017022,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/retain344KiB         \t       8\t   3178285 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/retain344KiB\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=65537 minor=1 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=retain344KiB allocations=524296 minor=8 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "promote",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.525557+00:00",
+      "end_utc": "2026-11-16T19:48:08.594900+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.06937283200022648,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/array-bulk         \t       8\t   1519363 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/array-bulk\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=promote shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "age2",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.599209+00:00",
+      "end_utc": "2026-11-16T19:48:08.742699+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.14352410599894938,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/array-bulk         \t       8\t   2458651 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         8.000 minor/op\t      2048 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/array-bulk\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=2048 minor=8 full=0 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=array-bulk allocations=16384 minor=64 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.746074+00:00",
+      "end_utc": "2026-11-16T19:48:08.803928+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05788007299997844,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/array-bulk         \t       8\t   1604911 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         5.250 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/array-bulk\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=2048 minor=5 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden shape=array-bulk allocations=16384 minor=42 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden-same-fresh",
+      "shape": "array-bulk",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.807886+00:00",
+      "end_utc": "2026-11-16T19:48:08.878209+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.07035133299905283,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/array-bulk         \t       8\t   2601034 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         0 full/op\t         0 minor-failed/op\t         4.000 minor/op\t      2048 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/array-bulk\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=2048 minor=4 full=0 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=array-bulk allocations=16384 minor=32 full=0 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "promote",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.881872+00:00",
+      "end_utc": "2026-11-16T19:48:08.938494+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.05667775900110428,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/promote/dense-persistent         \t       8\t   2259387 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t         0 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/promote/dense-persistent\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=promote shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "age2",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:08.941162+00:00",
+      "end_utc": "2026-11-16T19:48:09.017774+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.07664075200045772,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/age2/dense-persistent         \t       8\t   3563669 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1048576 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         2.000 minor/op\t     65537 objects/op\t    524288 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/age2/dense-persistent\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=65537 minor=2 full=1 failedMinor=0\n    traffic_test.go:194: policy=age2 shape=dense-persistent allocations=524296 minor=16 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:09.023063+00:00",
+      "end_utc": "2026-11-16T19:48:09.096987+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.07395406900104717,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden/dense-persistent         \t       8\t   2829628 ns/op\t  28463575 accounted-B\t       280.0 collector-B\t  28463151 fixed-B\t   1572864 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2097152 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden/dense-persistent\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "stage": "timed",
+      "round": 4,
+      "policy": "eden-same-fresh",
+      "shape": "dense-persistent",
+      "epochs": 8,
+      "start_utc": "2026-11-16T19:48:09.099704+00:00",
+      "end_utc": "2026-11-16T19:48:09.160793+00:00",
+      "start_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "end_loadavg": [
+        0.478515625,
+        1.19873046875,
+        1.59619140625
+      ],
+      "wall_seconds": 0.061116713000956224,
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/experiments/gc-eden-core\ncpu: INTEL(R) XEON(R) PLATINUM 8573C\nBenchmarkEdenTraffic/eden-same-fresh/dense-persistent         \t       8\t   2074062 ns/op\t  29254103 accounted-B\t       280.0 collector-B\t  29253679 fixed-B\t   2097152 fresh-max-B\t         1.000 full/op\t         0 minor-failed/op\t         1.000 minor/op\t     65537 objects/op\t    262144 survivor-cap-B\t   2621440 young-B\t       0 B/op\t       0 allocs/op\n--- BENCH: BenchmarkEdenTraffic/eden-same-fresh/dense-persistent\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=65537 minor=1 full=1 failedMinor=0\n    traffic_test.go:194: policy=eden-same-fresh shape=dense-persistent allocations=524296 minor=8 full=8 failedMinor=0\nPASS\n",
+      "stderr": ""
+    }
+  ]
+}
