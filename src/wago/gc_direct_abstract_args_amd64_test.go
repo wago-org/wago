@@ -176,3 +176,54 @@ func TestDirectGCRejectsInternalExternConversion(t *testing.T) {
 		t.Fatal("fixture did not reach conversion guard", e)
 	}
 }
+
+func TestDirectGCMixedAbstractArgumentAliases(t *testing.T) {
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x60, 1, 0x7f, 1, 0x63, 0}, []byte{0x60, 2, 0x63, 0x6e, 0x63, 0x6d, 2, 0x63, 0x6e, 0x63, 0x6d})), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("new", 0, 0), wasmtest.ExportEntry("pair", 0, 1))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0xfb, 0, 0, 0x0b}), wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x20, 0, 0x20, 1, 0x0b}))))
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false), data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	if !c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() == 0 {
+		t.Skip("requires direct/helper compiler artifact")
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 4096, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	values, e := in.Invoke("new", 91)
+	if e != nil {
+		t.Fatal(e)
+	}
+	token := values[0]
+	defer in.ReleaseGCRef(GCRef{token: token})
+	entry := in.refStore.gcByToken[token]
+	before := in.gc.GlobalSlot(entry.slot)
+	collections := in.gc.Stats().FullCollections
+	out, e := in.Invoke("pair", token, token)
+	if e != nil || len(out) != 2 {
+		t.Fatal(out, e)
+	}
+	moved := in.gc.GlobalSlot(entry.slot)
+	if moved == before || in.gc.Stats().FullCollections <= collections {
+		t.Fatal("no callee movement")
+	}
+	for _, bits := range out {
+		r, ok := in.refStore.gcByToken[bits]
+		if !ok || in.gc.GlobalSlot(r.slot) != moved {
+			t.Fatal("alias not rewritten")
+		}
+		if bits != token {
+			defer in.ReleaseGCRef(GCRef{token: bits})
+		}
+	}
+	if st := in.existingPublicGCState(); st == nil || st.argumentRootCount != 0 {
+		t.Fatal("argument roots leaked")
+	}
+	if e = in.gc.Verify(gc.EmptyRoots{}); e != nil {
+		t.Fatal(e)
+	}
+}
