@@ -84,3 +84,8 @@ Independent source review found no lifetime blocker and requested stronger
 movement/type tests, now included. Final source approval is collected by the
 coordinator before integration. This remains limited same-instance ingress,
 not full direct WasmGC, TinyGo runtime or cross-instance reference support.
+
+Integrated source `ef4427bd` also passes the complete default `./src/wago` test
+package (47.129s) with the same serial Go 1.27.1 settings. See
+`evidence/integrated-default.log`. This is compatibility coverage, not a full
+experimental direct16 admission claim or a benchmark result.
