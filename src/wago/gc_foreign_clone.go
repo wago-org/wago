@@ -387,6 +387,12 @@ func restoreForeignGCGraphLocked(target *Instance, state *gcPublicState, objects
 			return gc.Null()
 		}
 	}
+	// The source may use a custom collector. Its live edges are not proof of
+	// Wasm assignability: validate the complete reconstructed graph against target
+	// field/element types before writing any payload or publishing a token.
+	if err := validateForeignGCCloneEdges(target, objects, refs); err != nil {
+		return rollback(err)
+	}
 	for i, object := range objects {
 		desc, _ := cloneGCDescriptor(target.c, object.typeID)
 		for j, encoded := range object.values {
@@ -449,4 +455,57 @@ func clearForeignCloneRootLocked(target *Instance, state *gcPublicState, collect
 			_ = target.gc.CollectFull(&state.frameRoots)
 		}
 	}
+}
+
+// validateForeignGCCloneEdges uses the authoritative rewritten reconstruction
+// roots. No allocation/collection occurs here; the caller retains domain locks.
+func validateForeignGCCloneEdges(target *Instance, objects []gcCloneObject, refs gc.RefSliceRoots) error {
+	if len(objects) != len(refs) {
+		return fmt.Errorf("foreign GC clone root count mismatch")
+	}
+	for i, object := range objects {
+		if uint64(object.typeID) >= uint64(len(target.c.Types)) {
+			return fmt.Errorf("foreign GC clone object type unavailable")
+		}
+		typ := target.c.Types[object.typeID]
+		for j, value := range object.values {
+			var want ValueTypeDescriptor
+			if typ.Kind == CompositeTypeStruct {
+				if j >= len(typ.Fields) {
+					return fmt.Errorf("foreign GC clone field count mismatch")
+				}
+				want = typ.Fields[j].Storage.Value
+			} else if typ.Kind == CompositeTypeArray {
+				want = typ.Array.Storage.Value
+			} else {
+				return fmt.Errorf("foreign GC clone object is not an aggregate")
+			}
+			if value.kind != gc.StorageRef && value.kind != gc.StorageRefNull {
+				continue
+			}
+			var ref gc.Ref
+			switch value.ref.kind {
+			case gcCloneRefNull:
+				if value.ref.value != 0 {
+					return fmt.Errorf("foreign GC clone malformed null edge")
+				}
+			case gcCloneRefI31:
+				ref = gc.Ref(value.ref.value)
+				if !ref.IsI31() {
+					return fmt.Errorf("foreign GC clone malformed i31 edge")
+				}
+			case gcCloneRefObject:
+				if value.ref.value == 0 || uint64(value.ref.value) > uint64(len(refs)) {
+					return fmt.Errorf("foreign GC clone object edge out of bounds")
+				}
+				ref = refs[value.ref.value-1]
+			default:
+				return fmt.Errorf("foreign GC clone invalid reference edge kind")
+			}
+			if !target.gcRefMatchesValueType(ref, want) {
+				return fmt.Errorf("foreign GC clone object %d value %d does not match target reference type", i+1, j)
+			}
+		}
+	}
+	return nil
 }
