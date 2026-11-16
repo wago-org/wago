@@ -48,3 +48,19 @@ run compact-only artifacts. The applicable runtime filter is
 `^(TestCompactGC|TestCompactNative|TestGCCompact)`; this is not full compact
 feature conformance. Performance and default adoption remain unproven at this
 checkpoint; the same-source diagnostic is separate.
+
+## Numeric array pipeline checkpoint
+
+Checked reference stores, numeric array get/set, and bounded numeric array
+construction are integrated at source `1cf7b6ab`. Independent stage qualification
+passed, including clean-old barrier fallback, SIMD child layout, packed/float
+bit patterns, exact padding, huge/capped lengths, deferred statistics and moving
+roots. The composed array-allocation/regalloc matrix passed (2.233 s), explicitly
+retaining the earlier reference-store register-pressure tests.
+
+Unfiltered default qualification passed: Wago 47.103 s, native collector 2.286 s,
+checked wrapper 0.003 s, AMD64 backend 6.468 s, direct core 0.030 s, compact core
+0.011 s. Full native debug passed (2.106 s); TinyGo host native/checked passed
+(2.400/0.004 s). Experimental compact admission is still restricted and these
+results do not claim complete feature support or V8 parity. The three-way
+reference-store/scalar-array/array-allocation diagnostic remains separate.
