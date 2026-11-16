@@ -29,7 +29,7 @@ func NewExperimentalCompactCollector(config Config, types []TypeDesc) (*Collecto
 	return newExperimentalOffsetCollector(config, types)
 }
 func newExperimentalOffsetCollector(config Config, types []TypeDesc) (*Collector, error) {
-	if runtime.GOARCH != "amd64" || config.Profile != ProfileThroughput || config.DisableCollection || config.DisableMovingNursery || config.PoisonFreed || config.StressBarriers || config.VerifyAfterCollect {
+	if runtime.GOARCH != "amd64" || config.Profile != ProfileThroughput || config.DisableCollection || config.DisableMovingNursery || config.PoisonFreed || config.StressBarriers || (config.VerifyAfterCollect && directHeapCompact) {
 		return nil, errors.New("gc: unsupported direct-offset experimental configuration")
 	}
 	if config.NurseryBytes > ^uint32(0)-15 || config.ThroughputHeapBytes > ^uint32(0)-15 {
@@ -176,5 +176,29 @@ func (c *Collector) directCollect(roots RootSet, full bool) error {
 	} else {
 		c.stats.MinorCollections++
 	}
+	if c.cfg.VerifyAfterCollect {
+		return c.Verify(roots)
+	}
 	return nil
+}
+
+func (c *Collector) verifyDirect(roots RootSet) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
+	values := make([]directHeapRef, 0, len(c.globalSlots)+len(c.tableSlots))
+	for _, r := range c.globalSlots {
+		values = append(values, directRef(r))
+	}
+	for _, r := range c.tableSlots {
+		values = append(values, directRef(r))
+	}
+	if roots != nil {
+		roots.RangeRoots(func(s RootSlot) bool { values = append(values, directRef(s.GetRef())); return true })
+	}
+	pointers := make([]*directHeapRef, len(values))
+	for i := range values {
+		pointers[i] = &values[i]
+	}
+	return verifyDirectHeap(c.direct, pointers)
 }

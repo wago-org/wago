@@ -1,4 +1,4 @@
-//go:build !wago_gc_compact_helpers && !(wago_gc_compact_reads || (wago_gc_compact_alloc || ((wago_gc_compact_refstore || wago_gc_compact_shared_checks) || (wago_gc_compact_scalar_arrays || (wago_gc_compact_array_alloc || (wago_gc_compact_fill || (wago_gc_compact_copy || (wago_gc_compact_loop || wago_gc_compact_pair_loop || (wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2))) || wago_gc_compact_range_stride))))))) || wago_gc_compact_refstruct)
+//go:build !wago_gc_compact_helpers && !(wago_gc_compact_reads || wago_gc_compact_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_fill || wago_gc_compact_copy || wago_gc_compact_loop || wago_gc_compact_pair_loop || wago_gc_compact_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride || wago_gc_compact_refstruct)
 
 package gc
 
@@ -40,3 +40,5 @@ func (c *Collector) compactRefDesc(r Ref) (*TypeDesc, error) {
 func (c *Collector) compactHeaderPayload(r Ref) (ObjHeader, []byte, error) {
 	return ObjHeader{}, nil, errors.New("gc: compact backend unavailable")
 }
+
+func verifyDirectHeap(h *directHeap, roots []*directHeapRef) error { return h.Verify(roots) }
