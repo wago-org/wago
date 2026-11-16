@@ -1,0 +1,42 @@
+=== RUN   TestCompactExactArtifactSites
+    gc_compact_site_diagnostic_test.go:18: BEGIN gc-array-copy-checksum wasm_sha256=53667f9e93b1ee082bb65ee584a3d29e317b25e62d88c5f3b0656d42ac8e3881 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+COMPACT_SITE attempt func=0 loop_pc=3 available=11
+COMPACT_SITE plan func=0 loop_pc=3 ok=true first_pc=16 local=0 accesses=1
+COMPACT_SITE SELECT func=0 loop_pc=3 first_pc=16 local=0 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=1 loop_pc=24 available=8
+COMPACT_SITE plan func=1 loop_pc=24 ok=true first_pc=38 local=1 accesses=1
+COMPACT_SITE SELECT func=1 loop_pc=24 first_pc=38 local=1 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=1 loop_pc=63 available=8
+COMPACT_SITE plan func=1 loop_pc=63 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=2 loop_pc=24 available=8
+COMPACT_SITE plan func=2 loop_pc=24 ok=true first_pc=38 local=1 accesses=1
+COMPACT_SITE SELECT func=2 loop_pc=24 first_pc=38 local=1 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=2 loop_pc=63 available=8
+COMPACT_SITE plan func=2 loop_pc=63 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=2 loop_pc=87 available=8
+COMPACT_SITE plan func=2 loop_pc=87 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=3 loop_pc=3 available=11
+COMPACT_SITE plan func=3 loop_pc=3 ok=false first_pc=0 local=0 accesses=0
+    gc_compact_site_diagnostic_test.go:27: END gc-array-copy-checksum native_bytes=7535 native_sha256=a2968106b444f5197135ee569f6edced23f547b3fae049c60b203375af552946
+    gc_compact_site_diagnostic_test.go:18: BEGIN gc-array-loop-copy-checksum wasm_sha256=4c8079c9a8cc3bf9e1dc425b31eeda644d2195e828dffa33c0c0524d88a20d15 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+COMPACT_SITE attempt func=0 loop_pc=3 available=11
+COMPACT_SITE plan func=0 loop_pc=3 ok=true first_pc=16 local=0 accesses=1
+COMPACT_SITE SELECT func=0 loop_pc=3 first_pc=16 local=0 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=1 loop_pc=24 available=8
+COMPACT_SITE plan func=1 loop_pc=24 ok=true first_pc=38 local=1 accesses=1
+COMPACT_SITE SELECT func=1 loop_pc=24 first_pc=38 local=1 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=1 loop_pc=63 available=8
+COMPACT_SITE plan func=1 loop_pc=63 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=2 loop_pc=24 available=8
+COMPACT_SITE plan func=2 loop_pc=24 ok=true first_pc=38 local=1 accesses=1
+COMPACT_SITE SELECT func=2 loop_pc=24 first_pc=38 local=1 object_reg=5 length_reg=7
+COMPACT_SITE attempt func=2 loop_pc=63 available=8
+COMPACT_SITE plan func=2 loop_pc=63 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=2 loop_pc=87 available=8
+COMPACT_SITE plan func=2 loop_pc=87 ok=false first_pc=0 local=0 accesses=0
+COMPACT_SITE attempt func=3 loop_pc=3 available=11
+COMPACT_SITE plan func=3 loop_pc=3 ok=false first_pc=0 local=0 accesses=0
+    gc_compact_site_diagnostic_test.go:27: END gc-array-loop-copy-checksum native_bytes=7535 native_sha256=2b1f819137cd176b4d201c8eaa5754477f5d40672541c15414a7bb11690e677b
+--- PASS: TestCompactExactArtifactSites (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.004s

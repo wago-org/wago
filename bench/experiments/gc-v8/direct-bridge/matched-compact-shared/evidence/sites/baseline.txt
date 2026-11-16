@@ -1,0 +1,8 @@
+=== RUN   TestCompactExactArtifactSites
+    gc_compact_site_diagnostic_test.go:18: BEGIN gc-array-copy-checksum wasm_sha256=53667f9e93b1ee082bb65ee584a3d29e317b25e62d88c5f3b0656d42ac8e3881 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+    gc_compact_site_diagnostic_test.go:27: END gc-array-copy-checksum native_bytes=7535 native_sha256=a2968106b444f5197135ee569f6edced23f547b3fae049c60b203375af552946
+    gc_compact_site_diagnostic_test.go:18: BEGIN gc-array-loop-copy-checksum wasm_sha256=4c8079c9a8cc3bf9e1dc425b31eeda644d2195e828dffa33c0c0524d88a20d15 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+    gc_compact_site_diagnostic_test.go:27: END gc-array-loop-copy-checksum native_bytes=7535 native_sha256=2b1f819137cd176b4d201c8eaa5754477f5d40672541c15414a7bb11690e677b
+--- PASS: TestCompactExactArtifactSites (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.005s
