@@ -25,7 +25,9 @@ func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, 
 	var obj Reg
 	var done func()
 	leased := f.directLoop.endPC != 0
-	if leased {
+	if leased && f.directLoop.kind == loopLeaseDirectPair {
+		obj, done = f.useDirectPairLoop(object, t, local)
+	} else if leased {
 		if f.directLoop.remaining == 0 || f.wasmPC >= f.directLoop.endPC {
 			panic("amd64: unproved direct loop access")
 		}
@@ -53,7 +55,7 @@ func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, 
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
-	if leased {
+	if leased && f.directLoop.kind != loopLeaseDirectPair {
 		f.a.MovRegReg32(tmp, f.directLoop.length)
 	} else {
 		f.a.Load32(tmp, obj, 8)

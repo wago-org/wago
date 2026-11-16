@@ -1,0 +1,9 @@
+# Direct16 paired and scalar-range prototype
+
+`wago_gc_direct_pair_loop` enables bounded two-receiver leases. `wago_gc_direct_range_loop` additionally enables the generic scalar transfer latch. Both extend existing trusted direct policy6, not compact admission. Neither enables weighted reduction or SIMD automatically; explicitly compose identical weighted settings in comparisons.
+
+The existing bounded scanner must certify exactly two static accesses to distinct invariant locals of the same final integer array type. Two clean pinned pointer caches are lazily populated at their original access sites; a third/repeated/unknown scanner receiver is rejected. The ordinal certificate binds the two accesses even if canonical spilling later loses local provenance. Known mismatches fail closed. Seven available GP registers are required, and no helper, allocation or safepoint may occur in the loop.
+
+Direct access uses Length@8 and Payload@16. Per-access null and logical bounds remain under the existing trusted reference admission. The optional range latch executes only after the original checked iteration and original true backedge condition. Both lengths must cover the complete remaining span; otherwise execution returns to the original checked body. Ordered scalar loads/stores preserve forward overlapping-copy semantics, and the pinned/canonical induction value remains synchronized. Compact transfer SIMD and stride are explicitly gated out of this direct path.
+
+Source-only checkpoint, no tests or performance measurement yet. Actual-source review precedes qualification. Use the supported `wago_regalloccheck` tag for instrumented tests. This improves compiler-stage parity but is not a layout-only comparison against checked compact mode, because existing direct trusted admission differs.

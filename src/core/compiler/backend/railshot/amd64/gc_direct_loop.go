@@ -45,11 +45,29 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 		return
 	}
 	p, ok := f.planGCLoopResolverMode(reader, true)
-	if !ok || p.accesses > 255 {
+	paired := false
+	if !ok && gcDirectPairLoop {
+		p, ok = f.planGCLoopResolverModePair(reader, true, true)
+		paired = ok
+	}
+	if !ok || p.accesses == 0 || p.accesses > 255 {
 		f.stats.peep("gc-direct-loop-no-plan")
 		return
 	}
-	f.prepareDirectWeighted(reader, p)
+	if paired {
+		available := 0
+		blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+		for _, r := range gpAlloc {
+			if !blocked.has(r) {
+				available++
+			}
+		}
+		if available < 7 {
+			return
+		}
+	} else {
+		f.prepareDirectWeighted(reader, p)
+	}
 	obj := f.directLoopRegister()
 	if obj == regNone {
 		return
@@ -62,6 +80,14 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 		return
 	}
 	f.pinned = f.pinned.add(length)
+	if paired {
+		f.prepareCompactRange(reader, p)
+		f.a.MovImm32(obj, 0)
+		f.a.MovImm32(length, 0)
+		f.directLoop = directLoopLease{p.endPC, uint32(p.local) | uint32(p.secondLocal)<<16, p.typeIndex, obj, length, uint8(p.accesses), loopLeaseDirectPair}
+		f.stats.peep("gc-direct-pair-loop-plan")
+		return
+	}
 	f.pushPlainLocalGet(uint32(p.local))
 	ref := f.materialize(f.popValue())
 	f.a.MovRegReg32(obj, ref)
@@ -98,4 +124,5 @@ const (
 	loopLeaseCompactPending
 	loopLeaseCompactActive
 	loopLeaseCompactPair
+	loopLeaseDirectPair
 )

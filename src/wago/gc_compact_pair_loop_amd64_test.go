@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_pair_loop || (wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2))) || wago_gc_compact_range_stride)
+//go:build linux && amd64 && (wago_gc_compact_pair_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop || wago_gc_compact_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride)
 
 package wago
 
@@ -22,7 +22,7 @@ func TestCompactNativePairLoop(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
-	in := compactLoopInstance(t, data)
+	in := pairedLoopInstance(t, data)
 	for _, n := range []uint64{0, 1, 2, 31, 127} {
 		if got, e := in.Invoke("run", n, n, n); e != nil || got[0] != func() uint64 {
 			if n == 0 {
@@ -38,7 +38,7 @@ func TestCompactNativePairLoop(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(aliasBody))), aliasBody...))))
-	alias := compactLoopInstance(t, aliasData)
+	alias := pairedLoopInstance(t, aliasData)
 	if got, e := alias.Invoke("run", 31, 31, 0); e != nil || got[0] != 7 {
 		t.Fatalf("aliased receivers: %v %v", got, e)
 	}
@@ -56,7 +56,7 @@ func TestCompactNativePairLoop(t *testing.T) {
 			wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...))))
-		x := compactLoopInstance(t, m)
+		x := pairedLoopInstance(t, m)
 		if _, e := x.Invoke("run", 0, 1, 1); e != nil {
 			t.Fatalf("%s zero trip: %v", nullSite.name, e)
 		}

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && ((wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2))) || wago_gc_compact_range_stride)
+//go:build linux && amd64 && (wago_gc_compact_range_loop || wago_gc_direct_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride)
 
 package wago
 
@@ -40,7 +40,7 @@ func TestCompactNativeRangeLoop(t *testing.T) {
 		for _, bound := range []byte{1, 32} {
 			for _, alias := range []bool{false, true} {
 				t.Run(tc.name, func(t *testing.T) {
-					in := compactLoopInstance(t, compactRangeModule(tc.storage, tc.get, tc.value, bound, alias))
+					in := pairedLoopInstance(t, compactRangeModule(tc.storage, tc.get, tc.value, bound, alias))
 					for _, n := range []uint64{uint64(bound), uint64(bound) + 1, 127} {
 						got, e := in.Invoke("run", n, n)
 						if e != nil || got[0] != uint64(bound) || got[1] != tc.want {

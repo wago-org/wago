@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)) || wago_gc_compact_range_stride)
+//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_direct_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -98,7 +98,8 @@ func (f *fn) prepareCompactRange(reader *wasm.Reader, p gcLoopResolverPlan) {
 // completed iteration can reach this latch, so both pointers are validated.
 func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	l := f.directLoop
-	if f.rangeBound == 0 || l.kind != loopLeaseCompactPair || l.remaining != 0 || fi != len(f.ctrl)-1 || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.branchArity() != 0 || fr.has(ctrlRegMerge1) || k != 0 || f.depth() != 0 || f.interruptible || f.a.Len()-fr.controlSite > 1024 || cc != condB {
+	directPair := gcDirectPairLoop && l.kind == loopLeaseDirectPair
+	if f.rangeBound == 0 || (l.kind != loopLeaseCompactPair && !directPair) || l.remaining != 0 || fi != len(f.ctrl)-1 || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.branchArity() != 0 || fr.has(ctrlRegMerge1) || k != 0 || f.depth() != 0 || f.interruptible || f.a.Len()-fr.controlSite > 1024 || cc != condB {
 		return false
 	}
 	idx := int(f.rangeIndex)
@@ -107,6 +108,12 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 		return false
 	}
 	scalar, payload, ok := f.compactScalarArrayLayout(l.typeIndex)
+	lengthOffset := int32(4)
+	if directPair {
+		scalar, ok = f.directOffsetScalarArrayLayout(l.typeIndex)
+		payload = 16
+		lengthOffset = 8
+	}
 	if !ok || scalar.typ.isFloat() {
 		return false
 	}
@@ -128,17 +135,20 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 		return false
 	}
 	exit := f.a.JccPlaceholder(invertCond(cc))
-	f.a.Load32(value, l.object, 4)
+	f.a.Load32(value, l.object, lengthOffset)
 	f.a.AluRI(cmpDigit, value, int32(f.rangeBound), false)
 	badA := f.a.JccPlaceholder(condB)
-	f.a.Load32(value, l.length, 4)
+	f.a.Load32(value, l.length, lengthOffset)
 	f.a.AluRI(cmpDigit, value, int32(f.rangeBound), false)
 	badB := f.a.JccPlaceholder(condB)
-	vectorDone := f.emitCompactRangeSSE2(l, ir, offset, value, scalar.size, payload)
+	vectorDone := -1
+	if !directPair {
+		vectorDone = f.emitCompactRangeSSE2(l, ir, offset, value, scalar.size, payload)
+	}
 	// Only a positive sign-extended immediate can compare the widened byte
 	// endpoint. Other bounds retain the existing element-index loop.
 	byteEnd := uint64(f.rangeBound) * uint64(scalar.size)
-	stride := gcCompactRangeStride && byteEnd <= 0x7fffffff
+	stride := !directPair && gcCompactRangeStride && byteEnd <= 0x7fffffff
 	if stride {
 		f.a.MovRegReg32(offset, ir)
 		f.a.ImulRI(offset, int32(scalar.size), true)
@@ -175,6 +185,10 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	f.a.JmpBack(fr.controlSite)
 	f.a.PatchRel32(done, f.a.Len())
 	f.a.PatchRel32(exit, f.a.Len())
-	f.stats.peep("gc-compact-range-loop")
+	if directPair {
+		f.stats.peep("gc-direct-range-loop")
+	} else {
+		f.stats.peep("gc-compact-range-loop")
+	}
 	return true
 }

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_trusted_arrays || (wago_gc_direct_trusted_loop || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2) || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
+//go:build linux && amd64 && (wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_trusted_arrays || ((wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop) || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2) || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
 
 package wago
 

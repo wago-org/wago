@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)) || wago_gc_compact_range_stride)
+//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_direct_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -30,7 +30,11 @@ func TestCompactRangeExactSelection(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer cm.CodeImage.Close()
-	if stats.Funcs[2].Peephole["gc-compact-range-loop"] != 1 {
+	key := "gc-compact-range-loop"
+	if gcDirectPairLoop {
+		key = "gc-direct-range-loop"
+	}
+	if stats.Funcs[2].Peephole[key] != 1 {
 		t.Fatalf("no exact scalar range selection: %+v", stats.Funcs[2].Peephole)
 	}
 	if gcCompactRangeSSE2 && stats.Funcs[2].Peephole["gc-compact-range-sse2"] != 1 {
@@ -39,7 +43,7 @@ func TestCompactRangeExactSelection(t *testing.T) {
 	if gcCompactRangeStride && stats.Funcs[2].Peephole["gc-compact-range-stride"] != 1 {
 		t.Fatal("missing strength reduction")
 	}
-	if stats.Funcs[1].Peephole["gc-compact-range-loop"] != 0 {
+	if stats.Funcs[1].Peephole[key] != 0 {
 		t.Fatal("bulk unexpectedly selected")
 	}
 }

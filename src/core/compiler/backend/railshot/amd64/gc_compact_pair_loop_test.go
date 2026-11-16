@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_pair_loop || (wago_gc_compact_range_loop || (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2))) || wago_gc_compact_range_stride)
+//go:build amd64 && (wago_gc_compact_pair_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop || wago_gc_compact_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -53,8 +53,14 @@ func TestCompactPairLoopPressure(t *testing.T) {
 			}
 		}
 		r := wasm.ReaderFrom(body)
-		f.prepareCompactLoop(&r)
-		if got := f.directLoop.kind == loopLeaseCompactPair; got != (free >= 7) {
+		kind := uint8(loopLeaseCompactPair)
+		if gcDirectPairLoop {
+			f.hoistDirectLoop(&r)
+			kind = loopLeaseDirectPair
+		} else {
+			f.prepareCompactLoop(&r)
+		}
+		if got := f.directLoop.kind == kind; got != (free >= 7) {
 			t.Fatalf("free%d pair=%v", free, got)
 		}
 		if free >= 7 && (f.directLoop.local != 2<<16 || f.directLoop.remaining != 2) {
