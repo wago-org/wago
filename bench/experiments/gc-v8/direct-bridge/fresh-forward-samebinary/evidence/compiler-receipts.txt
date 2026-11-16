@@ -1,0 +1,61 @@
+=== RUN   TestDirectGCFreshStructForwardEffects
+=== RUN   TestDirectGCFreshStructForwardEffects/forward
+=== RUN   TestDirectGCFreshStructForwardEffects/source_overwritten
+=== RUN   TestDirectGCFreshStructForwardEffects/field_mutated
+=== RUN   TestDirectGCFreshStructForwardEffects/root_store_trap
+--- PASS: TestDirectGCFreshStructForwardEffects (0.01s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/forward (0.00s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/source_overwritten (0.00s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/field_mutated (0.00s)
+    --- PASS: TestDirectGCFreshStructForwardEffects/root_store_trap (0.00s)
+=== RUN   TestDirectGCFreshStructScalarBitsAndNullOverwrite
+=== RUN   TestDirectGCFreshStructScalarBitsAndNullOverwrite/i64
+=== RUN   TestDirectGCFreshStructScalarBitsAndNullOverwrite/f32
+=== RUN   TestDirectGCFreshStructScalarBitsAndNullOverwrite/f64
+--- PASS: TestDirectGCFreshStructScalarBitsAndNullOverwrite (0.01s)
+    --- PASS: TestDirectGCFreshStructScalarBitsAndNullOverwrite/i64 (0.00s)
+    --- PASS: TestDirectGCFreshStructScalarBitsAndNullOverwrite/f32 (0.00s)
+    --- PASS: TestDirectGCFreshStructScalarBitsAndNullOverwrite/f64 (0.00s)
+=== RUN   TestDirectGCFreshStructPolicyIsolation
+=== RUN   TestDirectGCFreshStructPolicyIsolation/0-false
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/0-false
+=== RUN   TestDirectGCFreshStructPolicyIsolation/1-true
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/1-true
+=== RUN   TestDirectGCFreshStructPolicyIsolation/2-false
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/2-false
+=== RUN   TestDirectGCFreshStructPolicyIsolation/3-true
+=== PAUSE TestDirectGCFreshStructPolicyIsolation/3-true
+=== CONT  TestDirectGCFreshStructPolicyIsolation/0-false
+=== CONT  TestDirectGCFreshStructPolicyIsolation/2-false
+=== CONT  TestDirectGCFreshStructPolicyIsolation/3-true
+=== CONT  TestDirectGCFreshStructPolicyIsolation/1-true
+--- PASS: TestDirectGCFreshStructPolicyIsolation (0.00s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/1-true (0.00s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/3-true (0.00s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/2-false (0.01s)
+    --- PASS: TestDirectGCFreshStructPolicyIsolation/0-false (0.01s)
+=== RUN   TestGCFreshStructExactArtifactReceipt
+    gc_fresh_struct_receipt_amd64_test.go:21: fresh-struct-forward=1 generated-bytes=1711
+--- PASS: TestGCFreshStructExactArtifactReceipt (0.00s)
+=== RUN   TestGCFreshStructSameBinaryReceipts
+    gc_fresh_struct_samebinary_amd64_test.go:25: struct-allocation-access enabled=false forwarded=0 code=1775 sha256=b2ebf75e04b638d42ebc593c2ddb08d393bec9b2f8e9e4f86647ed34b10f5750
+    gc_fresh_struct_samebinary_amd64_test.go:25: struct-allocation-access enabled=true forwarded=1 code=1711 sha256=13e8457d1af2f5708996cefec98adfb905b0c8a48df32fd16c9dcabeef9774f9
+    gc_fresh_struct_samebinary_amd64_test.go:25: struct-allocation-access enabled=false forwarded=0 code=1775 sha256=b2ebf75e04b638d42ebc593c2ddb08d393bec9b2f8e9e4f86647ed34b10f5750
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-allocation-access enabled=false forwarded=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-allocation-access enabled=true forwarded=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-allocation-access enabled=false forwarded=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-fill enabled=false forwarded=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-fill enabled=true forwarded=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-fill enabled=false forwarded=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-copy-checksum enabled=false forwarded=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-copy-checksum enabled=true forwarded=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-copy-checksum enabled=false forwarded=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-loop-copy-checksum enabled=false forwarded=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-loop-copy-checksum enabled=true forwarded=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_fresh_struct_samebinary_amd64_test.go:25: array-loop-copy-checksum enabled=false forwarded=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_fresh_struct_samebinary_amd64_test.go:25: tree-survival enabled=false forwarded=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+    gc_fresh_struct_samebinary_amd64_test.go:25: tree-survival enabled=true forwarded=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+    gc_fresh_struct_samebinary_amd64_test.go:25: tree-survival enabled=false forwarded=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+--- PASS: TestGCFreshStructSameBinaryReceipts (0.01s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.099s
