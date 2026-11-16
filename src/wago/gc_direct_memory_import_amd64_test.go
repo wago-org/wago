@@ -219,6 +219,21 @@ func TestDirectGCMemoryImportSharedContextLifetime(t *testing.T) {
 	}
 	// Failed start runs after basedata mutation. The previous tenant must still
 	// rebind correctly and no failed attachment may survive.
+	previousView := other.jm.GCNativeViewPtr()
+	badBytes := append(directMemoryBytes(0, false), wasmtest.Section(11, wasmtest.Vec([]byte{0, 0x41, 0x80, 0x80, 0x28, 0x0b, 1, 0}))...)
+	badData, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), badBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer badData.Close()
+	rejected, e := Instantiate(badData, directMemoryOpts(r0, memory))
+	if e == nil {
+		rejected.Close()
+		t.Fatal("out of bounds data initializer succeeded")
+	}
+	if other.jm.GCNativeViewPtr() != previousView {
+		t.Fatal("failed initializer did not restore native GC view")
+	}
 	bad := directMemoryCompile(t, 0, true)
 	failed, e := Instantiate(bad, directMemoryOpts(r0, memory))
 	if e == nil {
