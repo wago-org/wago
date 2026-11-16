@@ -21,7 +21,7 @@ func (c *Collector) NewArrayDataWithRoots(typeID TypeID, length uint32, data []b
 	if d.Kind != KindArray || !isNumericStorage(d.Elem) {
 		return Null(), errors.New("gc: array data destination is not numeric")
 	}
-	size, err := ArraySize(d, length)
+	size, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}

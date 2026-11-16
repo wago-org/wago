@@ -7,8 +7,6 @@ package gc
 import (
 	"errors"
 	"runtime"
-
-	directgc "github.com/wago-org/wago/experiments/directgc"
 )
 
 // NewExperimentalDirectCollector constructs a bounded moving-offset collector
@@ -18,6 +16,19 @@ import (
 // The two old semispaces and tracing scratch are deliberately explicit prototype
 // costs. This constructor does not claim native-code compatibility or performance.
 func NewExperimentalDirectCollector(config Config, types []TypeDesc) (*Collector, error) {
+	if directHeapCompact || config.ExperimentalCompactOffsets {
+		return nil, errors.New("gc: direct layout unavailable for compact configuration/build")
+	}
+	return newExperimentalOffsetCollector(config, types)
+}
+func NewExperimentalCompactCollector(config Config, types []TypeDesc) (*Collector, error) {
+	if !directHeapCompact || !nativeCollectorFastPaths || config.ExperimentalDirectOffsets {
+		return nil, errors.New("gc: compact layout requires exclusive compact helper build/configuration")
+	}
+	config.ExperimentalCompactOffsets = true
+	return newExperimentalOffsetCollector(config, types)
+}
+func newExperimentalOffsetCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if runtime.GOARCH != "amd64" || config.Profile != ProfileThroughput || config.DisableCollection || config.DisableMovingNursery || config.PoisonFreed || config.StressBarriers || config.VerifyAfterCollect {
 		return nil, errors.New("gc: unsupported direct-offset experimental configuration")
 	}
@@ -32,7 +43,7 @@ func NewExperimentalDirectCollector(config Config, types []TypeDesc) (*Collector
 	if err = ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	heap, err := directgc.NewWithTypes(align(config.NurseryBytes, 16), align(config.ThroughputHeapBytes, 16), directDescriptors(types))
+	heap, err := newDirectHeap(align(config.NurseryBytes, 16), align(config.ThroughputHeapBytes, 16), directDescriptors(types))
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +57,13 @@ func NewExperimentalDirectCollector(config Config, types []TypeDesc) (*Collector
 	return c, nil
 }
 
-func directRef(r Ref) directgc.Ref { return directgc.Ref(r) }
-func directDescriptors(types []TypeDesc) []directgc.Descriptor {
-	out := make([]directgc.Descriptor, len(types))
+func directRef(r Ref) directHeapRef { return directHeapRef(r) }
+func directDescriptors(types []TypeDesc) []directHeapDescriptor {
+	out := make([]directHeapDescriptor, len(types))
 	for i, d := range types {
-		x := directgc.Descriptor{Kind: directgc.KindStruct, PayloadBytes: d.Size, Align: max(d.Align, 8)}
+		x := directHeapDescriptor{Kind: directHeapKindStruct, PayloadBytes: d.Size, Align: directDescriptorAlign(d.Align)}
 		if d.Kind == KindArray {
-			x.Kind = directgc.KindArray
+			x.Kind = directHeapKindArray
 			x.ElementSize = d.ElemSize
 			x.ElementRef = isCollectorRefKind(d.Elem)
 		}
@@ -92,21 +103,21 @@ func (c *Collector) directAlloc(d TypeDesc, aux uint32, roots RootSet) (Ref, err
 			return 0, err
 		}
 	}
-	allocate := func() (directgc.Ref, error) {
+	allocate := func() (directHeapRef, error) {
 		if d.Kind == KindStruct {
-			return c.direct.NewStruct(directgc.TypeID(d.ID))
+			return c.direct.NewStruct(directHeapTypeID(d.ID))
 		}
-		return c.direct.NewArray(directgc.TypeID(d.ID), aux)
+		return c.direct.NewArray(directHeapTypeID(d.ID), aux)
 	}
 	r, err := allocate()
-	if errors.Is(err, directgc.ErrOOM) && roots != nil {
+	if errors.Is(err, errDirectHeapOOM) && roots != nil {
 		err = c.directCollect(roots, false)
-		if errors.Is(err, directgc.ErrOOM) {
+		if errors.Is(err, errDirectHeapOOM) {
 			err = c.directCollect(roots, true)
 		}
 		if err == nil {
 			r, err = allocate()
-			if errors.Is(err, directgc.ErrOOM) {
+			if errors.Is(err, errDirectHeapOOM) {
 				if err = c.directCollect(roots, true); err == nil {
 					r, err = allocate()
 				}
@@ -142,8 +153,8 @@ func (c *Collector) directCollect(roots RootSet, full bool) error {
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
-	values := make([]directgc.Ref, len(slots))
-	pointers := make([]*directgc.Ref, len(slots))
+	values := make([]directHeapRef, len(slots))
+	pointers := make([]*directHeapRef, len(slots))
 	for i, s := range slots {
 		values[i] = directRef(s.GetRef())
 		pointers[i] = &values[i]

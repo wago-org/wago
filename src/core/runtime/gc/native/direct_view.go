@@ -109,10 +109,10 @@ func (c *Collector) refreshDirectView() {
 		*v = DirectCollectorView{Version: DirectABIVersion, Size: DirectCollectorViewSize}
 		return
 	}
-	x := c.direct.ReadView()
+	x := heapReadSnapshot(c.direct)
 	*v = DirectCollectorView{Version: DirectABIVersion, Size: DirectCollectorViewSize, Arena: x.Arena, ArenaBytes: x.ArenaBytes, Starts: x.Starts, StartCount: x.StartCount, NurseryStart: x.NurseryStart, NurseryBump: x.NurseryBump, OldStart: x.OldStart, OldBump: x.OldBump, Dirty: x.Dirty, DirtyCount: x.DirtyCount}
 	if c.directNativeAllocationEnabled() {
-		words := c.direct.AllocationWords()
+		words := heapAllocationSnapshot(c.direct)
 		v.NurseryBumpAddress = uintptr(unsafe.Pointer(words.Bump))
 		v.NurseryEnd = words.End
 		v.AllocationEnabled = 1
@@ -120,13 +120,13 @@ func (c *Collector) refreshDirectView() {
 }
 
 func (c *Collector) directNativeAllocationEnabled() bool {
-	return c != nil && !c.closed && c.direct != nil && !failureInjectionEnabled &&
+	return !directHeapCompact && c != nil && !c.closed && c.direct != nil && !failureInjectionEnabled &&
 		!c.cfg.CollectEveryAlloc && !c.cfg.VerifyAfterCollect && !c.cfg.PoisonFreed &&
 		!c.cfg.StressBarriers && c.cfg.StressNurseryBytes == 0 && !c.cfg.DisableCollection &&
 		!c.cfg.DisableMovingNursery && c.cfg.Profile == ProfileThroughput
 }
 func (c *Collector) DirectView() *DirectCollectorView {
-	if c == nil || c.closed || c.direct == nil {
+	if directHeapCompact || c == nil || c.closed || c.direct == nil {
 		return nil
 	}
 	if c.directView == nil {
@@ -165,14 +165,14 @@ func ValidateDirectInstanceView(v *DirectInstanceView, c *Collector) error {
 	if e := validateDirectViewLayout(); e != nil {
 		return e
 	}
-	if v == nil || c == nil || c.closed || c.direct == nil || c.directView == nil {
+	if directHeapCompact || v == nil || c == nil || c.closed || c.direct == nil || c.directView == nil {
 		return errors.New("gc: unavailable direct instance view")
 	}
 	cv := c.directView
 	if v.Version != DirectABIVersion || v.Size != DirectInstanceViewABISize || v.Collector != uintptr(unsafe.Pointer(cv)) || cv.Version != DirectABIVersion || cv.Size != DirectCollectorViewSize || cv.Arena == 0 || cv.Starts == 0 {
 		return errors.New("gc: invalid direct instance ABI")
 	}
-	owned := c.direct.ReadView()
+	owned := heapReadSnapshot(c.direct)
 	if cv.Dirty == 0 || cv.Dirty != owned.Dirty || cv.DirtyCount != owned.DirtyCount {
 		return errors.New("gc: invalid direct remembered backing")
 	}
@@ -180,7 +180,7 @@ func ValidateDirectInstanceView(v *DirectInstanceView, c *Collector) error {
 		return errors.New("gc: invalid direct canonical type backing")
 	}
 	if c.directNativeAllocationEnabled() {
-		words := c.direct.AllocationWords()
+		words := heapAllocationSnapshot(c.direct)
 		if cv.AllocationEnabled != 1 || cv.NurseryBumpAddress != uintptr(unsafe.Pointer(words.Bump)) || cv.NurseryEnd != words.End || cv.AllocationCounter != 0 || cv.NurseryBump != *words.Bump {
 			return errors.New("gc: invalid direct allocation capability")
 		}

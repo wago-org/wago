@@ -67,6 +67,13 @@ func (c *Collector) NewStructWordsPrevalidatedWithRootScratch(typeID TypeID, wor
 		roots = scratch
 	}
 	sz := Align8(HeaderSize + d.Size)
+	if directHeapCompact && c.direct != nil {
+		var sizeErr error
+		sz, sizeErr = c.structObjectSize(d)
+		if sizeErr != nil {
+			return Null(), sizeErr
+		}
+	}
 	r, err := c.alloc(d, sz, 0, roots)
 	if err != nil {
 		return Null(), err
@@ -129,6 +136,13 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 	// Collector construction validates every descriptor and padded size, so this
 	// initialized-constructor hot path need not repeat overflow arithmetic.
 	sz := Align8(HeaderSize + d.Size)
+	if directHeapCompact && c.direct != nil {
+		var sizeErr error
+		sz, sizeErr = c.structObjectSize(d)
+		if sizeErr != nil {
+			return Null(), sizeErr
+		}
+	}
 	r, err := c.alloc(d, sz, 0, roots)
 	if err != nil {
 		return Null(), err
@@ -167,7 +181,7 @@ func (c *Collector) NewStructUninitializedWithRoots(typeID TypeID, roots RootSet
 	if err != nil {
 		return Null(), err
 	}
-	sz, err := StructSize(d)
+	sz, err := c.structObjectSize(d)
 	if err != nil {
 		return Null(), err
 	}
@@ -187,7 +201,7 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 	if err := checkDefaultable(d); err != nil {
 		return Null(), err
 	}
-	sz, err := StructSize(d)
+	sz, err := c.structObjectSize(d)
 	if err != nil {
 		return Null(), err
 	}
@@ -212,7 +226,7 @@ func (c *Collector) ReserveDeadStructAllocation(typeID TypeID, roots RootSet) (R
 	if err != nil {
 		return Null(), err
 	}
-	sz, err := StructSize(d)
+	sz, err := c.structObjectSize(d)
 	if err != nil {
 		return Null(), err
 	}
@@ -236,7 +250,7 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 	if err != nil {
 		return err
 	}
-	size, err := ArraySize(d, length)
+	size, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return err
 	}
@@ -275,7 +289,7 @@ func (c *Collector) ReserveDeadArrayAllocation(typeID TypeID, length uint32, roo
 	if err != nil {
 		return Null(), err
 	}
-	size, err := ArraySize(d, length)
+	size, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}
@@ -359,7 +373,7 @@ func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 	if hasObjectRefs && !valuesRooted {
 		roots = combineRootSets(roots, valueRootSet{values: values, all: true})
 	}
-	sz, err := ArraySize(d, uint32(len(values)))
+	sz, err := c.arrayObjectSize(d, uint32(len(values)))
 	if err != nil {
 		return Null(), err
 	}
@@ -393,7 +407,7 @@ func (c *Collector) NewArrayWithRootScratch(typeID TypeID, length uint32, init V
 	if err := c.validateStoredRef(init.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
 		return Null(), err
 	}
-	sz, err := ArraySize(d, length)
+	sz, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}
@@ -426,7 +440,7 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 			return Null(), err
 		}
 	}
-	sz, err := ArraySize(d, length)
+	sz, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}
@@ -467,7 +481,7 @@ func (c *Collector) NewRefArrayWithRoots(typeID TypeID, length uint32, init Root
 	if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(d.Elem)); err != nil {
 		return Null(), err
 	}
-	sz, err := ArraySize(d, length)
+	sz, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}
@@ -494,7 +508,7 @@ func (c *Collector) NewArrayUninitializedWithRoots(typeID TypeID, length uint32,
 	if err != nil {
 		return Null(), err
 	}
-	sz, err := ArraySize(d, length)
+	sz, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}
@@ -526,7 +540,7 @@ func (c *Collector) newArrayDefaultWithRoots(typeID TypeID, length uint32, roots
 			return Null(), err
 		}
 	}
-	sz, err := ArraySize(d, length)
+	sz, err := c.arrayObjectSize(d, length)
 	if err != nil {
 		return Null(), err
 	}

@@ -20,11 +20,11 @@ func (c *Collector) StructPayloadReadOnly(ref Ref, expected TypeID) ([]byte, err
 	if d.Kind != KindStruct || d.ID != expected {
 		return nil, fmt.Errorf("gc: unexpected struct payload type")
 	}
-	object := c.bytes(ref)
-	if uint64(PayloadOffset)+uint64(d.Size) > uint64(len(object)) {
+	object := c.payloadBytes(ref)
+	if uint64(d.Size) > uint64(len(object)) {
 		return nil, fmt.Errorf("gc: truncated struct payload")
 	}
-	return object[PayloadOffset : PayloadOffset+d.Size : PayloadOffset+d.Size], nil
+	return object[:d.Size:d.Size], nil
 }
 
 // TypeCount reports the immutable descriptor count under the collector lease.

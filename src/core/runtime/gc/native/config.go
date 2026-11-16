@@ -25,6 +25,15 @@ func ValidateConfig(cfg Config) error {
 }
 
 func normalizeConfig(cfg Config) (Config, error) {
+	if cfg.ExperimentalDirectOffsets && cfg.ExperimentalCompactOffsets {
+		return cfg, fmt.Errorf("gc: offset layouts are mutually exclusive")
+	}
+	if cfg.ExperimentalCompactOffsets && !directHeapCompact {
+		return cfg, fmt.Errorf("gc: compact helper build required")
+	}
+	if cfg.ExperimentalDirectOffsets && directHeapCompact {
+		return cfg, fmt.Errorf("gc: direct ABI unavailable in compact helper build")
+	}
 	switch cfg.Profile {
 	case ProfileThroughput:
 		if cfg.Allocator == 0 && cfg.Runtime == 0 {

@@ -12,8 +12,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-
-	directgc "github.com/wago-org/wago/experiments/directgc"
 )
 
 // Profile selects a supported allocator/runtime preset.
@@ -83,13 +81,14 @@ type Config struct {
 	Runtime   RuntimeKind
 
 	// ExperimentalDirectOffsets requires helper-only compiled artifacts and an owned Runtime.
-	ExperimentalDirectOffsets bool
-	CollectEveryAlloc         bool
-	ForceMajorEveryMinor      bool
-	VerifyAfterCollect        bool
-	PoisonFreed               bool
-	StressBarriers            bool
-	DisableMovingNursery      bool
+	ExperimentalDirectOffsets  bool
+	ExperimentalCompactOffsets bool // separate compact helper-only layout; build-gated
+	CollectEveryAlloc          bool
+	ForceMajorEveryMinor       bool
+	VerifyAfterCollect         bool
+	PoisonFreed                bool
+	StressBarriers             bool
+	DisableMovingNursery       bool
 	// DisableCollection keeps every object in the bounded throughput heap and
 	// returns an allocation error on exhaustion. It is used by general WasmGC
 	// code until native frame roots can be published at every safepoint.
@@ -184,7 +183,7 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
-	direct                       *directgc.Collector
+	direct                       *directHeap
 	directView                   *DirectCollectorView
 }
 
@@ -196,6 +195,9 @@ var denseNurseryPregrowEnabled = nativeCollectorFastPaths && os.Getenv("WAGO_"+s
 var errCollectorClosed = errors.New("gc: collector closed")
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
+	if config.ExperimentalCompactOffsets {
+		return NewExperimentalCompactCollector(config, types)
+	}
 	if config.ExperimentalDirectOffsets {
 		return NewExperimentalDirectCollector(config, types)
 	}

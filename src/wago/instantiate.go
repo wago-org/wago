@@ -292,6 +292,21 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 }
 
 func (b *instanceBuilder) prepareCollector() error {
+	if b.opts.GC.ExperimentalDirectOffsets && b.opts.GC.ExperimentalCompactOffsets {
+		return errors.New("wago: offset layouts are mutually exclusive")
+	}
+	if b.c.gcCompactHelperReceipt() != 0 && !b.opts.GC.ExperimentalCompactOffsets {
+		return errors.New("wago: compact artifact requires compact collector")
+	}
+	if b.opts.GC.ExperimentalCompactOffsets {
+		if err := gc.ValidateConfig(b.opts.GC); err != nil {
+			return err
+		}
+		if b.c.gcCompactHelperReceipt() != gc.CompactABIVersion {
+			return errors.New("wago: compact collector requires fresh compact helper artifact")
+		}
+	}
+
 	if (b.c.gcTrustedDirectVersion != 0 || b.c.gcDirectReadABIReceipt() != 0) && b.c.needsNativeGCABI() && !b.opts.GC.ExperimentalDirectOffsets {
 		return errors.New("wago: native direct-read artifact requires direct-offset collector")
 	}
@@ -308,7 +323,7 @@ func (b *instanceBuilder) prepareCollector() error {
 	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.stagedGCI31Product() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
 		return nil
 	}
-	if b.opts.GC.ExperimentalDirectOffsets {
+	if b.opts.GC.ExperimentalDirectOffsets || b.opts.GC.ExperimentalCompactOffsets {
 		if err := b.admitDirectGCExperiment(); err != nil {
 			return err
 		}

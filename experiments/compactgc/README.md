@@ -72,3 +72,25 @@ struct 224; descriptor backing 48; reference-offset backing 8. Fixed backing is
 1,911 bytes. This excludes Go allocator rounding/bookkeeping and is not RSS.
 All existing directgc backing geometry remains unchanged in the new package:
 compact headers reduce per-object occupancy, not these fixed arena budgets.
+
+## Helper-only Wago integration experiment
+
+Build with `wago_gc_compact_helpers` and explicitly select
+`GCConfig.ExperimentalCompactOffsets`. The compiler issues a separate private
+compact-helper receipt; ordinary handle artifacts and direct native ABI artifacts
+are not interchangeable. Combining compact and direct native compiler tags is
+rejected. The existing owned-Runtime, no-import/table/EH/extern admission remains.
+This is an AMD64 experiment, not a TinyGo execution mode.
+
+The native collector wrapper selects a backend concrete type at build time;
+there is no new collector interface or pointer field. Compact payloads are the
+real logical backing slices. Header access returns computed values, never an
+expanded mutable native-header buffer. Native DirectView is unavailable. Generic
+public StructSize/ArraySize utilities still describe the original native layout;
+collector-bound allocation preflights use the selected backend's geometry.
+
+Initial qualification covers exact retained-object wasm.fyi fixtures, mutable
+globals and exported tokens through relocation, initializer scratch roots,
+reference barriers, capacity failure, packed numeric payload borrows/copy/data
+initialization, and default native collector tests. This is not a complete
+conformance or performance qualification, and no V8 comparison is claimed.

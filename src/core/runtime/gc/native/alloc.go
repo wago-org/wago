@@ -251,6 +251,9 @@ func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
 }
 
 func (c *Collector) refDescPtr(r Ref) (*TypeDesc, error) {
+	if directHeapCompact && c.direct != nil {
+		return c.compactRefDesc(r)
+	}
 	d, _, err := c.refDescPtrBytes(r)
 	return d, err
 }
@@ -312,8 +315,7 @@ func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
 func (c *Collector) entry(r Ref) *handleEntry { return &c.handles[handleOf(r)] }
 func (c *Collector) bytes(r Ref) []byte {
 	if c.direct != nil {
-		b, _ := c.direct.ObjectBytes(directRef(r))
-		return b
+		return directRawBytes(c.direct, directRef(r))
 	}
 	e := c.entry(r)
 	switch e.space {
@@ -328,6 +330,13 @@ func (c *Collector) bytes(r Ref) []byte {
 	}
 }
 func (c *Collector) header(r Ref) ObjHeader {
+	if directHeapCompact && c.direct != nil {
+		h, _, err := c.compactHeaderPayload(r)
+		if err != nil {
+			panic(err)
+		}
+		return h
+	}
 	return decodeHeader(c.bytes(r))
 }
 

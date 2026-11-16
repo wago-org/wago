@@ -10,6 +10,15 @@ import (
 // narrow until every host/cross-instance storage edge has a relocation contract.
 func (b *instanceBuilder) admitDirectGCExperiment() error {
 	c := b.c
+	compact := b.opts.GC.ExperimentalCompactOffsets
+	if compact {
+		if c.gcCompactHelperReceipt() != gc.CompactABIVersion || c.hasGCHelperOnlyReceipt() || c.gcDirectReadABIReceipt() != 0 || c.gcTrustedDirectVersion != 0 || c.loadValidateMemo().executionView() != c {
+			return errors.New("wago: compact helper GC requires a fresh private compact compiler snapshot")
+		}
+	} else if c.gcCompactHelperReceipt() != 0 {
+		return errors.New("wago: compact artifact cannot use direct layout")
+	}
+
 	if c.gcTrustedDirectVersion != 0 {
 		if c.gcTrustedDirectVersion > 6 || c.gcDirectReadABIReceipt() != gc.DirectABIVersion || c.hasGCHelperOnlyReceipt() || c.loadValidateMemo().executionView() != c {
 			return errors.New("wago: trusted direct reads require a fresh private compiler snapshot and matching direct ABI")
@@ -18,7 +27,7 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 	if v := c.gcDirectReadABIReceipt(); v != 0 && v != gc.DirectABIVersion {
 		return errors.New("wago: unsupported direct-read ABI receipt")
 	}
-	if (!c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() != gc.DirectABIVersion) || b.opts.store == nil || b.opts.store.private || !c.needsRuntimeGCCollectorDomain() || !c.sharedGCPersistentDomainSafe() || c.genericGCFrameRoots() == nil {
+	if (!compact && !c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() != gc.DirectABIVersion) || b.opts.store == nil || b.opts.store.private || !c.needsRuntimeGCCollectorDomain() || !c.sharedGCPersistentDomainSafe() || c.genericGCFrameRoots() == nil {
 		return errors.New("wago: direct-offset GC requires a fresh helper-only artifact and an owned exact-root Runtime domain")
 	}
 	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryImport != "" || c.usesManagedFunctionStorage() || c.hasOpaqueExternFrames() || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.usesAtomicWaitHelpers() || len(c.customInstructions) != 0 || (b.opts.runtime != nil && len(b.opts.runtime.plugins) != 0) {
