@@ -356,3 +356,65 @@ func TestDirectMemoryImportPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestDirectGCMemoryImportAllocationPressure(t *testing.T) {
+	c := directMemoryCompile(t, 0, false)
+	host, e := NewMemory(1, 3)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer host.Close()
+	rt0 := NewRuntime()
+	defer rt0.Close()
+	rt1 := NewRuntime()
+	defer rt1.Close()
+	makeIn := func(rt *Runtime, memory *Memory) *Instance {
+		opts := directMemoryOpts(rt, memory)
+		opts.GC.CollectEveryAlloc = false
+		opts.GC.ForceMajorEveryMinor = false
+		opts.GC.VerifyAfterCollect = false
+		in, e := Instantiate(c, opts)
+		if e != nil {
+			t.Fatal(e)
+		}
+		t.Cleanup(func() { in.Close() })
+		return in
+	}
+	first := makeIn(rt0, host)
+	memory, e := first.ExportedMemory("memory")
+	if e != nil {
+		t.Fatal(e)
+	}
+	second := makeIn(rt1, memory)
+	for _, in := range []*Instance{first, second} {
+		out, e := in.Invoke("new", 51)
+		if e != nil {
+			t.Fatal(e)
+		}
+		token := out[0]
+		before := in.gc.Stats()
+		for i := 0; i < 80; i++ {
+			// Alternate the other tenant before each allocation to invalidate shared
+			// basedata ownership. No diagnostic collection disables native allocation.
+			other := first
+			if in == first {
+				other = second
+			}
+			if _, e = other.Invoke("grow", 0); e != nil {
+				t.Fatal(e)
+			}
+			out, e = in.Invoke("step", token, 0)
+			if e != nil || out[0] != 51 {
+				t.Fatal(out, e)
+			}
+		}
+		after := in.gc.Stats()
+		if after.MinorCollections+after.FullCollections <= before.MinorCollections+before.FullCollections {
+			t.Fatal("no allocation-pressure collection")
+		}
+		if e = in.ReleaseGCRef(GCRef{token: token}); e != nil {
+			t.Fatal(e)
+		}
+		directMemoryCheck(t, in)
+	}
+}
