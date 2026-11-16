@@ -292,6 +292,11 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 }
 
 func (b *instanceBuilder) prepareCollector() error {
+	if b.opts.GC.ExperimentalCompactAge2 {
+		if err := gc.ValidateConfig(b.opts.GC); err != nil {
+			return err
+		}
+	}
 	if b.opts.GC.ExperimentalDirectOffsets && b.opts.GC.ExperimentalCompactOffsets {
 		return errors.New("wago: offset layouts are mutually exclusive")
 	}

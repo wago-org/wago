@@ -138,3 +138,28 @@ pinned locals, and actual major relocation. Independent source review found no
 blocker. No failed test attempts occurred in this qualification. These are
 selected experimental-mode tests, not full GC conformance or an unfiltered
 repository suite. LICM composition and performance timing remain untested.
+
+## ABI4 age2 capability (source-stage experiment)
+
+ABI4 uses the existing88-byte collector view's offset84 for a policy word:
+0 is promote-all,1 is the optional age2 policy. No collector pointer or view size
+is added. Fresh compiled native artifacts carry ABI4; ABI3 receipts are not
+admitted. Helper-only receipts remain separate. `ExperimentalCompactAge2`
+requires `ExperimentalCompactOffsets`, a compatible `wago_gc_compact_age2`
+build plus a compact helper/native mode, enabled throughput collection, and a
+total nursery budget at least64 bytes and divisible by32. Cohort/shadow diagnostic
+combinations reject this policy. The fixed retention cap is one quarter of the
+TOTAL nursery budget; the two active/inactive spaces split that budget rather
+than doubling it. Existing promote-all defaults do not change.
+
+After every collection/allocation/error path the typed view reloads the active
+nursery start, occupied bump, end and authoritative bump address. Native helpers
+already discard raw derived pointers across safepoints. Old-parent dirty
+certificates remain read-only. A first survivor may remain in the active young
+prefix; next-cycle promotion and remembered edges are maintained by the core.
+Deferred allocation accounting excludes the retained prefix. Unknown/mismatched
+policy words fail the ordinary view snapshot validation.
+
+Source-stage only: runtime/native flip, rooted token/global, stress, OOM,
+barrier/deferred accounting and footprint qualification are pending. The policy
+has no measured speed or V8 parity claim.
