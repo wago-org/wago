@@ -187,3 +187,21 @@ Compiled808, helper Instance904/native Instance912. The age2 flag fits existing
 Config padding and introduces no new runtime/collector pointer. This is not an
 unfiltered repository or full WasmGC conformance pass, and does not qualify SSE
 recovery/LICM combinations or establish performance improvement.
+
+### Canonical age-two/SSE composition qualification (2026-11-16)
+
+Integrated source `c5a571a3` passed the applicable compact SSE + refstruct +
+age-two + regalloc runtime matrix (1.262s), native compact matrix (0.003s),
+default native collector (3.038s), wrapper (0.005s), and compact core (0.024s).
+Full default Wago (52.617s), amd64 backend (11.266s), debug native collector
+(3.049s), and patched TinyGo 0.42.0 tasks-scheduler native/wrapper tests
+(3.429s/0.004s) also passed. Integration retained SSE in three build-tag unions;
+independent source review confirmed the enabled/default expressions complement
+one another. No runtime failure occurred during this composition qualification.
+
+The policy remains opt-in. No speed or V8-target claim follows from these tests.
+Matched measurements must use the same recovered Intel host, compiler options,
+total young budget and old-space budgets. At total young 2 MiB, age-two has two
+1 MiB spaces and a 512 KiB retention cap; its direct-old allocation threshold is
+1 MiB rather than the promote-all policy's 2 MiB. Diagnostic tags are excluded
+from age-two admission and from timing binaries.
