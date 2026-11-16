@@ -25,3 +25,19 @@ A later coordinated quiet window can use `--rounds 3 --samples 3 --batch 4`.
 Inspect `timed_collections`; increase batches if the timed region has no GC.
 Raw JSON retains failures rather than silently dropping unsuccessful workloads.
 Artifacts and SHA256 checks come from the unchanged parent `cases.json`.
+
+## Initial exploratory result
+
+See `evidence/summary.md` and raw JSON. All 27 timed processes passed checksums
+and collected during measurement. Native direct reads reduced time versus the
+helper-only direct variant, but struct/array remained substantially slower than
+helper-only stable handles. This does not establish an overall GC improvement.
+The first public-API audit found and motivated a WithGC admission fix; that
+failure record is preserved separately.
+
+The initial timing launcher's whole-binary hash allocation contaminated child
+`ru_maxrss` with inherited pre-exec high water. Those RSS values are explicitly
+discarded, not treated as equal memory use. Non-timed memory audit results came
+from a small independent launcher. Future source streams hashes and also reads
+Linux `/proc/self/status` high-water/current RSS counters; those source changes
+postdate the recorded binaries and were formatted but not rebuilt for this run.

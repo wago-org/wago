@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -129,6 +130,18 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		out["direct_old_semispaces"] = 2
 		out["direct_arena_bytes"] = 16 + config.NurseryBytes + 2*config.ThroughputHeapBytes
 		out["unimplemented_direct_stats"] = "copied/promoted bytes and scan counters are not instrumented; zeros are not measured zero work"
+	}
+	// /proc mm counters reset at exec, unlike ru_maxrss which may retain the
+	// launching parent's pre-exec high-water floor on this system.
+	if status, e := os.ReadFile("/proc/self/status"); e == nil {
+		for _, line := range strings.Split(string(status), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && (fields[0] == "VmHWM:" || fields[0] == "VmRSS:") {
+				if value, e := strconv.ParseUint(fields[1], 10, 64); e == nil {
+					out["proc_"+strings.TrimSuffix(fields[0], ":")+"_kib"] = value
+				}
+			}
+		}
 	}
 	b, e := json.Marshal(out)
 	if e != nil {
