@@ -2,6 +2,8 @@
 
 package gc
 
+import "unsafe"
+
 type compactViewState struct{ compactView *CompactCollectorView }
 
 func (c *Collector) compactReadSnapshot() CompactCollectorView {
@@ -18,6 +20,12 @@ func (c *Collector) compactReadSnapshot() CompactCollectorView {
 	v.NurseryBump = x.NurseryBump
 	v.OldStart = x.OldStart
 	v.OldBump = x.OldBump
+	if c.compactNativeAllocationEnabled() {
+		w := c.direct.AllocationWords()
+		v.NurseryBumpAddress = uintptr(unsafe.Pointer(w.Bump))
+		v.NurseryEnd = w.End
+		v.AllocationEnabled = 1
+	}
 	return v
 }
 func (c *Collector) currentCompactView() *CompactCollectorView {
@@ -40,4 +48,9 @@ func (c *Collector) CompactView() *CompactCollectorView {
 	}
 	c.refreshCompactView()
 	return c.compactView
+}
+
+func (c *Collector) compactNativeAllocationEnabled() bool {
+	return compactTargetEnabled && nativeCollectorFastPaths && c != nil && !c.closed && c.direct != nil && !failureInjectionEnabled &&
+		!c.cfg.CollectEveryAlloc && !c.cfg.VerifyAfterCollect && !c.cfg.PoisonFreed && !c.cfg.StressBarriers && c.cfg.StressNurseryBytes == 0 && !c.cfg.DisableCollection && !c.cfg.DisableMovingNursery && c.cfg.Profile == ProfileThroughput
 }

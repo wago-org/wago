@@ -31,7 +31,7 @@ func TestCompactReadViewLifecycle(t *testing.T) {
 	if cv != c.CompactView() || cv.NurseryBump <= initial {
 		t.Fatal("view identity/bump not refreshed")
 	}
-	if unsafe.Sizeof(*cv) != 56 || unsafe.Offsetof(v.keepTypes) != 32 {
+	if unsafe.Sizeof(*cv) != CompactCollectorViewSize || unsafe.Offsetof(v.keepTypes) != 32 {
 		t.Fatal("layout")
 	}
 	// A root slot is retargeted by the moving adapter, not a cached address.
@@ -98,5 +98,46 @@ func TestCompactReadViewErrorAndMapOwnership(t *testing.T) {
 	v.LocalTypes = old
 	if c.DirectView() != nil {
 		t.Fatal("compact heap exposed direct ABI")
+	}
+}
+
+func TestCompactAllocationViewCapability(t *testing.T) {
+	d, _ := NewStructDesc(0, []StorageKind{StorageI32})
+	for _, every := range []bool{false, true} {
+		c, e := NewExperimentalCompactCollector(Config{NurseryBytes: 128, ThroughputHeapBytes: 256, CollectEveryAlloc: every}, []TypeDesc{d})
+		if e != nil {
+			t.Fatal(e)
+		}
+		v, e := BuildCompactInstanceView(c, []TypeID{0})
+		if e != nil {
+			t.Fatal(e)
+		}
+		cv := c.CompactView()
+		enabled := !every && !failureInjectionEnabled
+		if (cv.AllocationEnabled == 1) != enabled {
+			t.Fatal("unexpected capability")
+		}
+		if enabled {
+			w := c.direct.AllocationWords()
+			if cv.NurseryBumpAddress != uintptr(unsafe.Pointer(w.Bump)) || cv.NurseryEnd != w.End || cv.NurseryBump != *w.Bump {
+				t.Fatal("not authoritative cursor")
+			}
+			cv.NurseryBumpAddress++
+			if ValidateCompactInstanceView(v, c) == nil {
+				t.Fatal("foreign cursor accepted")
+			}
+			c.refreshCompactView()
+		} else if cv.NurseryBumpAddress != 0 || cv.NurseryEnd != 0 {
+			t.Fatal("disabled writable capability")
+		}
+		cv.Version = 1
+		if ValidateCompactInstanceView(v, c) == nil {
+			t.Fatal("ABI1 accepted")
+		}
+		c.refreshCompactView()
+		c.Close()
+		if cv.NurseryBumpAddress != 0 || cv.NurseryEnd != 0 || cv.AllocationEnabled != 0 {
+			t.Fatal("closed capability exposed")
+		}
 	}
 }
