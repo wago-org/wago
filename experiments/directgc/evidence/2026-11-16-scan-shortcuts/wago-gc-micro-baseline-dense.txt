@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/denseRefArray         	    2124	    145603 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/denseRefArray         	    1856	    163457 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/denseRefArray         	    2485	    154748 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/denseRefArray         	    2442	    169505 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/denseRefArray         	    2437	    148723 ns/op	       0 B/op	       0 allocs/op
+PASS

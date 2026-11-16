@@ -1,0 +1,45 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/scalarStruct         	   23680	     15824 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/scalarArray          	   22896	     14381 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refStruct            	   19477	     19914 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refArray             	    2967	    123368 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/scalarStruct         	   24384	     14251 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/scalarArray          	   25813	     13584 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refStruct            	   17876	     18836 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refArray             	    2905	    112580 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/scalarStruct         	   25245	     14110 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/scalarArray          	   25471	     14060 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refStruct            	   20220	     18915 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refArray             	    2906	    125005 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/scalarStruct         	   26917	     14174 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/scalarArray          	   23553	     13415 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refStruct            	   18884	     19374 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refArray             	    3434	    124980 ns/op	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkFullTracingShapes/scalarStruct         	   21009	     16442 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/scalarArray          	   20811	     16542 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refStruct            	   16014	     20771 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFullTracingShapes/refArray             	    2884	    122541 ns/op	       0 B/op	       0 allocs/op
+PASS

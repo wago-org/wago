@@ -1,0 +1,105 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkRetirementTraversal/tiny16/headers 	     267	    685830 ns/op	3057.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map     	    1436	    146327 ns/op	14331.94 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers         	     510	    367464 ns/op	5707.10 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map             	    1425	    122446 ns/op	17127.19 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers        	     666	    246302 ns/op	8514.44 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map            	    1551	    132237 ns/op	15858.74 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers        	     722	    240192 ns/op	8731.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map            	    1275	    166449 ns/op	12599.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers        	     814	    226050 ns/op	9277.22 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map            	    1281	    137627 ns/op	15237.75 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers      	     574	    337135 ns/op	6220.50 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map          	    1315	    139793 ns/op	15001.82 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers       	    9498	     22580 ns/op	92852.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map           	    1290	    145987 ns/op	14361.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers           	    2268	     71431 ns/op	29357.69 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map               	    1346	    134761 ns/op	15561.20 MB/s	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkRetirementTraversal/tiny16/headers 	     262	    677965 ns/op	3093.30 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map     	    1515	    127801 ns/op	16409.49 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers         	     541	    348665 ns/op	6014.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map             	    1408	    124340 ns/op	16866.23 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers        	     772	    237321 ns/op	8836.63 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map            	    1498	    124675 ns/op	16820.69 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers        	     774	    272864 ns/op	7685.70 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map            	    1416	    124448 ns/op	16851.68 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers        	     892	    204426 ns/op	10258.56 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map            	    1384	    121774 ns/op	17221.34 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers      	     624	    316730 ns/op	6621.27 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map          	    1508	    131719 ns/op	15921.35 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers       	    9261	     23108 ns/op	90730.49 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map           	    1437	    130064 ns/op	16120.11 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers           	    2610	     80052 ns/op	26196.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map               	    1310	    125743 ns/op	16677.24 MB/s	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkRetirementTraversal/tiny16/headers 	     250	    636095 ns/op	3296.92 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map     	    1477	    123983 ns/op	16914.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers         	     477	    335545 ns/op	6249.98 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map             	    1574	    119634 ns/op	17529.70 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers        	     783	    235132 ns/op	8918.92 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map            	    1498	    122659 ns/op	17097.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers        	     738	    228036 ns/op	9196.59 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map            	    1268	    122440 ns/op	17128.03 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers        	     926	    219156 ns/op	9569.08 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map            	    1369	    136351 ns/op	15380.30 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers      	     513	    337260 ns/op	6218.21 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map          	    1261	    135279 ns/op	15502.36 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers       	    8833	     22384 ns/op	93666.21 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map           	    1425	    127711 ns/op	16417.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers           	    2246	     68114 ns/op	30787.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map               	    1317	    128619 ns/op	16304.28 MB/s	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkRetirementTraversal/tiny16/headers 	     236	    700128 ns/op	2995.39 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map     	    1624	    121107 ns/op	17316.50 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers         	     495	    391102 ns/op	5362.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map             	    1353	    129152 ns/op	16237.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers        	     747	    259259 ns/op	8088.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map            	    1298	    133331 ns/op	15728.73 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers        	     632	    285591 ns/op	7343.19 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map            	    1426	    130814 ns/op	16031.59 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers        	     812	    241546 ns/op	8682.07 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map            	    1407	    134096 ns/op	15638.98 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers      	     469	    340934 ns/op	6151.20 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map          	    1425	    132515 ns/op	15825.78 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers       	    7765	     27026 ns/op	77579.82 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map           	    1375	    137387 ns/op	15260.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers           	    2061	     75366 ns/op	27824.61 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map               	    1249	    140543 ns/op	14921.03 MB/s	       0 B/op	       0 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkRetirementTraversal/tiny16/headers 	     259	    659936 ns/op	3177.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map     	    1338	    123151 ns/op	17029.08 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers         	     474	    416165 ns/op	5039.23 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map             	    1054	    178409 ns/op	11754.76 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/headers        	     651	    318015 ns/op	6594.41 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium48/map            	    1273	    156506 ns/op	13399.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/headers        	     726	    302935 ns/op	6922.77 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium64/map            	    1357	    156231 ns/op	13423.40 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/headers        	     765	    261506 ns/op	8019.41 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/medium80/map            	    1329	    139871 ns/op	14993.26 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/headers      	     556	    328873 ns/op	6376.79 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/structRoot/map          	    1400	    196259 ns/op	10685.63 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers       	    8616	     23727 ns/op	88363.99 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map           	    1440	    129308 ns/op	16214.26 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers           	    2370	     76699 ns/op	27341.28 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map               	    1518	    141821 ns/op	14786.55 MB/s	       0 B/op	       0 allocs/op
+PASS

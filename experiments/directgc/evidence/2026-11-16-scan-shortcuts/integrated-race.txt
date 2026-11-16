@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/experiments/directgc	1.226s
