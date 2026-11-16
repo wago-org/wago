@@ -77,6 +77,12 @@ type floatConstReg struct {
 	loopDepth uint16
 }
 
+const (
+	maxPreloadedFloatConsts    = 5
+	extraFloatConstMinUses     = 9
+	extraFloatConstFreeReserve = 10
+)
+
 func (f *fn) fconstMask() regMask {
 	var m regMask
 	for _, c := range f.fconsts {
@@ -231,8 +237,11 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 	if r, ok := f.floatConstReg(st); ok {
 		return r, true
 	}
-	if len(f.fconsts) >= 2 {
+	if len(f.fconsts) >= maxPreloadedFloatConsts {
 		return regNone, false
+	}
+	if f.fconsts == nil {
+		f.fconsts = f.fconstBacking[:0]
 	}
 	x := f.allocFReg(0)
 	f.loadFConst(x, st)
@@ -345,6 +354,48 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		if i >= 0 {
 			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
+	}
+	// Keep a few additional genuinely repeated constants when the FP register
+	// file has ample transient capacity. This is deliberately more selective
+	// than the first two entries: an extra immutable register must avoid enough
+	// materializations to justify reducing the operand pool for the whole
+	// function.
+	available := -1
+	for len(f.fconsts) < maxPreloadedFloatConsts && len(f.fconsts) < nCand {
+		bestExtra := -1
+		for i := 0; i < nCand; i++ {
+			if cand[i].n < extraFloatConstMinUses {
+				continue
+			}
+			selected := false
+			for _, c := range f.fconsts {
+				if c.typ == cand[i].typ && c.bits == cand[i].bits {
+					selected = true
+					break
+				}
+			}
+			if !selected && (bestExtra < 0 || cand[i].n > cand[bestExtra].n) {
+				bestExtra = i
+			}
+		}
+		if bestExtra < 0 {
+			break
+		}
+		if available < 0 {
+			available = 0
+			blocked := f.blockedFRegs(0)
+			for _, reg := range fpAllocRegs {
+				if !blocked.has(reg) && f.fregUser[reg] == nil {
+					available++
+				}
+			}
+		}
+		if available <= extraFloatConstFreeReserve {
+			break
+		}
+		f.preloadFloatConst(storage{kind: stConst, typ: cand[bestExtra].typ, cval: cand[bestExtra].bits})
+		available--
+		f.stats.peep("fp-cache-extra-repeated")
 	}
 	f.suppressFloatLiteral = oldSuppress
 }

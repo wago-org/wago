@@ -324,6 +324,7 @@ type fn struct {
 	// Parallel V-register occupancy for float values (Phase 5).
 	fregUser         [32]*elem
 	fpinned          regMask
+	fconstBacking    [maxPreloadedFloatConsts]floatConstReg
 	fconsts          []floatConstReg
 	vconsts          []v128ConstReg
 	iconsts          [4]intConstReg

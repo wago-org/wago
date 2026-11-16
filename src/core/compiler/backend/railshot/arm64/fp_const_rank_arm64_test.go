@@ -30,7 +30,7 @@ func TestFloatConstRankReplacesOnlyDecisivelyWeakSlot(t *testing.T) {
 		floatConstSlotRankingEnabled = enabled
 		f := fn{a: &a64.Asm{}, s: newStack()}
 		f.preloadFloatConsts(code)
-		if len(f.fconsts) != 2 || uint64(f.fconsts[0].bits) != math.Float64bits(0) {
+		if len(f.fconsts) < 2 || uint64(f.fconsts[0].bits) != math.Float64bits(0) {
 			t.Fatalf("enabled%v cache%v", enabled, f.fconsts)
 		}
 		want := 4.0 / 9.0
@@ -44,6 +44,51 @@ func TestFloatConstRankReplacesOnlyDecisivelyWeakSlot(t *testing.T) {
 			t.Fatal("unchanged entry moved registers")
 		}
 		common = f.fconsts[0].reg
+	}
+}
+
+func TestPreloadFloatConstsRequiresNineUsesAndRegisterReserve(t *testing.T) {
+	old := floatConstSlotRankingEnabled
+	floatConstSlotRankingEnabled = false
+	defer func() { floatConstSlotRankingEnabled = old }()
+
+	code := func(repeated int) []byte {
+		var code []byte
+		add := func(value float64, count int) {
+			for i := 0; i < count; i++ {
+				code = appendF64ConstForCacheTest(code, value)
+				code = append(code, 0x1a)
+			}
+		}
+		add(1, 5)
+		add(2, 5)
+		add(3, repeated)
+		return append(code, 0x0b)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		repeated int
+		occupied int
+		want     int
+	}{
+		{"eight uses", extraFloatConstMinUses - 1, 0, 2},
+		{"nine uses", extraFloatConstMinUses, 0, 3},
+		{"register reserve", extraFloatConstMinUses, len(fpAllocRegs) - extraFloatConstFreeReserve - 2, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := fn{a: &a64.Asm{}, s: newStack()}
+			for i := 0; i < tc.occupied; i++ {
+				f.fregUser[fpAllocRegs[i]] = &elem{}
+			}
+			f.preloadFloatConsts(code(tc.repeated))
+			if len(f.fconsts) != tc.want {
+				t.Fatalf("cached constants = %d, want %d", len(f.fconsts), tc.want)
+			}
+			if tc.want == 3 && uint64(f.fconsts[2].bits) != math.Float64bits(3) {
+				t.Fatalf("third cached constant = %v, want 3", math.Float64frombits(uint64(f.fconsts[2].bits)))
+			}
+		})
 	}
 }
 
