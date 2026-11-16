@@ -1,0 +1,19 @@
+import json,pathlib,statistics,re
+p=pathlib.Path(__file__).resolve().parent;d=json.loads((p/'results.json').read_text())
+lines=['# Bounded compact numeric-array diagnostic','','Measured source `58474bba`, runtime `1cf7b6ab`, Same-source compact refstore versus added numeric-array access then native numeric allocation. Fill/copy helpers and reference-struct getter/constructor paths remain incomplete. Explicit 2 MiB Eden and two 8 MiB old semispaces. All18 separate128-warmup real-collection audits and54 bounded diagnostic processes passed. Timed diagnostic protocol is THREE warmup calls plus FIVE timed calls, three rotating fresh-process rounds, not the historical full protocol. Copy diagnostics explicitly permit zero collection only after the separate audited collection run. Exact hashes, checksums and allocation counts still apply.','','| Case | Mode | Median ms | Samples ms | Timed minor/full | Go heap MiB | RSS MiB |','|---|---|---:|---|---|---:|---:|']
+for c in dict.fromkeys(r['case']for r in d['rows']):
+ for v in ['refstore','scalararrays','arrayalloc']:
+  rs=[r['result']for r in d['rows']if r['case']==c and r['variant']==v];ts=[statistics.median(r['samples_ns'])/1e6 for r in rs]
+  gc=', '.join(sorted(set(str(r['after']['MinorCollections']-r['before']['MinorCollections'])+'/'+str(r['after']['FullCollections']-r['before']['FullCollections'])for r in rs)))
+  lines.append(f'| {c} | {v} | {statistics.median(ts):.3f} | '+', '.join(f'{t:.3f}'for t in ts)+f' | {gc} | {statistics.median(r["go_after"]["HeapAlloc"]for r in rs)/1048576:.2f} | {statistics.median(r["proc_VmHWM_kib"]for r in rs)/1024:.2f} |')
+lines+=['', '## Interpretation', '', 'Numeric-array access gives clear gains on array/fill and both copy kernels; native array allocation then gives clear additional gains on array/fill. Array medians are 141.783 to 93.554 to 13.032 ms; fill 217.673 to 174.139 to 76.280 ms. Copy changes 30.142 to 2.165 to 1.991 ms, while scalar-copy changes 89.210 to 1.980 to 2.317 ms. The latter two allocator-stage differences overlap and do not establish an additional gain. Struct/tree are noisy overlapping controls with unchanged code size and compile allocation footprint; no control speedup or mechanism claim.', '', '## Selection and cost', '', 'Struct remains 3183 code bytes and tree 1455 across all modes. Array grows 2223 to 2991 to 3439, fill 2351 to 3119 to 3567, both copy modules 2287 to 4591 to 6639. These changes confirm selected numeric paths but increase compile/code footprint. Full per-case allocations below must accompany execution claims. This is bounded intermediate attribution, not a V8 gate or universal gain.', '','## Separate Compile+Close footprint','','| Case | Mode | Median us/op | Code bytes | Go B/op | Allocs/op |','|---|---|---:|---:|---:|---:|']
+g={}
+for r in json.loads((p/'compile.json').read_text())['rows']:
+ for l in r['stdout'].splitlines():
+  m=re.match(r'BenchmarkGCDirectCompileProbe/(\S+)\s+256\s+(\d+) ns/op\s+(\d+) code-B\s+(\d+) B/op\s+(\d+) allocs/op',l)
+  if m:g.setdefault((m[1],r['variant']),[]).append(list(map(int,m.groups()[1:])))
+for c in dict.fromkeys(r['case']for r in d['rows']):
+ for v in ['refstore','scalararrays','arrayalloc']:
+  t,code,b,a=[statistics.median(x)for x in zip(*g[c,v])];lines.append(f'| {c} | {v} | {t/1000:.3f} | {code} | {b} | {a} |')
+lines+=['','Compile probes are separate, 256 Compile+Close operations per case and three rotating processes. They are not peak-memory measurements. No V8 runs were included. Full target acceptance requires a later full-protocol sufficiently-native pipeline; this diagnostic cannot supply it. Worker CPU activity was excluded, but shared-host frequency/scheduling remain uncontrolled. Exact configurations, counters, hashes and raw outputs are retained.','']
+(p/'summary.md').write_text('\n'.join(lines).replace('All18','All 18').replace('separate128','separate 128').replace('and54','and 54'))
