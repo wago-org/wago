@@ -20,7 +20,7 @@ func TestCompactNativeReceiptIsolation(t *testing.T) {
 			v := c.executionView()
 			switch mode {
 			case "version":
-				v.gcCompactNativeVersion = 2
+				v.gcCompactNativeVersion++
 			case "mixed":
 				v.gcCompactHelperVersion = 1
 			case "direct":
