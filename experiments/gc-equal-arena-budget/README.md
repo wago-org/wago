@@ -23,7 +23,14 @@ not included. Smaller old spaces may increase full collections or fail live-set
 capacity; a larger nursery also changes oversize allocation and promotion age.
 This is not evidence of equal memory use versus V8 or isolated GC efficiency.
 
-Qualification and measurements are pending. Planned evidence: one binary, all six
+Qualification and measurements are complete; see `evidence/summary.md`. Evidence: one binary, all six
 artifact/checksum/allocation audits, repeated rotating fresh processes, unchanged
 100 warmups and 9 batches of 32 calls. Record process-level medians, collection
 counts, memory and failures; do not pool dependent batches as repetitions.
+
+Reproduce using the seven tags in `evidence/full.json`, build one test binary,
+then run `python3 run.py --repo REPO --binary BINARY --output AUDIT --audit`
+and repeat without `--audit` into a separate output directory. Audits use 512
+warmup calls uniformly; timed processes retain 100 warmups and 9×32 calls.
+Keep other local jobs paused and preserve failures. `summarize.py` regenerates
+the committed summary from evidence next to the script.
