@@ -459,8 +459,16 @@ func (f *fn) preloadV128Consts(code []byte) {
 			addCand(lo, hi, false)
 			continue
 		}
-		for _, c := range emulationConsts(sub) {
-			addCand(c[0], c[1], true)
+		if sub == 0x62 && f.sc != nil && !f.sc.amd64Features.Has(shared.AMD64SSSE3) {
+			// Keep these masks stack-local and the common constant lookup
+			// small enough for Go to inline without escaping its slices.
+			for _, c := range [3]uint64{0x5555555555555555, 0x3333333333333333, 0x0f0f0f0f0f0f0f0f} {
+				addCand(c, c, true)
+			}
+		} else {
+			for _, c := range emulationConsts(sub) {
+				addCand(c[0], c[1], true)
+			}
 		}
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
@@ -540,6 +548,10 @@ func (f *fn) v128FloatRound(f64 bool, mode byte) {
 }
 
 func (f *fn) i8x16Popcnt() {
+	if !f.cpuHas(shared.AMD64SSSE3) {
+		f.i8x16PopcntSSE2()
+		return
+	}
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
@@ -564,6 +576,39 @@ func (f *fn) i8x16Popcnt() {
 
 	f.fpinned = f.fpinned.remove(x).remove(high)
 	f.releaseF(high)
+	f.pushVReg(x)
+}
+
+// i8x16PopcntSSE2 counts bits in packed bytes without scalar shuffle emulation.
+// Word shifts may cross byte boundaries; each following mask removes those bits.
+func (f *fn) i8x16PopcntSSE2() {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	old := f.fpinned
+	f.fpinned = old.add(x)
+	tmp := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(tmp)
+
+	mask := f.v128ConstReg(0x5555555555555555, 0x5555555555555555)
+	opVPsrlwImm.emit(f, tmp, x, 1)
+	opVPand.emit(f, tmp, tmp, mask)
+	opVPsubb.emit(f, x, x, tmp)
+	f.releaseF(mask)
+
+	mask = f.v128ConstReg(0x3333333333333333, 0x3333333333333333)
+	opVPsrlwImm.emit(f, tmp, x, 2)
+	opVPand.emit(f, x, x, mask)
+	opVPand.emit(f, tmp, tmp, mask)
+	opVPaddb.emit(f, x, x, tmp)
+	f.releaseF(mask)
+
+	opVPsrlwImm.emit(f, tmp, x, 4)
+	opVPaddb.emit(f, x, x, tmp)
+	mask = f.v128ConstReg(0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f)
+	opVPand.emit(f, x, x, mask)
+	f.releaseF(mask)
+	f.releaseF(tmp)
+	f.fpinned = old
 	f.pushVReg(x)
 }
 

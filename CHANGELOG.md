@@ -6,6 +6,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Performance
+
+- Lower AMD64 `i8x16.popcnt` with packed SSE2 bit counting when SSSE3 is
+  unavailable, avoiding scalar shuffle expansion while retaining the SSSE3/AVX
+  lookup path.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking
