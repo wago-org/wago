@@ -53,7 +53,8 @@ func TestOwnedResultSinkPreservesCapturedLocals(t *testing.T) {
 					}
 					if diagnosticsEnabled {
 						hits := stats.Funcs[0].Peephole["owned-result-sink"]
-						if !enabled && hits != 0 || enabled && ownedResultSinkEnabled && offset == 9 && hits == 0 {
+						wantHit := enabled && ownedResultSinkEnabled
+						if !wantHit && hits != 0 || wantHit && hits == 0 {
 							t.Fatalf("cover selection mismatch: wide=%v op=%x enabled=%v hits=%d", wide, add+offset, enabled, hits)
 						}
 					}
