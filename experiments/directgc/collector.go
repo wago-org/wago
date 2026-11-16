@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Package directgc is an experimental, standalone moving offset collector.
-// It is not a Wago runtime collector. All use must be serialized. References
+// Package directgc is an experimental moving offset collector substrate.
+// Wago supplies a separately admitted runtime adapter. All use must be serialized. References
 // copied outside declared object fields and supplied mutable roots become stale
 // after collection; offsets carry neither ownership nor generation tags.
 package directgc
@@ -104,7 +104,8 @@ func (c *Collector) stride(off uint32) uint32 { return (c.u32(off+4) + 15) &^ 15
 func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
 
 // Full evacuates the reachable graph into the other old semispace. This prototype
-// promotes every survivor and has no survivor age or large-object policy.
+// promotes every survivor and has no survivor age policy. Oversized objects
+// allocated directly in old space move with other live objects during Full.
 func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 
 func (c *Collector) collect(roots []*Ref, full bool) error {
