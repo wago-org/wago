@@ -97,7 +97,7 @@ func directManagedArgumentType(v ValueTypeDescriptor, types []DefinedTypeDescrip
 		return int(h.TypeIndex) < len(types) && (types[h.TypeIndex].Kind == CompositeTypeStruct || types[h.TypeIndex].Kind == CompositeTypeArray)
 	}
 	switch h.Abstract {
-	case AbstractHeapI31:
+	case AbstractHeapI31, AbstractHeapAny, AbstractHeapEq, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNone:
 		return !v.Ref.Exact
 	}
 	return false
