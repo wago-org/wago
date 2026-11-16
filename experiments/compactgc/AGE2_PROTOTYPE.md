@@ -44,3 +44,13 @@ Source regression fixtures cover graph cycles/duplicate roots/i31, promoted
 parent to younger survivor, remembered overflow, retention overflow, atomic
 old OOM/full retry, exact counts, oversized threshold and zero-allocation
 collection. Tests and performance are NOT yet qualified at this checkpoint.
+
+## Reconstructed core qualification
+
+Go1.27 default core passed (0.034s), age-two-tagged full core passed (0.028s),
+and tagged race passed (1.168s). These are correctness test durations, not
+performance measurements. Zero-allocation collection assertions passed.
+Measured amd64 collector footprint: default224B with empty policy state;
+tagged248B with20B policy state plus alignment. Arena and existing tracing
+scratch sizes remain equal for equal TOTAL young budget. Runtime/native
+integration and end-to-end performance remain unqualified.
