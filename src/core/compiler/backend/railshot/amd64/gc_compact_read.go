@@ -131,6 +131,15 @@ func (f *fn) emitCheckedCompactOffset(object *elem, typeIndex, required, stride,
 func (f *fn) emitCompactStructGet(t, fieldIndex, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(t, fieldIndex)
 	layout, found := f.gcTypeLayout(t, wasm.CompStruct)
+	reference := false
+	if !ok && found && helper == gcStructGet && int(fieldIndex) < len(layout.FieldLayout) {
+		field, present := f.stagedStructField(t, fieldIndex)
+		fl := layout.FieldLayout[fieldIndex]
+		if present && fl.Size == 4 && nativeGCCollectorRefStorage(f.m, t, field.Storage()) {
+			off, scalar, final, ok = fl.Offset, directGCScalar{size: 4, typ: mtI64}, layout.Type.Final, true
+			reference = true
+		}
+	}
 	if !gcCompactReads || !ok || !final || !found || layout.Align == 0 || t > math.MaxInt32/4 {
 		return false
 	}
@@ -152,7 +161,11 @@ func (f *fn) emitCompactStructGet(t, fieldIndex, helper uint32) bool {
 	floor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	obj, done := f.emitCheckedCompactOffset(f.popValue(), t, 4, uint32(stride), 0, 0)
-	f.stats.peep("gc-compact-struct-read")
+	if reference {
+		f.stats.peep("gc-compact-struct-ref-read")
+	} else {
+		f.stats.peep("gc-compact-struct-read")
+	}
 	disp := int32(payload + uint64(off))
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
@@ -162,10 +175,20 @@ func (f *fn) emitCompactStructGet(t, fieldIndex, helper uint32) bool {
 		f.pushFReg(x, scalar.typ)
 	} else {
 		r := f.allocReg(maskOf(obj))
-		f.a.LoadIdx(r, obj, RSP, disp, scalar.size, helper == gcStructGetS, scalar.typ == mtI64)
+		if reference {
+			f.a.Load32(r, obj, disp)
+		} else {
+			f.a.LoadIdx(r, obj, RSP, disp, scalar.size, helper == gcStructGetS, scalar.typ == mtI64)
+		}
 		done()
 		f.spillFloor = floor
 		f.pushReg(r, scalar.typ)
+		if reference {
+			// Like the checked helper, this loads the stored compact reference
+			// without revalidating its declared child type. All receiver checks
+			// remain above. The value must remain an exact root across helpers.
+			f.markTopGCReference()
+		}
 	}
 	return true
 }
