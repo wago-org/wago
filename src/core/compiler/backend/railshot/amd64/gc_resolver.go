@@ -109,6 +109,9 @@ func markGCLocalProvenance(e *elem, local int) {
 }
 
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
+	if f.directLoop.endPC != 0 && uint32(local) == f.directLoop.local {
+		panic("amd64: overwriting direct loop receiver")
+	}
 	if f.gcResolved.valid && f.gcResolved.local == local {
 		f.invalidateGCResolvedObject()
 	}

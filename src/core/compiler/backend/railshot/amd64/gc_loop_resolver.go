@@ -24,8 +24,12 @@ type gcLoopResolverPlan struct {
 	typeIndex, endPC, firstPC uint32
 }
 
-func (f *fn) planGCLoopResolver(reader *wasm.Reader) (p gcLoopResolverPlan, ok bool) {
-	if !gcResolveReuseEnabled || !f.gcArrayHelpers || f.interruptible || f.moduleEH || f.inlineDepth != 0 || f.localBase != 0 || f.intervalControl || f.vectorRegion.enabled || len(f.customInstructions) != 0 || f.gcPureIfSites >= 16 || f.gcResolvedRegister() == regNone {
+func (f *fn) planGCLoopResolver(reader *wasm.Reader) (gcLoopResolverPlan, bool) {
+	return f.planGCLoopResolverMode(reader, false)
+}
+
+func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopResolverPlan, ok bool) {
+	if (!direct && !gcResolveReuseEnabled) || !f.gcArrayHelpers || f.interruptible || f.moduleEH || f.inlineDepth != 0 || f.localBase != 0 || f.intervalControl || f.vectorRegion.enabled || len(f.customInstructions) != 0 || f.gcPureIfSites >= 16 || f.gcResolvedRegister() == regNone {
 		return p, false
 	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -111,7 +115,7 @@ func (f *fn) planGCLoopResolver(reader *wasm.Reader) (p gcLoopResolverPlan, ok b
 			stack[n-1] = -1
 		case 0xfb:
 			sub, e := r.U32()
-			if e != nil || sub < 11 || sub > 13 || n < 2 {
+			if e != nil || sub < 11 || sub > 14 || (!direct && sub == 14) || n < 2 {
 				return p, false
 			}
 			t, e := r.U32()
@@ -122,7 +126,14 @@ func (f *fn) planGCLoopResolver(reader *wasm.Reader) (p gcLoopResolverPlan, ok b
 			if !ok || !final || (scalar.typ != mtI32 && scalar.typ != mtI64) {
 				return p, false
 			}
-			source := stack[n-2]
+			args := 2
+			if sub == 14 {
+				args = 3
+			}
+			if n < args {
+				return p, false
+			}
+			source := stack[n-args]
 			if source < 0 || (object >= 0 && (object != source || typ != t)) {
 				return p, false
 			}
@@ -133,8 +144,12 @@ func (f *fn) planGCLoopResolver(reader *wasm.Reader) (p gcLoopResolverPlan, ok b
 				firstPC = uint32(opPC)
 			}
 			object, typ = source, t
-			n--
-			stack[n-1] = -1
+			if sub == 14 {
+				n -= 3
+			} else {
+				n--
+				stack[n-1] = -1
+			}
 		case 0x0d:
 			depth, e := r.U32()
 			if e != nil || depth != 0 || n != 1 || object < 0 {

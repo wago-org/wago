@@ -21,10 +21,21 @@ func (f *fn) directOffsetScalarArrayLayout(t uint32) (directGCScalar, bool) {
 // Wasm index and 64-bit arithmetic. Checked mode additionally guards the selected
 // physical extent. Policy3 relies on allocator-certified immutable Aux/layout
 // instead; it never removes the guest-visible logical bounds check.
-func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, size int) (Reg, Reg, func()) {
+func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, size int, local int) (Reg, Reg, func()) {
 	var obj Reg
 	var done func()
-	if gcTrustedDirectArrays {
+	leased := f.directLoop.endPC != 0
+	if leased {
+		if local < 0 || uint32(local) != f.directLoop.local || t != f.directLoop.typeIndex {
+			panic("amd64: replacing direct loop receiver")
+		}
+		ref := f.materialize(object)
+		f.release(ref)
+		obj, done = f.directLoop.object, func() {}
+		f.a.TestSelf(obj, true)
+		f.trapIf(condE, trapNullReference)
+		f.stats.peep("gc-direct-loop-reuse")
+	} else if gcTrustedDirectArrays {
 		obj, done = f.emitTrustedDirectOffset(object)
 	} else {
 		obj, done = f.emitFullyCheckedDirectOffset(object, t, gc.PayloadOffset)
@@ -34,7 +45,11 @@ func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, 
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
 	f.pinned = f.pinned.add(tmp)
-	f.a.Load32(tmp, obj, 8)
+	if leased {
+		f.a.MovRegReg32(tmp, f.directLoop.length)
+	} else {
+		f.a.Load32(tmp, obj, 8)
+	}
 	f.a.Cmp32(index, tmp)
 	f.trapIf(condAE, trapBuiltin)
 	f.a.ImulRI(index, int32(size), true)
@@ -61,11 +76,15 @@ func (f *fn) emitDirectOffsetScalarArrayGet(t, helper uint32) bool {
 	if !ok {
 		return false
 	}
+	local := -1
+	if x, ok := gcLocalProvenance(f.s.back().prev); ok {
+		local = x
+	}
 	f.flush()
 	floor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	indexValue, object := f.popValue(), f.popValue()
-	obj, index, done := f.directOffsetScalarArrayAddress(object, indexValue, t, s.size)
+	obj, index, done := f.directOffsetScalarArrayAddress(object, indexValue, t, s.size, local)
 	if s.typ.isFloat() {
 		x := f.allocFReg(0)
 		f.a.FLoadIdx(x, obj, index, int32(gc.PayloadOffset), s.typ == mtF64)
@@ -87,11 +106,15 @@ func (f *fn) emitDirectOffsetScalarArraySet(t uint32) bool {
 	if !ok {
 		return false
 	}
+	local := -1
+	if x, ok := gcLocalProvenance(f.s.back().prev.prev); ok {
+		local = x
+	}
 	f.flush()
 	floor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
 	value, indexValue, object := f.popValue(), f.popValue(), f.popValue()
-	obj, index, done := f.directOffsetScalarArrayAddress(object, indexValue, t, s.size)
+	obj, index, done := f.directOffsetScalarArrayAddress(object, indexValue, t, s.size, local)
 	if s.typ.isFloat() {
 		x := f.materializeF(value)
 		f.a.FStoreIdx(obj, index, x, int32(gc.PayloadOffset), s.typ == mtF64)

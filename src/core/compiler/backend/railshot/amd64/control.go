@@ -1240,6 +1240,9 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	if f.gcResolved.valid {
 		f.pinned = f.pinned.add(f.gcResolved.reg)
 	}
+	if f.directLoop.endPC != 0 {
+		f.pinned = f.pinned.add(f.directLoop.object).add(f.directLoop.length)
+	}
 	f.fpinned = 0
 }
 
@@ -1898,6 +1901,8 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 				f.emitByteReduceLoop(r)
 				if !gcHelperOnly {
 					f.hoistGCLoopResolver(r)
+				} else if gcTrustedDirectLoop {
+					f.hoistDirectLoop(r)
 				}
 			}
 			if f.compactLoopAlign32 {

@@ -348,6 +348,7 @@ type fn struct {
 	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
 	gcResolved          gcResolvedObject
+	directLoop          directLoopLease
 	gcSharedResolver    bool
 	gcDeferResolver     bool
 	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
@@ -1863,6 +1864,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				if gcTrustedDirectAllocation {
 					compiled.GCTrustedDirectVersion = 5
+				}
+				if gcTrustedDirectLoop {
+					compiled.GCTrustedDirectVersion = 6
 				}
 			}
 		}
