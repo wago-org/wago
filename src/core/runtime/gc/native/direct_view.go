@@ -12,7 +12,7 @@ import (
 // DirectABIVersion is independent of NativeABIVersion. Only a separately admitted
 // direct-offset artifact may interpret these descriptors; they must NEVER alias
 // NativeCollectorView/NativeInstanceView, even when basedata reuses one slot.
-const DirectABIVersion uint32 = 2
+const DirectABIVersion uint32 = 3
 
 // AllocationEnabled permits only admitted pointer-free scalar struct creation.
 // The generated allocator must check every bound/layout before its first store,
@@ -37,6 +37,12 @@ type DirectCollectorView struct {
 	NurseryEnd         uint32
 	AllocationEnabled  uint32
 	AllocationCounter  uintptr
+	// ABI3 READ-ONLY remembered-parent certificate, indexed by offset/8.
+	// Dirty==1 implies queue/overflow registration. Native code must never set it;
+	// a clean old parent must fall back before publishing its reference store.
+	Dirty      uintptr
+	DirtyCount uint32
+	_          uint32
 }
 
 const (
@@ -54,7 +60,9 @@ const (
 	DirectViewNurseryEndOffset         = 64
 	DirectViewAllocationEnabledOffset  = 68
 	DirectViewAllocationCounterOffset  = 72
-	DirectCollectorViewSize            = 80
+	DirectViewDirtyOffset              = 80
+	DirectViewDirtyCountOffset         = 88
+	DirectCollectorViewSize            = 96
 )
 
 type DirectInstanceView struct {
@@ -82,6 +90,7 @@ func validateDirectViewLayout() error {
 	if unsafe.Sizeof(uintptr(0)) != 8 || unsafe.Sizeof(bool(false)) != 1 || unsafe.Sizeof(c) != DirectCollectorViewSize ||
 		unsafe.Offsetof(c.Version) != DirectViewVersionOffset || unsafe.Offsetof(c.Size) != DirectViewSizeOffset || unsafe.Offsetof(c.Arena) != DirectViewArenaOffset || unsafe.Offsetof(c.ArenaBytes) != DirectViewArenaBytesOffset || unsafe.Offsetof(c.Starts) != DirectViewStartsOffset || unsafe.Offsetof(c.StartCount) != DirectViewStartCountOffset || unsafe.Offsetof(c.NurseryStart) != DirectViewNurseryStartOffset || unsafe.Offsetof(c.NurseryBump) != DirectViewNurseryBumpOffset || unsafe.Offsetof(c.OldStart) != DirectViewOldStartOffset || unsafe.Offsetof(c.OldBump) != DirectViewOldBumpOffset ||
 		unsafe.Offsetof(c.NurseryBumpAddress) != DirectViewNurseryBumpAddressOffset || unsafe.Offsetof(c.NurseryEnd) != DirectViewNurseryEndOffset || unsafe.Offsetof(c.AllocationEnabled) != DirectViewAllocationEnabledOffset || unsafe.Offsetof(c.AllocationCounter) != DirectViewAllocationCounterOffset ||
+		unsafe.Offsetof(c.Dirty) != DirectViewDirtyOffset || unsafe.Offsetof(c.DirtyCount) != DirectViewDirtyCountOffset ||
 		unsafe.Offsetof(i.Version) != DirectInstanceVersionOffset || unsafe.Offsetof(i.Size) != DirectInstanceSizeOffset || unsafe.Offsetof(i.Collector) != DirectInstanceCollectorOffset || unsafe.Offsetof(i.LocalTypes) != DirectInstanceLocalTypesOffset || unsafe.Offsetof(i.LocalTypeCount) != DirectInstanceLocalTypeCountOffset || unsafe.Offsetof(i.keepTypes) != DirectInstanceViewABISize {
 		return errors.New("gc: unsupported direct view layout")
 	}
@@ -100,7 +109,7 @@ func (c *Collector) refreshDirectView() {
 		return
 	}
 	x := c.direct.ReadView()
-	*v = DirectCollectorView{Version: DirectABIVersion, Size: DirectCollectorViewSize, Arena: x.Arena, ArenaBytes: x.ArenaBytes, Starts: x.Starts, StartCount: x.StartCount, NurseryStart: x.NurseryStart, NurseryBump: x.NurseryBump, OldStart: x.OldStart, OldBump: x.OldBump}
+	*v = DirectCollectorView{Version: DirectABIVersion, Size: DirectCollectorViewSize, Arena: x.Arena, ArenaBytes: x.ArenaBytes, Starts: x.Starts, StartCount: x.StartCount, NurseryStart: x.NurseryStart, NurseryBump: x.NurseryBump, OldStart: x.OldStart, OldBump: x.OldBump, Dirty: x.Dirty, DirtyCount: x.DirtyCount}
 	if c.directNativeAllocationEnabled() {
 		words := c.direct.AllocationWords()
 		v.NurseryBumpAddress = uintptr(unsafe.Pointer(words.Bump))
@@ -162,6 +171,10 @@ func ValidateDirectInstanceView(v *DirectInstanceView, c *Collector) error {
 	cv := c.directView
 	if v.Version != DirectABIVersion || v.Size != DirectInstanceViewABISize || v.Collector != uintptr(unsafe.Pointer(cv)) || cv.Version != DirectABIVersion || cv.Size != DirectCollectorViewSize || cv.Arena == 0 || cv.Starts == 0 {
 		return errors.New("gc: invalid direct instance ABI")
+	}
+	owned := c.direct.ReadView()
+	if cv.Dirty == 0 || cv.Dirty != owned.Dirty || cv.DirtyCount != owned.DirtyCount {
+		return errors.New("gc: invalid direct remembered backing")
 	}
 	if uint64(v.LocalTypeCount) != uint64(len(v.keepTypes)) || v.LocalTypes != sliceData(v.keepTypes) {
 		return errors.New("gc: invalid direct canonical type backing")
