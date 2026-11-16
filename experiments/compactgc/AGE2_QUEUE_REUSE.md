@@ -16,3 +16,11 @@ minor capacity failures still occur before authoritative mutation.
 Source prepared; independent review and qualification pending. Existing age2
 OOM/cycle/alias/race tests remain applicable. Added malformed queued/remembered
 type and child-edge rejection with unchanged heap snapshots. No speed claim.
+
+Independent source review cleared the provenance proof. Go1.27 qualification:
+default core0.020s, age2 comparator0.017s, queue-reuse full core0.059s,
+queue-reuse race1.142s, all passed. Includes malformed queued and remembered
+objects, invalid child rejection without writes, cycles/duplicate roots,
+atomic minor/full OOM and retry, zero-allocation collection and accounting.
+These are test durations, not performance evidence. Runtime composition and
+matched workload timing remain pending.
