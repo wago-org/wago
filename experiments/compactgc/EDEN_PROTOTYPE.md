@@ -1,36 +1,41 @@
-# Dedicated Eden prototype: source only
+# Dedicated Eden core experiment
 
-Opt in with `wago_gc_compact_eden` and `NewEdenWithTypes(eden, survivor, old, types)`.
-Total young backing is Eden + TWO survivor capacities, not Eden + one. This is
-Layout16 compactgc only; promote-all and existing age2 constructors are unchanged.
-New allocations always use fixed Eden; only objects larger than Eden bypass to
-old. First survivors fit the inactive survivor space in deterministic queue order;
-overflow promotes, and every live prior survivor promotes. Full moves all live
-objects to alternate old. Preflight reserves all destinations before any mutation.
+Status: correctness-qualified, opt-in research code. **Not a default policy, a
+native runtime adapter, or a demonstrated V8 performance win.** The matched
+fixed-total-memory experiment did not establish a general throughput improvement.
 
-Native ReadView and AllocationWords return zero for this policy: their current
-single-young-range ABI cannot represent the new occupied survivor interval. No
-runtime adapter/native compiler integration or TinyGo runtime support is claimed.
-Core uses existing pure-Go storage/operations. Cohort/shadow, age2 diagnostics,
-queue-reuse and compact8 combinations reject the new constructor explicitly.
+## Configuration and semantics
 
-New tests are source-stage, NOT executed or qualified yet. They cover distinct
-regions, first/second survival, cycles, duplicate roots, old-to-young barriers,
-retention overflow, Full across both young regions, partial OOM/invalid-reference
-preflight repair and exact allocation accounting. Remembered overflow, zero-allocation assertions and Full failure with both young
-source regions also have unexecuted tests. Random graph/property checks and
-TinyGo core build remain additional qualification work. No performance or V8 comparison has been run. Full test and
-fixed-total/equal-Eden benchmark gates are required before any conclusions.
+Enable `wago_gc_compact_eden`, then call
+`NewEdenWithTypes(edenBytes, survivorBytes, oldBytes, types)`. Total young backing
+is Eden plus **two** survivor spaces. Existing promote-all and age2 constructors
+are unchanged. This policy supports Layout16 only.
 
-## Core qualification checkpoint
+New objects allocate in fixed Eden; objects larger than Eden allocate directly
+in old space. First survivors occupy the alternate survivor space in deterministic
+queue order; overflow promotes. Every live previous survivor promotes. Full
+collections move all live objects into alternate old space. Preflight reserves
+all destinations before mutating authoritative heap state.
 
-Source6c3ed225 including deterministic randomized graph model passed Go1.27.1
-normal/race/coexisting-age2 compact core and TinyGo0.42 task-scheduler core.
-Default Wago, AMD64 backend, native GC, wrapper and direct core regressions pass;
-incompatible constructor-tag rejection passes. Initial default-footprint fixture
-and readonly-cache failures, fixes and successful reruns are preserved under
-bench/experiments/gc-v8/direct-bridge/eden-core-qualification. No collector semantic
-failure was observed. Above source-stage notes describe the earlier checkpoint;
-all listed source tests now ran, including remembered overflow, minimumgeometry,
-fullrollback, directoldthreshold, zeroallocation and randomized model checks.
-This qualifies the isolated core, NOT a native runtime adapter or V8 performance.
+Native `ReadView` and `AllocationWords` return zero for this policy because their
+single-young-range ABI cannot represent occupied Eden and survivor intervals.
+Cohort/shadow, age2 diagnostics, queue reuse and compact8 combinations reject the
+constructor. The core uses pure-Go storage and passes TinyGo core tests; no
+TinyGo runtime-adapter support is implied.
+
+## Correctness and performance evidence
+
+Normal, race, age2-coexistence and TinyGo core tests passed, including deterministic
+randomized graphs, cycles, aliases, barriers, survivor/remembered overflow,
+minimum geometry, allocation-free collection, OOM/invalid-edge rollback and
+allocation accounting. Default Wago, backend and GC regression suites also passed.
+[Qualification logs](../../bench/experiments/gc-v8/direct-bridge/eden-core-qualification/README.md)
+preserve initial fixture/cache failures and successful retries.
+
+[Matched core results](../gc-eden-core/RESULTS.md) retain all controls. On the
+rolling-survivor workload, fixed-total Eden took 1.140 times promote-all's time.
+It reduced age2 minor-collection frequency and avoided the observed full
+collection, but these improvements did not translate into better throughput.
+The separate equal-Eden configuration took 0.978 times promote-all's time while
+using 790,528 additional fixed bytes; that small, noisy difference is not a
+proven gain. These are core-only results, not end-to-end Wasm or V8 comparisons.
