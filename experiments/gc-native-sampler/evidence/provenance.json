@@ -1,0 +1,12 @@
+{
+  "source": "b062646a",
+  "production_source": "647a5098",
+  "binary_sha256": "5bd2ef16320829cbfbbba1239d3f853e90f1f2f42dc34e8960ea3100fa0648fd",
+  "go": "go1.27.1",
+  "tags": "wago_gc_direct_trusted_loop,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_fill_sse2,wago_gc_direct_copy,wago_gc_direct_array_alloc,wago_gc_direct_weighted_sum,wago_profile",
+  "gomaxprocs": 1,
+  "local_jobs_paused": true,
+  "external_host_contention_excluded": false,
+  "sampler": "self-thread user CPU-clock period10000000ns CLOCK_MONOTONIC IP/TIME/PERIOD",
+  "sampling_is_not_benchmark": true
+}
