@@ -226,11 +226,13 @@ func (c *Collector) payloadBase(r Ref) uint32 {
 // and call Remember after raw reference writes, and may not use a retained slice
 // across allocation safepoints. Prefer checked SetRef/ArraySetRef when possible.
 func (c *Collector) Payload(r Ref) ([]byte, error) {
-	if !c.valid(r) {
-		return nil, ErrRef
+	h, err := c.Header(r)
+	if err != nil {
+		return nil, err
 	}
-	x := c.payloadBase(r)
-	return c.arena[x : x+c.logicalPayload(r) : x+c.logicalPayload(r)], nil
+	x := uint32(r) + h.PayloadOffset
+	end := x + h.PayloadBytes
+	return c.arena[x:end:end], nil
 }
 
 // Remember conservatively records a parent after trusted raw reference writes.
