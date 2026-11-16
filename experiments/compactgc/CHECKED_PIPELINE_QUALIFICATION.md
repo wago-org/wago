@@ -33,3 +33,11 @@ Runtime `7483b3e0`, evidence through `879f4137`: the opt-in paired certificate c
 Unfiltered default Wago 40.394 s, native GC 2.018 s, wrapper 0.003 s, AMD64 backend 6.519 s, direct core 0.020 s and compact core 0.012 s passed. Native debug passed 1.958 s; TinyGo native/wrapper passed 2.334/0.003 s. No failures in these runs.
 
 Matched scalar-copy timing improved in every paired round, but its full-protocol result remains 0.6463 ms versus V8 0.1444 ms (4.476x, target missed). Bulk-copy and other control regressions are retained in the evidence. Both copy artifacts contain both kernels; code-size growth alone cannot establish which executed instructions changed. Exact function-site diagnostics are separate and pending. This checkpoint is not a blanket performance recommendation or target completion.
+
+## Guarded range latch checkpoint
+
+Runtime `d0c35039`, measured evidence through `697706d7`: exact transfer-loop specialization retains the first checked iteration, branches to the original checked loop when full-span predicates fail, and preserves ordered scalar alias semantics. Canonical combined range/reference-constructor/shared-view runtime with regalloc passed 0.753 s; mode-exclusivity passed 0.008 s.
+
+Unfiltered default Wago 43.000 s, native GC 2.207 s, wrapper 0.003 s, AMD64 backend 7.168 s, direct core 0.025 s and compact core 0.014 s passed. Native debug passed 2.176 s; TinyGo native/wrapper passed 2.491/0.008 s. No failures.
+
+Matched scalar timing improves every pair, but full scalar-copy remains 0.4383 ms versus V8 0.1474 ms (2.974x, missed target). Bulk and tree control regressions and outliers remain in evidence. No blanket enablement or all-workload target claim is made.
