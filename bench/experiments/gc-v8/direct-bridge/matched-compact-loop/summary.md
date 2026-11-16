@@ -22,7 +22,7 @@ Candidate **1.5486 ms** versus V8 **0.1545 ms**, **10.022×**, clearly **MISS** 
 
 ## Separate compile and selection evidence
 
-256 Compile+Close iterations per artifact, three rotating fresh processes. Values below are process medians. Timed binaries exclude codegenstats. Qualification independently passed `TestCompactLoopLowering` telemetry and runtime loop/trap-order tests; code-size deltas localize selected changes to the two copy artifacts.
+256 Compile+Close iterations per artifact, three rotating fresh processes. Values below are process medians. Timed binaries exclude codegenstats. Qualification independently passed `TestCompactLoopLowering` telemetry and runtime loop/trap-order tests; code-size deltas show changes only in the two copy artifacts, but do not identify the optimized loops. No exact-artifact site telemetry was captured. Source inspection finds the two-receiver scalar-copy loop ineligible for the current one-receiver scanner; initialization and checksum loops may qualify, subject to register-pressure selection. Do not attribute this result to hoisting the copy loop itself.
 
 | Case | Baseline/loop compile µs | Baseline/loop code bytes | Baseline/loop Go bytes | Baseline/loop allocs |
 |---|---:|---:|---:|---:|
