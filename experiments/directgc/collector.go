@@ -22,12 +22,15 @@ var ErrField = errors.New("directgc: invalid field")
 var ErrConfig = errors.New("directgc: invalid arena configuration")
 
 const header = uint32(16)
+const rememberedParentCapacity = 1024
 
 type Collector struct {
 	arena                                 []byte
 	starts, dirty                         []bool
 	mark                                  []uint64
 	queue                                 []Ref
+	remembered                            []Ref
+	rememberedOverflow                    bool
 	nurseryStart, nurseryEnd, nurseryBump uint32
 	oldStart                              [2]uint32
 	oldSize, oldBump                      uint32
@@ -47,7 +50,7 @@ func New(nurseryBytes, oldBytes uint32) (*Collector, error) {
 	raw := make([]byte, int(total)+15)
 	start := int((16 - uintptr(unsafe.Pointer(&raw[0]))%16) % 16)
 	arena := raw[start : start+int(total) : start+int(total)]
-	c := &Collector{arena: arena, starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), mark: make([]uint64, int((total/16+63)/64)), queue: make([]Ref, int(total/uint64(header))), nurseryStart: 16, nurseryEnd: 16 + nurseryBytes, nurseryBump: 16, oldSize: oldBytes}
+	c := &Collector{arena: arena, starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), mark: make([]uint64, int((total/16+63)/64)), queue: make([]Ref, int(total/uint64(header))), remembered: make([]Ref, 0, min(rememberedParentCapacity, int(oldBytes/header))), nurseryStart: 16, nurseryEnd: 16 + nurseryBytes, nurseryBump: 16, oldSize: oldBytes}
 	c.oldStart = [2]uint32{c.nurseryEnd, c.nurseryEnd + oldBytes}
 	c.oldBump = c.oldStart[0]
 	return c, nil
@@ -58,7 +61,7 @@ func New(nurseryBytes, oldBytes uint32) (*Collector, error) {
 // Go slice/object headers. Scratch deliberately favors a simple bounded proof of
 // correctness, not low memory overhead.
 func (c *Collector) FixedBytes() uint64 {
-	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue))
+	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue)) + 4*uint64(cap(c.remembered))
 }
 func (c *Collector) young(r Ref) bool {
 	return uint32(r) >= c.nurseryStart && uint32(r) < c.nurseryBump
@@ -90,7 +93,7 @@ func (c *Collector) SetRef(r Ref, index uint32, v Ref) error {
 	}
 	c.put32(at, uint32(v))
 	if !c.young(r) && v.IsObj() && c.young(v) {
-		c.dirty[uint32(r)/8] = true
+		c.rememberParent(r)
 	}
 	return nil
 }
@@ -154,12 +157,8 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		}
 	}
 	if !full {
-		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
-			if c.dirty[off/8] {
-				if err := scan(Ref(off)); err != nil {
-					return err
-				}
-			}
+		if err := c.rangeRemembered(scan); err != nil {
+			return err
 		}
 	}
 	for i := 0; i < count; i++ {
@@ -203,11 +202,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		fix(c.u32(uint32(c.queue[i]) + 8))
 	}
 	if !full {
-		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
-			if c.dirty[off/8] {
-				fix(off)
-			}
-		}
+		_ = c.rangeRemembered(func(r Ref) error { fix(uint32(r)); return nil })
 	}
 	// Duplicate root pointers are idempotent: destinations lie outside the
 	// precollection live source ranges and cannot expose a source forwarding flag.
@@ -225,7 +220,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	for i := 0; i < count; i++ {
 		c.starts[c.u32(uint32(c.queue[i])+8)/8] = true
 	}
-	clear(c.dirty)
+	c.resetRemembered(full)
 	c.nurseryBump = c.nurseryStart
 	c.oldBump = next
 	c.active = target

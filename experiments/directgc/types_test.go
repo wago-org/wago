@@ -319,11 +319,11 @@ func TestOversizedOOMAtomicAndNoNurseryBypass(t *testing.T) {
 
 func TestForwardingScratchMemoryAccounting(t *testing.T) {
 	c := heap(t, 1<<20, 4<<20)
-	want := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue))
+	want := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue)) + 4*uint64(cap(c.remembered))
 	if c.FixedBytes() != want {
 		t.Fatal("backing accounting", c.FixedBytes(), want)
 	}
-	former := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 4*uint64(len(c.arena)/8) + 4*uint64(len(c.queue))
+	former := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 4*uint64(len(c.arena)/8) + 4*uint64(len(c.queue)) + 4*uint64(cap(c.remembered))
 	saved := former - c.FixedBytes()
 	if saved != 4*uint64(len(c.arena)/8)-8*uint64(len(c.mark)) || saved < 4<<20 {
 		t.Fatal("forwarding memory not removed", saved)

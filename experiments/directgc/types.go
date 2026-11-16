@@ -207,7 +207,7 @@ func (c *Collector) Remember(r Ref) error {
 		return ErrRef
 	}
 	if !c.young(r) {
-		c.dirty[uint32(r)/8] = true
+		c.rememberParent(r)
 	}
 	return nil
 }

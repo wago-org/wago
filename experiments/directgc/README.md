@@ -104,3 +104,12 @@ so packed-array lengths are never reconstructed from padded Size. Existing roots
 and edges are rewritten before retiring source objects. This reduces fixed
 backing allocation by about 4.43 MiB for the 9 MiB arena example; it is an exact
 backing-size reduction, not an RSS, pause-time, or throughput measurement.
+
+Minor collection records dirty old parents in a deduplicated queue allocated at
+construction (at most 1024 entries, 4096 bytes). Both preflight and rewriting
+visit only that queue unless it overflows; overflow conservatively falls back to
+walking the entire old region in both phases. OOM leaves the queue, dirty bits,
+and overflow state intact. Successful minor clears only covered dirty bits; Full
+resets all tracking. `FixedBytes` includes queue backing. Future native reference
+stores must enqueue or force overflow: setting a dirty byte alone is no longer
+sufficient. No throughput improvement is claimed without matched measurements.
