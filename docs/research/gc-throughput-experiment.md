@@ -84,3 +84,27 @@ supported architectures. Publish any missing platform coverage explicitly.
 Then require each selected workload to meet the V8 ratio gate without hiding
 memory inflation, disabling collection, changing heap semantics, or replacing
 observable allocation with a checksum-specific optimization.
+
+## Bounded loop object resolution
+
+The experimental AMD64 backend can retain one fully checked array-object
+resolution across a straight-line, call/allocation-free loop. Per-access bounds
+checks and payload loads remain. A bounded scanner rejects unsupported control,
+reference writes, earlier trapping operations, safepoints and instrumentation
+modes; raw addresses cannot survive collection or reentry. This is a general
+compiler optimization, not a change to the collector or evidence that allocation
+elimination meets the conventional-collector gate.
+
+An exploratory same-host comparison against `227dfd6` used Go 1.27.1, default
+runtime configuration (no `GC_PROOFS` override), 100 warmup invocations and nine
+batches of 32 invocations per fresh process. Three rounds alternated process
+order. The candidate was the loop-hoist implementation plus its lifetime guard
+(`a6f23f7` and `a4ed011` before integration). Array-copy checksum process medians
+fell from 0.680–0.712 ms to 0.310–0.385 ms; scalar-copy-loop medians fell from
+1.718–1.857 ms to 1.298–1.396 ms. Struct results overlapped (roughly 4.0–4.2 ms).
+All result checks passed. Raw samples are in
+`bench/experiments/gc-v8/loop-resolver-exploratory.json`.
+
+This small shared-host experiment did not rerun V8, measure compilation costs,
+or establish parity. It is distinct from the earlier allocation-elision-off
+baseline comparison; do not combine the two into a claimed V8 speedup.
