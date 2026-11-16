@@ -25,6 +25,7 @@ const minimumStride = uint32(16)
 const rememberedParentCapacity = 1024
 
 type Collector struct {
+	edenState
 	shadowDiagnosticState
 	cohortDiagnosticState
 	age2State
@@ -68,7 +69,7 @@ func (c *Collector) FixedBytes() uint64 {
 	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue)) + 4*uint64(cap(c.remembered))
 }
 func (c *Collector) young(r Ref) bool {
-	return uint32(r) >= c.nurseryStart && uint32(r) < c.nurseryBump
+	return (uint32(r) >= c.nurseryStart && uint32(r) < c.nurseryBump) || c.edenYoung(r)
 }
 func (c *Collector) valid(r Ref) bool {
 	x := uint32(r)
@@ -108,6 +109,9 @@ func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
 func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 
 func (c *Collector) collect(roots []*Ref, full bool) (result error) {
+	if c.EdenEnabled() {
+		return c.collectEden(roots, full)
+	}
 	if age2Build && c.Age2Enabled() {
 		return c.collectAge2(roots, full)
 	}

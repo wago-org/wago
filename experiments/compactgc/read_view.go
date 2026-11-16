@@ -21,7 +21,7 @@ type ReadView struct {
 }
 
 func (c *Collector) ReadView() ReadView {
-	if c == nil || len(c.arena) == 0 {
+	if c == nil || c.EdenEnabled() || len(c.arena) == 0 {
 		return ReadView{}
 	}
 	return ReadView{Arena: uintptr(unsafe.Pointer(&c.arena[0])), ArenaBytes: uint32(len(c.arena)), Starts: uintptr(unsafe.Pointer(&c.starts[0])), StartCount: uint32(len(c.starts)), Dirty: uintptr(unsafe.Pointer(&c.dirty[0])), DirtyCount: uint32(len(c.dirty)), NurseryStart: c.nurseryStart, NurseryBump: c.nurseryBump, OldStart: c.oldStart[c.active], OldBump: c.oldBump}
@@ -39,7 +39,7 @@ type AllocationWords struct {
 }
 
 func (c *Collector) AllocationWords() AllocationWords {
-	if c == nil || len(c.arena) == 0 {
+	if c == nil || c.EdenEnabled() || len(c.arena) == 0 {
 		return AllocationWords{}
 	}
 	return AllocationWords{Bump: &c.nurseryBump, End: c.nurseryEnd}
