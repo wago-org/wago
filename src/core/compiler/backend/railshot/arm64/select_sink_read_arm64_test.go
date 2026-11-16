@@ -117,3 +117,28 @@ func TestSelectSourceReadAdmissionAndPolicy(t *testing.T) {
 		t.Fatal("policy rollback ignored")
 	}
 }
+
+func TestSelectSourceReadOrdinaryZero(t *testing.T) {
+	old := selectSourceReadEnabled
+	defer func() { selectSourceReadEnabled = old }()
+	body := []byte{0, 0x3f, 0, 0x1a, 0x20, 0, 0x41, 0, 0x20, 1, 0x1b, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	for _, enabled := range []bool{false, true} {
+		selectSourceReadEnabled = enabled
+		for _, x := range []uint64{0, 1, 0x80000000, 0xffffffff} {
+			for _, condition := range []uint64{0, 1, 0xffffffff, 1 << 32} {
+				want := uint64(0)
+				if uint32(condition) != 0 {
+					want = uint64(uint32(x))
+				}
+				if got := runArm64u(t, m, x, condition); got != want {
+					t.Fatalf("enabled=%v x=%x condition=%x got=%x want=%x", enabled, x, condition, got, want)
+				}
+			}
+		}
+		stats := compileWithStats(t, m, false).Funcs[0]
+		if got := stats.Peephole["select-source-read"]; (got != 0) != enabled {
+			t.Fatalf("enabled=%v select source reads=%d", enabled, got)
+		}
+	}
+}

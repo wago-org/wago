@@ -1163,6 +1163,16 @@ func (f *fn) emitSelect() {
 	if top := f.s.back(); isFusableCondition(top) && !top.st.typ.isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
+	zeroRegArm := false
+	if f.opt(optSelectSourceRead) {
+		condRoot := f.s.back()
+		bRoot := f.s.prev(f.s.baseOfValentBlock(condRoot))
+		if bRoot != f.s.head {
+			aRoot := f.s.prev(f.s.baseOfValentBlock(bRoot))
+			zeroRegArm = aRoot != f.s.head && bRoot.elemKind() == ekValue && bRoot.st.kind == stConst && bRoot.st.cval == 0 &&
+				aRoot.elemKind() == ekValue && (aRoot.st.kind == stLocalReg || aRoot.st.kind == stGlobReg)
+		}
+	}
 	cond := f.popValue()
 	condReg := f.materialize(cond) // condition is i32
 	f.pinned = f.pinned.add(condReg)
@@ -1213,16 +1223,24 @@ func (f *fn) emitSelect() {
 	}
 
 	w := (a.elemKind() == ekValue && a.st.typ.is64()) || (b.elemKind() == ekValue && b.st.typ.is64())
-	bReg := f.materialize(b)
+	bReg, ownB := ZR, false
+	if !zeroRegArm {
+		bReg, ownB = f.materialize(b), true
+	}
 	f.pinned = f.pinned.add(bReg)
 	aReg := f.materialize(a)
 	f.stats.peep("select-cmov")
+	if zeroRegArm {
+		f.stats.peep("select-source-read")
+	}
 	f.a.CmpImm32(condReg, 0)             // test cond (sets NZCV; plain ADD/SUB do not)
 	f.a.Csel(aReg, bReg, aReg, condE, w) // cond == 0 → a = b (both sources explicit)
 	f.pinned = f.pinned.remove(condReg)
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
-	f.release(bReg)
+	if ownB {
+		f.release(bReg)
+	}
 	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
 }
 
