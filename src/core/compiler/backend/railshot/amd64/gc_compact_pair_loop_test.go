@@ -40,3 +40,25 @@ func TestCompactPairLoopCertificate(t *testing.T) {
 		})
 	}
 }
+
+func TestCompactPairLoopPressure(t *testing.T) {
+	body := []byte{0x20, 2, 0x41, 0, 0x20, 0, 0x41, 0, 0xfb, 11, 0, 0xfb, 14, 0, 0x41, 0, 0x0d, 0, 0x0b}
+	for _, free := range []int{6, 7, 8} {
+		f := fixedArrayRootEmitter(wasm.I32, 0)
+		f.m.Types[0].SubTypes[0].Final = true
+		f.localType = []machineType{mtI64, mtI32, mtI64}
+		for i, r := range gpAlloc {
+			if i >= free {
+				f.reserved = f.reserved.add(r)
+			}
+		}
+		r := wasm.ReaderFrom(body)
+		f.prepareCompactLoop(&r)
+		if got := f.directLoop.kind == loopLeaseCompactPair; got != (free >= 7) {
+			t.Fatalf("free%d pair=%v", free, got)
+		}
+		if free >= 7 && (f.directLoop.local != 2<<16 || f.directLoop.remaining != 2) {
+			t.Fatalf("invalid lease %+v", f.directLoop)
+		}
+	}
+}
