@@ -118,3 +118,23 @@ func (c *Collector) sweepMajorBlocks() {
 	}
 	c.compactNurseryHandles()
 }
+
+// clearMajorBlockMarks shares the conservative occupancy proof used by the
+// major sweep. Empty blocks contain no live handles and cannot carry a mark
+// from an earlier successful collection: sweeping only frees unmarked objects,
+// and minor evacuation clears each retained object's mark before completion.
+// A new native reservation must be indexed before calling this method.
+func (c *Collector) clearMajorBlockMarks() {
+	for word, occupied := range c.majorBlocks {
+		for occupied != 0 {
+			bit := uint(bits.TrailingZeros64(occupied))
+			occupied &^= uint64(1) << bit
+			start := (word*64 + int(bit)) << majorBlockShift
+			if start >= len(c.mark) {
+				break
+			}
+			end := min(start+(1<<majorBlockShift), len(c.mark))
+			clear(c.mark[start:end])
+		}
+	}
+}

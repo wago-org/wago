@@ -11,8 +11,17 @@ func (c *Collector) clearMarks() {
 	if len(c.mark) < len(c.handles) {
 		c.mark = make([]bool, len(c.handles))
 	}
-	for i := range c.mark {
-		c.mark[i] = false
+	if nativeCollectorFastPaths && len(c.majorBlocks) != 0 && len(c.freeHandles) >= len(c.handles)/2 {
+		// Native reservations publish handles through the nursery ledger rather
+		// than updating the major index for each object. Synchronize before
+		// relying on that index to reset marks, not merely before sweeping.
+		if c.majorYoungDirty {
+			c.noteMajorHandles(c.nurseryHandles)
+			c.majorYoungDirty = false
+		}
+		c.clearMajorBlockMarks()
+	} else {
+		clear(c.mark)
 	}
 	c.markStack = c.markStack[:0]
 }
