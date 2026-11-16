@@ -59,3 +59,13 @@ Serial tagged retry: **PASS**, final source, 0.921s test execution. Original
 killed compilation remains in `evidence/wago-tagged.log`; successful retry is
 `evidence/wago-tagged-retry.log`. No full WasmGC corpus/admission claim follows
 from this selected direct-runtime regression suite.
+
+## Integrated checkpoint
+
+At integrated source `013aabcc`, direct core and native packages passed (0.030s,
+2.962s). The initial combined command was interrupted during its full Wago stage;
+that stage is not recorded as passing. A separate serial rerun of
+`go test -p=1 ./src/wago` completed successfully (56.284s), using Go 1.27.1,
+`GOMAXPROCS=2`, and `GOGC=50`. Logs are in `evidence/integrated`.
+These are default-runtime compatibility checks, not full experimental direct16
+WasmGC corpus qualification or performance measurements.
