@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_trusted
+//go:build linux && amd64 && (wago_gc_direct_trusted || wago_gc_direct_trusted_store)
 
 package wago
 

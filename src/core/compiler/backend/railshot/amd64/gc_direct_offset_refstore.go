@@ -42,6 +42,10 @@ func (f *fn) directOffsetRefArrayChild(t uint32) (uint32, bool) {
 // parent takes the complete checked helper before any payload mutation; only a
 // young parent or an already registered dirty old parent can use the native store.
 func (f *fn) emitDirectOffsetRefArraySet(t uint32, argSlot int) {
+	if gcTrustedDirectStores {
+		f.emitTrustedDirectOffsetRefArraySet(t, argSlot)
+		return
+	}
 	child, ok := f.directOffsetRefArrayChild(t)
 	if !ok {
 		panic("amd64: invalid direct reference store shape")

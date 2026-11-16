@@ -1,9 +1,10 @@
-//go:build linux && amd64 && (wago_gc_direct_refstore || wago_gc_direct_trusted)
+//go:build linux && amd64 && (wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store)
 
 package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	runtime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
@@ -117,23 +118,29 @@ func TestDirectGCRefStoreRejectsInvalidInputs(t *testing.T) {
 		}
 	}
 	original := readGlobalObject(in.globalCells[1], in.c.Globals[1].Type)
-	for _, bad := range []uint64{3, original + 2, original + 16, readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)} {
-		writeGlobalObject(in.globalCells[1], in.c.Globals[1].Type, bad)
-		_, e = in.Invoke("store", 0)
-		writeGlobalObject(in.globalCells[1], in.c.Globals[1].Type, original)
-		if e == nil {
-			t.Fatal("accepted malformed child", bad)
-		}
-		got, e := in.Invoke("get", 0)
-		if e != nil || len(got) != 1 || got[0] != 91 {
-			t.Fatal("failed store mutated parent", got, e)
+	// Raw private-reference corruption is tested only while the child resolver
+	// is checked. Trusted stores rely on static types and checked public ingress.
+	if c.executionView().gcTrustedDirectVersion < 2 {
+		for _, bad := range []uint64{3, original + 2, original + 16, readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)} {
+			writeGlobalObject(in.globalCells[1], in.c.Globals[1].Type, bad)
+			_, e = in.Invoke("store", 0)
+			writeGlobalObject(in.globalCells[1], in.c.Globals[1].Type, original)
+			if e == nil {
+				t.Fatal("accepted malformed child", bad)
+			}
+			got, e := in.Invoke("get", 0)
+			if e != nil || len(got) != 1 || got[0] != 91 {
+				t.Fatal("failed store mutated parent", got, e)
+			}
 		}
 	}
+
 	parent := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
 	writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, 0)
-	_, e = in.Invoke("store", 0)
+	_, e = in.Invoke("store", 0xffffffff)
 	writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, parent)
-	if e == nil {
-		t.Fatal("accepted null parent")
+	var trap *TrapError
+	if !errors.As(e, &trap) || trap.Code != TrapNullReference {
+		t.Fatalf("null parent must precede index trap: %v", e)
 	}
 }

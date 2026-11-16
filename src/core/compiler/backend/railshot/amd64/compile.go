@@ -1850,6 +1850,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			compiled.GCDirectReadABIVersion = gc.DirectABIVersion
 			if gcTrustedDirectReads {
 				compiled.GCTrustedDirectVersion = 1
+				if gcTrustedDirectStores {
+					compiled.GCTrustedDirectVersion = 2
+				}
 			}
 		}
 	}
