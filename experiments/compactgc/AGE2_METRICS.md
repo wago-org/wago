@@ -26,5 +26,8 @@ passes; parents/edges describe preflight only. The extra fresh-start and live
 queue scans alter execution costs: NEVER use this build for timing or V8
 comparisons. Existing promote-all cohort/shadow tags remain incompatible.
 
-Source prepared for independent review. Tests not yet run. No performance
+Independent source review found no blocker. Go1.27 tests passed: default core
+0.016s, age2-only core0.018s, metrics-tag core0.020s, metrics-tag race1.178s.
+Regression cases cover overflow/age-one classification, old-direct intervals,
+minor failure, full OOM/retry, and repeated snapshots. No performance
 claim, default enablement, or scan optimization accompanies these counters.
