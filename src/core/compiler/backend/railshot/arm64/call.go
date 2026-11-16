@@ -1537,9 +1537,22 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
-	// X9-X11 are part of the extended local-pin bank. Home every dirty pin before
-	// globals, control-frame setup, or argument marshalling reuses those registers.
-	f.spillLocalsForCall()
+	// The cached single-import i32 portal uses ARM64 park/resume stubs that
+	// preserve X19-X27. Keep integer locals in that saved bank live across the
+	// transition; caller-clobbered pins retain the ordinary store/lazy-reload
+	// path. Other host-call shapes keep publishing every pin because their bridge
+	// can carry wider values or use a different saved-register contract.
+	hostGPClobbers, hostFPClobbers := ^regMask(0), ^regMask(0)
+	preserveHostGPPins := f.dynamicHostFast && f.cacheImportDispatch &&
+		f.m.ImportedFuncCount() == 1 && importIdx == 0 && f.fpinnedLocalMask == 0 &&
+		len(ft.Params) == 1 && ft.Params[0] == wasm.I32 &&
+		len(ft.Results) == 1 && ft.Results[0] == wasm.I32
+	if preserveHostGPPins {
+		for r := X19; r <= X27; r++ {
+			hostGPClobbers = hostGPClobbers.remove(r)
+		}
+	}
+	f.spillLocalsForClobbers(hostGPClobbers, hostFPClobbers)
 	if regallocCheckEnabled {
 		f.checkHostSyncHomes()
 	}
@@ -1693,7 +1706,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// A restored local or value-pinned global can occupy X11. Restore these
 	// only after the final control-frame load. Their registers remain reserved
 	// from result allocation throughout the reconstruction.
-	f.reloadLocalsForCall()
+	f.reloadLocalsForClobbers(hostGPClobbers, hostFPClobbers)
 	if !internalGC {
 		f.deriveModuleGlobals()
 	}
@@ -1967,9 +1980,19 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	}
 	f.flush()
 	for i := range f.locals {
-		if f.locals[i].state != fastLocals[i].state {
+		state := fastLocals[i].state
+		if f.locals[i].state == state {
+			continue
+		}
+		reg, fp, ok := f.pinReg(i)
+		if !ok || state != lsReg && state != lsStackReg {
 			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
 		}
+		// The cold cross-instance branch published every local before its
+		// arbitrary callee. Reconstruct only the register states retained by the
+		// direct host branch so the join does not add work to the hot path.
+		f.loadLocalReg(i, reg, fp)
+		f.locals[i].state = state
 	}
 	if nativeBranch >= 0 {
 		crossDone := f.a.Branch()
