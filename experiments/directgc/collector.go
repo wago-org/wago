@@ -33,6 +33,7 @@ type Collector struct {
 	queue                                 []Ref
 	remembered                            []Ref
 	rememberedOverflow                    bool
+	retirementDense                       bool
 	nurseryStart, nurseryEnd, nurseryBump uint32
 	oldStart                              [2]uint32
 	oldSize, oldBump                      uint32
