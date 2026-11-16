@@ -5,6 +5,7 @@ package compactgc
 const age2Build = true
 
 type age2State struct {
+	age2MetricsState
 	age2                                           bool
 	youngBase, youngHalf, survivorEnd, survivorCap uint32
 }
@@ -45,7 +46,12 @@ func (c *Collector) freshStart() uint32 {
 	return c.nurseryStart
 }
 
-func (c *Collector) collectAge2(roots []*Ref, full bool) error {
+func (c *Collector) collectAge2(roots []*Ref, full bool) (result error) {
+	var metric age2CycleMetric
+	if age2MetricsEnabled {
+		metric = c.beginAge2Metric(full)
+		defer func() { c.finishAge2Metric(metric, result) }()
+	}
 	clear(c.mark)
 	defer clear(c.mark)
 	oldTarget := c.active
@@ -106,6 +112,7 @@ func (c *Collector) collectAge2(roots []*Ref, full bool) error {
 		count++
 		return nil
 	}
+	scanningRemembered := false
 	scan := func(r Ref) error {
 		// Remembered parents were not necessarily visited by visit during a minor.
 		if !c.valid(r) {
@@ -114,7 +121,15 @@ func (c *Collector) collectAge2(roots []*Ref, full bool) error {
 		if _, e := c.layoutAt(uint32(r)); e != nil {
 			return e
 		}
-		return c.eachRef(uint32(r), func(at uint32) error { return visit(Ref(c.u32(at))) })
+		if age2MetricsEnabled && scanningRemembered {
+			metric.rememberedParent()
+		}
+		return c.eachRef(uint32(r), func(at uint32) error {
+			if age2MetricsEnabled && scanningRemembered {
+				metric.rememberedEdge()
+			}
+			return visit(Ref(c.u32(at)))
+		})
 	}
 	for _, p := range roots {
 		if p == nil {
@@ -125,14 +140,19 @@ func (c *Collector) collectAge2(roots []*Ref, full bool) error {
 		}
 	}
 	if !full {
+		scanningRemembered = true
 		if e := c.rangeRemembered(scan); e != nil {
 			return e
 		}
 	}
+	scanningRemembered = false
 	for i := 0; i < count; i++ {
 		if e := scan(c.queue[i]); e != nil {
 			return e
 		}
+	}
+	if age2MetricsEnabled {
+		c.captureAge2Metric(&metric, count, youngNext-youngTarget)
 	}
 	// All fallible work has completed. Destinations are outside source ranges.
 	rewrite := func(r Ref) Ref {
