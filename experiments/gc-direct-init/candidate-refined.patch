@@ -1,0 +1,231 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_init_test.go b/src/core/compiler/backend/railshot/amd64/gc_direct_init_test.go
+new file mode 100644
+index 00000000..87ba8ff3
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_init_test.go
+@@ -0,0 +1,56 @@
++//go:build amd64
++
++package amd64
++
++import "testing"
++
++func TestDirectStructWordInitialized(t *testing.T) {
++	for _, tc := range []struct {
++		name   string
++		fields []nativeGCStructAllocField
++		offset uint32
++		want   bool
++	}{
++		{"empty", nil, 0, false},
++		{"wide", []nativeGCStructAllocField{{offset: 0, size: 8}}, 0, true},
++		{"two narrow", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 4, size: 4}}, 0, true},
++		{"low half widened", []nativeGCStructAllocField{{offset: 0, size: 4}}, 0, true},
++		{"high half", []nativeGCStructAllocField{{offset: 4, size: 4}}, 0, false},
++		{"alignment padding widened", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 8, size: 8}}, 0, true},
++		{"after hole", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 8, size: 8}}, 8, true},
++		{"tail", []nativeGCStructAllocField{{offset: 0, size: 8}}, 8, false},
++		{"reference pair", []nativeGCStructAllocField{{offset: 0, size: 4, ref: true}, {offset: 4, size: 4}}, 0, true},
++		{"reference padding widened", []nativeGCStructAllocField{{offset: 0, size: 4, ref: true}}, 0, true},
++		{"reference", []nativeGCStructAllocField{{offset: 0, size: 8, ref: true}}, 0, true},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := directStructWordInitialized(tc.fields, tc.offset); got != tc.want {
++				t.Fatalf("got%v want%v", got, tc.want)
++			}
++		})
++	}
++}
++
++func TestDirectStructInitializerStoreSize(t *testing.T) {
++	for _, tc := range []struct {
++		name   string
++		fields []nativeGCStructAllocField
++		index  int
++		want   uint32
++	}{
++		{"single", []nativeGCStructAllocField{{offset: 0, size: 4}}, 0, 8},
++		{"high neighbor", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 4, size: 4}}, 0, 4},
++		{"high reference", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 4, size: 4, ref: true}}, 0, 4},
++		{"high half", []nativeGCStructAllocField{{offset: 4, size: 4}}, 0, 4},
++		{"next word", []nativeGCStructAllocField{{offset: 0, size: 4}, {offset: 8, size: 8}}, 0, 8},
++		{"wide", []nativeGCStructAllocField{{offset: 0, size: 8}}, 0, 8},
++		{"reference padding", []nativeGCStructAllocField{{offset: 0, size: 4, ref: true}}, 0, 8},
++		{"reference neighbor", []nativeGCStructAllocField{{offset: 0, size: 4, ref: true}, {offset: 4, size: 4}}, 0, 4},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			if got := directStructInitializerStoreSize(tc.fields, tc.index); got != tc.want {
++				t.Fatalf("got%d want%d", got, tc.want)
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
+index 1120c987..4b853da6 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct_offset_alloc.go
+@@ -168,13 +168,21 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
+ 	a.StoreImm32Mem(R11, 12, pointerFree) // descriptor-derived pointer-free flag
+ 	a.MovImm32(RAX, 0)
+ 	for off := uint32(16); off < stride; off += 8 {
+-		a.Store64(R11, int32(off), RAX)
++		// Initialized fields cover this entire word before publication. Keep
++		// zeroing any partially covered word so field and tail padding stay zero.
++		if zero || !directStructWordInitialized(fields, off-16) {
++			a.Store64(R11, int32(off), RAX)
++		}
+ 	}
+ 	if !zero {
+-		for _, field := range fields {
++		for i, field := range fields {
+ 			if field.size == 4 {
+ 				a.Load32(RAX, RSP, f.spillOff(argSlot+int(field.slot))+delta)
+-				a.Store32(R11, int32(16+field.offset), RAX)
++				if directStructInitializerStoreSize(fields, i) == 8 {
++					a.Store64(R11, int32(16+field.offset), RAX)
++				} else {
++					a.Store32(R11, int32(16+field.offset), RAX)
++				}
+ 			} else {
+ 				a.Load64(RAX, RSP, f.spillOff(argSlot+int(field.slot))+delta)
+ 				a.Store64(R11, int32(16+field.offset), RAX)
+@@ -201,3 +209,37 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
+ 	}
+ 	a.Pop(R8)
+ }
++
++// directStructWordInitialized is a bounded compile-time coverage check. Field
++// stores are emitted later in the same no-safepoint publication region. It does
++// not authorize skipping default initialization or leaving padding uninitialized.
++func directStructWordInitialized(fields []nativeGCStructAllocField, offset uint32) bool {
++	var covered uint8
++	for i, field := range fields {
++		size := directStructInitializerStoreSize(fields, i)
++		for n := uint32(0); n < size; n++ {
++			at := field.offset + n
++			if at >= offset && at-offset < 8 {
++				covered |= 1 << (at - offset)
++			}
++		}
++	}
++	return covered == 255
++}
++
++// A 32-bit load zero-extends RAX. When the upper half of its aligned word is
++// exclusively padding, one wide initializer store also initializes that padding.
++// Never widen across another field, including a reference field.
++func directStructInitializerStoreSize(fields []nativeGCStructAllocField, index int) uint32 {
++	field := fields[index]
++	if field.size != 4 || field.offset%8 != 0 {
++		return field.size
++	}
++	high, end := field.offset+4, field.offset+8
++	for i, other := range fields {
++		if i != index && other.offset < end && other.offset+other.size > high {
++			return field.size
++		}
++	}
++	return 8
++}
+diff --git a/src/wago/gc_direct_init_amd64_test.go b/src/wago/gc_direct_init_amd64_test.go
+new file mode 100644
+index 00000000..40577a1c
+--- /dev/null
++++ b/src/wago/gc_direct_init_amd64_test.go
+@@ -0,0 +1,96 @@
++//go:build linux && amd64 && wago_gc_direct_trusted_alloc && wago_gc_direct_trusted_refstruct
++
++package wago
++
++import (
++	"encoding/binary"
++	"fmt"
++	runtime "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++	"unsafe"
++)
++
++func TestDirectGCConstructorInitializedWordsAndPadding(t *testing.T) {
++	for _, shape := range [][]byte{{0x7f}, {0x6d}, {0x7f, 0x6d}, {0x7e, 0x7e}, {0x7f, 0x7f}, {0x7f, 0x7e, 0x7f}, {0x6d, 0x7f, 0x7e}} {
++		for _, zero := range []bool{false, true} {
++			t.Run(fmt.Sprintf("%x/default%v", shape, zero), func(t *testing.T) {
++				st := []byte{0x5f, byte(len(shape))}
++				ft := []byte{0x60, byte(len(shape))}
++				body := []byte{}
++				args := make([]uint64, len(shape))
++				expected := make([]byte, 64)
++				off := uint32(0)
++				for i, typ := range shape {
++					st = append(st, typ, 0)
++					param := typ
++					if typ == 0x6d {
++						param = 0x7f
++					}
++					ft = append(ft, param)
++					size := uint32(4)
++					if typ == 0x7e {
++						size = 8
++					}
++					off = (off + size - 1) &^ (size - 1)
++					args[i] = 0x123456780000002b + uint64(i)
++					if size == 4 {
++						args[i] &= 0xffffffff
++					}
++					if !zero {
++						body = append(body, 0x20, byte(i))
++						value := args[i]
++						if typ == 0x6d {
++							body = append(body, 0xfb, 28)
++							value = (value << 1) | 1
++						}
++						if size == 8 {
++							binary.LittleEndian.PutUint64(expected[off:], value)
++						} else {
++							binary.LittleEndian.PutUint32(expected[off:], uint32(value))
++						}
++					}
++					off += size
++				}
++				ft = append(ft, 1, 0x7f)
++				op := byte(0)
++				if zero {
++					op = 1
++				}
++				body = append(body, 0xfb, op, 0, 0x24, 0, 0x41, 1, 0x0b)
++				data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(st, ft)), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
++				in := newDirectArrayBumpInstance(t, data, 128)
++				const sentinel = 0x81234567
++				slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
++				for n := 0; n < 32; n++ {
++					v := in.gc.DirectView()
++					arena := unsafe.Slice((*byte)(unsafe.Pointer(v.Arena)), int(v.ArenaBytes))
++					// Dirty only unallocated nursery bytes; a later native constructor must
++					// initialize all fields and padding before it publishes a start bit.
++					for j := v.NurseryBump; j < v.NurseryEnd; j++ {
++						arena[j] = 0xa5
++					}
++					binary.LittleEndian.PutUint32(slot, sentinel)
++					got, err := in.Invoke("run", args...)
++					if err != nil || len(got) != 1 || got[0] != 1 {
++						t.Fatal(got, err)
++					}
++					if n == 0 && binary.LittleEndian.Uint32(slot) != sentinel {
++						t.Fatal("roomy constructor used helper")
++					}
++					r := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))
++					size := binary.LittleEndian.Uint32(arena[r+4:])
++					stride := (size + 15) &^ uint32(15)
++					for j := uint32(0); j < stride-16; j++ {
++						if arena[r+16+j] != expected[j] {
++							t.Fatalf("iteration%d byte%d got%x want%x", n, j, arena[r+16+j], expected[j])
++						}
++					}
++				}
++				if in.gc.Stats().FullCollections == 0 {
++					t.Fatal("nursery was not reused after full collection")
++				}
++			})
++		}
++	}
++}

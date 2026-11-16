@@ -1,0 +1,226 @@
+diff --git a/experiments/directgc/collector.go b/experiments/directgc/collector.go
+index c0bb842c..3f16c1ec 100644
+--- a/experiments/directgc/collector.go
++++ b/experiments/directgc/collector.go
+@@ -112,9 +112,11 @@ func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
+ func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
+ 
+ func (c *Collector) collect(roots []*Ref, full bool) error {
+-	// Scratch is not authoritative heap state and is cleared on ALL outcomes.
+-	clear(c.mark)
+-	defer clear(c.mark)
++	// New starts with zero marks; every return clears all marks recorded by this
++	// serialized collection. Source offsets stay in queue until cleanup, including
++	// failed preflights. No operation can fail between marking and enqueueing.
++	count := 0
++	defer func() { c.clearQueuedMarks(count) }()
+ 	target := c.active
+ 	next := c.oldBump
+ 	if full {
+@@ -122,7 +124,6 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
+ 		next = c.oldStart[target]
+ 	}
+ 	limit := c.oldStart[target] + c.oldSize
+-	count := 0
+ 	visit := func(r Ref) error {
+ 		if r == 0 || r.IsI31() {
+ 			return nil
+@@ -228,3 +229,18 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
+ 	c.active = target
+ 	return nil
+ }
++
++// clearQueuedMarks bounds sparse cleanup by the number of visited objects.
++// Prefer contiguous clearing once queued objects reach one eighth of the
++// bitmap words. Indexed stores lost to full clearing on a measured 4096-live
++// production-sized graph; this ratio is a conservative heuristic, not a
++// portable optimum. Whole-word clearing is safe after traversal has ended.
++func (c *Collector) clearQueuedMarks(count int) {
++	if count >= max(1, len(c.mark)/8) {
++		clear(c.mark)
++		return
++	}
++	for _, r := range c.queue[:count] {
++		c.mark[uint32(r)/16/64] = 0
++	}
++}
+diff --git a/experiments/directgc/marks_test.go b/experiments/directgc/marks_test.go
+new file mode 100644
+index 00000000..8da679e8
+--- /dev/null
++++ b/experiments/directgc/marks_test.go
+@@ -0,0 +1,174 @@
++package directgc
++
++import (
++	"errors"
++	"fmt"
++	"testing"
++)
++
++func assertMarksClear(t *testing.T, c *Collector) {
++	t.Helper()
++	for i, word := range c.mark {
++		if word != 0 {
++			t.Fatalf("mark word %d retained: %x", i, word)
++		}
++	}
++}
++
++func TestQueuedMarksInvalidEdgeRetry(t *testing.T) {
++	for _, n := range []uint32{1, 128} {
++		t.Run(fmt.Sprint(n), func(t *testing.T) {
++			c := heap(t, 8192, 8192)
++			root := obj(t, c, 1, 0)
++			tail := root
++			for i := uint32(0); i < n; i++ {
++				child := obj(t, c, 1, 0)
++				edge(t, c, tail, 0, child)
++				tail = child
++			}
++			// Corrupt only a reference slot, modeling an invalid raw adapter write.
++			c.put32(uint32(tail)+header, 0xfffffff0)
++			for _, collect := range []func([]*Ref) error{c.Minor, c.Full} {
++				if err := collect([]*Ref{&root}); !errors.Is(err, ErrRef) {
++					t.Fatal(err)
++				}
++				assertMarksClear(t, c)
++			}
++			c.put32(uint32(tail)+header, 0)
++			for _, collect := range []func([]*Ref) error{c.Minor, c.Full} {
++				if err := collect([]*Ref{&root}); err != nil {
++					t.Fatal(err)
++				}
++				assertMarksClear(t, c)
++				r := root
++				for i := uint32(0); i < n; i++ {
++					r = get(t, c, r, 0)
++					if !c.valid(r) {
++						t.Fatal("lost chain")
++					}
++				}
++				if get(t, c, r, 0) != 0 {
++					t.Fatal("lost terminator")
++				}
++			}
++		})
++	}
++}
++
++func TestQueuedMarksOOMRetry(t *testing.T) {
++	c := heap(t, 4096, 64)
++	a := obj(t, c, 1, 0)
++	b := obj(t, c, 1, 0)
++	d := obj(t, c, 1, 0)
++	edge(t, c, a, 0, b)
++	edge(t, c, b, 0, d)
++	for _, collect := range []func([]*Ref) error{c.Minor, c.Full} {
++		if err := collect([]*Ref{&a}); !errors.Is(err, ErrOOM) {
++			t.Fatal(err)
++		}
++		assertMarksClear(t, c)
++	}
++	edge(t, c, b, 0, 0)
++	if err := c.Minor([]*Ref{&a}); err != nil {
++		t.Fatal(err)
++	}
++	assertMarksClear(t, c)
++	if !c.valid(get(t, c, a, 0)) {
++		t.Fatal("lost reachable child after retry")
++	}
++	if err := c.Full([]*Ref{&a}); err != nil {
++		t.Fatal(err)
++	}
++	assertMarksClear(t, c)
++}
++
++func TestQueuedMarksEmptyRepeatedCollections(t *testing.T) {
++	c := heap(t, 4096, 4096)
++	for i := 0; i < 10; i++ {
++		obj(t, c, 0, 1)
++		if err := c.Minor(nil); err != nil {
++			t.Fatal(err)
++		}
++		assertMarksClear(t, c)
++		if err := c.Full(nil); err != nil {
++			t.Fatal(err)
++		}
++		assertMarksClear(t, c)
++		if c.LiveObjects() != 0 {
++			t.Fatal("retained unreachable object")
++		}
++	}
++}
++
++// Copy this benchmark unchanged to the baseline. No candidate-only helper is
++// invoked: both revisions repeatedly collect the identical reachable graph.
++func BenchmarkMarkCleanupGraphs(b *testing.B) {
++	// The production arena has far more mark words for the same live graph.
++	// Include both sizes so the dense-fallback crossover is not hidden by a
++	// miniature heap. Each nonempty graph mixes a reference array with scalar
++	// structs; live4096 matches the struct-root workload's retained shape.
++	for _, arena := range []struct {
++		name         string
++		nursery, old uint32
++	}{{"small", 256 << 10, 256 << 10}, {"production", 2 << 20, 8 << 20}} {
++		for _, live := range []uint32{0, 1, 64, 4096} {
++			for _, full := range []bool{false, true} {
++				b.Run(fmt.Sprintf("%s/live%d/full%t", arena.name, live, full), func(b *testing.B) {
++					c, err := NewWithTypes(arena.nursery, arena.old, []Descriptor{{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}, {Kind: KindStruct, Align: 8, PayloadBytes: 8}})
++					if err != nil {
++						b.Fatal(err)
++					}
++					var roots []*Ref
++					if live != 0 {
++						root, err := c.NewArray(0, live)
++						if err != nil {
++							b.Fatal(err)
++						}
++						for i := uint32(0); i < live; i++ {
++							child, e := c.NewStruct(1)
++							if e != nil {
++								b.Fatal(e)
++							}
++							if e = c.SetRef(root, i, child); e != nil {
++								b.Fatal(e)
++							}
++						}
++						roots = []*Ref{&root}
++					}
++					b.ReportAllocs()
++					b.ResetTimer()
++					for i := 0; i < b.N; i++ {
++						// A Full moves and traces the live graph on every iteration. A Minor
++						// promotes once, then measures empty-young collections with old roots.
++						if full {
++							err = c.Full(roots)
++						} else {
++							err = c.Minor(roots)
++						}
++						if err != nil {
++							b.Fatal(err)
++						}
++					}
++				})
++			}
++		}
++	}
++}
++
++func TestQueuedMarksCleanupThreshold(t *testing.T) {
++	// Distinct mark words make a single queued entry sparse, while four entries
++	// hit the conservative threshold. The tiny bitmap also checks the floor.
++	for _, words := range []int{1, 32} {
++		threshold := max(1, words/8)
++		for _, count := range []int{0, threshold - 1, threshold, threshold + 1} {
++			c := &Collector{mark: make([]uint64, words), queue: make([]Ref, count)}
++			for i := 0; i < count; i++ {
++				word := i % words
++				c.queue[i] = Ref(word * 16 * 64)
++				c.mark[word] = 1
++			}
++			c.clearQueuedMarks(count)
++			assertMarksClear(t, c)
++		}
++	}
++}
