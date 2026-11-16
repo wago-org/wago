@@ -1252,10 +1252,8 @@ type compiledTagDef struct {
 // no new instances are needed; existing instances retain their executable image
 // until they close.
 type Compiled struct {
-	// gcHelperOnlyReceipt is intentionally absent from the artifact codec.
-	gcHelperOnlyReceipt bool
-	code                []byte
-	Entry               []int // host-wrapper offset, or the internal offset for direct-only functions
+	code  []byte
+	Entry []int // host-wrapper offset, or the internal offset for direct-only functions
 	// InternalEntry mirrors Entry with each function's register-ABI internal
 	// entry offset. Entry[i] == InternalEntry[i] for a direct-only register-ABI
 	// function whose unreachable host adapter was omitted.
@@ -1315,10 +1313,12 @@ type Compiled struct {
 	fixedSharedHostInteger  bool
 	memoryDir               *compiledMemoryDirectory
 
-	HasStart       bool // module declares a start function to run at instantiate
-	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)
-	StartIsImport  bool // start is an imported function (run its host binding at instantiate)
-	StartImportIdx int  // its imported-function index (valid when HasStart && StartIsImport)
+	// gcHelperOnlyReceipt occupies flag padding and is never serialized.
+	gcHelperOnlyReceipt bool
+	HasStart            bool // module declares a start function to run at instantiate
+	StartLocalFunc      int  // its local function index (valid when HasStart && !StartIsImport)
+	StartIsImport       bool // start is an imported function (run its host binding at instantiate)
+	StartImportIdx      int  // its imported-function index (valid when HasStart && StartIsImport)
 
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means eligible memory-0 memory32 checks were elided and execution requires
