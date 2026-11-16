@@ -93,12 +93,12 @@ func TestCompactNativeSharedRuntimeViews(t *testing.T) {
 			}
 		}
 	}
-	cloned, e := b.CloneGCRefFrom(a, av[0].GCRef())
-	if e != nil {
-		t.Fatal(e)
+	// Cross-store cloning is deliberately rejected within a shared Runtime;
+	// same-domain typed values are the supported publication path.
+	if _, e := b.CloneGCRefFrom(a, av[0].GCRef()); e == nil {
+		t.Fatal("same-store clone accepted")
 	}
-	defer b.ReleaseGCRef(cloned)
-	if e = b.SetGlobalValue("root", ValueGCRef(cloned)); e != nil {
+	if e = b.SetGlobalValue("root", av[0]); e != nil {
 		t.Fatal(e)
 	}
 	got, e := b.Invoke("read")
