@@ -67,3 +67,36 @@ func TestAge2MetricsFailedAttemptAndOldDirect(t *testing.T) {
 		t.Fatal("double count after flip", m)
 	}
 }
+
+func TestAge2MetricsFullFailureRetry(t *testing.T) {
+	c := ageHeap(t, 128, 32, 32, node)
+	a, b, p := obj(t, c, 0), obj(t, c, 0), obj(t, c, 0)
+	if e := c.Minor([]*Ref{&a, &b, &p}); e != nil {
+		t.Fatal(e)
+	}
+	set(t, c, a, 0, b)
+	set(t, c, p, 0, a)
+	before, _ := c.Age2Metrics()
+	if e := c.Full([]*Ref{&p}); e != ErrOOM {
+		t.Fatal("expected full OOM", e)
+	}
+	failed, _ := c.Age2Metrics()
+	if failed.FullFailures != 1 || failed.FullSuccesses != 0 || failed.Last != before.Last || failed.FullTotals != (Age2CycleMetrics{}) {
+		t.Fatal("failure consumed metrics", failed)
+	}
+	set(t, c, a, 0, 0)
+	if e := c.Full([]*Ref{&p}); e != nil {
+		t.Fatal(e)
+	}
+	after, _ := c.Age2Metrics()
+	if after.FullSuccesses != 1 || after.FullFailures != 1 || after.Last.FullYoungLiveBytes != 16 || after.Last.FullOldLiveBytes != 16 || after.Last.OldDirectAllocatedBytes != 0 {
+		t.Fatal("retry miscount", after)
+	}
+	if e := c.Minor([]*Ref{&p}); e != nil {
+		t.Fatal(e)
+	}
+	after, _ = c.Age2Metrics()
+	if after.Last.OldDirectAllocatedBytes != 0 {
+		t.Fatal("retry promotion counted old-direct", after)
+	}
+}
