@@ -12,3 +12,5 @@ Baseline runtime revision 01c81f5; candidate code-equivalent to 8116178 plus its
 Compilation comparison uses the same candidate tree with versus without the build tag, 64 warmups then 512 compile/close operations. Struct module native code grows 3956 to 4084 bytes; allocations remain approximately 253/op and allocated bytes approximately 66.2 KB/op. Compilation latency varies 128–140 microseconds/op; no reliable latency change claimed.
 
 Validation: AMD64 compiler and Wago GC/Gc suites passed with official spec-v3 corpus available; focused cache and old-array barrier tests also pass `wago_regalloccheck`. Tests cover warmed stores, promotion, minor collection, saturated-generation poisoned-cache rejection and warmed out-of-bounds traps. Separate lifecycle audit is required before treating the generation contract as complete.
+
+The final zero-generation fail-closed guard adds a test and conditional branch after these measurements; runtime/size measurements above predate that guard. Focused tagged register-allocation tests cover both zero and saturated poisoned certificates.

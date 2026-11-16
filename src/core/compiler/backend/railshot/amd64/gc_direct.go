@@ -2822,13 +2822,15 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	// complete resolver, and mutable barrier metadata is always read below.
 	cacheResolved := -1
 	if gcParentResolverCacheEnabled {
-		var misses [4]int
+		var misses [5]int
 		a.AluRM(cmpRMcode, RAX, R8, gc.NativeInstanceParentRefOffset, false)
 		misses[0] = a.JccPlaceholder(condNE)
 		a.AluRM(cmpRMcode, RDX, R8, gc.NativeInstanceParentTypeOffset, false)
 		misses[1] = a.JccPlaceholder(condNE)
 		a.Load64(R10, R8, gc.NativeInstanceViewCollectorOffset)
 		a.Load64(RCX, R10, gc.NativeViewRefreshGenerationOffset)
+		a.TestSelf(RCX, true)
+		misses[4] = a.JccPlaceholder(condE)
 		a.AluRI(cmpDigit, RCX, -1, true)
 		misses[3] = a.JccPlaceholder(condE)
 		a.AluRM(cmpRMcode, RCX, R8, gc.NativeInstanceParentGenerationOffset, true)

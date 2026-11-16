@@ -51,6 +51,15 @@ func TestGCParentResolverCache(t *testing.T) {
 	if err != nil || !got.Ref.IsObj() {
 		t.Fatalf("stored child after collection: %+v %v", got, err)
 	}
+	// An uninitialized generation can never authorize a pointer, either.
+	in.gc.NativeView().RefreshGeneration = 0
+	v.ParentGeneration = 0
+	v.ParentObject = 1
+	v.ParentHandle = 1
+	invoke("set_both")
+	if v.ParentObject == 1 || v.ParentHandle == 1 {
+		t.Fatal("zero-generation cache was not re-resolved")
+	}
 	// Saturated generation can never authorize a pointer, even if all keys match.
 	in.gc.NativeView().RefreshGeneration = math.MaxUint64
 	v.ParentGeneration = math.MaxUint64
