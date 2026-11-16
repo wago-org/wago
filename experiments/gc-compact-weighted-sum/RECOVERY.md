@@ -12,3 +12,5 @@ Go 1.27.1, serial `-p 1`, tags `wago_gc_compact_weighted_sum wago_gc_compact_ref
 - Wago `^(TestCompactGC|TestCompactNative|TestGCCompact)`: PASS, 1.022s. Weighted fixtures exercise signed/overflowing weights and modulo-32 sums/products, first-condition false, one/many iterations, final index and sum, short-array traps, and repeated invocations alongside existing compact moving-root/SSE regressions.
 
 This is the first tested reconstruction, not a restoration of historical weighted test results. No performance measurements have been made. Additional dedicated multi-loop stale-state and matcher-negative fixtures remain useful follow-up coverage.
+
+Dedicated follow-up regressions in `fe8eb3cd` subsequently passed with the same Go version, tags, serial flags and filters: backend 0.014s, applicable runtime matrix 1.096s. This qualifies canonical/rejected/canonical matcher resets (including every truncated prefix), and sequential matching/nonmatching/matching loops with distinct bounds/weights, repeated invocations, wrapping results and a late middle-loop bounds trap. No production fixes were required and no performance timing was performed.
