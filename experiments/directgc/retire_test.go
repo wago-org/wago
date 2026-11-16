@@ -113,3 +113,33 @@ func BenchmarkRetirementTraversal(b *testing.B) {
 		})
 	}
 }
+
+func TestNurseryRetirementStartAlignment(t *testing.T) {
+	c := heap(t, 4096, 4096)
+	for cycle := 0; cycle < 3; cycle++ {
+		var roots []*Ref
+		for _, words := range []uint32{0, 1, 2, 3, 7, 8, 9, 15, 16, 17} {
+			r := obj(t, c, 0, words)
+			if uint32(r)%16 != 0 {
+				t.Fatalf("unaligned object: %d", r)
+			}
+			roots = append(roots, &r)
+		}
+		for i := 1; i < len(c.starts); i += 2 {
+			if c.starts[i] {
+				t.Fatalf("odd start before collection: %d", i)
+			}
+		}
+		if err := c.Minor(roots); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Full(nil); err != nil {
+			t.Fatal(err)
+		}
+		for i := 1; i < len(c.starts); i += 2 {
+			if c.starts[i] {
+				t.Fatalf("odd start after collection: %d", i)
+			}
+		}
+	}
+}
