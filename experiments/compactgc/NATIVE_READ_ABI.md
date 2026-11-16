@@ -108,3 +108,24 @@ roots, nullable default, nonnullable children/default rejection, final SIMD arra
 children, nonfinal and abstract-i31 fallback. The initial build failure was a
 test-only uint32 argument passed to ValueI32(int32), corrected before execution.
 These results do not establish a speedup or full compact conformance.
+
+## Same-operation checked reference-store reuse (experimental)
+
+`wago_gc_compact_shared_checks` selects the existing checked reference-array
+store with one local optimization: after the parent resolves successfully, a
+nonnull child reuses the proof that the same immutable instance/collector ABI
+versions and sizes, and map/start/arena pointers, were valid. There is no call,
+safepoint, or write between resolutions. Pointers are reloaded, not retained in
+additional registers or persistent cache state. Each operand still validates
+its own map bound, reference alignment, start membership, active region, exact
+canonical type, and complete physical extent. Logical index checks and the old
+parent dirty certificate are unchanged. All failures still enter the complete
+rooted helper before payload mutation.
+
+This mode introduces neither a trusted receipt nor allocation elision. It does
+not change constructor validation or the default checked store. The tag is a
+separate A/B candidate; no performance benefit has been established. Source
+qualification must include the usual malformed operands, relocation and dirty
+barrier tests plus `TestCompactNativeSharedStoreChecks`, which proves common
+metadata and child type failures still reach the checked helper. Runtime tests
+and timing are pending at this checkpoint.
