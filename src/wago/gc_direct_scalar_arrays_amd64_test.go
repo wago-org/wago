@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_scalar_arrays
+//go:build linux && amd64 && (wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays)
 
 package wago
 
@@ -8,7 +8,6 @@ import (
 	"errors"
 	"math"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtime "github.com/wago-org/wago/src/core/runtime"
@@ -69,8 +68,9 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 			const sentinel = 0x81234567
 			slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
 			for n := 0; n < 5; n++ {
+				index := uint64(n%3) | (uint64(1) << 32)
 				binary.LittleEndian.PutUint32(slot, sentinel)
-				if _, e := in.Invoke("set", 0x100000001, tc.arg); e != nil {
+				if _, e := in.Invoke("set", index, tc.arg); e != nil {
 					t.Fatal(e)
 				}
 				if binary.LittleEndian.Uint32(slot) != sentinel {
@@ -80,7 +80,7 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 					t.Fatal(e)
 				}
 				binary.LittleEndian.PutUint32(slot, sentinel)
-				got, e := in.Invoke("get", 0x100000001)
+				got, e := in.Invoke("get", index)
 				if e != nil || len(got) != 1 || got[0] != tc.want {
 					t.Fatal(got, e, tc.want)
 				}
@@ -95,7 +95,7 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 	}
 }
 
-func TestDirectGCScalarArrayBoundsAndMetadata(t *testing.T) {
+func TestDirectGCScalarArrayBoundsAndNull(t *testing.T) {
 	data := directScalarArrayModule(0x7e, 0x7e, 11)
 	in := newDirectScalarArrayInstance(t, data)
 	// Null traps precede even an invalid unsigned index, at the array opcode.
@@ -143,28 +143,21 @@ func TestDirectGCScalarArrayBoundsAndMetadata(t *testing.T) {
 		}
 		checkUnchanged()
 	}
-	view := in.gc.DirectView()
-	arena := unsafe.Slice((*byte)(unsafe.Pointer(view.Arena)), int(view.ArenaBytes))
-	ref := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))
-	originalSize := binary.LittleEndian.Uint32(arena[ref+4:])
-	originalAux := binary.LittleEndian.Uint32(arena[ref+8:])
-	for _, which := range []string{"short-size", "aux-overflow"} {
-		if which == "short-size" {
-			binary.LittleEndian.PutUint32(arena[ref+4:], 16)
-		} else {
-			binary.LittleEndian.PutUint32(arena[ref+8:], 0xffffffff)
+}
+
+func TestDirectGCScalarArrayZeroLength(t *testing.T) {
+	data := directScalarArrayModule(0x7f, 0x7f, 11)
+	data = bytes.Replace(data, []byte{0x41, 3, 0xfb, 7, 0}, []byte{0x41, 0, 0xfb, 7, 0}, 1)
+	in := newDirectScalarArrayInstance(t, data)
+	if _, e := in.Invoke("init"); e != nil {
+		t.Fatal(e)
+	}
+	for _, index := range []uint64{0, 0xffffffff} {
+		if _, e := in.Invoke("get", index); e == nil {
+			t.Fatal("zero-length read accepted")
 		}
-		idx := uint64(1)
-		if which == "aux-overflow" {
-			idx = 0xfffffffe
+		if _, e := in.Invoke("set", index, 1); e == nil {
+			t.Fatal("zero-length write accepted")
 		}
-		_, se := in.Invoke("set", idx, 99)
-		_, ge := in.Invoke("get", idx)
-		binary.LittleEndian.PutUint32(arena[ref+4:], originalSize)
-		binary.LittleEndian.PutUint32(arena[ref+8:], originalAux)
-		if se == nil || ge == nil {
-			t.Fatal("accepted malformed extent", which, se, ge)
-		}
-		checkUnchanged()
 	}
 }

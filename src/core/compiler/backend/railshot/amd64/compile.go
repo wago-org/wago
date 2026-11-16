@@ -1853,6 +1853,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				if gcTrustedDirectStores {
 					compiled.GCTrustedDirectVersion = 2
 				}
+				if gcTrustedDirectArrays {
+					compiled.GCTrustedDirectVersion = 3
+				}
 			}
 		}
 	}

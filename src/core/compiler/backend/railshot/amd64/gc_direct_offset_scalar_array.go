@@ -7,8 +7,8 @@ import (
 	"math"
 )
 
-// The scalar-array mode deliberately retains the fully checked resolver even
-// when another experimental tag enables attested scalar struct reads.
+// Scalar arrays remain fully checked unless their separate policy3 attestation
+// is explicitly selected. Trusted scalar-struct reads alone do not authorize it.
 func (f *fn) directOffsetScalarArrayLayout(t uint32) (directGCScalar, bool) {
 	if !gcDirectScalarArrays {
 		return directGCScalar{}, false
@@ -18,10 +18,17 @@ func (f *fn) directOffsetScalarArrayLayout(t uint32) (directGCScalar, bool) {
 }
 
 // Resolving the object precedes logical bounds; scaling uses a zero-extended
-// Wasm index and 64-bit arithmetic. No load/store can exceed the checked header
-// extent, including when private Aux metadata is malformed.
+// Wasm index and 64-bit arithmetic. Checked mode additionally guards the selected
+// physical extent. Policy3 relies on allocator-certified immutable Aux/layout
+// instead; it never removes the guest-visible logical bounds check.
 func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, size int) (Reg, Reg, func()) {
-	obj, done := f.emitFullyCheckedDirectOffset(object, t, gc.PayloadOffset)
+	var obj Reg
+	var done func()
+	if gcTrustedDirectArrays {
+		obj, done = f.emitTrustedDirectOffset(object)
+	} else {
+		obj, done = f.emitFullyCheckedDirectOffset(object, t, gc.PayloadOffset)
+	}
 	index := f.materialize(indexValue)
 	f.a.MovRegReg32(index, index)
 	f.pinned = f.pinned.add(index)
@@ -31,14 +38,16 @@ func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, 
 	f.a.Cmp32(index, tmp)
 	f.trapIf(condAE, trapBuiltin)
 	f.a.ImulRI(index, int32(size), true)
-	f.a.Load32(tmp, obj, 4)
-	end := f.allocReg(maskOf(obj, index, tmp))
-	f.pinned = f.pinned.add(end)
-	f.a.MovReg64(end, index)
-	f.a.AluRI(0, end, int32(gc.PayloadOffset)+int32(size), true)
-	f.a.Cmp64(end, tmp)
-	f.trapIf(condA, trapCastFailure)
-	f.pinned = f.pinned.remove(end)
+	if !gcTrustedDirectArrays {
+		f.a.Load32(tmp, obj, 4)
+		end := f.allocReg(maskOf(obj, index, tmp))
+		f.pinned = f.pinned.add(end)
+		f.a.MovReg64(end, index)
+		f.a.AluRI(0, end, int32(gc.PayloadOffset)+int32(size), true)
+		f.a.Cmp64(end, tmp)
+		f.trapIf(condA, trapCastFailure)
+		f.pinned = f.pinned.remove(end)
+	}
 	f.pinned = f.pinned.remove(tmp)
 	return obj, index, func() {
 		f.pinned = f.pinned.remove(index)

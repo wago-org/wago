@@ -38,3 +38,22 @@ also passed that checked struct-validation test. Unfiltered default Wago,
 native/checked GC, AMD64 backend and direct substrate tests all pass. These are
 correctness checks, not measured array throughput or full experimental feature
 conformance. Numeric array allocation still uses rooted Go helpers.
+## Separately attested numeric access
+
+`wago_gc_direct_trusted_arrays` selects private policy 3, including the existing
+trusted scalar-read/reference-store modes and scalar-array operations. Policy 2
+combined with `wago_gc_direct_scalar_arrays` continues to use checked numeric
+array operations. The ABI version remains 3; the policy receipt is separate,
+private, compiler-issued and nonserialized.
+
+Only policy 3 removes repeated parent metadata resolution and the physical
+selected-element check. A validated final array operand type, checked public
+reference ingress, exact moving roots, and allocator-preserved header Aux/layout
+establish a live object with a physically valid payload. Numeric host byte borrows
+cannot change its header or introduce references. Parent null, unsigned logical
+index bounds, zero extension and 64-bit scaling remain explicit. Numeric stores
+still have no references requiring a write barrier. No pointer crosses a call.
+
+Intentional private-header corruption tests remain in checked mode, separate from
+null/bounds/relocation tests shared by both modes. This is an opt-in conventional
+validated-Wasm access experiment, not allocation elision or a performance claim.
