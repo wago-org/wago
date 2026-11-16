@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy)
+//go:build linux && amd64 && (wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy)
 
 package wago
 
@@ -132,14 +132,14 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 	}
 
 	runtime.ReadMemStats(&afterMem)
-	if after.MinorCollections+after.FullCollections == 0 {
+	if after.MinorCollections+after.FullCollections == 0 && os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") != "1" {
 		t.Fatal("probe completed without any real collection; increase warmup")
 	}
 	var usage syscall.Rusage
 	if e = syscall.Getrusage(syscall.RUSAGE_SELF, &usage); e != nil {
 		t.Fatal(e)
 	}
-	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
+	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "zero_collection_diagnostic_allowed": os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") == "1", "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
 	if mode == "direct" || mode == "compact" {
 		out["direct_old_semispaces"] = 2
 		out["direct_arena_bytes"] = 16 + config.NurseryBytes + 2*config.ThroughputHeapBytes
