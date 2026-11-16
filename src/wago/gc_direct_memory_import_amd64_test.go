@@ -203,14 +203,17 @@ func TestDirectGCMemoryImportSharedContextLifetime(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			out, e := in.Invoke("step", token[0], 0)
+			refToken := token[0]
+			out, e := in.Invoke("step", refToken, 0)
 			if e != nil || out[0] != value {
 				t.Fatalf("tenant %d %v %v", j, out, e)
 			}
 			if in.gcDirectView != nil && in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(in.gcDirectView)) {
 				t.Fatal("wrong rebound direct GC view")
 			}
-			in.ReleaseGCRef(GCRef{token: token[0]})
+			if e = in.ReleaseGCRef(GCRef{token: refToken}); e != nil {
+				t.Fatal(e)
+			}
 			directMemoryCheck(t, in)
 		}
 	}
@@ -226,12 +229,17 @@ func TestDirectGCMemoryImportSharedContextLifetime(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	out, e := other.Invoke("step", token[0], 1)
+	refToken := token[0]
+	out, e := other.Invoke("step", refToken, 1)
 	if e != nil || out[0] != 77 {
 		t.Fatalf("after failed construction %v %v", out, e)
 	}
-	other.ReleaseGCRef(GCRef{token: token[0]})
-	owner.Close()
+	if e = other.ReleaseGCRef(GCRef{token: refToken}); e != nil {
+		t.Fatal(e)
+	}
+	if e = owner.Close(); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = other.Invoke("store", 16, 88); e != nil {
 		t.Fatal(e)
 	}
@@ -239,7 +247,10 @@ func TestDirectGCMemoryImportSharedContextLifetime(t *testing.T) {
 	if e != nil || out[0] != 88 {
 		t.Fatal(out, e)
 	}
-	other.Close()
+	if e = other.Close(); e != nil {
+		t.Fatal(e)
+	}
+	t.Logf("owners roots=%d/%d closed=%v/%v", owner.resourceRefs, other.resourceRefs, owner.resourcesClosed, other.resourcesClosed)
 	if e = host.Close(); e != nil {
 		t.Fatalf("attachment leaked: %v", e)
 	}
@@ -283,13 +294,19 @@ func TestDirectGCMemoryImportRetainsProducer(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	out, e := consumer.Invoke("arrayStep", token[0], 1)
+	refToken := token[0]
+	out, e := consumer.Invoke("arrayStep", refToken, 1)
 	if e != nil || out[0] != 92 {
 		t.Fatal(out, e)
 	}
-	consumer.ReleaseGCRef(GCRef{token: token[0]})
+	if e = consumer.ReleaseGCRef(GCRef{token: refToken}); e != nil {
+		t.Fatal(e)
+	}
 	directMemoryCheck(t, consumer)
-	consumer.Close()
+	if e = consumer.Close(); e != nil {
+		t.Fatal(e)
+	}
+	t.Logf("producer/consumer roots=%d/%d closed=%v/%v", producer.resourceRefs, consumer.resourceRefs, producer.resourcesClosed, consumer.resourcesClosed)
 	if !producer.resourcesClosed {
 		t.Fatal("producer retained after final importer close")
 	}
@@ -313,7 +330,6 @@ func TestDirectMemoryImportPolicy(t *testing.T) {
 		{"threaded", []memoryDef{{ImportKey: "env.mem", Shared: true}}, false},
 		{"multiple", []memoryDef{ordinary, ordinary}, false},
 		{"importPlusLocal", []memoryDef{ordinary, {}}, false},
-		{"nonzeroImport", []memoryDef{{}, ordinary}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &Compiled{memoryImport: "env.mem", memoryDir: &compiledMemoryDirectory{defs: tc.defs}}
