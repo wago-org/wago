@@ -1,0 +1,5 @@
+# Fully checked compact pipeline versus V8
+
+Qualified runtime c3ede430 / canonical c737b62e. Candidate tags `wago_gc_compact_copy,wago_gc_compact_refstruct`, including checked native allocation, numeric/reference access, fill/copy and reference-containing constructors. No trusted check removal, LICM, compact8 or allocation elision.
+
+All six original exact artifacts, 100 warmup calls and nine batches of 32 timed calls, three rotating fresh-process rounds. Primary Eden 2 MiB and separate 512 KiB control, two 8 MiB old semispaces unchanged. Audit-only warmups 128 at 2 MiB ensure copy collection. V8 --no-liftoff, full versions/hashes retained. Report every workload and target miss, actual Wago collections/allocations and memory. V8 internal allocation/tiering behavior needs explicit verification rather than assumed equivalence; checksums/retained roots do not prove identical allocations. Compile+Close footprint measured separately after execution. No universal-engine or isolated collector-efficiency claim.
