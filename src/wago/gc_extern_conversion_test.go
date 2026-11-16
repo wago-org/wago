@@ -202,3 +202,58 @@ func BenchmarkGCExternConversionRoundTrip(b *testing.B) {
 		}
 	}
 }
+
+func TestGCExternConversionUsesRewrittenRoot(t *testing.T) {
+	_, collector, state, original := newGCExternConversionFixture(t)
+	defer collector.Close()
+	defer state.close()
+	external, err := state.externFromAny(uint64(original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := state.publicAnyFromInternal(uint64(original))
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := collector.NewStructDefaultWithRoots(0, gc.EmptyRoots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slot uint32
+	for i := range state.entries {
+		if state.entries[i].kind == gcExternConversionData && state.entries[i].ref == original {
+			slot = state.entries[i].rootSlot
+		}
+	}
+	if err = collector.SetTableSlot(slot, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err = collector.CollectFull(gc.EmptyRoots{}); err != nil {
+		t.Fatal(err)
+	}
+	count := state.count
+	if got, e := state.anyFromExtern(external); e != nil || got != uint64(moved) {
+		t.Fatalf("reverse conversion=%v,%v; want%v", got, e, moved)
+	}
+	if got, e := state.internalAnyFromPublic(public); e != nil || got != uint64(moved) {
+		t.Fatalf("public conversion=%v,%v; want%v", got, e, moved)
+	}
+	if got, e := state.externFromAny(uint64(moved)); e != nil || got != external {
+		t.Fatalf("external identity=%v,%v; want%v", got, e, external)
+	}
+	if got, e := state.publicAnyFromInternal(uint64(moved)); e != nil || got != public {
+		t.Fatalf("public identity=%v,%v; want%v", got, e, public)
+	}
+	if state.count != count {
+		t.Fatal("root rewrite duplicated conversion identity")
+	}
+	if _, e := state.externFromAny(uint64(original)); e == nil {
+		t.Fatal("freed issuance reference accepted")
+	}
+	if err = collector.SetTableSlot(slot, gc.Null()); err != nil {
+		t.Fatal(err)
+	}
+	if _, e := state.anyFromExtern(external); e == nil {
+		t.Fatal("cleared conversion root accepted")
+	}
+}

@@ -58,6 +58,24 @@ func newGCExternConversionState(store *referenceStore, collector *gc.Collector) 
 	return &gcExternConversionState{store: store, collector: collector}, nil
 }
 
+// dataRefLocked resolves the mutable collector root rather than the issuance
+// snapshot. Moving collectors can update the root while opaque identities stay
+// stable. The conversion-state lock and the caller's collector serialization
+// protect this lookup; i31 immediates need no collector root.
+func (s *gcExternConversionState) dataRefLocked(entry *gcExternConversionEntry) (gc.Ref, error) {
+	if !entry.hasRoot {
+		if entry.ref.IsI31() {
+			return entry.ref, nil
+		}
+		return gc.Null(), fmt.Errorf("GC conversion data has no object root")
+	}
+	ref, err := s.collector.CheckedTableSlot(entry.rootSlot)
+	if err != nil || !ref.IsObj() {
+		return gc.Null(), fmt.Errorf("GC conversion data has no live object root")
+	}
+	return ref, nil
+}
+
 func (s *gcExternConversionState) anyFromExtern(extern uint64) (uint64, error) {
 	if s == nil {
 		return 0, fmt.Errorf("GC extern conversion state is unavailable")
@@ -79,7 +97,8 @@ func (s *gcExternConversionState) anyFromExternLocked(extern uint64) (uint64, er
 		switch entry.kind {
 		case gcExternConversionData:
 			if entry.externWord == extern || entry.publicExternWord == extern {
-				return uint64(entry.ref), nil
+				ref, err := s.dataRefLocked(entry)
+				return uint64(ref), err
 			}
 		case gcExternConversionForeign:
 			if entry.externWord == extern {
@@ -145,8 +164,14 @@ func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, e
 	}
 	for i := range s.entries {
 		entry := &s.entries[i]
-		if entry.kind == gcExternConversionData && entry.ref == ref {
-			return entry.externWord, nil
+		if entry.kind == gcExternConversionData {
+			current, err := s.dataRefLocked(entry)
+			if err != nil {
+				return 0, err
+			}
+			if current == ref {
+				return entry.externWord, nil
+			}
 		}
 	}
 	externWord, err := s.newOpaqueWordLocked(anyWord)
@@ -199,7 +224,8 @@ func (s *gcExternConversionState) internalAnyFromPublic(word uint64) (uint64, er
 	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionData && entry.publicAnyWord == word {
-			return uint64(entry.ref), nil
+			ref, err := s.dataRefLocked(entry)
+			return uint64(ref), err
 		}
 	}
 	return s.anyFromExternLocked(word)
@@ -222,8 +248,14 @@ func (s *gcExternConversionState) publicAnyFromInternal(word uint64) (uint64, er
 		if entry.kind == gcExternConversionForeign && entry.anyWord == word {
 			return entry.externWord, nil
 		}
-		if entry.kind == gcExternConversionData && uint64(entry.ref) == word {
-			return entry.publicAnyWord, nil
+		if entry.kind == gcExternConversionData {
+			current, err := s.dataRefLocked(entry)
+			if err != nil {
+				return 0, err
+			}
+			if uint64(current) == word {
+				return entry.publicAnyWord, nil
+			}
 		}
 	}
 	if _, err := s.externFromAnyLocked(word); err != nil {
@@ -231,8 +263,14 @@ func (s *gcExternConversionState) publicAnyFromInternal(word uint64) (uint64, er
 	}
 	for i := range s.entries {
 		entry := &s.entries[i]
-		if entry.kind == gcExternConversionData && uint64(entry.ref) == word {
-			return entry.publicAnyWord, nil
+		if entry.kind == gcExternConversionData {
+			current, err := s.dataRefLocked(entry)
+			if err != nil {
+				return 0, err
+			}
+			if uint64(current) == word {
+				return entry.publicAnyWord, nil
+			}
 		}
 	}
 	return 0, fmt.Errorf("GC public anyref conversion identity is unavailable")
