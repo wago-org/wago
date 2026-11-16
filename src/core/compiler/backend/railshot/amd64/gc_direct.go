@@ -611,6 +611,12 @@ func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes u
 		f.stats.peep("gc-resolve-reuse")
 		return f.gcResolved.reg, func() {}
 	}
+	// Every read in a hoisted loop must reuse the entry certificate. Failing
+	// closed protects earlier emitted backedge reads if future lowering adds
+	// a different resolver or a wider extent inside the admitted loop.
+	if f.gcResolved.loopEndPC != 0 {
+		panic("amd64: replacing a loop-held GC object certificate")
+	}
 	f.gcPureIfEndPC = 0
 	if !retain {
 		f.invalidateGCResolvedObject()
