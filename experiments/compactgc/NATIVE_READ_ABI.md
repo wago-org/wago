@@ -82,3 +82,29 @@ malformed-receiver cases0.042s; complete applicable compact GC/native matrix
 parent before allocating internal callees, including local/select/branch/call/
 return flows. Constructors are unchanged in this qualification. No performance
 claim is made.
+
+## Checked reference-field constructor experiment
+
+The separately selectable `wago_gc_compact_refstruct` mode admits bounded
+struct constructors with at most eight fields/128 logical bytes. Reference
+initializers must target indexed, final struct or array types. Null is admitted
+only for nullable fields. Abstract/i31, nonfinal, opaque/funcref and vector fields
+retain the full helper. Final SIMD arrays may be referenced as children; their
+complete dynamically derived extent is checked.
+
+Every non-null child passes compact start/range/identity/full-extent checks
+before any parent mutation. The normal parent capacity checks, complete payload
+initialization, start publication, actual/snapshot bump update and deferred
+allocation counting are unchanged. Failure retains canonical rooted initializer
+slots for the helper, including capacity-triggered moving collections. No
+allocation is removed; new nursery parents need no old-generation barrier.
+
+Go1.27.1 compact_refstruct + regalloc: focused constructor/getter matrix passed
+0.052s; applicable compact GC/native/private-receipt matrix passed2.768s. Final
+constructor edge rerun passed0.040s, including byte-for-byte heap and bump
+invariance after rejected wrong-type children. Coverage includes exact allocation
+counts, a native no-helper sentinel, recursive final trees, sole-child scratch
+roots, nullable default, nonnullable children/default rejection, final SIMD array
+children, nonfinal and abstract-i31 fallback. The initial build failure was a
+test-only uint32 argument passed to ValueI32(int32), corrected before execution.
+These results do not establish a speedup or full compact conformance.
