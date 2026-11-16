@@ -45,11 +45,10 @@ func (c *Collector) ArrayPayload(ref Ref) (ArrayPayloadView, error) {
 	if length != 0 && payloadBytes/uint64(length) != uint64(d.ElemSize) {
 		return ArrayPayloadView{}, errors.New("gc: array payload size overflow")
 	}
-	object := c.bytes(ref)
-	if uint64(len(object)) < uint64(PayloadOffset) || payloadBytes > uint64(len(object))-uint64(PayloadOffset) {
-		return ArrayPayloadView{}, fmt.Errorf("gc: array payload %d bytes exceeds object extent %d", payloadBytes, len(object))
+	payload := c.payloadBytes(ref)
+	if payloadBytes > uint64(len(payload)) {
+		return ArrayPayloadView{}, fmt.Errorf("gc: array payload %d bytes exceeds object extent %d", payloadBytes, len(payload)+int(PayloadOffset))
 	}
-	start := int(PayloadOffset)
-	end := start + int(payloadBytes)
-	return ArrayPayloadView{Storage: d.Elem, Length: length, Bytes: object[start:end:end]}, nil
+	end := int(payloadBytes)
+	return ArrayPayloadView{Storage: d.Elem, Length: length, Bytes: payload[:end:end]}, nil
 }

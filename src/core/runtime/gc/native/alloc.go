@@ -328,7 +328,10 @@ func (c *Collector) bytes(r Ref) []byte {
 	}
 }
 func (c *Collector) header(r Ref) ObjHeader {
-	b := c.bytes(r)
+	return decodeHeader(c.bytes(r))
+}
+
+func decodeHeader(b []byte) ObjHeader {
 	return ObjHeader{binary.LittleEndian.Uint32(b[0:4]), binary.LittleEndian.Uint32(b[4:8]), binary.LittleEndian.Uint32(b[8:12]), binary.LittleEndian.Uint32(b[12:16])}
 }
 func (c *Collector) writeHeader(r Ref, h ObjHeader) {
@@ -342,7 +345,7 @@ func (c *Collector) writeHeader(r Ref, h ObjHeader) {
 func (c *Collector) zeroObjectPayload(r Ref) {
 	if c.direct != nil {
 		if c.validObjectRef(r) {
-			clear(c.bytes(r)[PayloadOffset:])
+			clear(c.payloadBytes(r))
 		}
 		return
 	}

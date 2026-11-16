@@ -34,8 +34,8 @@ func (c *Collector) NewArrayDataWithRoots(typeID TypeID, length uint32, data []b
 	if err != nil {
 		return Null(), err
 	}
-	payloadEnd := uint32(uint64(PayloadOffset) + bytes)
-	copy(c.bytes(r)[PayloadOffset:payloadEnd], data[uint64(source):end])
+	payloadEnd := uint32(bytes)
+	copy(c.payloadBytes(r)[:payloadEnd], data[uint64(source):end])
 	if c.direct != nil {
 		return r, nil
 	}

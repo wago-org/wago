@@ -43,7 +43,10 @@ func loadValueBytes(b []byte, off uint64, k StorageKind) (Value, error) {
 }
 func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v Value) error {
 	_ = d
-	b := c.bytes(r)
+	return storeValueBytes(c.bytes(r), off, k, v)
+}
+
+func storeValueBytes(b []byte, off uint64, k StorageKind, v Value) error {
 	_, size, err := storageLayout(k)
 	if err != nil {
 		return err

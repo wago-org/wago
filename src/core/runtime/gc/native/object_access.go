@@ -71,7 +71,7 @@ func (c *Collector) NewStructWordsPrevalidatedWithRootScratch(typeID TypeID, wor
 	if err != nil {
 		return Null(), err
 	}
-	payload := c.bytes(r)[PayloadOffset:]
+	payload := c.payloadBytes(r)
 	cursor = 0
 	for _, field := range d.Fields {
 		slots := 1
@@ -134,7 +134,7 @@ func (c *Collector) newStructWithRoots(typeID TypeID, values []Value, roots Root
 		return Null(), err
 	}
 	// Every field is written below; padding is not observable or scanned.
-	payload := c.bytes(r)[PayloadOffset:]
+	payload := c.payloadBytes(r)
 	for i, field := range d.Fields {
 		// Shape, kind, compact-reference ownership, nullability, and complete
 		// object size were preflighted before allocation. Store directly so large
@@ -367,7 +367,7 @@ func (c *Collector) newArrayFixedWithRoots(typeID TypeID, values []Value, roots 
 	if err != nil {
 		return Null(), err
 	}
-	payload := c.bytes(r)[PayloadOffset:]
+	payload := c.payloadBytes(r)
 	for i := range values {
 		storeValueUnchecked(payload, uint64(i)*uint64(d.ElemSize), d.Elem, values[i])
 	}
@@ -588,7 +588,7 @@ func (c *Collector) StructGet(ref Ref, field uint32) (Value, error) {
 		return Value{}, errors.New("gc: field out of range")
 	}
 	f := d.Fields[field]
-	return c.loadValue(ref, uint64(PayloadOffset+f.Offset), f.Kind)
+	return c.loadPayloadValue(ref, uint64(f.Offset), f.Kind)
 }
 
 // StructGetTyped combines dynamic type checking and field access after resolving
@@ -596,7 +596,7 @@ func (c *Collector) StructGet(ref Ref, field uint32) (Value, error) {
 // types retain declared-super traversal. actual is returned for precise caller
 // diagnostics when matched is false.
 func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field uint32) (value Value, actual TypeID, matched bool, err error) {
-	d, object, err := c.refDescPtrBytes(ref)
+	d, object, err := c.refDescPtrPayload(ref)
 	if err != nil {
 		return Value{}, 0, false, err
 	}
@@ -612,7 +612,7 @@ func (c *Collector) StructGetTyped(ref Ref, required TypeID, exact bool, field u
 		return Value{}, actual, true, errors.New("gc: field out of range")
 	}
 	f := d.Fields[field]
-	value, err = loadValueBytes(object, uint64(PayloadOffset+f.Offset), f.Kind)
+	value, err = loadValueBytes(object, uint64(f.Offset), f.Kind)
 	return value, actual, true, err
 }
 
@@ -645,14 +645,14 @@ func (c *Collector) StructGetFinalRef(ref Ref, required TypeID, field uint32) (v
 	if !c.validObjectRef(ref) {
 		return Null(), false, errors.New("gc: invalid object ref")
 	}
-	b := c.bytes(ref)
-	if len(b) < int(HeaderSize) {
-		return Null(), false, errors.New("gc: object header out of bounds")
+	h, b, err := c.checkedHeaderPayload(ref)
+	if err != nil {
+		return Null(), false, err
 	}
-	if TypeID(binary.LittleEndian.Uint32(b)) != required {
+	if TypeID(h.TypeID) != required {
 		return Null(), false, nil
 	}
-	off := uint64(PayloadOffset) + uint64(f.Offset)
+	off := uint64(f.Offset)
 	if off > uint64(len(b)) || uint64(len(b))-off < 4 {
 		return Null(), true, errors.New("gc: load out of bounds")
 	}
@@ -678,7 +678,7 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
 			return err
 		}
-		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
+		if err := c.storePayloadValue(ref, uint64(f.Offset), f.Kind, value); err != nil {
 			return err
 		}
 		if c.needsObjectBarrier(ref) {
@@ -686,7 +686,7 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		}
 		return nil
 	}
-	return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
+	return c.storePayloadValue(ref, uint64(f.Offset), f.Kind, value)
 }
 
 // StructSetTyped is StructGetTyped's mutation counterpart. It performs the
@@ -716,7 +716,7 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 		if err := c.validateStoredRef(value.Ref, isNullableReferenceStorage(f.Kind)); err != nil {
 			return actual, true, err
 		}
-		if err := c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value); err != nil {
+		if err := c.storePayloadValue(ref, uint64(f.Offset), f.Kind, value); err != nil {
 			return actual, true, err
 		}
 		if c.needsObjectBarrier(ref) {
@@ -724,7 +724,7 @@ func (c *Collector) StructSetTyped(ref Ref, required TypeID, exact bool, field u
 		}
 		return actual, true, nil
 	}
-	return actual, true, c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
+	return actual, true, c.storePayloadValue(ref, uint64(f.Offset), f.Kind, value)
 }
 
 func (c *Collector) typeDescSubtype(dynamic TypeDesc, required TypeID, exact bool) (bool, error) {
@@ -761,7 +761,7 @@ func (c *Collector) ArrayGet(ref Ref, index uint32) (Value, error) {
 	if index >= ln {
 		return Value{}, errors.New("gc: index out of range")
 	}
-	return c.loadValue(ref, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem)
+	return c.loadPayloadValue(ref, uint64(index)*uint64(d.ElemSize), d.Elem)
 }
 
 // ArrayGetTyped combines the dynamic array type test, bounds check, and element
@@ -782,7 +782,7 @@ func (c *Collector) ArrayGetTyped(ref Ref, required TypeID, exact bool, index ui
 	if index >= c.header(ref).Aux {
 		return Value{}, actual, true, errors.New("gc: index out of range")
 	}
-	value, err = c.loadValue(ref, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem)
+	value, err = c.loadPayloadValue(ref, uint64(index)*uint64(d.ElemSize), d.Elem)
 	return value, actual, true, err
 }
 
@@ -831,7 +831,7 @@ func (c *Collector) ArraySetDeferredBarrier(ref Ref, index uint32, value Value) 
 			return err
 		}
 	}
-	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
+	return c.storePayloadValue(ref, uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
 
 // ArraySetTyped is ArrayGetTyped's mutation counterpart and retains reference
@@ -907,7 +907,7 @@ func (c *Collector) fillArrayPayload(ref Ref, d TypeDesc, start uint32, value Va
 	if length == 0 {
 		return nil
 	}
-	payload := c.bytes(ref)[PayloadOffset:]
+	payload := c.payloadBytes(ref)
 	lo := uint64(start) * uint64(d.ElemSize)
 	hi := lo + uint64(length)*uint64(d.ElemSize)
 	if lo > uint64(len(payload)) || hi > uint64(len(payload)) || hi < lo {
@@ -957,8 +957,8 @@ func (c *Collector) ArrayInitData(dst Ref, dstStart uint32, data []byte, srcStar
 	default:
 		return errors.New("gc: array.init_data element width is unsupported")
 	}
-	dstOffset := uint64(PayloadOffset) + uint64(dstStart)*uint64(d.ElemSize)
-	copy(c.bytes(dst)[dstOffset:dstOffset+byteLength], data[uint64(srcStart):sourceEnd])
+	dstOffset := uint64(dstStart) * uint64(d.ElemSize)
+	copy(c.payloadBytes(dst)[dstOffset:dstOffset+byteLength], data[uint64(srcStart):sourceEnd])
 	return nil
 }
 
@@ -977,8 +977,8 @@ func (c *Collector) ArrayInitWords(dst Ref, dstStart uint32, words []uint64) err
 	if uint64(dstStart)+uint64(len(words)) > uint64(dstLen) {
 		return errRange
 	}
-	b := c.bytes(dst)
-	off := uint64(PayloadOffset) + uint64(dstStart)*8
+	b := c.payloadBytes(dst)
+	off := uint64(dstStart) * 8
 	for _, bits := range words {
 		binary.LittleEndian.PutUint64(b[off:off+8], bits)
 		off += 8
@@ -1009,7 +1009,7 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 		// Valid source arrays already satisfy their storage invariant. Repeat the
 		// expensive element integrity check only in explicit hardening modes.
 		for i := uint32(0); i < length; i++ {
-			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcStart+i)*uint64(srcDesc.ElemSize), srcDesc.Elem)
+			value, err := c.loadPayloadValue(src, uint64(srcStart+i)*uint64(srcDesc.ElemSize), srcDesc.Elem)
 			if err != nil {
 				return err
 			}
@@ -1023,7 +1023,7 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 	}
 	if isCollectorRefKind(dstDesc.Elem) && c.cfg.Profile == ProfileTiny {
 		copyOne := func(dstIndex, srcIndex uint32) error {
-			value, err := c.loadValue(src, uint64(PayloadOffset)+uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
+			value, err := c.loadPayloadValue(src, uint64(srcIndex)*uint64(srcDesc.ElemSize), srcDesc.Elem)
 			if err != nil {
 				return err
 			}
@@ -1045,10 +1045,10 @@ func (c *Collector) ArrayCopy(dst Ref, dstStart uint32, src Ref, srcStart uint32
 		return nil
 	}
 	width := uint64(dstDesc.ElemSize)
-	dstOff := uint64(PayloadOffset) + uint64(dstStart)*width
-	srcOff := uint64(PayloadOffset) + uint64(srcStart)*uint64(srcDesc.ElemSize)
+	dstOff := uint64(dstStart) * width
+	srcOff := uint64(srcStart) * uint64(srcDesc.ElemSize)
 	byteLen := uint64(length) * width
-	copy(c.bytes(dst)[dstOff:dstOff+byteLen], c.bytes(src)[srcOff:srcOff+byteLen])
+	copy(c.payloadBytes(dst)[dstOff:dstOff+byteLen], c.payloadBytes(src)[srcOff:srcOff+byteLen])
 	if isCollectorRefKind(dstDesc.Elem) {
 		c.PostBulkWriteBarrier(dst, dstStart, length)
 	}
@@ -1072,7 +1072,7 @@ func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Val
 				return err
 			}
 		}
-		if err := c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value); err != nil {
+		if err := c.storePayloadValue(ref, uint64(index)*uint64(d.ElemSize), d.Elem, value); err != nil {
 			return err
 		}
 		off := index * d.ElemSize
@@ -1081,7 +1081,7 @@ func (c *Collector) storeArrayValue(ref Ref, d TypeDesc, index uint32, value Val
 		}
 		return nil
 	}
-	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
+	return c.storePayloadValue(ref, uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
 
 func arrayStorageCopyCompatible(dst, src StorageKind) bool {
