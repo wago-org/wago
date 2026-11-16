@@ -153,6 +153,9 @@ func (c *Collector) allocate(id TypeID, payload uint64, length uint32) (Ref, err
 	if old {
 		c.oldBump += uint32(stride)
 		c.oldAllocations++
+		if cohortDiagnostics {
+			c.recordOversized(uint32(stride))
+		}
 	} else {
 		c.nurseryBump += uint32(stride)
 	}

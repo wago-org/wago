@@ -25,6 +25,8 @@ const minimumStride = uint32(16)
 const rememberedParentCapacity = 1024
 
 type Collector struct {
+	cohortDiagnosticState
+
 	retiredNurseryAllocations             uint64
 	oldAllocations                        uint64
 	arena                                 []byte
@@ -104,7 +106,12 @@ func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
 // allocated directly in old space move with other live objects during Full.
 func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 
-func (c *Collector) collect(roots []*Ref, full bool) error {
+func (c *Collector) collect(roots []*Ref, full bool) (result error) {
+	var diagnostic cohortCycle
+	if cohortDiagnostics {
+		diagnostic = c.beginCohortCycle(full)
+		defer func() { c.finishCohortCycle(diagnostic, result) }()
+	}
 	// Scratch is not authoritative heap state and is cleared on ALL outcomes.
 	clear(c.mark)
 	defer clear(c.mark)
@@ -166,6 +173,9 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		if err := scan(c.queue[i]); err != nil {
 			return err
 		}
+	}
+	if cohortDiagnostics {
+		c.captureCohortLive(&diagnostic, count)
 	}
 	// No fallible work follows: all object fields and roots were validated,
 	// destinations are disjoint from sources, and capacity is reserved in scratch.
