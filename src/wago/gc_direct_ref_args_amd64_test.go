@@ -32,8 +32,9 @@ func directRefArgsBytes() []byte {
 		{0x00, 0x41, 0}, // trap
 		{0x41, 0, 0x41, 0xc0, 0x84, 0x3d, 0xfb, 6, 1, 0x1a, 0x20, 0, 0xfb, 2, 0, 0}, // OOM
 	}
-	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3}
-	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom"}
+	bodies = append(bodies, []byte{0x20, 0, 0xd1})
+	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3}
+	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull"}
 	funcs := make([][]byte, len(sig))
 	exports := make([][]byte, len(sig))
 	codes := make([][]byte, len(sig))
@@ -92,6 +93,11 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 			t.Fatal("argument roots leaked")
 		}
 	}
+	nullResult, err := in.Invoke("isNull", 0)
+	if err != nil || nullResult[0] != 1 {
+		t.Fatal(nullResult, err)
+	}
+	check()
 	for i := 0; i < 8; i++ {
 		got, e := in.Invoke("read", token.token)
 		if e != nil || got[0] != 91 {
