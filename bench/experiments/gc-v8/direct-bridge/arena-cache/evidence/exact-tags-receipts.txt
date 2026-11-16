@@ -1,0 +1,18 @@
+=== RUN   TestDirectGCArenaCachePressureMovingRootsAndInstances
+--- PASS: TestDirectGCArenaCachePressureMovingRootsAndInstances (0.02s)
+=== RUN   TestDirectGCArenaCacheZeroTripAndNullTrap
+--- PASS: TestDirectGCArenaCacheZeroTripAndNullTrap (0.00s)
+=== RUN   TestDirectGCArenaCacheAllocationFailureRecovery
+--- PASS: TestDirectGCArenaCacheAllocationFailureRecovery (0.00s)
+=== RUN   TestDirectGCArenaCacheArtifactReceipts
+    gc_direct_arena_cache_stats_amd64_test.go:58: cache allocation-uses=1 slow-reloads=2
+    gc_direct_arena_cache_stats_amd64_test.go:59: struct-allocation-access admitted=1 loads=4 uses=1 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:59: array-allocation-access admitted=0 loads=0 uses=0 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:59: array-fill admitted=0 loads=0 uses=0 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:59: array-copy-checksum admitted=0 loads=0 uses=0 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:59: array-loop-copy-checksum admitted=0 loads=0 uses=0 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:59: tree-survival admitted=0 loads=0 uses=0 host_interrupt=true
+    gc_direct_arena_cache_stats_amd64_test.go:67: cache allocation-uses=17 slow-reloads=17
+--- PASS: TestDirectGCArenaCacheArtifactReceipts (0.02s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.109s
