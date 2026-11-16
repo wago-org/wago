@@ -47,3 +47,21 @@ tests, so the selected GC suite is explicitly TestCompactGC, TestCompactNative
 and TestGCCompact; the standalone disassembly fixture initially omitted frontend
 type metadata and therefore correctly fell back to a helper. These results are
 not a full compact conformance or performance qualification.
+
+## Integrated qualification and diagnostic
+
+At runtime source `b7b6c3b2`, unfiltered default tests passed: Wago 40.004 s,
+native collector 2.082 s, checked wrapper 0.003 s, AMD64 backend 6.368 s,
+direct core 0.023 s, and compact core 0.012 s. Full native `wagodebug` passed
+(2.092 s), and TinyGo 0.42 host native/checked tests passed (2.469/0.003 s).
+These supplement the checked compact-native admitted-mode/regalloc, malformed
+metadata, relocation, shared-instance, receipt and instruction-selection tests.
+They do not imply full Wasm feature admission in the compact runtime.
+
+The separate same-source bounded diagnostic found clear struct/tree improvement,
+but an array regression and overlapping other workloads. See
+`bench/experiments/gc-v8/direct-bridge/matched-compact-reads/evidence/summary.md`.
+Its three warmup plus five timed calls per process are explicitly not the full
+V8 gate. Real-GC audits run separately; short copy samples may legitimately have
+zero collections. Allocation, stores, bulk operations and many reads still use
+helpers. No broad speedup or V8 parity is established.
