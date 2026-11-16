@@ -1621,6 +1621,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.gcHelperOnlyReceipt = cm.GCHelperOnlyReceipt && len(customInstructions) == 0
 	if len(customInstructions) == 0 {
 		c.gcCompactHelperVersion = cm.GCCompactHelperVersion
+		c.gcCompactNativeVersion = cm.GCCompactNativeVersion
 		c.gcDirectReadABIVersion = cm.GCDirectReadABIVersion
 		c.gcTrustedDirectVersion = cm.GCTrustedDirectVersion
 	}

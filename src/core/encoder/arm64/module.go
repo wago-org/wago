@@ -15,6 +15,7 @@ import "github.com/wago-org/wago/src/core/codeimage"
 // wasm→native code generator lives in backend/railshot/arm64 and returns a
 // *CompiledModule. Mirrors encoder/amd64.CompiledModule.
 type CompiledModule struct {
+	GCCompactNativeVersion uint8 // fresh Layout16 compact native-read capability; never serialized
 	GCCompactHelperVersion uint8 // fresh AMD64 compact-helper capability; never serialized
 	// GCHelperOnlyReceipt is a live compiler capability, never serialized.
 	// Only the helper-only AMD64 compiler may issue it.

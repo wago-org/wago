@@ -321,6 +321,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
 	case 15: // array.len
+		if typeIndex, ok := f.gcArrayLenParameterType(); gcCompactReads && ok && f.emitCompactArrayLen(typeIndex) {
+			return nil
+		}
 		if typeIndex, ok := f.gcArrayLenParameterType(); gcDirectReads && ok && f.emitDirectOffsetArrayLen(typeIndex) {
 			return nil
 		}

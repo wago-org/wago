@@ -1852,8 +1852,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 	if err == nil && compiled != nil {
 		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads && !gcCompactHelpers
-		if gcCompactHelpers && len(opts.CustomInstructions) == 0 {
+		if gcCompactHelpers && !gcCompactReads && len(opts.CustomInstructions) == 0 {
 			compiled.GCCompactHelperVersion = 1
+		}
+		if gcCompactReads && len(opts.CustomInstructions) == 0 {
+			compiled.GCCompactNativeVersion = uint8(gc.CompactNativeABIVersion)
 		}
 		if gcDirectReads {
 			compiled.GCDirectReadABIVersion = gc.DirectABIVersion

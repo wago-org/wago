@@ -1311,6 +1311,7 @@ type Compiled struct {
 	// Codecs discard both; resource-free private bridges do not consume them.
 	fixedSharedHostSegments bool
 	fixedSharedHostInteger  bool
+	gcCompactNativeVersion  uint8 // private compact native receipt in flag padding
 	memoryDir               *compiledMemoryDirectory
 
 	// gcHelperOnlyReceipt occupies flag padding and is never serialized.

@@ -238,6 +238,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if sub == 2 && f.emitTrustedDirectStructRefGet(typeIndex, fieldIndex) {
 			return nil
 		}
+		if gcCompactReads && f.emitCompactStructGet(typeIndex, fieldIndex, helper) {
+			return nil
+		}
 		if gcDirectReads && f.emitDirectOffsetStructGet(typeIndex, fieldIndex, helper) {
 			return nil
 		}

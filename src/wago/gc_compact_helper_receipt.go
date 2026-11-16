@@ -8,3 +8,11 @@ func (c *Compiled) gcCompactHelperReceipt() uint32 {
 	}
 	return uint32(c.gcCompactHelperVersion)
 }
+
+// gcCompactNativeReceipt attests checked Layout16 native reads only.
+func (c *Compiled) gcCompactNativeReceipt() uint32 {
+	if c == nil {
+		return 0
+	}
+	return uint32(c.gcCompactNativeVersion)
+}
