@@ -116,6 +116,9 @@ func TestGCCompactCohortProbe(t *testing.T) {
 	}
 	after := in.gc.Stats()
 	afterCohort, _ := in.gc.CompactCohortDiagnostics()
+	if afterCohort.MinorSuccesses != after.MinorCollections || afterCohort.FullSuccesses != after.FullCollections {
+		t.Fatal("diagnostic/native collection counts disagree")
+	}
 	if perCall, ok := map[string]uint64{"struct-allocation-access": 262208, "array-allocation-access": 262208, "array-fill": 262208, "array-copy-checksum": 128, "array-loop-copy-checksum": 128, "tree-survival": 67551}[name]; ok {
 		if got, want := after.Allocations, uint64(warmup+samples*batch)*perCall; got != want {
 			t.Fatalf("allocation accounting got %d want %d", got, want)
