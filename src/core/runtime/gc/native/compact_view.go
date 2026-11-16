@@ -7,6 +7,9 @@ import (
 
 // CompactNativeABIVersion describes only checked compact reads. It is neither
 // DirectABIVersion nor the helper compiler receipt. No native allocation exists.
+// Version1 certifies Layout16 only: object starts are16-aligned, struct payload
+// begins at alignUp(4, descriptor alignment), arrays at alignUp(8, alignment).
+// Any future Layout8 factory must reject this ABI or issue a distinct version.
 const CompactNativeABIVersion uint32 = 1
 
 type CompactCollectorView struct {
