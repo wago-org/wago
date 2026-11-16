@@ -16,12 +16,10 @@ func (c *Collector) scanObjectMark(h uint32) {
 	// Keep reference order and filtering in step with scanObjectRefs.
 	// A separate loop lets the compiler inline marking without a callback.
 	r := makeObjRef(h)
-	d, err := c.refDesc(r)
+	d, b, err := c.refDescPtrBytes(r)
 	if err != nil || !d.HasRefs {
 		return
 	}
-	hdr := c.header(r)
-	b := c.bytes(r)
 	if d.Kind == KindStruct {
 		if nativeCollectorFastPaths && d.firstRef != 0 {
 			for index := uint32(d.firstRef); index != 0; {
@@ -37,7 +35,7 @@ func (c *Collector) scanObjectMark(h uint32) {
 			}
 		}
 	} else if d.ArrayElementsAreRefs() {
-		for i := uint32(0); i < hdr.Aux; i++ {
+		for i, length := uint32(0), binary.LittleEndian.Uint32(b[8:]); i < length; i++ {
 			off := PayloadOffset + i*d.ElemSize
 			c.markRef(Ref(binary.LittleEndian.Uint32(b[off:])))
 		}
@@ -49,12 +47,10 @@ func (c *Collector) scanObjectNursery(h uint32) {
 	// Keep reference order and filtering in step with scanObjectRefs.
 	// A separate loop lets the compiler inline marking without a callback.
 	r := makeObjRef(h)
-	d, err := c.refDesc(r)
+	d, b, err := c.refDescPtrBytes(r)
 	if err != nil || !d.HasRefs {
 		return
 	}
-	hdr := c.header(r)
-	b := c.bytes(r)
 	if d.Kind == KindStruct {
 		if nativeCollectorFastPaths && d.firstRef != 0 {
 			for index := uint32(d.firstRef); index != 0; {
@@ -70,7 +66,7 @@ func (c *Collector) scanObjectNursery(h uint32) {
 			}
 		}
 	} else if d.ArrayElementsAreRefs() {
-		for i := uint32(0); i < hdr.Aux; i++ {
+		for i, length := uint32(0), binary.LittleEndian.Uint32(b[8:]); i < length; i++ {
 			off := PayloadOffset + i*d.ElemSize
 			c.markNurseryRef(Ref(binary.LittleEndian.Uint32(b[off:])))
 		}
