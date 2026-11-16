@@ -16,3 +16,12 @@ Actual source was independently reviewed before tests. Go 1.27.1, serial `-p 1`,
 - Runtime `^(TestCompactGC|TestCompactNative|TestGCCompact)`: PASS, 1.026s. Includes nonuniform signed/high-bit lane patterns, modulo overflow, 3/4/5/7/8/9 remaining elements, exact tails/final locals, prior multi-loop stale-certificate and moving-root regressions.
 
 No production fix was needed after initial source review. No performance measurement has been made; the earlier paragraph's untested status describes the source checkpoint before this qualification.
+
+Canonical composition at `a640af7d` passed fresh weighted-SIMD runtime/regalloc
+(0.960s), separate age2 queue-reuse runtime/regalloc (1.221s) and core (0.018s),
+and native build-constraint selection (0.017s). Full default Wago (53.483s),
+amd64 compiler backend (10.698s), native GC (2.762s), GC wrapper (0.004s),
+compact core (0.016s), debug native GC (3.184s), and patched TinyGo tasks-scheduler
+native/wrapper (3.289s/0.004s) all passed. Independent review verified exact mode
+selection/complements across all 131,072 production tag combinations. This is
+correctness qualification only; SIMD and queue reuse remain separate experiments.
