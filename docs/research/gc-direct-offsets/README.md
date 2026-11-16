@@ -159,3 +159,20 @@ runtime conformance. The preceding ABI 3 best-pipeline V8 gates missed the 1.15x
 threshold on every workload at both nursery policies; complete evidence remains
 under `bench/experiments/gc-v8/direct-bridge/best-pipeline-v8/evidence`. ABI 4,
 loop and copy performance is pending a new controlled comparison.
+
+### Optional SSE2 numeric fill
+
+`wago_gc_direct_fill_sse2` adds checked full 16-byte chunks and scalar tails to
+numeric fill only, using baseline SSE2 rather than AVX. Bounds/null checks and
+interruptible fallback remain unchanged; short fills and unavailable XMM scratch
+retain the scalar implementation. Source `861bbe1` passed the composed direct /
+trusted regalloc matrix (0.543 s), unfiltered default Wago/native/checked/backend/
+directgc suites, and TinyGo host native/checked suites (2.514 / 0.003 s).
+
+Matched evidence under `bench/experiments/gc-v8/direct-bridge/sse2-fill/evidence`
+shows a modest 2 MiB-policy fill improvement, 9.397 to 9.044 ms, with overlapping
+array-allocation controls. The candidate still takes 1.237x V8 time and misses
+the 1.15x target. Fill native code grows 64 bytes; measured Go compile bytes and
+allocation count are unchanged. This small shared-host effect does not justify
+a universal speedup or default-enablement claim. All raw samples and the weaker
+512 KiB-policy result are retained.
