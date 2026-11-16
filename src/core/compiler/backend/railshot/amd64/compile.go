@@ -1861,6 +1861,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				if gcTrustedDirectRefStructs {
 					compiled.GCTrustedDirectVersion = 4
 				}
+				if gcTrustedDirectAllocation {
+					compiled.GCTrustedDirectVersion = 5
+				}
 			}
 		}
 	}
