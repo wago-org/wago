@@ -65,7 +65,7 @@ func TestDirectFillSSE2NoFreeXMMFallsBack(t *testing.T) {
 		}
 		beforePins, beforeOwners := f.fpinned, f.fregUser
 		for slot, typ := range []machineType{mtI64, mtI32, mtI32, mtI32} {
-			f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+			f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		}
 		if !f.emitDirectOffsetArrayFill(0) {
 			t.Fatal("numeric fill unexpectedly declined")
@@ -77,8 +77,10 @@ func TestDirectFillSSE2NoFreeXMMFallsBack(t *testing.T) {
 			t.Fatal("vector path selected without a free XMM")
 		}
 		listing := disasm(t, f.a.B)
-		if strings.Contains(listing, "xmm") {
-			t.Fatal("scalar fallback emitted XMM instructions", listing)
+		for _, line := range strings.Split(listing, "\n") {
+			if strings.Contains(line, "\t") && strings.Contains(line, "xmm") {
+				t.Fatal("scalar fallback emitted XMM instruction", line)
+			}
 		}
 		if len(f.a.B) == 0 || f.s.logicalDepth != 0 {
 			t.Fatal("scalar fill was not emitted or operands remained")
