@@ -9,11 +9,15 @@ import (
 )
 
 func compactRangeModule(storage, get, value, bound byte, alias bool) []byte {
-	body := []byte{2, 2, 0x63, 0, 1, 0x7f, 0x41, value, 0x20, 0, 0xfb, 6, 0, 0x21, 2}
+	initOp, resultType := byte(0x41), wasm.I32
+	if storage == 0x7e {
+		initOp, resultType = 0x42, wasm.I64
+	}
+	body := []byte{2, 2, 0x63, 0, 1, 0x7f, initOp, value, 0x20, 0, 0xfb, 6, 0, 0x21, 2}
 	if alias {
 		body = append(body, 0x20, 2, 0x21, 3)
 	} else {
-		body = append(body, 0x41, 0, 0x20, 1, 0xfb, 6, 0, 0x21, 3)
+		body = append(body, initOp, 0, 0x20, 1, 0xfb, 6, 0, 0x21, 3)
 	}
 	body = append(body, 0x20, 3, 0x24, 0, 0x03, 0x40,
 		0x20, 3, 0x20, 4, 0x20, 2, 0x20, 4, 0xfb, get, 0, 0xfb, 14, 0,
@@ -21,7 +25,7 @@ func compactRangeModule(storage, get, value, bound byte, alias bool) []byte {
 		0x20, 4, 0x20, 3, 0x41, bound-1, 0xfb, get, 0, 0x0b)
 	peek := []byte{0, 0x23, 0, 0x20, 0, 0xfb, get, 0, 0x0b}
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, storage, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, storage, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, resultType}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{resultType}))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
 		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("peek", 0, 1))),
@@ -32,7 +36,7 @@ func TestCompactNativeRangeLoop(t *testing.T) {
 		name                string
 		storage, get, value byte
 		want                uint64
-	}{{"i32", 0x7f, 11, 7, 7}, {"i8", 0x78, 12, 0x79, 0xfffffff9}, {"i16", 0x77, 12, 0x79, 0xfffffff9}} {
+	}{{"i32", 0x7f, 11, 7, 7}, {"i64", 0x7e, 11, 7, 7}, {"i8", 0x78, 12, 0x79, 0xfffffff9}, {"i16", 0x77, 12, 0x79, 0xfffffff9}} {
 		for _, bound := range []byte{1, 32} {
 			for _, alias := range []bool{false, true} {
 				t.Run(tc.name, func(t *testing.T) {

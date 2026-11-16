@@ -159,7 +159,7 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	again := f.a.JccPlaceholder(condB)
 	f.a.PatchRel32(again, fast)
 	if stride {
-		f.a.MovImm32(ir, f.rangeBound)
+		f.a.MovImm32(ir, int32(f.rangeBound))
 		f.stats.peep("gc-compact-range-stride")
 	}
 	// The index is the only modified local. Preserve the same clean pin+slot
