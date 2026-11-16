@@ -29,7 +29,7 @@ corpus = root / 'bench/experiments/gc-v8'
 manifest = {c['name']: c for c in json.loads((corpus / 'cases.json').read_text())}
 cases = ['struct-allocation-access', 'array-allocation-access', 'array-fill', 'array-copy-checksum', 'array-loop-copy-checksum', 'tree-survival']
 baseline_tags = 'wago_gc_direct_fill,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_trusted_loop,wago_gc_direct_copy,wago_gc_direct_fill_sse2'
-variants = [('headers', baseline_tags), ('startmap', baseline_tags + ',wago_gc_retire_startmap'), ('adaptive', baseline_tags + ',wago_gc_retire_adaptive')]
+variants = [('headers', baseline_tags), ('startmap', baseline_tags + ',wago_gc_retire_startmap'), ('adaptive', baseline_tags + ',wago_gc_retire_adaptive'), ('v8', '--no-liftoff')]
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
