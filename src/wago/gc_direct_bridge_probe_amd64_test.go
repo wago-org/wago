@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || (wago_gc_compact_refstore || wago_gc_compact_shared_checks) || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
+//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
 
 package wago
 
@@ -93,7 +93,8 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 			t.Fatal("GC_BRIDGE_EDEN must be uint32 bytes aligned to16")
 		}
 	}
-	config := GCConfig{ExperimentalDirectOffsets: mode == "direct", ExperimentalCompactOffsets: mode == "compact", NurseryBytes: uint32(eden), ThroughputHeapBytes: 8 << 20}
+	age2 := os.Getenv("GC_BRIDGE_AGE2") == "1"
+	config := GCConfig{ExperimentalCompactAge2: age2, ExperimentalDirectOffsets: mode == "direct", ExperimentalCompactOffsets: mode == "compact", NurseryBytes: uint32(eden), ThroughputHeapBytes: 8 << 20}
 	in, e := rt.Instantiate(context.Background(), mod, WithGC(config))
 	if e != nil {
 		t.Fatal(e)
@@ -142,6 +143,18 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "zero_collection_diagnostic_allowed": os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") == "1", "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
 	if mode == "direct" || mode == "compact" {
 		out["direct_old_semispaces"] = 2
+		out["total_young_budget_bytes"] = eden
+		active := eden
+		if age2 {
+			active /= 2
+		}
+		out["active_nursery_bytes"] = active
+		out["oversized_allocation_threshold_bytes"] = active
+		if age2 {
+			out["survivor_cap_bytes"] = active / 2
+		} else {
+			out["survivor_cap_bytes"] = 0
+		}
 		out["direct_arena_bytes"] = 16 + config.NurseryBytes + 2*config.ThroughputHeapBytes
 		out["unimplemented_direct_stats"] = "copied/promoted bytes and scan counters are not instrumented; zeros are not measured zero work"
 	}
