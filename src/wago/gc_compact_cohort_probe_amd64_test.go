@@ -25,7 +25,7 @@ func TestGCCompactCohortProbe(t *testing.T) {
 	}
 	mode := os.Getenv("GC_BRIDGE_MODE")
 	if mode != "compact" {
-		t.Fatal("GC_BRIDGE_MODE must be direct, compact or handles")
+		t.Fatal("GC_BRIDGE_MODE must be compact")
 	}
 	warmup, samples, batch := 128, 1, 5
 	if batch == 0 {
@@ -133,11 +133,11 @@ func TestGCCompactCohortProbe(t *testing.T) {
 	if e = syscall.Getrusage(syscall.RUSAGE_SELF, &usage); e != nil {
 		t.Fatal(e)
 	}
-	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "untimed_diagnostic": true, "cohort_initial": initialCohort, "cohort_before": beforeCohort, "cohort_after": afterCohort, "collection_trigger": "unavailable; not inferred from counters", "config": config, "before": before, "after": after, "zero_collection_diagnostic_allowed": os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") == "1", "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
+	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "untimed_diagnostic": true, "cohort_initial": initialCohort, "cohort_before": beforeCohort, "cohort_after": afterCohort, "collection_trigger": "unavailable; not inferred from counters", "config": config, "before": before, "after": after, "zero_collection_diagnostic_allowed": os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") == "1", "following_call_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
 	if mode == "direct" || mode == "compact" {
 		out["direct_old_semispaces"] = 2
 		out["direct_arena_bytes"] = 16 + config.NurseryBytes + 2*config.ThroughputHeapBytes
-		out["unimplemented_direct_stats"] = "copied/promoted bytes and scan counters are not instrumented; zeros are not measured zero work"
+		out["unimplemented_direct_stats"] = "native generic copied/promoted/scan counters are uninstrumented; cohort snapshots separately measure live/promoted physical bytes"
 	}
 	// /proc mm counters reset at exec, unlike ru_maxrss which may retain the
 	// launching parent's pre-exec high-water floor on this system.
