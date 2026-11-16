@@ -112,3 +112,22 @@ func TestDirectGCRejectsMissingAdmission(t *testing.T) {
 		})
 	}
 }
+
+func TestDirectGCRejectsHandleCollectorForNativeReads(t *testing.T) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), helperInitializerRewriteModule("struct"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	if c.gcDirectReadABIReceipt() == 0 {
+		t.Skip("native direct-read receipt only")
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	for _, cfg := range []GCConfig{{}, {Profile: GCProfileTiny}} {
+		if in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: cfg}); e == nil {
+			in.Close()
+			t.Fatal("native offset artifact admitted to handle collector")
+		}
+	}
+}

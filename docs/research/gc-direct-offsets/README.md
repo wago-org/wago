@@ -34,14 +34,14 @@ Offsets retain the low-bit i31/null encoding, and descriptors cover scalar, pack
 SIMD and reference fields. Native-compatible headers retain exact array lengths.
 
 This first implementation is deliberately not a low-memory final design:
-- Objects have a16-byte physical stride alignment, including24→32-byte padding.
+- Objects have a 16-byte physical stride alignment, including 24→32-byte padding.
 - Two old semispaces reserve twice the configured old capacity.
 - Mark/start/dirty maps and a bounded traversal queue consume additional memory.
-  Header forwarding reduces a9MiB arena's fixed backing from about18 to13.57MiB;
+  Header forwarding reduces a 9 MiB arena's fixed backing from about 18 to 13.57 MiB;
   this is allocated backing, not measured RSS.
 - The native adapter snapshots mutable roots into Go slices at collections.
-- The explicit config flag and backend pointer add16bytes to the64-bit collector;
-  the config itself grows64→68bytes. Native handle ABI layouts are unchanged.
+- The explicit config flag and backend pointer add 24 bytes to the64-bit collector;
+  the config itself grows 64→68 bytes. Native handle ABI layouts are unchanged.
 - Allocation/collection/live-object counters are implemented; existing detailed
   promotion/pause metrics are not yet populated for this backend.
 
@@ -67,3 +67,19 @@ The helper-only qualification exclusions are listed separately in
 not a claim that every existing native-optimization assertion applies to this mode
 or that the full public Wasm feature space is supported. No new timing claim is
 made here; the previous default collector still misses the requested V8 target.
+
+## Native read extension
+
+The separate `wago_gc_direct_reads` build tag keeps allocating and mutating
+operations on rooted checked helpers, but emits checked direct-offset scalar
+loads for final structs and supported array-length sites. It issues a distinct
+versioned receipt; these artifacts are rejected with handle/Tiny collectors.
+Native read views are typed separately from handle views. Every read validates
+null/tag/alignment, active allocation range, object-start membership, extent and
+exact type; no resolved pointer survives a helper call. The instance retains the
+view and collector, and every collection/allocation refreshes mutable bounds.
+The optional instance-view pointer adds 8 bytes per instance. Collector views are
+allocated lazily, with another pointer included in the 24-byte collector delta
+above. Scalar relocation, malformed backed metadata, and trap-PC regressions are
+required before promotion beyond this experimental branch. No native-read speedup
+is claimed without controlled measurement.
