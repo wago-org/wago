@@ -84,3 +84,29 @@ func TestDirectGCInitializerStress(t *testing.T) {
 		})
 	}
 }
+
+func TestDirectGCRejectsMissingAdmission(t *testing.T) {
+	data := helperInitializerRewriteModule("struct")
+	for _, mode := range []string{"receipt", "owner"} {
+		t.Run(mode, func(t *testing.T) {
+			c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer c.Close()
+			rt := NewRuntime()
+			defer rt.Close()
+			opts := InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true}}
+			if mode == "receipt" {
+				c.gcHelperOnlyReceipt = false
+				c.executionView().gcHelperOnlyReceipt = false
+			} else {
+				opts.store = nil
+			}
+			if in, e := Instantiate(c, opts); e == nil {
+				in.Close()
+				t.Fatal("unsupported direct execution admitted")
+			}
+		})
+	}
+}

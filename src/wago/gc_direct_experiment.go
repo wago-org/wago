@@ -2,6 +2,7 @@ package wago
 
 import (
 	"errors"
+
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
@@ -26,6 +27,18 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 			case ValI32, ValI64, ValF32, ValF64, ValV128:
 			default:
 				return errors.New("wago: direct-offset exported arguments must be numeric")
+			}
+		}
+	}
+	for _, g := range c.Globals {
+		if g.Type == ValExternRef || g.Type == ValFuncRef || g.Type == ValExnRef {
+			return errors.New("wago: direct-offset external reference globals are unsupported")
+		}
+	}
+	for _, sig := range c.Funcs {
+		for _, v := range append(append([]ValType(nil), sig.Params...), sig.Results...) {
+			if v == ValExternRef || v == ValFuncRef || v == ValExnRef {
+				return errors.New("wago: direct-offset external reference signatures are unsupported")
 			}
 		}
 	}
