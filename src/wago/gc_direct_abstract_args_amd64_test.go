@@ -124,7 +124,11 @@ func TestDirectGCAbstractManagedArguments(t *testing.T) {
 						}
 					})
 				}
-				foreign, e := other.Invoke("new", 5)
+				producer := "new"
+				if kind.name == "array" {
+					producer = "array"
+				}
+				foreign, e := other.Invoke(producer, 5)
 				if e != nil {
 					t.Fatal(e)
 				}
