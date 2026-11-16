@@ -140,7 +140,7 @@ func TestCompactNativeI31ReferenceGetter(t *testing.T) {
 	// It must not be interpreted as a moving object root.
 	churn := []byte{0xfb, 1, 0, 0x1a, 0x0b}
 	run := []byte{0x41, 0x79, 0xfb, 0x1c, 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x10, 1, 0xfb, 0x1d, 0x0b}
-	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x6d, 0}, []byte{0x60, 0, 1, 0x7f}, []byte{0x60, 0, 0})), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run), wasmtest.Code(churn))))
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x6c, 0}, []byte{0x60, 0, 1, 0x7f}, []byte{0x60, 0, 0})), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run), wasmtest.Code(churn))))
 	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false), data)
 	if e != nil {
 		t.Fatal(e)
