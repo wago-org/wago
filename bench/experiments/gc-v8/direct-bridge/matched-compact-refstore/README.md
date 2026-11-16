@@ -1,0 +1,3 @@
+# Bounded compact reference-store diagnostic
+
+Same qualified ABI3 source for `compact_alloc` versus `compact_refstore` tags. Explicit 2 MiB Eden and two 8 MiB old semispaces. All six exact artifacts: separate 128-warmup actual-GC audits, then three warmups plus five timed calls across three rotating fresh-process rounds. Numeric-array native access/allocation remains excluded. Compile+Close footprint and per-artifact code size are measured separately. Preserve all controls, regressions and actual collection counts. This is intermediate path attribution, not a full-protocol V8 gate or broad superiority claim.
