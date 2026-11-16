@@ -154,15 +154,15 @@ func (f *fn) pinnedV128LocalCount() int {
 // functions. Besides explicit v128.const values, a repeated rotate-by-8 shuffle
 // contributes its TBL index vector. Requiring two static shuffles keeps a lone
 // straight-line operation on the cheaper USHR+SLI path; dense kernels amortize
-// the cached index at every dynamic invocation. The cache is withheld when
-// vector-local pressure is already high.
+// the cached index at every dynamic invocation. Vector-local pressure narrows
+// the cache rather than disabling reuse entirely.
 func (f *fn) preloadV128Consts(code []byte) {
 	if !f.opt(optV128ConstCache) || f.makesCalls || f.syncHostCalls {
 		return
 	}
 	limit := maxV128Consts
 	if f.pinnedV128LocalCount() >= 2 {
-		limit = 1
+		limit = 2
 	}
 	var cand [8]struct {
 		lo, hi uint64
