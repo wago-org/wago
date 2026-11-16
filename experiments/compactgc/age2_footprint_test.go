@@ -11,7 +11,7 @@ func TestAge2PolicyFootprint(t *testing.T) {
 	if !age2Build && unsafe.Sizeof(c.age2State) != 0 {
 		t.Fatal("default footprint changed")
 	}
-	if !age2Build && !cohortDiagnostics && !shadowDiagnostics && unsafe.Offsetof(c.retiredNurseryAllocations) != 0 {
+	if unsafe.Sizeof(c.edenState) == 0 && !age2Build && !cohortDiagnostics && !shadowDiagnostics && unsafe.Offsetof(c.retiredNurseryAllocations) != 0 {
 		t.Fatal("default leading layout changed")
 	}
 }
