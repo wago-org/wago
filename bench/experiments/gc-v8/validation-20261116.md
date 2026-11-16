@@ -32,3 +32,30 @@ or survivor-occupancy feedback.
 This is not cross-platform qualification: no arm64 execution, complete Core v3
 corpus execution, or representative application tail-pause study was performed.
 The V8 performance target remains a separate, unmet gate.
+
+## Later opt-in cache checkpoint
+
+The parent-array cache remains disabled by default. Its source checkpoint is
+local `07ab141` (including the zero-epoch guard); documentation-only commits do
+not change execution. Subsequent validation passed:
+
+- Complete unfiltered collector, Wago, AMD64/shared backend, front-end, and spec
+  harness packages with `wago_regalloccheck,wago_gc_parent_cache` before the
+  final zero-epoch guard; targeted tagged/regalloc cache tests passed after it.
+- All 17 official GC files again with the final guard, both explicit and signal
+  bounds, opt-in cache and regalloc checks: 91 modules / 574 assertions each,
+  zero skips, failures, or admission gaps.
+- Complete collectors three times with `wagodebug,wago_guardpage,wago_gc_parent_cache`.
+- Complete native and checked collectors under TinyGo 0.42, scheduler tasks.
+- Complete unfiltered collector, Wago, and AMD64 backend packages with default
+  tags after all source changes (cache disabled).
+
+Independent lifecycle review covered ForcePromote with unchanged backing,
+Tiny incremental sweeps, failed promotion rollback, allocation/view refresh,
+handle-table replacement, reentry boundaries, saturation, and zero initialization.
+Cache entries are not roots. Pointer-bearing cache fields belong to the trusted
+native ABI and must not be mutated by hosts. There is no new claim of robust
+execution after arbitrary host corruption of native pointers.
+
+Platform and performance limitations in the earlier record still apply. The
+miss-heavy regression is why this optimization is explicitly opt-in.
