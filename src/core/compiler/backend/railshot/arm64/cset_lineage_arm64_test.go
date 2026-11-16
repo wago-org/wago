@@ -102,6 +102,64 @@ func TestCsetLineageNativeWidthsConditionsAndCopies(t *testing.T) {
 	}
 }
 
+func TestCsetLineageDropsOverwrittenBoolean(t *testing.T) {
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	set := a.Len()
+	a.Cset32(X9, condL)
+	a.MovReg32(X10, X0)
+	cmp := a.Len()
+	a.CmpImm32(X9, 0)
+	sel := a.Len()
+	a.Csel32(X9, X10, X1, condE)
+	a.MovReg32(X0, X9)
+	a.Ret()
+
+	before := append([]byte(nil), a.B...)
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, set) != nopWord || rdWord(a.B, cmp) != nopWord {
+		t.Fatalf("dead lineage words = %#x/%#x, want NOP/NOP", rdWord(a.B, set), rdWord(a.B, cmp))
+	}
+	if Cond(rdWord(a.B, sel)>>12&15) != condGE {
+		t.Fatal("select did not consume the producer condition")
+	}
+	original, err := arm64spike.MapExec(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(original)
+	candidate, err := arm64spike.MapExec(a.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(candidate)
+	for _, pair := range [][2]uintptr{{0, 0}, {0, 1}, {1, 0}, {0x80000000, 0x7fffffff}} {
+		want := arm64spike.Call2(uintptr(unsafe.Pointer(&original[0])), pair[0], pair[1])
+		got := arm64spike.Call2(uintptr(unsafe.Pointer(&candidate[0])), pair[0], pair[1])
+		if got != want {
+			t.Fatalf("pair=%x got=%x want=%x", pair, got, want)
+		}
+	}
+}
+
+func TestCsetLineageKeepsObservedBoolean(t *testing.T) {
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	set := a.Len()
+	a.Cset32(X9, condL)
+	a.MovReg32(X10, X9)
+	a.CmpImm32(X9, 0)
+	a.Csel32(X9, X0, X1, condE)
+	a.MovReg32(X0, X9)
+	a.Ret()
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, set) == nopWord {
+		t.Fatal("observed boolean CSET was removed")
+	}
+}
+
 func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 	old := csetLineageEnabled
 	csetLineageEnabled = true
