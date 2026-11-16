@@ -141,7 +141,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok {
+		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok || f.compactStructAllocEligible(typeIndex) {
 			f.directStructAllocType = typeIndex + 1
 		}
 		if native {
@@ -198,7 +198,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok {
+		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok || f.compactStructAllocEligible(typeIndex) {
 			f.directStructAllocType = typeIndex + 1
 			f.directStructAllocDefault = true
 		}

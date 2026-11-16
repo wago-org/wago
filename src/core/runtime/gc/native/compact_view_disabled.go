@@ -1,4 +1,4 @@
-//go:build !wago_gc_compact_helpers && !wago_gc_compact_reads
+//go:build !wago_gc_compact_helpers && !(wago_gc_compact_reads || wago_gc_compact_alloc)
 
 package gc
 

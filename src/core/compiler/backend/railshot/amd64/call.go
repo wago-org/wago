@@ -1695,7 +1695,11 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 	} else if directRefStore {
 		f.emitDirectOffsetRefArraySet(typeIndex, argSlot)
 	} else if directOffset {
-		f.emitDirectOffsetStructAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		if gcCompactAlloc {
+			f.emitCompactStructAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		} else {
+			f.emitDirectOffsetStructAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		}
 	} else {
 		f.emitNativeStructAllocSlots(typeIndex, dead, argSlot, resultSlot)
 	}
