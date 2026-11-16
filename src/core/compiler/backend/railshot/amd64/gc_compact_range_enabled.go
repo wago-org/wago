@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_range_loop
+//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -134,15 +134,34 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	f.a.Load32(value, l.length, 4)
 	f.a.AluRI(cmpDigit, value, int32(f.rangeBound), false)
 	badB := f.a.JccPlaceholder(condB)
+	// Only a positive sign-extended immediate can compare the widened byte
+	// endpoint. Other bounds retain the existing element-index loop.
+	byteEnd := uint64(f.rangeBound) * uint64(scalar.size)
+	stride := gcCompactRangeStride && byteEnd <= 0x7fffffff
+	if stride {
+		f.a.MovRegReg32(offset, ir)
+		f.a.ImulRI(offset, int32(scalar.size), true)
+	}
 	fast := f.a.Len()
-	f.a.MovRegReg32(offset, ir)
-	f.a.ImulRI(offset, int32(scalar.size), true)
+	if !stride {
+		f.a.MovRegReg32(offset, ir)
+		f.a.ImulRI(offset, int32(scalar.size), true)
+	}
 	f.a.LoadIdx(value, l.object, offset, int32(payload), scalar.size, false, scalar.typ == mtI64)
 	f.a.StoreIdx(l.length, offset, value, int32(payload), scalar.size)
-	f.a.AluRI(0, ir, 1, false)
-	f.a.AluRI(cmpDigit, ir, int32(f.rangeBound), false)
+	if stride {
+		f.a.AluRI(0, offset, int32(scalar.size), true)
+		f.a.AluRI(cmpDigit, offset, int32(byteEnd), true)
+	} else {
+		f.a.AluRI(0, ir, 1, false)
+		f.a.AluRI(cmpDigit, ir, int32(f.rangeBound), false)
+	}
 	again := f.a.JccPlaceholder(condB)
 	f.a.PatchRel32(again, fast)
+	if stride {
+		f.a.MovImm32(ir, f.rangeBound)
+		f.stats.peep("gc-compact-range-stride")
+	}
 	// The index is the only modified local. Preserve the same clean pin+slot
 	// contract as the original converged latch, including the false first edge.
 	f.storeLocalReg(idx, ir, false)

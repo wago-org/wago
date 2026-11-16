@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_range_loop
+//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -32,6 +32,9 @@ func TestCompactRangeExactSelection(t *testing.T) {
 	defer cm.CodeImage.Close()
 	if stats.Funcs[2].Peephole["gc-compact-range-loop"] != 1 {
 		t.Fatalf("no exact scalar range selection: %+v", stats.Funcs[2].Peephole)
+	}
+	if gcCompactRangeStride && stats.Funcs[2].Peephole["gc-compact-range-stride"] != 1 {
+		t.Fatal("missing strength reduction")
 	}
 	if stats.Funcs[1].Peephole["gc-compact-range-loop"] != 0 {
 		t.Fatal("bulk unexpectedly selected")
