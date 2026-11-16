@@ -40,12 +40,15 @@ func (c *Collector) ArrayPayload(ref Ref) (ArrayPayloadView, error) {
 	if isAnyReferenceStorage(d.Elem) {
 		return ArrayPayloadView{}, errors.New("gc: reference array has no raw payload view")
 	}
-	length := c.header(ref).Aux
+	h, payload, err := c.checkedHeaderPayload(ref)
+	if err != nil {
+		return ArrayPayloadView{}, err
+	}
+	length := h.Aux
 	payloadBytes := uint64(length) * uint64(d.ElemSize)
 	if length != 0 && payloadBytes/uint64(length) != uint64(d.ElemSize) {
 		return ArrayPayloadView{}, errors.New("gc: array payload size overflow")
 	}
-	payload := c.payloadBytes(ref)
 	if payloadBytes > uint64(len(payload)) {
 		return ArrayPayloadView{}, fmt.Errorf("gc: array payload %d bytes exceeds object extent %d", payloadBytes, len(payload)+int(PayloadOffset))
 	}

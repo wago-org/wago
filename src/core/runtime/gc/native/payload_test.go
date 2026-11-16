@@ -111,3 +111,26 @@ func TestPayloadRelativeBoundsDoNotTouchHeader(t *testing.T) {
 		t.Fatal("header mutated")
 	}
 }
+
+func TestPayloadViewRejectsShortHeaderEvenEmpty(t *testing.T) {
+	d, _ := NewArrayDesc(0, StorageI8)
+	c, e := NewCollector(Config{}, []TypeDesc{d})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	r, e := c.NewArrayDefault(0, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if v, e := c.ArrayPayload(r); e != nil || len(v.Bytes) != 0 {
+		t.Fatal(v, e)
+	}
+	entry := c.entry(r)
+	size := entry.size
+	entry.size = 8
+	defer func() { entry.size = size }()
+	if _, e := c.ArrayPayload(r); e == nil {
+		t.Fatal("short physical header accepted for empty logical array")
+	}
+}
