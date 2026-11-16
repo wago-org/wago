@@ -1,0 +1,6 @@
+diff --git a/src/wago/gc_direct_arena_cache_stats_amd64_test.go b/src/wago/gc_direct_arena_cache_stats_amd64_test.go
+index afb22c94..0b221fed 100644
+--- a/src/wago/gc_direct_arena_cache_stats_amd64_test.go
++++ b/src/wago/gc_direct_arena_cache_stats_amd64_test.go
+@@ -54,0 +55 @@ func arenaCacheCompilation(t *testing.T, data []byte, interruptible bool, enable
++ t.Logf("fresh-struct-forward=%d", s.Peephole["gc-fresh-struct-get-forward"])

@@ -1,0 +1,101 @@
+=== RUN   TestDirectGCArenaCacheSameBinaryReceipts
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: struct-allocation-access enabled=false admitted=0 read-uses=0 code=1775 sha256=b2ebf75e04b638d42ebc593c2ddb08d393bec9b2f8e9e4f86647ed34b10f5750
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: cache allocation-uses=1 slow-reloads=2
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: struct-allocation-access enabled=true admitted=1 read-uses=1 code=1839 sha256=0befb941d227d4f9434315b99dc2ebb1cca6a91212259e072d5f2f26abb7009a
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: struct-allocation-access enabled=false admitted=0 read-uses=0 code=1775 sha256=b2ebf75e04b638d42ebc593c2ddb08d393bec9b2f8e9e4f86647ed34b10f5750
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-allocation-access enabled=false admitted=0 read-uses=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-allocation-access enabled=true admitted=0 read-uses=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-allocation-access enabled=false admitted=0 read-uses=0 code=1967 sha256=385439955502a5873a2a5766942308b0c29f7b85d635438f4b6b44b43f99c37f
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-fill enabled=false admitted=0 read-uses=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-fill enabled=true admitted=0 read-uses=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-fill enabled=false admitted=0 read-uses=0 code=2543 sha256=82fdb8aec02c1f76b57983da5aef5d62d8bcf5ddc6379c873a8fa4064533603c
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-copy-checksum enabled=false admitted=0 read-uses=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-copy-checksum enabled=true admitted=0 read-uses=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-copy-checksum enabled=false admitted=0 read-uses=0 code=4719 sha256=27bc54b1b3510d393989b4bc5ee9d46f1f5957df5db20992e18cb34422c3c497
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-loop-copy-checksum enabled=false admitted=0 read-uses=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-loop-copy-checksum enabled=true admitted=0 read-uses=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: array-loop-copy-checksum enabled=false admitted=0 read-uses=0 code=4719 sha256=50630f609f278602a35858c3da24713cf4450a294e4c3220abced76d7dcd4694
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: tree-survival enabled=false admitted=0 read-uses=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: tree-survival enabled=true admitted=0 read-uses=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:101: fresh-struct-forward=0
+    gc_direct_arena_cache_stats_amd64_test.go:102: tree-survival enabled=false admitted=0 read-uses=0 code=1455 sha256=7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0
+--- PASS: TestDirectGCArenaCacheSameBinaryReceipts (0.01s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.023s
