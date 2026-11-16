@@ -19,7 +19,7 @@ import (
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
-const NativeABIVersion uint32 = 9
+const NativeABIVersion uint32 = 10
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -128,6 +128,16 @@ type NativeInstanceView struct {
 	LocalTypeCount uint32
 	_              uint32
 
+	// Parent resolution is a non-owning, generation-guarded JIT cache. Access is
+	// serialized with collector mutation. Zero and saturated generations miss.
+	ParentRef        uint32
+	ParentType       uint32
+	ParentGeneration uint64
+	ParentObject     uintptr
+	ParentHandle     uintptr
+	ParentExtent     uint32
+	_                uint32
+
 	// keepTypes is outside the native ABI prefix. It gives Go's collector a typed
 	// reference to the immutable backing array whose address LocalTypes publishes.
 	keepTypes []TypeID
@@ -138,7 +148,13 @@ const (
 	NativeInstanceViewCollectorOffset      = 8
 	NativeInstanceViewLocalTypesOffset     = 16
 	NativeInstanceViewLocalTypeCountOffset = 24
-	NativeInstanceViewABISize              = 32
+	NativeInstanceParentRefOffset          = 32
+	NativeInstanceParentTypeOffset         = 36
+	NativeInstanceParentGenerationOffset   = 40
+	NativeInstanceParentObjectOffset       = 48
+	NativeInstanceParentHandleOffset       = 56
+	NativeInstanceParentExtentOffset       = 64
+	NativeInstanceViewABISize              = 72
 )
 
 func sliceData[T any](s []T) uintptr {
@@ -238,7 +254,13 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(instance.Version) != NativeInstanceViewVersionOffset ||
 		unsafe.Offsetof(instance.Collector) != NativeInstanceViewCollectorOffset ||
 		unsafe.Offsetof(instance.LocalTypes) != NativeInstanceViewLocalTypesOffset ||
-		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset {
+		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset ||
+		unsafe.Offsetof(instance.ParentRef) != NativeInstanceParentRefOffset ||
+		unsafe.Offsetof(instance.ParentType) != NativeInstanceParentTypeOffset ||
+		unsafe.Offsetof(instance.ParentGeneration) != NativeInstanceParentGenerationOffset ||
+		unsafe.Offsetof(instance.ParentObject) != NativeInstanceParentObjectOffset ||
+		unsafe.Offsetof(instance.ParentHandle) != NativeInstanceParentHandleOffset ||
+		unsafe.Offsetof(instance.ParentExtent) != NativeInstanceParentExtentOffset {
 		return fmt.Errorf("gc: native instance ABI layout mismatch")
 	}
 	return nil
@@ -290,6 +312,19 @@ func (c *Collector) initNativeView() {
 	c.refreshNativeView()
 }
 
+// invalidateNativeResolution expires cached object and handle-entry addresses.
+// Every boundary which can relocate or free an object, recycle a handle, or
+// replace handle/heap backing must invalidate before native execution resumes.
+// Saturation permanently disables cache use: generated code must reject both
+// zero (uninitialized) and NativeResolutionGenerationDisabled on cache hits.
+const NativeResolutionGenerationDisabled = ^uint64(0)
+
+func (c *Collector) invalidateNativeResolution() {
+	if c != nil && c.nativeView != nil && c.nativeView.RefreshGeneration != NativeResolutionGenerationDisabled {
+		c.nativeView.RefreshGeneration++
+	}
+}
+
 func (c *Collector) refreshNativeView() {
 	if c == nil || c.nativeView == nil {
 		return
@@ -327,7 +362,7 @@ func (c *Collector) refreshNativeView() {
 		v.LargeArrayAllocState = uintptr(unsafe.Pointer(&c.nativeLargeArrayAlloc))
 		v.LargeArrayAllocEpoch = uintptr(unsafe.Pointer(&c.nativeLargeArrayEpoch))
 	}
-	v.RefreshGeneration++
+	c.invalidateNativeResolution()
 }
 
 // refreshNativeCards republishes the relocatable object-card backing after
@@ -339,7 +374,7 @@ func (c *Collector) refreshNativeCards() {
 	v := c.nativeView
 	v.ObjectCards = sliceData(c.objectCards)
 	v.ObjectCardCount = uint32(len(c.objectCards))
-	v.RefreshGeneration++
+	c.invalidateNativeResolution()
 }
 
 // refreshNativeHandles updates only allocation-mutated handle metadata. A
@@ -353,7 +388,7 @@ func (c *Collector) refreshNativeHandles() {
 	v := c.nativeView
 	v.Handles = sliceData(c.handles)
 	v.HandleCount = uint32(len(c.handles))
-	v.RefreshGeneration++
+	c.invalidateNativeResolution()
 }
 
 // NativeView returns the collector-owned stable metadata view. The returned

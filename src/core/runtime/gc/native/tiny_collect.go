@@ -151,6 +151,7 @@ type tinyGC struct {
 // by tinyStepObjectScanBudget; root enumeration and sweep pacing are separate
 // stages. When called while idle it starts a cycle by graying supplied roots.
 func (c *Collector) Step(roots RootSet) error {
+	defer c.invalidateNativeResolution()
 	if c.cfg.Profile != ProfileTiny {
 		return c.CollectMinor(roots)
 	}

@@ -603,6 +603,7 @@ func (c *Collector) CardCount() int {
 	return count
 }
 func (c *Collector) ForcePromote(r Ref) error {
+	defer c.invalidateNativeResolution()
 	if err := c.errIfClosed(); err != nil {
 		return err
 	}
