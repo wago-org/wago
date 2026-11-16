@@ -19,6 +19,10 @@ var repeatedStoreRegionEnabled = os.Getenv("WAGO_ARM64_NO_REPEATED_STORE_REGION"
 // the removed region.
 const minRepeatedStoreBranchWords = 8
 
+// Keep each link local. Longer runs are discovered as a chain, so the compiler
+// never scans a multi-kilobyte window just to find the next repeated block.
+const maxRepeatedStoreDistance = 384
+
 // truncateNativeCode preserves the assembler's existing rollback behavior and
 // discards provenance for bytes that may subsequently be reused for other code.
 func (f *fn) truncateNativeCode(n int) {
@@ -103,11 +107,8 @@ func repeatLinearStoreRegion(b []byte, first, words int, targets []uint64, entri
 	return true
 }
 
-// repeatStoreRegionAt removes the second of two identical bounded store
-// sequences only when the first dominates it, every input and written register
-// is unchanged between them, and the intervening region has no stores or calls.
-func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, entries []int) bool {
-	if words < 4 || words > 24 || first < 0 || second < first+4*words || second+4*words > len(b) || second-(first+4*words) > 128 {
+func repeatedStoreRegionLocalSafe(b []byte, first, second, words int, targets []uint64, entries []int) bool {
+	if words < 4 || words > 24 || first < 0 || second < first+4*words || second+4*words > len(b) || second-(first+4*words) > maxRepeatedStoreDistance {
 		return false
 	}
 	endFirst, endSecond := first+4*words, second+4*words
@@ -145,18 +146,6 @@ func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, e
 			return false
 		}
 	}
-	for at := 0; at+4 <= len(b); at += 4 {
-		to, branch := branchTarget(at, rdWord(b, at))
-		if !branch {
-			continue
-		}
-		if to > first && to < endFirst || to > second && to < endSecond {
-			return false
-		}
-		if to >= endFirst && to <= second && (at < endFirst || at >= second) {
-			return false
-		}
-	}
 	for at := endFirst; at < second; at += 4 {
 		w := rdWord(b, at)
 		if to, branch := branchTarget(at, w); branch {
@@ -178,7 +167,56 @@ func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, e
 			return false
 		}
 	}
-	clearFrom := second
+	return true
+}
+
+func repeatedStoreRegionBranchesSafe(b []byte, first, second, words int) bool {
+	endFirst, endSecond := first+4*words, second+4*words
+	for at := 0; at+4 <= len(b); at += 4 {
+		to, branch := branchTarget(at, rdWord(b, at))
+		if !branch {
+			continue
+		}
+		if to > first && to < endFirst || to > second && to < endSecond {
+			return false
+		}
+		if to >= endFirst && to <= second && (at < endFirst || at >= second) {
+			return false
+		}
+	}
+	return true
+}
+
+func repeatedStoreRegionSafe(b []byte, first, second, words int, targets []uint64, entries []int) bool {
+	return repeatedStoreRegionLocalSafe(b, first, second, words, targets, entries) && repeatedStoreRegionBranchesSafe(b, first, second, words)
+}
+
+func repeatedStoreChainBranchPrefix(b []byte, first int, matches []int, words int) int {
+	safe := len(matches)
+	for at := 0; at+4 <= len(b); at += 4 {
+		to, branch := branchTarget(at, rdWord(b, at))
+		if !branch {
+			continue
+		}
+		anchor := first
+		for i, second := range matches[:safe] {
+			endFirst, endSecond := anchor+4*words, second+4*words
+			if to > anchor && to < endFirst || to > second && to < endSecond {
+				safe = i
+				break
+			}
+			if to >= endFirst && to <= second && (at < endFirst || at >= second) {
+				safe = i
+				break
+			}
+			anchor = second
+		}
+	}
+	return safe
+}
+
+func removeRepeatedStoreRegion(b []byte, second, words int) {
+	clearFrom, endSecond := second, second+4*words
 	if words >= minRepeatedStoreBranchWords {
 		wrWord(b, second, 0x14000000|uint32(words)&0x03ffffff)
 		clearFrom += 4
@@ -186,6 +224,16 @@ func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, e
 	for at := clearFrom; at < endSecond; at += 4 {
 		wrWord(b, at, nopWord)
 	}
+}
+
+// repeatStoreRegionAt removes the second of two identical bounded store
+// sequences only when the first dominates it, every input and written register
+// is unchanged between them, and the intervening region has no stores or calls.
+func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, entries []int) bool {
+	if !repeatedStoreRegionSafe(b, first, second, words, targets, entries) {
+		return false
+	}
+	removeRepeatedStoreRegion(b, second, words)
 	return true
 }
 
@@ -208,6 +256,12 @@ func (f *fn) foldRepeatedStoreRegions(b []byte, targets []uint64, entries ...int
 	// Bound aggregate proof work even on functions with many repeated stores.
 	budget := 1 << 18
 	charge := len(b)/4 + 64
+	type candidate struct {
+		first int
+		words int
+	}
+	var candidates [64]candidate
+	nCandidates := 0
 	for first := 0; first+16 <= len(b); first += 4 {
 		if !repeatRegionStore(rdWord(b, first)) || first >= 4 && repeatRegionWord(rdWord(b, first-4)) {
 			continue
@@ -222,25 +276,59 @@ func (f *fn) foldRepeatedStoreRegions(b []byte, targets []uint64, entries ...int
 		if !repeatLinearStoreRegion(b, first, words, targets, entries) {
 			continue
 		}
-		end := first + 4*words
-		for second := end; second+4*words <= len(b) && second-end <= 128; second += 4 {
-			if rdWord(b, second) != rdWord(b, first) {
-				continue
-			}
-			if !repeatedStoreOriginsCover(b, first, second, words, f.scratchState().repeatedStoreOrigins[:]) {
-				continue
-			}
-			if budget < charge {
-				return
-			}
-			budget -= charge
-			if repeatStoreRegionAt(b, first, second, words, targets, entries) {
-				f.stats.peep("repeated-store-region")
-				if words >= minRepeatedStoreBranchWords {
-					f.stats.peep("repeated-store-region-branch")
+		if nCandidates == len(candidates) {
+			break
+		}
+		at := nCandidates
+		for at > 0 && candidates[at-1].words < words {
+			candidates[at] = candidates[at-1]
+			at--
+		}
+		candidates[at] = candidate{first: first, words: words}
+		nCandidates++
+	}
+	for _, c := range candidates[:nCandidates] {
+		first, words := c.first, c.words
+		if !repeatLinearStoreRegion(b, first, words, targets, entries) {
+			continue
+		}
+		var matches [24]int
+		anchor, count := first, 0
+		for count < len(matches) {
+			end := anchor + 4*words
+			found := -1
+			for second := end; second+4*words <= len(b) && second-end <= maxRepeatedStoreDistance; second += 4 {
+				if rdWord(b, second) != rdWord(b, anchor) {
+					continue
 				}
-				first = second + 4*words - 4
+				if !repeatedStoreOriginsCover(b, anchor, second, words, f.scratchState().repeatedStoreOrigins[:]) {
+					continue
+				}
+				if budget < charge {
+					return
+				}
+				budget -= charge
+				if repeatedStoreRegionLocalSafe(b, anchor, second, words, targets, entries) {
+					found = second
+					break
+				}
+			}
+			if found < 0 {
 				break
+			}
+			matches[count] = found
+			count++
+			anchor = found
+		}
+		count = repeatedStoreChainBranchPrefix(b, first, matches[:count], words)
+		if count == 0 {
+			continue
+		}
+		for i := count - 1; i >= 0; i-- {
+			removeRepeatedStoreRegion(b, matches[i], words)
+			f.stats.peep("repeated-store-region")
+			if words >= minRepeatedStoreBranchWords {
+				f.stats.peep("repeated-store-region-branch")
 			}
 		}
 	}

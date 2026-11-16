@@ -80,6 +80,72 @@ func TestRepeatedStoreRegionBranchesOverLongDeletion(t *testing.T) {
 	}
 }
 
+func TestRepeatedStoreRegionFindsDistantDuplicates(t *testing.T) {
+	group := []uint32{
+		0xf900061f, nopWord, 0xd2800031, 0xb9000611,
+		0xf9000a1f, nopWord, 0xd2800051, 0xb9000a11,
+	}
+	words := append([]uint32{}, group...)
+	for range 80 {
+		words = append(words, 0x1100058c) // ADD W12,W12,#1; irrelevant to the store block.
+	}
+	second := len(words) * 4
+	words = append(words, group...)
+	for range 80 {
+		words = append(words, 0x1100058c)
+	}
+	third := len(words) * 4
+	words = append(words, group...)
+	b := make([]byte, len(words)*4)
+	for i, w := range words {
+		binary.LittleEndian.PutUint32(b[i*4:], w)
+	}
+	targets := nativeConstantTargets(b)
+	if !repeatedStoreRegionSafe(b, 0, second, len(group), targets, nil) {
+		t.Fatal("distant duplicate rejected")
+	}
+	if !repeatedStoreRegionSafe(b, second, third, len(group), targets, nil) {
+		t.Fatal("next link in distant duplicate chain rejected")
+	}
+	removeRepeatedStoreRegion(b, third, len(group))
+	removeRepeatedStoreRegion(b, second, len(group))
+	for _, at := range []int{second, third} {
+		if got, want := rdWord(b, at), uint32(0x14000000|len(group)); got != want {
+			t.Fatalf("skip branch at %d = %#x, want %#x", at, got, want)
+		}
+	}
+}
+
+func TestRepeatedStoreRegionDistanceBound(t *testing.T) {
+	group := []uint32{0xf900061f, nopWord, 0xd2800031, 0xb9000611}
+	second := len(group)*4 + maxRepeatedStoreDistance + 4
+	b := make([]byte, second+len(group)*4)
+	for i, w := range group {
+		binary.LittleEndian.PutUint32(b[i*4:], w)
+		binary.LittleEndian.PutUint32(b[second+i*4:], w)
+	}
+	if repeatStoreRegionAt(b, 0, second, len(group), nativeConstantTargets(b), nil) {
+		t.Fatal("accepted duplicate beyond the bounded search distance")
+	}
+}
+
+func TestRepeatedStoreChainBranchPrefix(t *testing.T) {
+	const (
+		words  = 4
+		second = 32
+		third  = 64
+		branch = 80
+	)
+	b := make([]byte, 96)
+	// This branch enters the final repeated region, so the first duplicate is
+	// still removable but the final one is not.
+	offset := int32((third + 4 - branch) / 4)
+	wrWord(b, branch, 0x14000000|uint32(offset)&0x03ffffff)
+	if got := repeatedStoreChainBranchPrefix(b, 0, []int{second, third}, words); got != 1 {
+		t.Fatalf("safe prefix = %d, want 1", got)
+	}
+}
+
 func TestRepeatedStoreRegionDiagnostic(t *testing.T) {
 	path := os.Getenv("WAGO_REPEAT_STORE_DIAGNOSTIC_PATH")
 	if path == "" {
