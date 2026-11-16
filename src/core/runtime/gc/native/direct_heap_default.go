@@ -18,7 +18,10 @@ const directHeapCompact = false
 
 var errDirectHeapOOM = directgc.ErrOOM
 
-func newDirectHeap(n, o uint32, d []directHeapDescriptor) (*directHeap, error) {
+func newDirectHeap(n, o uint32, d []directHeapDescriptor, age2 bool) (*directHeap, error) {
+	if age2 {
+		return nil, errors.New("gc: age2 requires compact layout")
+	}
 	return directgc.NewWithTypes(n, o, d)
 }
 func directDescriptorAlign(a uint32) uint32                { return max(a, 8) }

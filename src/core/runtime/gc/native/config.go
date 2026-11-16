@@ -25,6 +25,9 @@ func ValidateConfig(cfg Config) error {
 }
 
 func normalizeConfig(cfg Config) (Config, error) {
+	if cfg.ExperimentalCompactAge2 && (!cfg.ExperimentalCompactOffsets || !compactAge2Build || cfg.Profile != ProfileThroughput || cfg.DisableCollection || cfg.DisableMovingNursery) {
+		return cfg, fmt.Errorf("gc: compact age2 requires enabled compact throughput collection and age2 build")
+	}
 	if cfg.ExperimentalDirectOffsets && cfg.ExperimentalCompactOffsets {
 		return cfg, fmt.Errorf("gc: offset layouts are mutually exclusive")
 	}
@@ -80,6 +83,9 @@ func normalizeConfig(cfg Config) (Config, error) {
 	}
 	if cfg.NurseryBytes == 0 {
 		cfg.NurseryBytes = defaultNursery
+	}
+	if cfg.ExperimentalCompactAge2 && (cfg.NurseryBytes < 64 || cfg.NurseryBytes%32 != 0) {
+		return cfg, fmt.Errorf("gc: compact age2 total nursery must be a multiple of32 and at least64 bytes")
 	}
 	if !cfg.DisableMovingNursery && cfg.SurvivorBytes == 0 {
 		cfg.SurvivorBytes = align(cfg.NurseryBytes/2, 16)

@@ -83,6 +83,7 @@ type Config struct {
 	// ExperimentalDirectOffsets requires helper-only compiled artifacts and an owned Runtime.
 	ExperimentalDirectOffsets  bool
 	ExperimentalCompactOffsets bool // separate compact helper-only layout; build-gated
+	ExperimentalCompactAge2    bool // split existing nursery budget; separate experimental policy
 	CollectEveryAlloc          bool
 	ForceMajorEveryMinor       bool
 	VerifyAfterCollect         bool

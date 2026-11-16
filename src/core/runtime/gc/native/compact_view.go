@@ -7,10 +7,15 @@ import (
 
 // CompactNativeABIVersion describes checked compact reads/allocation. It is
 // neither DirectABIVersion nor the helper compiler receipt.
-// Version3 certifies Layout16 only: object starts are16-aligned, struct payload
+// Version4 adds an explicit promote-all/age2 policy capability; both certify Layout16 only: object starts are16-aligned, struct payload
 // begins at alignUp(4, descriptor alignment), arrays at alignUp(8, alignment).
 // Any future Layout8 factory must reject this ABI or issue a distinct version.
-const CompactNativeABIVersion uint32 = 3
+const CompactNativeABIVersion uint32 = 4
+
+const (
+	CompactPolicyPromoteAll uint32 = iota
+	CompactPolicyAge2
+)
 
 type CompactCollectorView struct {
 	Version, Size                                uint32
@@ -27,7 +32,7 @@ type CompactCollectorView struct {
 	// Read-only remembered-parent certificate, indexed by object offset/8.
 	Dirty      uintptr
 	DirtyCount uint32
-	_          uint32
+	Policy     uint32
 }
 
 const (
@@ -46,6 +51,7 @@ const (
 	CompactViewAllocationEnabledOffset  = 68
 	CompactViewDirtyOffset              = 72
 	CompactViewDirtyCountOffset         = 80
+	CompactViewPolicyOffset             = 84
 	CompactCollectorViewSize            = 88
 )
 
@@ -73,7 +79,7 @@ func validateCompactViewLayout() error {
 	if unsafe.Sizeof(uintptr(0)) != 8 || unsafe.Sizeof(bool(false)) != 1 || unsafe.Sizeof(c) != CompactCollectorViewSize ||
 		unsafe.Offsetof(c.Version) != CompactViewVersionOffset || unsafe.Offsetof(c.Size) != CompactViewSizeOffset || unsafe.Offsetof(c.Arena) != CompactViewArenaOffset || unsafe.Offsetof(c.ArenaBytes) != CompactViewArenaBytesOffset || unsafe.Offsetof(c.Starts) != CompactViewStartsOffset || unsafe.Offsetof(c.StartCount) != CompactViewStartCountOffset || unsafe.Offsetof(c.NurseryStart) != CompactViewNurseryStartOffset || unsafe.Offsetof(c.NurseryBump) != CompactViewNurseryBumpOffset || unsafe.Offsetof(c.OldStart) != CompactViewOldStartOffset || unsafe.Offsetof(c.OldBump) != CompactViewOldBumpOffset ||
 		unsafe.Offsetof(c.NurseryBumpAddress) != CompactViewNurseryBumpAddressOffset || unsafe.Offsetof(c.NurseryEnd) != CompactViewNurseryEndOffset || unsafe.Offsetof(c.AllocationEnabled) != CompactViewAllocationEnabledOffset ||
-		unsafe.Offsetof(c.Dirty) != CompactViewDirtyOffset || unsafe.Offsetof(c.DirtyCount) != CompactViewDirtyCountOffset ||
+		unsafe.Offsetof(c.Dirty) != CompactViewDirtyOffset || unsafe.Offsetof(c.DirtyCount) != CompactViewDirtyCountOffset || unsafe.Offsetof(c.Policy) != CompactViewPolicyOffset ||
 		unsafe.Offsetof(i.Version) != CompactInstanceVersionOffset || unsafe.Offsetof(i.Size) != CompactInstanceSizeOffset || unsafe.Offsetof(i.Collector) != CompactInstanceCollectorOffset || unsafe.Offsetof(i.LocalTypes) != CompactInstanceLocalTypesOffset || unsafe.Offsetof(i.LocalTypeCount) != CompactInstanceLocalTypeCountOffset || unsafe.Offsetof(i.keepTypes) != CompactInstanceViewABISize {
 		return errors.New("gc: unsupported compact read view layout")
 	}

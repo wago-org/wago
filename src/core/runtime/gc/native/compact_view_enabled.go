@@ -11,6 +11,9 @@ func (c *Collector) compactReadSnapshot() CompactCollectorView {
 	if c == nil || c.closed || c.direct == nil {
 		return v
 	}
+	if c.direct.Age2Enabled() {
+		v.Policy = CompactPolicyAge2
+	}
 	x := c.direct.ReadView()
 	v.Arena = x.Arena
 	v.ArenaBytes = x.ArenaBytes

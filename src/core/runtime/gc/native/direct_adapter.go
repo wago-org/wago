@@ -43,7 +43,7 @@ func newExperimentalOffsetCollector(config Config, types []TypeDesc) (*Collector
 	if err = ValidateTypeDescs(types); err != nil {
 		return nil, err
 	}
-	heap, err := newDirectHeap(align(config.NurseryBytes, 16), align(config.ThroughputHeapBytes, 16), directDescriptors(types))
+	heap, err := newDirectHeap(align(config.NurseryBytes, 16), align(config.ThroughputHeapBytes, 16), directDescriptors(types), config.ExperimentalCompactAge2)
 	if err != nil {
 		return nil, err
 	}
