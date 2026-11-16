@@ -1009,10 +1009,32 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	right := f.s.arg1(node)
 
 	if right.elemKind() == ekValue && right.st.kind == stConst {
+		if left.elemKind() == ekValue && (left.st.kind == stReg || left.st.kind == stLocalReg || left.st.kind == stGlobReg) {
+			source, owned := f.materializeRead(left)
+			if dest == regNone {
+				if owned {
+					dest = source
+				} else {
+					dest = f.allocReg(maskOf(source))
+				}
+			}
+			mask := int64(31)
+			if w {
+				mask = 63
+			}
+			f.shiftImmFrom(digit, dest, source, byte(right.st.cval&mask), w)
+			if owned && source != dest {
+				f.release(source)
+			}
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			f.stats.peep("constant-shift-three-operand")
+			return dest
+		}
+
 		if dest == regNone {
 			dest = f.allocReg(0)
 		}
-
 		f.pinned = f.pinned.add(dest)
 		f.condenseInto(left, dest)
 		mask := int64(31)
@@ -1067,22 +1089,26 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 // shiftImm emits a constant-count shift/rotate. rotl has no direct arm64 op:
 // rotl(x,c) = ror(x, width-c), so it lowers to RorImm over the complemented count.
 func (f *fn) shiftImm(k shiftKind, dst Reg, cnt byte, w bool) {
+	f.shiftImmFrom(k, dst, dst, cnt, w)
+}
+
+func (f *fn) shiftImmFrom(k shiftKind, dst, src Reg, cnt byte, w bool) {
 	ew := !w // encoder shift helpers use true for the 32-bit W-form.
 	switch k {
 	case shLSL:
-		f.a.LslImm(dst, dst, cnt, ew)
+		f.a.LslImm(dst, src, cnt, ew)
 	case shLSR:
-		f.a.LsrImm(dst, dst, cnt, ew)
+		f.a.LsrImm(dst, src, cnt, ew)
 	case shASR:
-		f.a.AsrImm(dst, dst, cnt, ew)
+		f.a.AsrImm(dst, src, cnt, ew)
 	case shROR:
-		f.a.RorImm(dst, dst, cnt, ew)
+		f.a.RorImm(dst, src, cnt, ew)
 	case shROL:
 		width := byte(32)
 		if w {
 			width = 64
 		}
-		f.a.RorImm(dst, dst, (width-cnt)&(width-1), ew) // rotl(x,c) = ror(x, width-c)
+		f.a.RorImm(dst, src, (width-cnt)&(width-1), ew) // rotl(x,c) = ror(x, width-c)
 	}
 }
 
