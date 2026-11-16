@@ -1,0 +1,3 @@
+# Matched SSE2 fill experiment
+
+One qualified source, baseline best ABI4 loop/copy tags versus those same tags plus `wago_gc_direct_fill_sse2`. Full protocol: 100 warmup calls, nine batches of 32 calls, three rotating rounds. Both fill and array-allocation control run with V8 --no-liftoff. Primary policy is explicitly 2 MiB Eden; 512 KiB is a separate control. Both old spaces remain 8 MiB. Audits use 128 warmups at 2 MiB, timed runs remain 100. No unchanged-workload or universal-engine claim is inferred from this subset. Separate Compile+Close measurements follow execution timing; retain all samples, code sizes and allocation differences.
