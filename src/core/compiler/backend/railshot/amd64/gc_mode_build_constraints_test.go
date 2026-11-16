@@ -21,7 +21,7 @@ func TestGCModeBuildConstraintsStayExclusive(t *testing.T) {
 	}
 	var exprs [][2]constraint.Expr
 	tags := map[string]bool{}
-	tagPattern := regexp.MustCompile(`wago_gc_[a-z_]+`)
+	tagPattern := regexp.MustCompile(`wago_gc_[a-z0-9_]+`)
 	for _, pair := range pairs {
 		var parsed [2]constraint.Expr
 		for i, p := range pair {
