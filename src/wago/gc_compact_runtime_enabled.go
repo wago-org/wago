@@ -1,4 +1,4 @@
-//go:build (wago_gc_compact_reads || wago_gc_compact_alloc)
+//go:build (wago_gc_compact_reads || (wago_gc_compact_alloc || wago_gc_compact_refstore))
 
 package wago
 
