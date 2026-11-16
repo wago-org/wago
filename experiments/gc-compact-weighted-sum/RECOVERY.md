@@ -1,5 +1,10 @@
 # Weighted reduction reconstruction
 
+## Correction: initial worker instrumentation was not enabled
+
+The initial worker commands recorded below actually used `wago_regalloc_checks`. This was not a documentation-only typo: the supported build tag in `src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go` is `wago_regalloccheck`. Go accepted the unknown tag, but it did not enable register-allocation instrumentation. Those reported successful executions establish only the tests that ran without that instrumentation; they must not be described as instrumented qualification. The original commands and durations are deliberately preserved rather than silently relabeled. Any separately recorded canonical run has its own command/provenance; correct-tag reruns must be reported independently.
+
+
 Reconstructed from retained implementation context after the cloud workspace was replaced. Unlike the preceding SSE reconstruction, no independent pre-loss weighted file-blob manifest is available. This is new source/provenance requiring fresh review and qualification. The lost weighted experiment had not completed source review or tests; none are claimed here.
 
 The separate tag `wago_gc_compact_weighted_sum` recognizes only a bounded canonical i32 weighted reduction over one unchanged final i32 array, with distinct clean pinned induction and accumulator locals. It preserves the original checked first iteration and falls back to the original loop if the validated array length does not cover the full remaining span. Fast arithmetic remains modulo32, with both local homes synchronized at exit. No artifact names or specific bound/weight constants are recognized.

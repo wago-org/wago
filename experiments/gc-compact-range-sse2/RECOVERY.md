@@ -1,5 +1,10 @@
 # Recovery provenance
 
+## Correction: initial worker instrumentation was not enabled
+
+The initial worker commands recorded below actually used `wago_regalloc_checks`. This was not a documentation-only typo: the supported build tag in `src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go` is `wago_regalloccheck`. Go accepted the unknown tag, but it did not enable register-allocation instrumentation. Those reported successful executions establish only the tests that ran without that instrumentation; they must not be described as instrumented qualification. The original commands and durations are deliberately preserved rather than silently relabeled. Any separately recorded canonical run has its own command/provenance; correct-tag reruns must be reported independently.
+
+
 The execution environment was replaced after the original experiment. This reconstruction starts from verified remote commit `cc33d1037757988bf5e4a79eab4c59d38a26c1f4`.
 
 All 62 SSE implementation, test, and README file blobs were reconstructed and checked against the pre-loss publication manifest. Every blob hash matches exactly. Three source blobs were retrieved from the connector by their previously uploaded hashes; the remaining text was reconstructed from retained task context and independently hash-checked.

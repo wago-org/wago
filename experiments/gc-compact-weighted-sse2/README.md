@@ -1,5 +1,10 @@
 # Opt-in checked weighted SSE2 reduction
 
+## Correction: initial worker instrumentation was not enabled
+
+The initial worker commands recorded below actually used `wago_regalloc_checks`. This was not a documentation-only typo: the supported build tag in `src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go` is `wago_regalloccheck`. Go accepted the unknown tag, but it did not enable register-allocation instrumentation. Those reported successful executions establish only the tests that ran without that instrumentation; they must not be described as instrumented qualification. The original commands and durations are deliberately preserved rather than silently relabeled. Any separately recorded canonical run has its own command/provenance; correct-tag reruns must be reported independently.
+
+
 Tag `wago_gc_compact_weighted_sse2` implies the scalar weighted experiment and its prerequisite pipeline. Compare against `wago_gc_compact_weighted_sum` with identical collector settings and other tags. The default compiler is unchanged; no allocation is removed.
 
 The exact bounded scalar weighted matcher, original checked first iteration, full-span guard and pinned index/total requirements are unchanged. Six clean XMM registers are required, with no spills or partial emission on pressure fallback. Remaining counts below four use the existing scalar path. Complete unaligned 16-byte loads use baseline SSE2 only; the exact scalar tail follows.

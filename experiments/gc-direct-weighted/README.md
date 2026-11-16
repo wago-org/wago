@@ -1,5 +1,10 @@
 # Direct16 weighted reduction prototype
 
+## Correction: initial worker instrumentation was not enabled
+
+The initial worker commands recorded below actually used `wago_regalloc_checks`. This was not a documentation-only typo: the supported build tag in `src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go` is `wago_regalloccheck`. Go accepted the unknown tag, but it did not enable register-allocation instrumentation. Those reported successful executions establish only the tests that ran without that instrumentation; they must not be described as instrumented qualification. The original commands and durations are deliberately preserved rather than silently relabeled. Any separately recorded canonical run has its own command/provenance; correct-tag reruns must be reported independently.
+
+
 Separate tags `wago_gc_direct_weighted_sum` and `wago_gc_direct_weighted_sse2` extend the existing trusted direct loop build/receipt (policy 6), not compact admission. The latter selects the shared six-clean-XMM SSE2 reduction; pressure fallback remains scalar. Default builds retain empty weighted state.
 
 The existing final i32 array, one-receiver/no-safepoint scanner and original checked first access remain authoritative. The shared bounded matcher and arithmetic are unchanged in semantics. The latch explicitly requires the direct trusted lease and uses payload offset 16; compact uses its own active lease and offset 8. Direct length remains supplied by the existing direct loop's Length@8 handling. No direct/compact native view aliases or new unchecked entry paths are introduced.
