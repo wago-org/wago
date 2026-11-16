@@ -28,3 +28,13 @@ are included in this mode's qualification.
 No performance conclusion follows from implementation or passing tests. Compare
 matched artifacts, policy, allocation counts and real collection before claiming a
 gain. In particular, this does not implement native array allocation yet.
+
+Integrated source `89013de` passed the combined scalar-array/trusted-store
+`TestDirectGC*` and `TestTrustedDirect*` runtime suite with `wago_regalloccheck`.
+The combined run excludes only `TestDirectGCReadValidation`, whose deliberate
+private struct-metadata corruption is outside trusted struct reads; the new
+scalar-array physical-extent checks still run. Scalar-only worker qualification
+also passed that checked struct-validation test. Unfiltered default Wago,
+native/checked GC, AMD64 backend and direct substrate tests all pass. These are
+correctness checks, not measured array throughput or full experimental feature
+conformance. Numeric array allocation still uses rooted Go helpers.
