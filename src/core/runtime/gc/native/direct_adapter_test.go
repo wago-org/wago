@@ -179,3 +179,49 @@ func TestDirectAdapterTypeAppendAndForcedMajor(t *testing.T) {
 		t.Fatal(n, e, c.Stats())
 	}
 }
+
+func TestDirectAdapterVerifyAfterCollect(t *testing.T) {
+	leaf, _ := NewStructDesc(0, []StorageKind{StorageI32})
+	c, e := NewExperimentalDirectCollector(Config{NurseryBytes: 128, ThroughputHeapBytes: 4096, CollectEveryAlloc: true, VerifyAfterCollect: true}, []TypeDesc{leaf})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	if !c.UsesDirectOffsets() || c.NativeView() != nil {
+		t.Fatal("wrong collector selected")
+	}
+	if c.DirectView().AllocationEnabled != 0 {
+		t.Fatal("diagnostic enabled unchecked allocation")
+	}
+	r, e := c.NewStructWithRoots(0, []Value{{Kind: StorageI32, Bits: 91}}, EmptyRoots{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	root := Root(r)
+	slots := Slots{&root, &root}
+	for i := 0; i < 4; i++ {
+		if e = c.Verify(slots); e != nil {
+			t.Fatal(e)
+		}
+		if e = c.CollectMinor(slots); e != nil {
+			t.Fatal(e)
+		}
+		if e = c.CollectFull(slots); e != nil {
+			t.Fatal(e)
+		}
+	}
+	got, e := c.StructGet(Ref(root), 0)
+	if e != nil || got.Bits != 91 {
+		t.Fatal(got, e)
+	}
+	if !c.UsesDirectOffsets() {
+		t.Fatal("collector changed")
+	}
+	bad := Root(24)
+	if e = c.Verify(Slots{&bad}); e == nil {
+		t.Fatal("invalid root accepted")
+	}
+	if e = c.Verify(slots); e != nil {
+		t.Fatal(e)
+	}
+}
