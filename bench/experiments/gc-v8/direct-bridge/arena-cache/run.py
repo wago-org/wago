@@ -17,7 +17,7 @@ p.add_argument('--eden', type=int, default=2097152)
 p.add_argument('--audit', action='store_true')
 a = p.parse_args()
 warmup = 128 if a.audit and a.eden >= 2097152 else 100
-root = pathlib.Path('wago-gc-marks-baseline')
+root = (pathlib.Path(os.environ.get('GC_EXPERIMENT_ROOT', '.')).resolve() / 'wago-gc-marks-baseline')
 base = pathlib.Path(a.binary_dir).resolve()
 out = pathlib.Path(a.output_dir).resolve()
 out.mkdir(parents=True, exist_ok=True)

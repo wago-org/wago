@@ -1,6 +1,7 @@
 import pathlib,os,subprocess,json,datetime,time,hashlib
-out=pathlib.Path('gc-arena-samebinary-gate');binary=pathlib.Path('gc-arena-samebinary/probe.test');sha=hashlib.sha256(binary.read_bytes()).hexdigest();assert sha=='aab5ad744e54c31a3381991b20dab8803dd049fdb88b46acc5ec7196253ba82b'
-root=pathlib.Path('wago-gc-cache-receipt');manifest={c['name']:c for c in json.load(open(root/'bench/experiments/gc-v8/cases.json'))};cpu=min(os.sched_getaffinity(0));rows=[]
+workspace=pathlib.Path(os.environ.get('GC_EXPERIMENT_ROOT', '.')).resolve()
+out=workspace/'gc-arena-samebinary-gate';binary=workspace/'gc-arena-samebinary/probe.test';sha=hashlib.sha256(binary.read_bytes()).hexdigest();assert sha=='aab5ad744e54c31a3381991b20dab8803dd049fdb88b46acc5ec7196253ba82b'
+root=workspace/'wago-gc-cache-receipt';manifest={c['name']:c for c in json.load(open(root/'bench/experiments/gc-v8/cases.json'))};cpu=min(os.sched_getaffinity(0));rows=[]
 def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 prov={'binary_sha256':sha,'source':'85d533a1','qualification':'bb9d8733','protocol':'same binary explicit0/1;8adjacent reversed pairs each struct/fill;100warmup9samples64calls; affinity-controlled diagnostic, not V8gate','cpu':pathlib.Path('/proc/cpuinfo').read_text(),'selected_cpu':cpu,'allowed_affinity':sorted(os.sched_getaffinity(0)),'started_utc':utc()}
 for rnd in range(8):
