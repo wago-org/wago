@@ -224,3 +224,45 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 		t.Fatal("retry", got, e)
 	}
 }
+
+func TestDirectGCManagedReferenceAllocationPressure(t *testing.T) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new", false).WithOptimization("inline", false), directRefArgsBytes())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	if !c.hasGCHelperOnlyReceipt() && c.gcDirectReadABIReceipt() == 0 {
+		t.Skip("requires direct/helper compiler artifact")
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 64, ThroughputHeapBytes: 512}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	values, e := in.InvokeValues(context.Background(), "new", ValueI32(91))
+	if e != nil {
+		t.Fatal(e)
+	}
+	token := values[0].GCRef()
+	defer in.ReleaseGCRef(token)
+	entry := in.refStore.gcByToken[token.token]
+	before := in.gc.GlobalSlot(entry.slot)
+	for i := 0; i < 32; i++ {
+		got, e := in.Invoke("read", token.token)
+		if e != nil || got[0] != 91 {
+			t.Fatal(i, got, e)
+		}
+	}
+	stats := in.gc.Stats()
+	if !in.gc.UsesDirectOffsets() || stats.MinorCollections+stats.FullCollections == 0 || in.gc.GlobalSlot(entry.slot) == before {
+		t.Fatal("no allocation-pressure relocation", stats)
+	}
+	if e = in.gc.Verify(gc.EmptyRoots{}); e != nil {
+		t.Fatal(e)
+	}
+	if in.existingPublicGCState().argumentRootCount != 0 {
+		t.Fatal("argument roots leaked")
+	}
+}
