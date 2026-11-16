@@ -339,3 +339,32 @@ func (c *Collector) SetWord(r Ref, index uint32, v uint64) error {
 	binary.LittleEndian.PutUint64(c.arena[off:off+8], v)
 	return nil
 }
+
+// ObjectBytes borrows the complete native Size extent, including header and
+// 8-byte padding (not physical stride padding). This is a trusted adapter lease:
+// any collection invalidates it. The adapter must not change TypeID, Size, Aux,
+// or tracing flags, must enforce reference types, and must Remember raw writes.
+func (c *Collector) ObjectBytes(r Ref) ([]byte, error) {
+	if !c.valid(r) {
+		return nil, ErrRef
+	}
+	off := uint32(r)
+	size := c.u32(off + 4)
+	if size < header || uint64(off)+uint64(size) > uint64(len(c.arena)) {
+		return nil, ErrRef
+	}
+	return c.arena[off : off+size : off+size], nil
+}
+func (c *Collector) IsYoung(r Ref) bool { return c.valid(r) && c.young(r) }
+
+// LiveObjects counts currently allocated objects, including unreachable objects
+// not yet reclaimed. No tracing or collection is performed.
+func (c *Collector) LiveObjects() uint32 {
+	var n uint32
+	for _, live := range c.starts {
+		if live {
+			n++
+		}
+	}
+	return n
+}

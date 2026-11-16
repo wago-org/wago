@@ -221,3 +221,36 @@ func TestDescriptorValidationAndAtomicAppend(t *testing.T) {
 		t.Fatal("overflow mutated bump")
 	}
 }
+
+func TestAdapterObjectViewAndLiveCount(t *testing.T) {
+	c := typedHeap(t, []Descriptor{{Kind: KindArray, Align: 8, ElementSize: 1}})
+	r, e := c.NewArray(0, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := c.ObjectBytes(r)
+	if e != nil || len(b) != 24 || cap(b) != 24 {
+		t.Fatal("object extent", len(b), e)
+	}
+	if binary.LittleEndian.Uint32(b[4:]) != 24 || binary.LittleEndian.Uint32(b[8:]) != 1 {
+		t.Fatal("native header")
+	}
+	if !c.IsYoung(r) || c.IsYoung(I31New(1)) || c.LiveObjects() != 1 {
+		t.Fatal("allocation state")
+	}
+	if e = c.Minor([]*Ref{&r}); e != nil {
+		t.Fatal(e)
+	}
+	if c.IsYoung(r) || c.LiveObjects() != 1 {
+		t.Fatal("promoted state")
+	}
+	if e = c.Full(nil); e != nil {
+		t.Fatal(e)
+	}
+	if c.LiveObjects() != 0 {
+		t.Fatal("dead count")
+	}
+	if _, e = c.ObjectBytes(r); !errors.Is(e, ErrRef) {
+		t.Fatal("stale bytes accepted", e)
+	}
+}
