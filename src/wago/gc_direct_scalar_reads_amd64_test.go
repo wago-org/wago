@@ -1,8 +1,9 @@
-//go:build linux && amd64 && wago_gc_direct_reads
+//go:build linux && amd64 && (wago_gc_direct_reads || wago_gc_direct_alloc)
 
 package wago
 
 import (
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
 	"testing"
@@ -28,7 +29,7 @@ func TestDirectGCScalarReadsAfterRelocation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if c.gcDirectReadABIReceipt() != 1 || c.hasGCHelperOnlyReceipt() {
+			if c.gcDirectReadABIReceipt() != gc.DirectABIVersion || c.hasGCHelperOnlyReceipt() {
 				t.Fatal("wrong artifact receipt")
 			}
 			rt := NewRuntime()

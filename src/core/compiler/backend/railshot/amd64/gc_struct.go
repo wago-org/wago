@@ -141,6 +141,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		params = append(params, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok {
+			f.directStructAllocType = typeIndex + 1
+		}
 		if native {
 			f.nativeStructAllocType = typeIndex + 1
 			f.nativeStructAllocDead = scalarReplacement
@@ -195,6 +198,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+		if _, _, ok := f.directOffsetStructAllocLayout(typeIndex); ok {
+			f.directStructAllocType = typeIndex + 1
+			f.directStructAllocDefault = true
+		}
 		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
 			return err
 		}

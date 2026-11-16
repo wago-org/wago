@@ -31,6 +31,7 @@ import (
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
@@ -595,19 +596,21 @@ type fn struct {
 	// host call in the module uses the synchronous control frame (callHostSync)
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
-	syncHostCalls          bool
-	dynamicHostFast        bool
-	syncHostSlots          int  // symmetric control-frame capacity; >64 selects the wide extension
-	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
-	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
-	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
-	gcFrameRoots           *shared.GCFrameRootPlan
-	gcCallsiteIndex        int
-	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
-	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
-	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
-	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
-	nativeArrayAlloc       gcArrayAllocStubSite
+	syncHostCalls            bool
+	dynamicHostFast          bool
+	syncHostSlots            int  // symmetric control-frame capacity; >64 selects the wide extension
+	gcTypeSubtypingRefTest   bool // typed function tests/casts resolve exact declared type identity after dynamic loads
+	gcStructHelpers          bool // exact staged numeric struct ops use the same parked Go re-entry frame
+	gcArrayHelpers           bool // exact staged numeric array ops use the same parked Go re-entry frame
+	gcFrameRoots             *shared.GCFrameRootPlan
+	gcCallsiteIndex          int
+	compactFrameHeader       bool // register ABI: no wrapper results-pointer header
+	directStructAllocType    uint32
+	directStructAllocDefault bool
+	nativeStructAllocType    uint32 // type index + 1 for the next gcStructAllocOne call
+	nativeStructAllocDead    bool   // next native struct allocation may omit unreachable scalar payload stores
+	nativeStructDirectUsed   bool   // preceding struct helper retained pinned registers
+	nativeArrayAlloc         gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
@@ -1843,7 +1846,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err == nil && compiled != nil {
 		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads
 		if gcDirectReads {
-			compiled.GCDirectReadABIVersion = 1
+			compiled.GCDirectReadABIVersion = gc.DirectABIVersion
 		}
 	}
 	runtime.KeepAlive(m)
