@@ -1,0 +1,11 @@
+  --wasm-tier-up (enable tier up to the optimizing compiler (requires --liftoff to have an effect))
+        type: bool  default: --wasm-tier-up
+  --wasm-dynamic-tiering (enable dynamic tier up to the optimizing compiler)
+--
+  --trace-wasm-compilation-times (print how long it took to compile each wasm function)
+        type: bool  default: --no-trace-wasm-compilation-times
+  --wasm-tier-up-filter (only tier-up function with this index)
+--
+  --liftoff (enable Liftoff, the baseline compiler for WebAssembly)
+        type: bool  default: --liftoff
+  --liftoff-only (disallow TurboFan compilation for WebAssembly (for testing))

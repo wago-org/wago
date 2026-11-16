@@ -1,0 +1,5 @@
+# Separate untimed V8 tier verification
+
+After execution and compile measurements, the same installed Node 24.22.1 / V8 13.6.233.17-node.58 was queried with `--v8-options`. It describes `--liftoff` as baseline compiler enablement and tier-up as requiring Liftoff to have effect. A separate invocation using `--no-liftoff --trace-wasm-compilation-times` on the exact struct benchmark reports the performance function compiled using **TurboFan** on its first invocation, with expected checksum 536739840. Raw option descriptions and trace are retained.
+
+Timed runs used `--no-liftoff` and 100 separate warmup invocations, without trace flags. The diagnostic confirms optimizing-tier selection for this artifact; it does not observe internal allocation counts, allocation elimination, GC scheduling or prove every corpus instruction was optimized identically. Retained exported roots and numeric checksums do not prove equal allocation behavior between engines. No diagnostic timing enters the benchmark table.

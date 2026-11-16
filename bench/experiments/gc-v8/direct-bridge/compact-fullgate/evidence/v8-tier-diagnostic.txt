@@ -1,0 +1,8 @@
+Compiled function 0x369f5a20#4 using TurboFan, took 2 ms and 197120 / 489360 max/total bytes; bodysize 33 codesize 2152 name wasm-function#4
+CHECKSUM 536739840
+v24.22.1 13.6.233.17-node.58 [
+  '--no-liftoff',
+  '--trace-wasm-compilation-times',
+  '-e',
+  'const fs=require("fs");const b=fs.readFileSync("bench/experiments/gc-v8/gc-struct-allocation-access.wasm");const i=new WebAssembly.Instance(new WebAssembly.Module(b));console.log("CHECKSUM",i.exports.performance(4096)>>>0);console.log(process.version,process.versions.v8,process.execArgv)'
+]
