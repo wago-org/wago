@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_weighted_sum
+//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)
 
 package amd64
 
@@ -32,6 +32,9 @@ func TestCompactWeightedExactSelection(t *testing.T) {
 	defer cm.CodeImage.Close()
 	if stats.Funcs[0].Peephole["gc-compact-weighted-sum"] != 1 {
 		t.Fatalf("missing weighted sum %+v", stats.Funcs[0].Peephole)
+	}
+	if gcCompactWeightedSSE2 && stats.Funcs[0].Peephole["gc-compact-weighted-sse2"] != 1 {
+		t.Fatal("missing weighted SSE2 selection")
 	}
 	for _, i := range []int{1, 2, 3} {
 		if stats.Funcs[i].Peephole["gc-compact-weighted-sum"] != 0 {

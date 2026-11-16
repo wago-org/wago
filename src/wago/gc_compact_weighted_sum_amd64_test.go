@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_compact_weighted_sum
+//go:build linux && amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)
 
 package wago
 
@@ -8,9 +8,16 @@ import (
 	"testing"
 )
 
-func compactWeightedModule(weight, bound int32) []byte {
-	body := []byte{1, 1, 0x63, 0, 0x20, 3, 0x20, 0, 0xfb, 6, 0, 0x21, 4, 0x03, 0x40,
-		0x20, 2, 0x20, 1, 0x41}
+func compactWeightedModule(weight, bound int32, pattern ...uint32) []byte {
+	body := []byte{1, 1, 0x63, 0, 0x20, 3, 0x20, 0, 0xfb, 6, 0, 0x21, 4}
+	for i, value := range pattern {
+		body = append(body, 0x20, 4, 0x41)
+		body = append(body, wasmtest.SLEB32(int32(i))...)
+		body = append(body, 0x41)
+		body = append(body, wasmtest.SLEB32(int32(value))...)
+		body = append(body, 0xfb, 14, 0)
+	}
+	body = append(body, 0x03, 0x40, 0x20, 2, 0x20, 1, 0x41)
 	body = append(body, wasmtest.SLEB32(weight)...)
 	body = append(body, 0x6a, 0x20, 4, 0x20, 1, 0xfb, 11, 0, 0x6c, 0x6a, 0x21, 2,
 		0x20, 1, 0x41, 1, 0x6a, 0x22, 1, 0x41)

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_range_sse2 || wago_gc_compact_weighted_sum)
+//go:build linux && amd64 && (wago_gc_compact_range_sse2 || (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2))
 
 package wago
 

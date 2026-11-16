@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_weighted_sum
+//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)
 
 package amd64
 
@@ -138,6 +138,7 @@ func (f *fn) tryCompactWeightedLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	exit := f.a.JccPlaceholder(invertCond(cc))
 	f.a.AluRI(cmpDigit, l.length, int32(f.weightedBound), false)
 	short := f.a.JccPlaceholder(condB)
+	vectorDone := f.emitCompactWeightedSSE2(l, ir, tr, offset, value)
 	fast := f.a.Len()
 	f.a.MovRegReg32(offset, ir)
 	f.a.ImulRI(offset, 4, true)
@@ -149,6 +150,9 @@ func (f *fn) tryCompactWeightedLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	f.a.AluRI(cmpDigit, ir, int32(f.weightedBound), false)
 	again := f.a.JccPlaceholder(condB)
 	f.a.PatchRel32(again, fast)
+	if vectorDone >= 0 {
+		f.a.PatchRel32(vectorDone, f.a.Len())
+	}
 	f.storeLocalReg(index, ir, false)
 	f.storeLocalReg(total, tr, false)
 	done := f.a.JmpPlaceholder()
