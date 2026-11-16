@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
+//go:build linux && amd64 && (wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
 
 package wago
 
@@ -10,7 +10,7 @@ func TestTrustedDirectScalarArrayPolicy(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	if c.executionView().gcTrustedDirectVersion < 3 || c.executionView().gcTrustedDirectVersion > 5 {
+	if c.executionView().gcTrustedDirectVersion < 3 || c.executionView().gcTrustedDirectVersion > 6 {
 		t.Fatal("missing scalar-array attestation")
 	}
 }

@@ -5,6 +5,7 @@ package amd64
 import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -35,6 +36,20 @@ func TestDirectLoopProof(t *testing.T) {
 			}
 		})
 	}
+	typ := reflect.TypeOf(fn{})
+	fields := make([]reflect.StructField, 0, typ.NumField()-1)
+	for i := 0; i < typ.NumField(); i++ {
+		if fld := typ.Field(i); fld.Name != "directLoop" {
+			fld.Anonymous = false
+			fields = append(fields, fld)
+		}
+	}
+	baseline := reflect.StructOf(fields).Size()
+	if typ.Size()-baseline != 16 {
+		t.Fatalf("compiler state growth: %d -> %d", baseline, typ.Size())
+	}
+	t.Logf("layout without lease=%d", baseline)
+	t.Logf("fn bytes=%d; direct lease bytes=%d; offset=%d", unsafe.Sizeof(fn{}), unsafe.Sizeof(directLoopLease{}), unsafe.Offsetof(fn{}.directLoop))
 	if unsafe.Sizeof(directLoopLease{}) != 16 {
 		t.Fatal("lease grew")
 	}

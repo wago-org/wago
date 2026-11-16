@@ -26,7 +26,15 @@ func (f *fn) directOffsetScalarArrayAddress(object, indexValue *elem, t uint32, 
 	var done func()
 	leased := f.directLoop.endPC != 0
 	if leased {
-		if local < 0 || uint32(local) != f.directLoop.local || t != f.directLoop.typeIndex {
+		if f.directLoop.remaining == 0 || f.wasmPC >= f.directLoop.endPC {
+			panic("amd64: unproved direct loop access")
+		}
+		f.directLoop.remaining--
+		// The bounded bytecode proof covers every array access in the lease.
+		// Canonical spills may erase machine-value provenance; an unknown
+		// provenance still refers to that proved receiver. A known mismatch
+		// is a compiler invariant failure, never permission to replace it.
+		if (local >= 0 && uint32(local) != f.directLoop.local) || t != f.directLoop.typeIndex {
 			panic("amd64: replacing direct loop receiver")
 		}
 		ref := f.materialize(object)

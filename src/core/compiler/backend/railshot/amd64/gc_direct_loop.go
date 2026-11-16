@@ -15,10 +15,14 @@ import (
 type directLoopLease struct {
 	endPC, local, typeIndex uint32
 	object, length          Reg
+	remaining               uint16
 }
 
 func (f *fn) prepareDirectLoop(op byte) {
 	if f.wasmPC >= f.directLoop.endPC {
+		if f.directLoop.remaining != 0 {
+			panic("amd64: direct loop access proof not consumed")
+		}
 		f.pinned = f.pinned.remove(f.directLoop.object).remove(f.directLoop.length)
 		f.directLoop = directLoopLease{}
 		return
@@ -41,20 +45,22 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 	}
 	p, ok := f.planGCLoopResolverMode(reader, true)
 	if !ok {
+		f.stats.peep("gc-direct-loop-no-plan")
 		return
 	}
-	obj := f.gcResolvedRegister()
+	obj := f.directLoopRegister()
 	if obj == regNone {
 		return
 	}
 	f.pinned = f.pinned.add(obj)
-	length := f.gcResolvedRegister()
+	length := f.directLoopRegister()
 	if length == regNone {
+		f.stats.peep("gc-direct-loop-no-length-reg")
 		f.pinned = f.pinned.remove(obj)
 		return
 	}
 	f.pinned = f.pinned.add(length)
-	f.pushValue(storage{kind: stLocalRef, typ: f.localType[p.local], idx: uint32(p.local)})
+	f.pushPlainLocalGet(uint32(p.local))
 	ref := f.materialize(f.popValue())
 	f.a.MovRegReg32(obj, ref)
 	f.release(ref)
@@ -69,6 +75,18 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 	f.a.Add64(obj, length)
 	f.a.Load32(length, obj, 8)
 	f.a.PatchRel32(null, f.a.Len())
-	f.directLoop = directLoopLease{p.endPC, uint32(p.local), p.typeIndex, obj, length}
+	f.directLoop = directLoopLease{p.endPC, uint32(p.local), p.typeIndex, obj, length, p.accesses}
 	f.stats.peep("gc-direct-loop-hoist")
+}
+
+// No admitted instruction has a fixed pointer/scratch use of these registers.
+// In particular calls, bulk operations and interrupt polls are excluded.
+func (f *fn) directLoopRegister() Reg {
+	block := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	for _, r := range [...]Reg{RBP, R12, R13, R14, RDI, RSI, R9, R10, R11, R15} {
+		if f.regUser[r] == nil && !block.has(r) {
+			return r
+		}
+	}
+	return regNone
 }

@@ -30,6 +30,24 @@ The original handle cache is not reused. Unexpected effects, receiver replacemen
 or mutation fail closed rather than retaining an invalid backedge address.
 
 This adds fixed state to the compiler function object, not to runtime instances
-or guest heaps. Actual compiler object-size, allocation-cost and execution
-measurements remain pending. The implementation and tests must be compiled and
-qualified before publication. No performance improvement is claimed here.
+or guest heaps. The AMD64 compiler function state is 2,840 bytes versus 2,824 bytes with the
+lease field removed (same-field reflection layout comparison); the lease itself
+is 16 bytes, including a compile-time remaining-access counter in former padding.
+There are no new per-loop heap allocations or maps in the source. Compilation
+allocation-cost and execution measurements remain pending. No performance
+improvement is claimed here.
+
+
+Qualification uses register-allocation checking and code-generation telemetry.
+Telemetry requires one emitted hoist and reuse, so a silent admission rejection
+cannot masquerade as a successful optimization test. The prelude uses the standard
+current-local getter, including dirty pinned-local recovery, rather than assuming
+a canonical frame slot is current. A dedicated fixture reassigns the receiver
+immediately before the loop and reads it after a subsequent moving collection.
+
+Machine canonicalization can erase receiver provenance. An unknown provenance
+is accepted only under the bounded bytecode proof, which verifies every array
+access uses the same local/type. Known mismatches still fail closed. The lease
+counts compiled accesses, rejects access outside its PC range or beyond its
+budget, and requires the count be exhausted at exit. This does not remove any
+runtime null or index check.

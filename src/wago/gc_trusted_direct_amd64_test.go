@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
+//go:build linux && amd64 && (wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
 
 package wago
 
@@ -18,7 +18,7 @@ func TestTrustedDirectReceiptAndPrivateSnapshot(t *testing.T) {
 	}
 	defer c.Close()
 	snapshot := c.executionView()
-	if snapshot == c || (snapshot.gcTrustedDirectVersion < 1 || snapshot.gcTrustedDirectVersion > 5) || snapshot.gcDirectReadABIReceipt() != gc.DirectABIVersion || snapshot.hasGCHelperOnlyReceipt() {
+	if snapshot == c || (snapshot.gcTrustedDirectVersion < 1 || snapshot.gcTrustedDirectVersion > 6) || snapshot.gcDirectReadABIReceipt() != gc.DirectABIVersion || snapshot.hasGCHelperOnlyReceipt() {
 		t.Fatal("missing private trusted snapshot")
 	}
 	before, e := compiledMetadataBytes(snapshot, false)

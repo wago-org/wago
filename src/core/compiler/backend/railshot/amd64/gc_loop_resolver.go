@@ -22,6 +22,7 @@ import (
 type gcLoopResolverPlan struct {
 	local                     int
 	typeIndex, endPC, firstPC uint32
+	accesses                  uint16
 }
 
 func (f *fn) planGCLoopResolver(reader *wasm.Reader) (gcLoopResolverPlan, bool) {
@@ -29,7 +30,7 @@ func (f *fn) planGCLoopResolver(reader *wasm.Reader) (gcLoopResolverPlan, bool) 
 }
 
 func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopResolverPlan, ok bool) {
-	if (!direct && !gcResolveReuseEnabled) || !f.gcArrayHelpers || f.interruptible || f.moduleEH || f.inlineDepth != 0 || f.localBase != 0 || f.intervalControl || f.vectorRegion.enabled || len(f.customInstructions) != 0 || f.gcPureIfSites >= 16 || f.gcResolvedRegister() == regNone {
+	if (!direct && !gcResolveReuseEnabled) || !f.gcArrayHelpers || f.interruptible || f.moduleEH || f.inlineDepth != 0 || f.localBase != 0 || f.intervalControl || f.vectorRegion.enabled || len(f.customInstructions) != 0 || f.gcPureIfSites >= 16 || (!direct && f.gcResolvedRegister() == regNone) || (direct && f.directLoopRegister() == regNone) {
 		return p, false
 	}
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -49,6 +50,7 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 	nw := 0
 	object := -1
 	var typ, firstPC uint32
+	var accesses uint16
 	push := func(v int) bool {
 		if n == len(stack) {
 			return false
@@ -144,6 +146,7 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 				firstPC = uint32(opPC)
 			}
 			object, typ = source, t
+			accesses++
 			if sub == 14 {
 				n -= 3
 			} else {
@@ -165,7 +168,7 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 					return p, false
 				}
 			}
-			return gcLoopResolverPlan{object, typ, uint32(endPC), firstPC}, true
+			return gcLoopResolverPlan{object, typ, uint32(endPC), firstPC, accesses}, true
 		default:
 			return p, false
 		}

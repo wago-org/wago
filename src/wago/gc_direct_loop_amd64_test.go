@@ -2,7 +2,11 @@
 
 package wago
 
-import "testing"
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
+	"testing"
+)
 
 func directLoopInstance(t *testing.T, data []byte) *Instance {
 	t.Helper()
@@ -89,5 +93,30 @@ func TestDirectGCLoopStoreAndTrapOrder(t *testing.T) {
 	}
 	if _, e = trap.Invoke("sum", 1); e == nil || e.Error() != first {
 		t.Fatalf("trap reordered %v vs %s", e, first)
+	}
+}
+
+// The receiver is assigned immediately before the loop with no intervening
+// helper. Its current pinned register, not an old canonical slot, is authoritative.
+func TestDirectGCLoopFreshReceiver(t *testing.T) {
+	body := []byte{3, 1, 0x63, 0, 1, 0x7f, 1, 0x7f,
+		0x41, 1, 0x41, 32, 0xfb, 6, 0, 0x21, 1,
+		0x41, 9, 0x41, 32, 0xfb, 6, 0, 0x21, 1,
+		0x02, 0x40, 0x20, 0, 0x45, 0x0d, 0, 0x03, 0x40,
+		0x20, 3, 0x20, 1, 0x20, 2, 0xfb, 11, 0, 0x6a, 0x21, 3,
+		0x20, 2, 0x41, 1, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x49, 0x0d, 0, 0x0b, 0x0b,
+		// A collecting allocation after the lease, then read the relocated local.
+		0x41, 0, 0x41, 1, 0xfb, 6, 0, 0x1a,
+		0x20, 3, 0x20, 1, 0x41, 0, 0xfb, 11, 0, 0x6a, 0x0b}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
+	in := directLoopInstance(t, data)
+	for _, n := range []uint64{0, 1, 31, 32} {
+		if got, e := in.Invoke("run", n); e != nil || got[0] != 9*n+9 {
+			t.Fatalf("n=%d: %v %v", n, got, e)
+		}
 	}
 }
