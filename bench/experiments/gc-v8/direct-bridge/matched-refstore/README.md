@@ -22,3 +22,9 @@ The short exploratory protocol is 3 warmup calls followed by 5 timed calls in
 three alternating fresh processes per workload/variant. It is not a V8 acceptance
 run. Nursery sensitivity is a different experiment and must not be mixed into
 this comparison. Source preparation alone supplies no performance conclusion.
+
+Recorded result: all 18 timed launches passed, with identical allocation and
+collection counts. Struct time was consistently lower with native reference
+stores (median75.66→22.87ms). Array and tree contained large opposing outliers;
+the array median difference is inconclusive and the tree control supplies no
+reliable gain claim. Full samples, provenance and memory data are under evidence.
