@@ -56,3 +56,7 @@ Exact commands, logs and exit statuses are under `evidence/`. Reported durations
 are correctness-test execution times, not performance comparisons. Earlier
 `corrected.log` is the pre-pressure targeted normal pass at `fa61a880`; final
 normal qualification including pressure is the seven-tag regression above.
+
+Integrated source `fc4b2b9a` also passes the complete default `./src/wago` test
+package (44.881s) with serial Go 1.27.1 settings. This compatibility result is
+not a full experimental direct16 corpus result or a performance measurement.
