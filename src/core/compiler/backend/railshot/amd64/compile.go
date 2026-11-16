@@ -1825,6 +1825,9 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if gcCompactHelpers && gcDirectReads {
+		return nil, fmt.Errorf("amd64: compact helpers cannot be combined with direct GC lowering")
+	}
 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
 	}
@@ -1848,7 +1851,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		compiled, err = compileModuleWith(m, opts)
 	}
 	if err == nil && compiled != nil {
-		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads
+		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads && !gcCompactHelpers
+		if gcCompactHelpers && len(opts.CustomInstructions) == 0 {
+			compiled.GCCompactHelperVersion = 1
+		}
 		if gcDirectReads {
 			compiled.GCDirectReadABIVersion = gc.DirectABIVersion
 			if gcTrustedDirectReads {

@@ -1620,6 +1620,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.requiresNotifyPending = atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"]
 	c.gcHelperOnlyReceipt = cm.GCHelperOnlyReceipt && len(customInstructions) == 0
 	if len(customInstructions) == 0 {
+		c.gcCompactHelperVersion = cm.GCCompactHelperVersion
 		c.gcDirectReadABIVersion = cm.GCDirectReadABIVersion
 		c.gcTrustedDirectVersion = cm.GCTrustedDirectVersion
 	}

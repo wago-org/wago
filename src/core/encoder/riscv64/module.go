@@ -29,6 +29,7 @@ type NativeTailModule struct{ Plans []NativeTailPlan }
 // CompiledModule carries a production native image and its function entries.
 // RV64G emits fixed-width instructions; optional extensions are not selected.
 type CompiledModule struct {
+	GCCompactHelperVersion uint8 // fresh AMD64 compact-helper capability; never serialized
 	// GCHelperOnlyReceipt is a live compiler capability, never serialized.
 	// Only the helper-only AMD64 compiler may issue it.
 	GCHelperOnlyReceipt                                        bool

@@ -1316,7 +1316,8 @@ type Compiled struct {
 	// gcHelperOnlyReceipt occupies flag padding and is never serialized.
 	gcHelperOnlyReceipt    bool
 	gcTrustedDirectVersion uint8
-	HasStart               bool // module declares a start function to run at instantiate
+	gcCompactHelperVersion uint8 // live compact capability occupies remaining flag padding
+	HasStart               bool  // module declares a start function to run at instantiate
 	gcDirectReadABIVersion uint32
 	StartLocalFunc         int  // its local function index (valid when HasStart && !StartIsImport)
 	StartIsImport          bool // start is an imported function (run its host binding at instantiate)
