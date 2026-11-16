@@ -35,7 +35,7 @@ warmup calls uniformly; timed processes retain 100 warmups and 9×32 calls.
 Keep other local jobs paused and preserve failures. `summarize.py` regenerates
 the committed summary from evidence next to the script.
 
-## Old-live-set capacity control (qualification pending)
+## Old-live-set capacity control (normal and race qualified)
 
 `GC_EQUAL_CAPACITY=1 go test ./experiments/directgc -run '^TestEqualBudgetOldCapacity$' -count=1 -v`
 checks 27 independent heaps: all three splits crossed with exact live-byte targets
@@ -52,3 +52,5 @@ roots must reclaim old storage and allow allocation plus Minor again. Record the
 first failed attempted live size separately from the requested larger graph,
 which cannot be built once capacity is reached. No runtime timing or V8 claim;
 this core control does not replace runtime GC semantic qualification.
+
+Capacity results: see `capacity-evidence/summary.md` and the 27 receipts per mode.
