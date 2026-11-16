@@ -1,0 +1,973 @@
+{
+  "schema_version": 1,
+  "branch": "jairus/gc-throughput-v8",
+  "verified_published_head": "31af6dfdb5bda1f36adcc5acfb5a93134e3a185e",
+  "commits": [
+    {
+      "local_commit": "01c6c35b403656057b505e658a437461a1951201",
+      "published_commit": "f5b06baeb38f32cf87be311402b72d2a257197ca",
+      "tree": "64d5b7834f172cd11dccd6c1d3fee0e16462df7f",
+      "subject": "feat(gc): attest experimental trusted direct scalar reads"
+    },
+    {
+      "local_commit": "07625665e24e46bd0dcd8c6d928f0d6d4d45a005",
+      "published_commit": "b8661beea34469b0670dc1f58ccf6746fcb29e08",
+      "tree": "72dae161b25db58f1ff4beda9d0c7ac2a5ec5a8c",
+      "subject": "feat(gc): add opt-in checked helper compiler bridge"
+    },
+    {
+      "local_commit": "08ae0e386ecc6b7161eaa6822610ce539a7eea72",
+      "published_commit": "6beae412f21cb057c955b4b83e14cee287ab68a4",
+      "tree": "a381a8b479bf94e103a15b7e5109aa892868fa17",
+      "subject": "perf(gc): isolate nursery start-map retirement experiment"
+    },
+    {
+      "local_commit": "08b616153e913ce682c80f4334ef57817f3163c1",
+      "published_commit": "c4c45ebc51eb2aa9eba98b43b5740b10e0725c15",
+      "tree": "66f6a623bcd6403723fde6c7006a280cbbf05220",
+      "subject": "test(gc): record retirement traversal crossover evidence"
+    },
+    {
+      "local_commit": "094071d0a0f500ffcb8b98a6bdfe52fe3911784d",
+      "published_commit": "0c7a2221479e69b55d6222809109a83a1c2d2a4e",
+      "tree": "b48ba50c0828791a0b5927d095f70d38efe329b7",
+      "subject": "feat(gc): attest helper-only compiler artifacts"
+    },
+    {
+      "local_commit": "09ace9b2d2657ab66ec19866dafdd7227bce475d",
+      "published_commit": "9211e662b62ea2eaa5d314fc2d62e74d508d235c",
+      "tree": "b5a7f9d7fbb4f4ae4798e70d297c8e387ae140f1",
+      "subject": "feat(gc): allocate bounded compact structs natively"
+    },
+    {
+      "local_commit": "0a007f05cf443e03b32accbc46cdcab04acee0e5",
+      "published_commit": "dd1290c6b0debeb272acb7f5471b8048f2c2e17f",
+      "tree": "84bbd060de99504675488f840fc61d371ce7d2ba",
+      "subject": "perf(gc): add checked native numeric array copy"
+    },
+    {
+      "local_commit": "0a7a88b268a31bcdd20f695bb9f4b1f9dab4df84",
+      "published_commit": "b1e789e84c03868e5c631b965f924392752652b1",
+      "tree": "e6c9c44d66531ee1d925053503b38385034b7b35",
+      "subject": "docs(gc): clarify direct collector integration and large objects"
+    },
+    {
+      "local_commit": "0c71625f2faf6a75a3c72bdff6139ccb08d62092",
+      "published_commit": "16059de7eeaebde80a60b970eaa6b1e85e995fd4",
+      "tree": "7f214378a91d14f89973ce14f7e0032a89136cd0",
+      "subject": "test(gc): record compact helper regressions and geometry"
+    },
+    {
+      "local_commit": "0d4e36412eeb3b99283b6c1c087ef46d62166553",
+      "published_commit": "12b652898c562111610baf6c244ca958cd3ed1c2",
+      "tree": "c3677a4ba48989bd063d8fe96101d9416c04d51e",
+      "subject": "test(gc): make bridge evidence tools portable"
+    },
+    {
+      "local_commit": "0fafe99a4cd0e1a913bffcdeb33d7bc5ad430a28",
+      "published_commit": "5ab911812535a368fd0e5f7b2a9bcc704f7daf8a",
+      "tree": "5efa5921b6848ed92af41dea75bb2dcba80def8d",
+      "subject": "docs(gc): specify trusted direct access attestation"
+    },
+    {
+      "local_commit": "15c7e615f992f070d809f5262f1139054f95aaf3",
+      "published_commit": "fbb275f4954da9626e10edbc12120a4b68c75d55",
+      "tree": "341227b8724ef7fe883c9d715a31c0553ef66e53",
+      "subject": "feat(gc): run direct offsets through an exact-root helper bridge"
+    },
+    {
+      "local_commit": "17cb1063cce1c57b3747c1975e2a8e0101f27a27",
+      "published_commit": "bb5845dcf78fc3c2f33564c7ff5899898083ff3a",
+      "tree": "22cbdb107417cfc50a2bcf325df81c2f097e9c1f",
+      "subject": "test(gc): record direct bridge exploratory comparison"
+    },
+    {
+      "local_commit": "183aac0e6f94d8806f648ab6f133d94d792aeef1",
+      "published_commit": "43bfbd36db3cd914369fc3053db97190ed7f52fc",
+      "tree": "ee4333222e58cc9f10258fc96b989b5b533910df",
+      "subject": "test(gc): exercise allocating reference initializer roots"
+    },
+    {
+      "local_commit": "189787da3c9eff09746d54193fa8eccd1d180198",
+      "published_commit": "d8ec58edc5ab704ae4eed372eef61baa9195f7cb",
+      "tree": "15b0bf3f24db5761158317f6e5c44aab3a8601e7",
+      "subject": "test(gc): record matched queue and native allocation results"
+    },
+    {
+      "local_commit": "18dee77cb4c00fc97d0183e2ffc8f9e1e0559fa1",
+      "published_commit": "7c18d1226aab4736582e5aa90e6b7a9cf878d34a",
+      "tree": "ab681077cd5ca7020d9ee2a7e6120fdd8d8233e7",
+      "subject": "test(gc): record full protocol V8 target misses"
+    },
+    {
+      "local_commit": "192443deefca2a7eaed250ab29d94869ba3b03d1",
+      "published_commit": "901be40c32119ea95ed05f5bc8e8dd57873c7b66",
+      "tree": "85cbe181dcc7b96438e506bfa70da6c4d4bfb9e2",
+      "subject": "test(gc): record matched payload boundary microcomparison"
+    },
+    {
+      "local_commit": "1ce04c278a3d9ca4c546327db9f3bf609d0ea31b",
+      "published_commit": "cc52648a40399a6f58fb3973c5573e32f65db0d3",
+      "tree": "6fb67a1c25faeeb4cba83480625c898a9316d59c",
+      "subject": "test(gc): share initializer fixtures across direct modes"
+    },
+    {
+      "local_commit": "1cf7b6abd5cf854606fb0cbaadab18ba87f81a00",
+      "published_commit": "5d7e2b9e47395a65217f741666dd0ee8bd1f357a",
+      "tree": "c6d76be62ad2f699fd60489fb6ba63d4e84c5a27",
+      "subject": "test(gc): retain reference pressure coverage in compact array modes"
+    },
+    {
+      "local_commit": "1f24ac4baabd06191b18b277e2556c5ccb653e40",
+      "published_commit": "0a31456565a6d98fe48bf6e4e4dd6cdf69765064",
+      "tree": "7a828f9edfbb30fbbe12b224eeb2a6646990cbf7",
+      "subject": "test(gc): record bounded nursery policy sensitivity"
+    },
+    {
+      "local_commit": "201bbc4eb97ed5281bb37633c3bbc10898d4838f",
+      "published_commit": "705c5e19fcb9695dd55e30cd5752b7e133669555",
+      "tree": "9037d01cac282d9ea82dd55473792af57177cb0a",
+      "subject": "test(gc): derive compact receipt mismatch from current version"
+    },
+    {
+      "local_commit": "22c886a22a7d0ee63e607b437ba23323019220eb",
+      "published_commit": "0ee0ea6073d7cf8e098af48eaa17c3283596118b",
+      "tree": "01bb07293a7f1f27a7a8a0cf16e6ea35db4ec5d1",
+      "subject": "test(gc): size mixed retirement fixture explicitly"
+    },
+    {
+      "local_commit": "24294883cb4ef060de58ea95873c93a5d4be0ce1",
+      "published_commit": "a9b11ee9a78c0abf6b27f514827899e5b53d6192",
+      "tree": "5271142894c33b5dc2de17f02c072eee248e176b",
+      "subject": "test(gc): preserve shared-domain reference publication contract"
+    },
+    {
+      "local_commit": "2449cd317bb780ef7f683ef6dfdd6426bc0989e4",
+      "published_commit": "0fe6a8d420e5e616e06ec434ad0fe51e1ee0db0e",
+      "tree": "bc04c47b78df4e3740c2a231f1ce8184b260ef8f",
+      "subject": "test(gc): cover compact SIMD child geometry"
+    },
+    {
+      "local_commit": "246247e62c5dfb20af6adadf8a6f167622a3c383",
+      "published_commit": "03adfe539b621dca1087b45fcb56d50d56ec343a",
+      "tree": "a93196f3aafd7393f3d2b96fe7e682b20403de1f",
+      "subject": "test(gc): prepare separate ABI3 CPU attribution profiles"
+    },
+    {
+      "local_commit": "26e29809e54731306583e821a7de36e64eb3a131",
+      "published_commit": "d2682c853fe0730284708ca3bd851519aa9d121c",
+      "tree": "20f7aaf820530acf4c7a1e047654389d11e0e7a7",
+      "subject": "perf(gc): bound direct minor scans with remembered parents"
+    },
+    {
+      "local_commit": "2c286ac017dd701205413882a4e72f2bdd258352",
+      "published_commit": "f47131c0288e53ef39cd92a387f34751e0671429",
+      "tree": "118cf9f1b0ef6e783ea7b53123a4e5dc325682ba",
+      "subject": "perf(gc): defer direct nursery allocation accounting in ABI4"
+    },
+    {
+      "local_commit": "2c936456d687905dbcaeeb11b6c392279583dcd9",
+      "published_commit": "c62e3e19c9efe52eaa7d30adda99560b0902d9f9",
+      "tree": "42dbbcbfe5cc34ce859124492ccf8c30be318d5b",
+      "subject": "perf(gc): reuse evacuated headers for direct forwarding"
+    },
+    {
+      "local_commit": "2cab1b3fb6ce02f2293ac63067e27903843bf6ff",
+      "published_commit": "bab5a47ed715b3c2d1fe4ad73c570ee31db19b2a",
+      "tree": "4e6be49710ae49b2debff87eafff202ca2efcaa9",
+      "subject": "test(gc): record bounded compact read gains and regressions"
+    },
+    {
+      "local_commit": "2d0f46063d8c18dc0fa42d93d62cdf435e04d526",
+      "published_commit": "d415f2cac885de1876f638e7dff52fbd92d303ec",
+      "tree": "19eb06a4b87dab03a8079e789b8d6accdb2926fa",
+      "subject": "test(gc): prepare matched retirement pipeline experiment"
+    },
+    {
+      "local_commit": "2f6affbfc57da830ecf6abb7cb39fd7764e146d2",
+      "published_commit": "3babe7c386afc8ebced6de64b9e56afcb4b2a470",
+      "tree": "7b38b37d79dac5e6cb3ee4b83d79e4391ff53764",
+      "subject": "test(gc): harden direct bridge admission and document limits"
+    },
+    {
+      "local_commit": "2f7efe8172efc281ff63d1b340cce3d580d110a0",
+      "published_commit": "39196331a27eb7c0cd30c04a796599a201bda152",
+      "tree": "f3d56397c8be6f7a2dd18f9811d2759dd9551f00",
+      "subject": "test(gc): recognize attested allocation policy family"
+    },
+    {
+      "local_commit": "3023e0c539d1e4e93b9779c641fabc1f02a97a7e",
+      "published_commit": "62b78e08325383bfb80e1b2e7a9477de5d5f3dae",
+      "tree": "5a813a01c66fb4a588fc720966ed23c147080725",
+      "subject": "test(gc): prepare matched direct reference-store experiment"
+    },
+    {
+      "local_commit": "31a11163852376c78647e8a76c76c740fb435893",
+      "published_commit": "4eba0d0057c7b721fdaf089bed5f9171aa3d8639",
+      "tree": "ea18b4d0dc4904693389817cc3e4edddba55c3e2",
+      "subject": "feat(gc): expose read-only remembered-parent certificates"
+    },
+    {
+      "local_commit": "326184d5e7fab55a2f2067f14618907ff606135c",
+      "published_commit": "bb9b70ba8a1b40e92a99bef568c4f570cc606771",
+      "tree": "7b885cb08a792af1d8e292ab29f51aebcc42613d",
+      "subject": "feat(gc): add typed Wasm layouts to direct-offset collector"
+    },
+    {
+      "local_commit": "33006a75c7c2b5a1e7a52b5a56aeac9c02cbd6ee",
+      "published_commit": "9ef0829426d5bfe363a93b5917628a37ed449afa",
+      "tree": "6182f42130925878beed7f9bf7f0b74b403f9fe2",
+      "subject": "feat(gc): prototype transactional direct-offset generational collector"
+    },
+    {
+      "local_commit": "34f4f00d4c1029709c8d6b4a29f2b09b5a1a9fb0",
+      "published_commit": "d83d7743e763f0979415f281168da24c9339fdc8",
+      "tree": "c567ef83810cfc696d1b719d3444a5531cf6033a",
+      "subject": "test(gc): record separate collector and copy CPU attribution"
+    },
+    {
+      "local_commit": "35e29ae477d7efae114522b222845fe9496088ae",
+      "published_commit": "4285ed248e447639ed332c6f8608950c38bcfcd3",
+      "tree": "367e182a739ed2634908a1bad2edc9ef8d5963f7",
+      "subject": "test(gc): cover shared compact native instance contexts"
+    },
+    {
+      "local_commit": "39905a35aec0968dce7eb03469d71f50aa991230",
+      "published_commit": "6eda575e50be3e61d5b72d93d53ef7684015f068",
+      "tree": "748e5a7f429822559660ff05ef174277040e506a",
+      "subject": "docs(gc): specify direct loop lease scope and costs"
+    },
+    {
+      "local_commit": "3aa90af6342195888c7e11eec0d3853dabfe5566",
+      "published_commit": "269414bd02a94e32b2c7ec40fd2c00caea63cbcd",
+      "tree": "8bc2d6b5b2d0a5c19cc493cc9716ab3f70daa33c",
+      "subject": "fix(gc): preserve extern identities through root rewrites"
+    },
+    {
+      "local_commit": "3e1c82ff9b29046f2d56da2486b4af1fa2c3d5d9",
+      "published_commit": "2064f071e45e4cb41a806006b409c6b25d179622",
+      "tree": "9bfeedcf2d5cd06e7b61104b1fdee851dc3ab889",
+      "subject": "feat(gc): integrate compact offsets through checked helpers"
+    },
+    {
+      "local_commit": "417045c2ed58e200fd6f41a93b105f940e09b42f",
+      "published_commit": "6cc7aa64b11c072e4cbc73dcf823b91988900dee",
+      "tree": "3045314d6bcdd2b7ccdcadd968f25564a8ed90bc",
+      "subject": "test(gc): prepare matched compact helper layout experiment"
+    },
+    {
+      "local_commit": "4366ed5993fe5940e2c79b640c0285ded19d99c3",
+      "published_commit": "4d5adebd74f24638dd51987e3667d3e477eeacaa",
+      "tree": "f7c7d49a36d9f9c25f908529e4110135177b095c",
+      "subject": "docs(gc): qualify compact read ABI lifetime and layout contract"
+    },
+    {
+      "local_commit": "43849d126af43e0cf91b7c996aaf77ceca98659e",
+      "published_commit": "3681fa5b59e8099919163f179cab2f39b24a5dd8",
+      "tree": "21c02abcedce11850dbed79da02a960bebe72dbc",
+      "subject": "test(gc): qualify compact checkpoint across default and TinyGo"
+    },
+    {
+      "local_commit": "452742fb1266d482d825613422f9014416746dbc",
+      "published_commit": "90bbdcffca6d6baf7bf2fab0de301989269a01a2",
+      "tree": "b8aacb3c28cb6e8704127be0881ab658b93d3da3",
+      "subject": "perf(gc): prototype checked direct numeric array fill"
+    },
+    {
+      "local_commit": "4680fce398f9aa391b39eada8096fe9814c50f9f",
+      "published_commit": "9eb74c6f56736090db671d21281104d71c64c759",
+      "tree": "40c9af10f5e6be6a58afad97e66798987e0b87c5",
+      "subject": "test(gc): record matched trusted read measurements"
+    },
+    {
+      "local_commit": "46a1246c5151b195e002048a49c522db3cd4af72",
+      "published_commit": "dae21af78e482e2ae272ca4168fbcd24acb70ae0",
+      "tree": "c4e0f4eed47373253e257356bd7ba6d2c82fec03",
+      "subject": "test(gc): prepare best native pipeline V8 gate"
+    },
+    {
+      "local_commit": "477a78e86425fc098815621c81e610b6bb08c296",
+      "published_commit": "15ccfd293efd6bfddd6f345a2ca86f7cd2d6d30a",
+      "tree": "ec18030a501dc4d100d3eb82e7b1ac6727c6055e",
+      "subject": "feat(gc): attest compact helper-only compiler artifacts"
+    },
+    {
+      "local_commit": "4959f113888bc37a7c792b3718ec1ed57ce5e106",
+      "published_commit": "754b067afaa27f201a1d3f1e7aabe2de65c3c7d4",
+      "tree": "aafcc7c29ba7735ba53fd0cf9692f00525445b8a",
+      "subject": "feat(gc): admit native direct-read artifacts with distinct views"
+    },
+    {
+      "local_commit": "4ac0f5e3ad644965ec8abac3b214ca2fc66fec79",
+      "published_commit": "e603cc35561dc01fca199b709811c58e224390d8",
+      "tree": "d59e13600edc4ab6cdfa37933ff6cd03e39318ea",
+      "subject": "test(gc): record retirement traversal gains and V8 misses"
+    },
+    {
+      "local_commit": "4d4b2b3936d0c05eb8edaeae359346b15c4af21b",
+      "published_commit": "3a9ebf791a5f693dcb8f4c4e919eee9eab28970f",
+      "tree": "a13295c7ad054952bd98fb7f9c174e5f2267070a",
+      "subject": "fix(gc): resolve compact payload layout once with checked errors"
+    },
+    {
+      "local_commit": "4def2bf32b5d79051534ec2e030dde313009c14b",
+      "published_commit": "8710c08130c1ca11858fcf89c972c86ed8dd4787",
+      "tree": "7b26e88843d312940bee539c3e51887235648cc7",
+      "subject": "feat(gc): attest scalar array allocation invariants"
+    },
+    {
+      "local_commit": "4e6693cd754d04c8ab10cd40a81081771a3d7c25",
+      "published_commit": "31c8f6130d0cac5cc3e459e3d767535f7effa680",
+      "tree": "a0c5c50886dd74f9c8c3ad4eb5bf49e1d4b7a957",
+      "subject": "test(gc): prepare separate direct nursery policy experiment"
+    },
+    {
+      "local_commit": "4ee3789079d47a3cc09ad4e8d8b7dafb37f47cbb",
+      "published_commit": "7ba0edd87f92daaf23e70faffc2b8322f10e0c42",
+      "tree": "ad48d0b5ad424efe252120cbbded3b1cec77abff",
+      "subject": "feat(gc): attest trusted scalar array bounds paths"
+    },
+    {
+      "local_commit": "4fbbc01cfc0fb6ceba0168be627f08a938ceb6f2",
+      "published_commit": "6c938a497e1e3ac0b08c2397dd6f97726702e20c",
+      "tree": "1db7777c9a59194fac798acba2e9a2ffde5c926e",
+      "subject": "test(gc): cover fill trap provenance and physical span"
+    },
+    {
+      "local_commit": "56d5c062775c82f153569b1eba1067847bf7ce70",
+      "published_commit": "ebabbdd1c0a8120f8d2c8dedfd30d96dd33f8238",
+      "tree": "3459796d47b97711e5b67db4c16f224f5ab52711",
+      "subject": "feat(gc): allocate compact numeric arrays natively"
+    },
+    {
+      "local_commit": "583a6400102f774f5dba3648fe63a3f7ee1f3041",
+      "published_commit": "0ea44dc59e09245013344657235262450ce8e9db",
+      "tree": "81285388ee1f3c811fcc46545200cdb2e4b85c57",
+      "subject": "test(gc): record reference and allocation pipeline qualification"
+    },
+    {
+      "local_commit": "587f30a112043f3baeff3ddefe572c9263b63d67",
+      "published_commit": "d963cf5344128f70c04373570832b1dd2f9c7313",
+      "tree": "cb32b6164c03493edca1c3c955dc7a3cb50f6f90",
+      "subject": "docs(gc): report host allocations in reference-store experiment"
+    },
+    {
+      "local_commit": "58b426f5cf575b841a4b7401efd1f6d03b3d8422",
+      "published_commit": "fe353a0a429f44e320db53782044d0722eafece3",
+      "tree": "872200f7e0cb54359d1e2b32a3445c26d4b7d568",
+      "subject": "feat(gc): expose separate native direct-read ABI views"
+    },
+    {
+      "local_commit": "5947880ba2445e55b1353ba3c484c42932ac1c39",
+      "published_commit": "fe8a2b57137e6b453520de05744542f34686a6d2",
+      "tree": "57e80917fae81c3cdcdbaed208f97aca8f205cdf",
+      "subject": "test(gc): record checked compact constructor qualification"
+    },
+    {
+      "local_commit": "5d0d106c5445c59ee6f902e6beb0e758bb10cba6",
+      "published_commit": "5f1434cd35ea9f729b87a98f801a1d81d87c143f",
+      "tree": "569c9f80c1a6a4d8716ae80d7800a6a1386670f1",
+      "subject": "docs(gc): distinguish read selection from control regression"
+    },
+    {
+      "local_commit": "62c2a425aeda69fea1dbdc61c545b710108e227b",
+      "published_commit": "2273ea199619a488df9aad9208b883da8b688800",
+      "tree": "89c60b67c7150799500376284099c0ea43b3c808",
+      "subject": "fix(gc): resolve public tokens through authoritative roots"
+    },
+    {
+      "local_commit": "62fc59f3e518df669db53e70f9225b9ea25a429a",
+      "published_commit": "639d55cabd78fd4f41a363e7c2675a2eb1309e95",
+      "tree": "b475bcf7cd9f3a4bc66fbc03ad251c5de9359cc6",
+      "subject": "test(gc): qualify compact clone barriers and target isolation"
+    },
+    {
+      "local_commit": "68b3b0fa653caab20824ee6501177fc2c626d10a",
+      "published_commit": "b291269e350dd5bb70821c9db7677cee72998eac",
+      "tree": "f6229b214a26e0ffaec24242971a0b1eb3043403",
+      "subject": "test(gc): record compact helper runtime qualification"
+    },
+    {
+      "local_commit": "6adb0143a1be5b9e11cb0281ba30db83c5cd2091",
+      "published_commit": "55d97b7b5754764d6a22c6393948fe7f92a6f247",
+      "tree": "92193b5af1425c10adae05d3055a537f574b8ce6",
+      "subject": "test(gc): verify copy physical failures preserve destination"
+    },
+    {
+      "local_commit": "6d6094a4cf74cd28f0372bc7936f301f4ea55a6d",
+      "published_commit": "b56e80d82ccbdf4df7678ec891590ac7eddaeef6",
+      "tree": "4926cfacdae7605f953d095f995c62ecf9c83ae7",
+      "subject": "perf(gc): remove native per-object allocation accounting"
+    },
+    {
+      "local_commit": "6d60f81f133207aede5a9c9ee4d0a276e71b08b3",
+      "published_commit": "36493c7db7493376bceafc52640a450ce52d835d",
+      "tree": "a9a377170eabebeefb519b3d7001504f5f5fb363",
+      "subject": "test(gc): record ABI4 loop copy gates and compile footprint"
+    },
+    {
+      "local_commit": "6de74d740c81b2f5e1b436a599e9c82acf6bcd13",
+      "published_commit": "7c1c47d18997fad81ff31560778c5a11ea2630be",
+      "tree": "bff515853ef36fda3ebfe06bde1e202820dddc51",
+      "subject": "test(gc): select allocator poisoning by build capability"
+    },
+    {
+      "local_commit": "6f348c389861e205c85ee6b7981d7fe17edaec37",
+      "published_commit": "278cda6184928bedf645ace9f9d842bdf0d6a531",
+      "tree": "5dec140ad6e1ebb9ef9179092cae6961e8dbd5a3",
+      "subject": "test(gc): verify matched direct allocation accounting"
+    },
+    {
+      "local_commit": "6fd70f7bd51ef8c1c8e596a6637640fa3757d37e",
+      "published_commit": "60a44dad6258d03b0bb53a7388edd85ab9e9cfc9",
+      "tree": "446d606c57a23e26cab8dfb0bf2e3bbce1a4e02e",
+      "subject": "perf(gc): add attested reference struct allocation and reads"
+    },
+    {
+      "local_commit": "71a5c065c14bfb07c449589813bca0007932d5c2",
+      "published_commit": "343fe3c38afb2ac291617e89132207990a199732",
+      "tree": "4fbe50a310c8e8da9fcb398ac4334b1aa4f96ae1",
+      "subject": "test(gc): record integrated scalar array qualification"
+    },
+    {
+      "local_commit": "71a91c030408219232976784785e009adf795643",
+      "published_commit": "edbce5bb88eeb0bfb5b2371d2aeb1f220155e031",
+      "tree": "aa7d3a69cc25a5ca11551fb81c72c93bfb9a71ae",
+      "subject": "feat(gc): prototype checked native direct-offset reads"
+    },
+    {
+      "local_commit": "71e14e683a3ce7a1feb187613a56b4f70507fb10",
+      "published_commit": "5ce360634fed4d107ef0e364a2e0272c2bd972ca",
+      "tree": "07048733810c7edaca50e81c29871c604cc3b8b0",
+      "subject": "test(gc): record ABI4 loop and copy qualification"
+    },
+    {
+      "local_commit": "732eb1012772094d9ee6ac0c79a639436df1afee",
+      "published_commit": "87432367817eed2b3d89ffd6767f5a5883da796d",
+      "tree": "2fb1ff87100f0213f33c2b8d2bd9189cd59e7812",
+      "subject": "test(gc): include contemporaneous V8 in retirement comparison"
+    },
+    {
+      "local_commit": "7936491d883d9f9224a3904eed36b135f30c6e2c",
+      "published_commit": "a0c2932cceeebffe5dae02bffaec75ba058290a7",
+      "tree": "c7b621cd8fcf38396cb887922c0bf8491372c1a1",
+      "subject": "feat(gc): allocate oversized direct objects in old space"
+    },
+    {
+      "local_commit": "7b1afcc2c2030b6a5473c1224722f1cb233da0b8",
+      "published_commit": "8e2a73df780cbd9dffdcf941525a6766cbf69048",
+      "tree": "1970b2565367fb2e452fe10829ad70c4a2f0b7a6",
+      "subject": "test(gc): isolate checked metadata corruption from trusted modes"
+    },
+    {
+      "local_commit": "7c61dfa3e418aa1df8ac1044d0dad84dc59436a4",
+      "published_commit": "ad15834a5bbc92e2d16eddb1f56485102362b7a5",
+      "tree": "f8d1525e483a6d93ad7f5affa49767311f3bde49",
+      "subject": "test(gc): cover direct allocation mode across runtime suites"
+    },
+    {
+      "local_commit": "7e1e5e820846d8f36d86db4e0cb7caaedac3cee6",
+      "published_commit": "93f4fa0049e798a396cb7ebfc8609b6121a78469",
+      "tree": "b22140b683603da759bb9d462045adea5d6f4cfa",
+      "subject": "test(gc): preserve checked copy metadata coverage"
+    },
+    {
+      "local_commit": "7edceb342077e9e51946442dc39feeec1a2841e6",
+      "published_commit": "5e3641bdada9aa7d86d4d2fae4cb95c4c2027cfb",
+      "tree": "f1e0dc0d86fb8d937da47748ae6ccfb1c2eae8a1",
+      "subject": "feat(gc): retain dynamic guards in attested struct allocation"
+    },
+    {
+      "local_commit": "80fd0e021b84a62f2c24fd08372ccdc6e06ff124",
+      "published_commit": "de7a3bb6da7cd94ff2c345112c2602bb264564cb",
+      "tree": "15971190621f8734623ab6566d637e7f93b07da2",
+      "subject": "docs(gc): specify compact allocation publication protocol"
+    },
+    {
+      "local_commit": "81638c47a4b9cf3cc2853600f7e1c86d6da30843",
+      "published_commit": "1be1bb1758a425e42cc743d8a25ac091498b73a8",
+      "tree": "d6e7890aabf31a40eb37f683adbbaacf312a5276",
+      "subject": "test(gc): record compact reference store gains and controls"
+    },
+    {
+      "local_commit": "8339755d1b8e8121b6bfea4776dad5c96da1fa95",
+      "published_commit": "58de3980533820cc37ed79c728ee3ec43e2620de",
+      "tree": "c7c579389eeb374c28b2035d894120699ab922b6",
+      "subject": "test(gc): record SSE2 fill benefit and target miss"
+    },
+    {
+      "local_commit": "850753677de4665612cd2f6befcf946fe745b7f6",
+      "published_commit": "960adb9d4e20adbf2db898c56ec2fdda01d186dc",
+      "tree": "54048743108c6f3504bf07d250b9b611b78c2b32",
+      "subject": "feat(gc): access compact numeric arrays natively"
+    },
+    {
+      "local_commit": "85e9240d810da39fbdaeba13615441e49cb9c448",
+      "published_commit": "c5900f11dff03022f2c4956e8052acca09627372",
+      "tree": "9981892103ffe1453ec6431525da34485e846c0b",
+      "subject": "feat(gc): store compact array references with checked barriers"
+    },
+    {
+      "local_commit": "861bbe1296792e00db296fe473da8d11e211ab77",
+      "published_commit": "1ea37ee4a59bc2a9fada50af275e6bcd41a7c741",
+      "tree": "8eb7b5d4b7d74c81e1d4eeae3165a1d806503a6f",
+      "subject": "perf(gc): prototype bounded SSE2 numeric array fills"
+    },
+    {
+      "local_commit": "86f555e1260c1c949d3ff53f40ee44b61fef09b3",
+      "published_commit": "95159fe70e2b195c98eb39ec50d87f2a12efd103",
+      "tree": "bae75e6906fc72f6af50f04c32633a8c279b4d4b",
+      "subject": "feat(gc): expose read-only compact remembered certificates"
+    },
+    {
+      "local_commit": "8724f22c49ab4ae319323e8393fa21bfcdc555b8",
+      "published_commit": "c9ef29a87b1bb9a4b3b782f9c889c70b837a1191",
+      "tree": "4ce15f3536ee3073c269bbcc0772a5cae78e5979",
+      "subject": "test(gc): prepare bounded long run nursery sensitivity"
+    },
+    {
+      "local_commit": "88c4e8757bd0069f90caaee26b72fbca0b453c04",
+      "published_commit": "a1cc0298066e21c312041176d53d632d6e987eb5",
+      "tree": "22c270de056896c1ce6ffd6ced71b3f39924e010",
+      "subject": "test(gc): add independent compact geometry diagnostics"
+    },
+    {
+      "local_commit": "89013de9604d454ca8851ecf22486faea277a9c1",
+      "published_commit": "4e6dd8b12c7c86fdc5d8231145e62085478b0da2",
+      "tree": "7ed2c8df0006776d4fc48cabdb9bde3f2a69d2ce",
+      "subject": "test(gc): harden scalar array bit and extent coverage"
+    },
+    {
+      "local_commit": "8a047332025b0f0b88fb0595f6f19f3dbc58654f",
+      "published_commit": "95c70d04b1ee0af1fcc052b845aedd20abb4c02b",
+      "tree": "064b1b329ffad6e452ea5b0b6e0a014b8054556b",
+      "subject": "feat(gc): prototype rooted direct scalar bump allocation"
+    },
+    {
+      "local_commit": "8a245c777359c219f5139230d510739a43b7fb00",
+      "published_commit": "31af6dfdb5bda1f36adcc5acfb5a93134e3a185e",
+      "tree": "0bb04a4cf17464106a60a91b2f7027f192020f40",
+      "subject": "test(gc): qualify compact numeric pipeline and default compatibility"
+    },
+    {
+      "local_commit": "8e1cac09683942ff08651671f2fc224b730903ff",
+      "published_commit": "c38d017e70f3502f1d65a56aa91496eae9b9d149",
+      "tree": "844041d16a9251c364b1f07ea06e85a2d6594a4b",
+      "subject": "test(gc): prepare matched checked scalar array experiment"
+    },
+    {
+      "local_commit": "925a31c0b05341fc081da6fa8720c68be38c69ec",
+      "published_commit": "74558e06e27078115ab209323bdb8f0a52b6692c",
+      "tree": "58e89dc1cfbc2dc5b443877ef638599f4990dfc5",
+      "subject": "test(gc): record matched native reference-store measurements"
+    },
+    {
+      "local_commit": "9326f97d8300cc5541dc9e7ee4114a1affebb9ef",
+      "published_commit": "47fcb646482c5d204621124529b237c67fbf7a86",
+      "tree": "4b5bb829c736c408e44536fd6d2c7b6b0b6dc4dd",
+      "subject": "docs(gc): distinguish trusted store policy and checked arrays"
+    },
+    {
+      "local_commit": "94e4848010dc8cad547d1086b5c02f41e578ce6f",
+      "published_commit": "f89c024011abe592904f70edecb8916afb155b38",
+      "tree": "d46b6d1b8ad7d35ef5ad319be1fed8704577c1b5",
+      "subject": "test(gc): qualify compact reads and retain mixed diagnostic results"
+    },
+    {
+      "local_commit": "968be7d564130b765fd5ac57fb6897391fe002d0",
+      "published_commit": "6f420b8ffdc5a8199cf20dad6fa15e646d5db8fd",
+      "tree": "0ea540a3fc51b2705c2185ecb04a1f3b12b4aaf6",
+      "subject": "feat(gc): attest trusted reference store fast paths"
+    },
+    {
+      "local_commit": "96f9ee657a86fc792da311f66a3423cb089083a5",
+      "published_commit": "a370dd1281ac979f493a3e425a945a748cf560a5",
+      "tree": "58b23eb861212c71c640e54f4317da4ed3b7fcf6",
+      "subject": "test(gc): prepare matched trusted store experiment"
+    },
+    {
+      "local_commit": "9991dfafc045fa9cf4b8cabe0342271f44e6e184",
+      "published_commit": "d632fb557617593c144388d0b2b86785fb155dd2",
+      "tree": "90895e55f1f851b69a966eb9c7b79a2f1e06facc",
+      "subject": "feat(gc): expose gated direct bump allocation ABI"
+    },
+    {
+      "local_commit": "9caa367000bf651096b14f706a8fd61cae818e33",
+      "published_commit": "d93d1b2247910db88d97f1faae6adfa0e792f230",
+      "tree": "3921dba176fbc7270eca99dd996ea2512b6ede9b",
+      "subject": "fix(gc): preserve physical padding and empty-view bounds"
+    },
+    {
+      "local_commit": "9ce359147c6d800f04a44f21aa3a34be39ae3aaa",
+      "published_commit": "988d09356b4713443811956d7b34d23e06efc345",
+      "tree": "554d6aa8c374b49889f1346f2dac6e50b402d1c3",
+      "subject": "feat(gc): prototype attested direct array loop leases"
+    },
+    {
+      "local_commit": "9f56ef08bbc32eda2f8b1b48d3b2cb5bc96c0839",
+      "published_commit": "f55c3c96b1ada27d315541197278b686504a9e81",
+      "tree": "856c5b65547b7bf4358c693fd4991dc587674d3d",
+      "subject": "feat(gc): prototype checked direct reference array stores"
+    },
+    {
+      "local_commit": "a2c06e604f7015201103a9fbf5acd58522a2613e",
+      "published_commit": "ff8081de4373604603e4ceb448c5c6b9c80dae81",
+      "tree": "79219f3d252c5e4bb2b03ccfdbe2b73dbe588fab",
+      "subject": "fix(gc): keep helper receipt in compiled flag padding"
+    },
+    {
+      "local_commit": "a54a2fc43905ed58c0a63ec20d161135ff340508",
+      "published_commit": "97f331d859631f805f5209f83dfd323d3c7d2978",
+      "tree": "d197bb83b4c6d29df6567ecad38cc98f4af3f67e",
+      "subject": "test(gc): include scalar array mode in direct qualification"
+    },
+    {
+      "local_commit": "a675d69fa53ae8fc5b28503ab79093a41ce05765",
+      "published_commit": "e566fa0953294bfee1f61cae43a9ec56b21e74d2",
+      "tree": "3d43050c5b5ad68afe671775c22b892ee2a89e65",
+      "subject": "feat(gc): expose trusted direct collector adapter views"
+    },
+    {
+      "local_commit": "a9cb4bdcf1dd36c50d092e17297b3006e71f9897",
+      "published_commit": "f22c9ee2f9c25c229af1bdb5aa7c1698509588bd",
+      "tree": "80feeaef0674a339f20dbf4234a004594bdbe5ef",
+      "subject": "test(gc): record matched trusted store measurements"
+    },
+    {
+      "local_commit": "aa4ff21e02a6b71aa748b4f24d400ceec9ea0332",
+      "published_commit": "1e6bdafc6e0f4cad941a10f634b4a81cef2eec5c",
+      "tree": "c63e5eba7db01d0c9406cad4352857e1075a9c70",
+      "subject": "test(gc): record compact allocator gain and path selection"
+    },
+    {
+      "local_commit": "aa519cb777b03e1795595e700c7fea9ffc1d1e7b",
+      "published_commit": "21ce4010b1fdca30dc34bf934df7823e25f0ae08",
+      "tree": "76abfaf0ec73ee7f069b846b7259aeecce499742",
+      "subject": "test(gc): preserve compact store operands under register pressure"
+    },
+    {
+      "local_commit": "aa8e0be6070ab171735d9a5729d8c96f858cb70c",
+      "published_commit": "87a0c978b761bec01caa733db8b1be5dda50571a",
+      "tree": "0f3ae958ffbaaf43d40db0fede25cadc67b09b28",
+      "subject": "test(gc): inspect compact native read instructions"
+    },
+    {
+      "local_commit": "aabf8195dc091c3a464b286ee472e1502ff9db1d",
+      "published_commit": "975580c7141a45d33c92bacce8c11e7e75ddb6b0",
+      "tree": "36458814355267170b5f059592e6349f81a92f09",
+      "subject": "test(gc): preserve compact numeric array live locals"
+    },
+    {
+      "local_commit": "ac166b820bb692acf7cf50cda09cc3035ed63418",
+      "published_commit": "060a500f9f84b497b91d0db9d39a6d4c0f82dc5d",
+      "tree": "a6723654d715984670e8ee537fbc639cf2e599d2",
+      "subject": "test(gc): record optional SSE2 fill qualification and limits"
+    },
+    {
+      "local_commit": "adc9bc1050b643138867b9c7b8e629871032f4ab",
+      "published_commit": "48f889fff19eae7bac55fd5d59053b18894b8404",
+      "tree": "8784472622fd5510fdb50c1fac4cb1c1ac3995c8",
+      "subject": "test(gc): verify moving reference struct roots across calls"
+    },
+    {
+      "local_commit": "aff73e909ee4627f18f2a4ceab2f0f5f1bcf523c",
+      "published_commit": "7b6c72e7822eb78321ee9c0cabbd36f9424972d6",
+      "tree": "90922bcc85edb2944dec37bf7b3d256a913be512",
+      "subject": "test(gc): prepare matched SSE2 fill comparison"
+    },
+    {
+      "local_commit": "b0766a554eeec82e380f4c861be89edbfc785291",
+      "published_commit": "9e895f3db7567304380e6c5cac506268cdb65bff",
+      "tree": "1228184d35a8a9cf607ea97d3c3c8d3661496905",
+      "subject": "perf(gc): support direct reference stores of array children"
+    },
+    {
+      "local_commit": "b2f2e00382dd65079dfea4178b5cd832e43dcfb5",
+      "published_commit": "7139237a6056301813b4560b369061a0c530d758",
+      "tree": "8c493e2c0ed45460c7a40ddc422bb6f5843d5547",
+      "subject": "test(gc): cover scalar fill fallback under XMM pressure"
+    },
+    {
+      "local_commit": "b32ba1a21df109bd1938029a031f3cd4995e9169",
+      "published_commit": "a3e4af69c35a3e62ee84a2d2065aa35bb49c5a64",
+      "tree": "4eb8737b592167923791afe723bc76c314025f47",
+      "subject": "docs(gc): prove compact queue bounds and prepare payload comparison"
+    },
+    {
+      "local_commit": "b494f4c815427684561567fc658b7801f2bb54ad",
+      "published_commit": "8413f669326ae73e982b1eaabc0f9fbe47fd6d17",
+      "tree": "472c7e306dfc4fb9c99b67a641c15db80a85eca1",
+      "subject": "feat(gc): expose checked compact nursery allocation capability"
+    },
+    {
+      "local_commit": "b5929ecb6564c1c76ef2e660f7b4269bf8260b00",
+      "published_commit": "f85a67415cc3a5668d4fe27b937e7583d1f13e16",
+      "tree": "0eee9a0dcb3c792da09216e187d0356b270d89d3",
+      "subject": "docs(gc): record scalar array comparison source update"
+    },
+    {
+      "local_commit": "b60abd85cbf7ce96cc208d689d455c86c055cbef",
+      "published_commit": "9c17c9bafd653472fd69a1f90e2251c0198e1c0d",
+      "tree": "40d4c6b16806a4908281e2392f258550d7a83117",
+      "subject": "fix(gc): allow heap-free modules with direct collector options"
+    },
+    {
+      "local_commit": "b6915c678dce91c6bfd8d6e18d7dc2e37b19ea83",
+      "published_commit": "dd10f52aae882acbdc8d98f37fff4c01b09c6947",
+      "tree": "2912b5875aff4e633da2f073db73d78ac39d37b1",
+      "subject": "test(gc): add owned direct bridge comparison probe"
+    },
+    {
+      "local_commit": "b7b6c3b292bd995f220e448be47304a684d75177",
+      "published_commit": "aead33a0d05387a4b41311779d101ea88aa4c3cd",
+      "tree": "8f0b0ebed59b03e0bd042f544472c587beb2d56c",
+      "subject": "test(gc): qualify compact native metadata and runtime contexts"
+    },
+    {
+      "local_commit": "ba8801a1bda51040e6041d82e4a2b42b8c842307",
+      "published_commit": "e66591aecb2d501ad5a12eb9b9731626fb332604",
+      "tree": "0455d74ed0ebba424dc741f3c7947ef6cd83e613",
+      "subject": "test(gc): record trusted read boundary qualification"
+    },
+    {
+      "local_commit": "bb0c4e38cdffc55ed31c9ec7b0a109f6e5a59d03",
+      "published_commit": "24a7df505015156bae5b0f8bffed6afa20527f0c",
+      "tree": "51ea526d105df62d4665d6669bd66a747075ffa5",
+      "subject": "test(gc): qualify compact header copying and memory accounting"
+    },
+    {
+      "local_commit": "bc655faeafec2491e56f4eebcee5fb5c15397876",
+      "published_commit": "24b7f04a122a52f0b83355f306fb6f05b22de7e9",
+      "tree": "8e6351c1057c51b2a366df23f31ef029d7e93722",
+      "subject": "test(gc): prepare ABI4 loop and copy comparison protocol"
+    },
+    {
+      "local_commit": "bd3177117b63002ad25b9cf01cb3145ce3740ff5",
+      "published_commit": "ae672eed67ffd4c14d8fc73e9a4d2bbea59303fb",
+      "tree": "9b1d4430cf91520daaf333ebc091b473f16c0e96",
+      "subject": "feat(gc): prototype checked direct scalar array access"
+    },
+    {
+      "local_commit": "bd5302b2208597f0d71722f28eccd6c9f7f824ee",
+      "published_commit": "336e63887ae55b60b5f4648736a2bf51367e210f",
+      "tree": "800a858fd9be5dc357cebc57d44acf5419fbb88b",
+      "subject": "test(gc): prepare matched trusted read experiment"
+    },
+    {
+      "local_commit": "bdd1797050f6580769fd7e7f840373857d4081a9",
+      "published_commit": "61285fa635ca54ac5fda00589968b7caab13f459",
+      "tree": "b63f61d49bf830cff55e476cc1424bfc37311bc2",
+      "subject": "test(gc): prepare bounded compact native read diagnostic"
+    },
+    {
+      "local_commit": "bea5d5f7a87f2ed177de353ae7b3ed99dc123bc6",
+      "published_commit": "7b6a057119b3d346ddd6af60fd41de40a1f8272c",
+      "tree": "b344e23c31fb292e4f745161f00041eb45f458cf",
+      "subject": "test(gc): prepare matched compile allocation footprint probe"
+    },
+    {
+      "local_commit": "c44a6df66cc475fcc97dc93d29d3417b446ae91c",
+      "published_commit": "94b161c46c797edda7cae73ded045267a3950ee0",
+      "tree": "e97540dc93a3e3827fd3e99e8f6ddfbe33543c27",
+      "subject": "test(gc): enforce native direct mode and account for view storage"
+    },
+    {
+      "local_commit": "c508dadf59b6f95aaa6a9a77fbc90e70c2ac5763",
+      "published_commit": "8765b12bef772a5c55862282ef23f82ffc41c50b",
+      "tree": "48710d94326a4b51a53f1194ae6f9ad554dbf5e0",
+      "subject": "feat(gc): wire exclusive compact native runtime views"
+    },
+    {
+      "local_commit": "c937bed04e90d5a020a6400c6c4f0cb693de978b",
+      "published_commit": "cd30a4468d7044cb6c6764bf88050f494ba8750a",
+      "tree": "176b8b597c3f853ec134320155fc442601a0952e",
+      "subject": "fix(gc): preserve precise logical fill trap attribution"
+    },
+    {
+      "local_commit": "c9f513240f375a781221855dff698bfe7e4658f0",
+      "published_commit": "13720be7aa6aeae409341482949a405b3b47c80e",
+      "tree": "7d5500b86e3bd239664fdd54f150ea0b00dbeeea",
+      "subject": "docs(gc): improve experiment report readability"
+    },
+    {
+      "local_commit": "cbb0a2e9b2aeb2193a13323bd67ba7d16db62dcb",
+      "published_commit": "85057e6c4c7d83496015547d788d85c45edb195a",
+      "tree": "94f80f75407f30ed82664fdc5ca95b7a87dae303",
+      "subject": "test(gc): qualify retirement and payload boundary checkpoint"
+    },
+    {
+      "local_commit": "ccdc3593be74040a6a9395384f71015a1917ba06",
+      "published_commit": "949a3457e7dd8c71c417b6f109b5a5a59094d801",
+      "tree": "2362b323b9ce7f172816a77364667fa554b4eea9",
+      "subject": "test(gc): prepare full protocol native pipeline V8 comparison"
+    },
+    {
+      "local_commit": "cfe3d07976a2a0c9fa7f656e5aeb6fa4259dcbcb",
+      "published_commit": "e11bf38855c72516aad94b40b14da345dd1e4d81",
+      "tree": "ac5d97c0610f7f536df9172880dedfb565e63d36",
+      "subject": "test(gc): record native array pipeline qualification"
+    },
+    {
+      "local_commit": "d0387b1c072599a90edb78e529b0ae4edf5a0ec3",
+      "published_commit": "dd3743317afb93934e78e5b17e47ba66b2ac9966",
+      "tree": "79a179ae40a1a97b7d15644a8ee1c5ef721ad30f",
+      "subject": "test(gc): record compact allocation ABI qualification"
+    },
+    {
+      "local_commit": "d179ec08dba87ca389bffc99fe94081426d1f8f1",
+      "published_commit": "16d0d5df9c96f6efad12e8e79b0e07736afe6b92",
+      "tree": "e0cfe5e106991e7384fb42ca8bec6c177422cc34",
+      "subject": "fix(gc): admit explicit public runtime GC configuration"
+    },
+    {
+      "local_commit": "d2079ee525c7ca892302d5f1596026d31ece0a9b",
+      "published_commit": "fba25c487adeb5e7973eff993ef092eafd4a317e",
+      "tree": "b20552647c1c7889c0dd3b79bfe0a7dab6e80d54",
+      "subject": "perf(gc): add checked native scalar array allocation"
+    },
+    {
+      "local_commit": "d33272b0bed102491f6ba45abb388dafe9421c41",
+      "published_commit": "27023e7486e0b0edabbb90814b67315542547107",
+      "tree": "379f0900b785a3c41bd5187f520f63e96ca343d4",
+      "subject": "test(gc): record integrated native-store qualification"
+    },
+    {
+      "local_commit": "d54293ac5c07b6b303e21a7cfc6bb7411500bbd6",
+      "published_commit": "a26b2c5d42e5989bdee270f573ccdc55a9a4ecdb",
+      "tree": "424afd857828fafc63be2217ccd02a6f3fa63d2e",
+      "subject": "docs(gc): record helper-only qualification boundaries"
+    },
+    {
+      "local_commit": "d68b1f5b1d4f49626a87d9976c2092ed923b7088",
+      "published_commit": "7a9e2ec92aaab58f1273a8531c31304b93e3081a",
+      "tree": "6c069d93a118940d989fcc3c179e8a4f58881bf0",
+      "subject": "perf(gc): calibrate opt-in retirement threshold with mixed roots"
+    },
+    {
+      "local_commit": "d806b9f260b5676982be98e8662047151c446a6f",
+      "published_commit": "15a18a157928a176825964430cfc8c9988cffe28",
+      "tree": "1b937d7392d4f7f5882a1c5e5080f12f21b40b12",
+      "subject": "test(gc): validate native direct reads and relocating operands"
+    },
+    {
+      "local_commit": "dbf56c66794aa9f307fa09af7681ca4f8744ff76",
+      "published_commit": "4144021c95776707ff1786c1a4846d7ce55d25c6",
+      "tree": "0f05685d70391286738b4d0110996add8b4f6927",
+      "subject": "test(gc): document compact remembered view qualification"
+    },
+    {
+      "local_commit": "de019f35ba58900984bab0125493383b1c1cdefd",
+      "published_commit": "d915964b6239c401390f3190c4476c48821b502f",
+      "tree": "cc9b6ddae338c6eee2aa31f9480014da857a3d84",
+      "subject": "fix(gc): qualify loop leases against current local state"
+    },
+    {
+      "local_commit": "e28377e72c4df28d8634e561d7128a18b38f68ca",
+      "published_commit": "140d0a9439642dedfc14d066e9aa0c8abec3f564",
+      "tree": "f3cead40a8c4bfec26d7ec10fd64fee1c8e63e61",
+      "subject": "fix(gc): validate cloned graph reference assignability"
+    },
+    {
+      "local_commit": "e39df091077450dd835241df9d11f34d32043c60",
+      "published_commit": "ead15ddf4a1b9353251dbf02d98b116cdafc0c06",
+      "tree": "1cdc3a29083840b7bc40e796ec7232f8c853e8a0",
+      "subject": "test(gc): verify direct bump publication and rooted fallback"
+    },
+    {
+      "local_commit": "e8139737b722c644f61a0937dc46907b562d6a4a",
+      "published_commit": "bb8fe9f3c16f30297672fe90f9bc58752a673142",
+      "tree": "d3bbd709a0eae65e4d101b7515ea5d25ce210bc2",
+      "subject": "test(gc): prepare bounded compact allocator attribution"
+    },
+    {
+      "local_commit": "e9a69733d6f3ea5d67cd4e20c107dd6456ae2f34",
+      "published_commit": "8cec0cf8764765b0bbed1a6cc8f61ae4fc0dfac9",
+      "tree": "a2f7c4876c1a391fba4e5e4afe7a0b3a3edb0c2c",
+      "subject": "docs(gc): clarify deferred ABI4 accounting contract"
+    },
+    {
+      "local_commit": "eaf6ea829de0a34fb29aab21df4bae4ffd24e726",
+      "published_commit": "b22989be7a867d16b26ec1f2d9ca8444fc19fb15",
+      "tree": "8b3be3a404356a7d0e9c9b7125f1014f4bbdc7ca",
+      "subject": "test(gc): retain public roots through direct relocation"
+    },
+    {
+      "local_commit": "eb6bd6ea95a075ba9c6fb81758e09c9ce2695090",
+      "published_commit": "73e121e2ad4cf269191102d5c578685b91c8ab0b",
+      "tree": "117b458dfd6e7615020dcd64d54b947655e282c8",
+      "subject": "docs(gc): describe native direct allocation and store contracts"
+    },
+    {
+      "local_commit": "ed5298198e1f38c383f2b604c6caed687a729b6c",
+      "published_commit": "9228d05d4622bb4477f1be4134c1929ddd6dd707",
+      "tree": "dcf97f8f58f02e71deffd5b14426cbcc08ee0b9e",
+      "subject": "docs(gc): clarify measured native allocation coverage"
+    },
+    {
+      "local_commit": "edce3303fc93b38acaa5aa189ac1ce0d28968be5",
+      "published_commit": "d59768a75019d5e9b1a81b126f7953e4cb68f7eb",
+      "tree": "ce99d9a1eea2a3997ca5cb8e822d4b3594d60512",
+      "subject": "test(gc): record checked scalar array gains and controls"
+    },
+    {
+      "local_commit": "f1f96fc206620c60d3a3725f2802e283f595fb9c",
+      "published_commit": "8b65c75eae3477841746dac36e571efb1fb084f1",
+      "tree": "5cdf36b84fbaab64332cc06353c40d0962b5ad0e",
+      "subject": "perf(gc): add opt-in previous-cycle retirement selector"
+    },
+    {
+      "local_commit": "f5b12d0fb24cd87e2189f7f677d089881ecf4ecc",
+      "published_commit": "94353623b187f67f45ee29fb2730c14a4b23daae",
+      "tree": "5ac8d54c2786d8ac8d0bc50b818aae50ed104e70",
+      "subject": "test(gc): prepare bounded compact reference store diagnostic"
+    },
+    {
+      "local_commit": "f75d9b1fe3bfaffcaa5d6f8930f944117a962e24",
+      "published_commit": "1a8892273f76d51f91d59fb695ffc66b02229f2f",
+      "tree": "a5bd9d0127b6b38031ac77474f28709e79b50286",
+      "subject": "test(gc): correct XMM pressure fixture assertions"
+    },
+    {
+      "local_commit": "f8f57099caddab3a5f348a887ecce23a7238b1e9",
+      "published_commit": "97d52003a1a9c8a51fee6cf7284a3dbb9680a4e4",
+      "tree": "023b0e718dcbb7bbf64c1e0a9137802e956642f2",
+      "subject": "test(gc): prepare bounded native direct-read comparison"
+    },
+    {
+      "local_commit": "f9040e50279e7ee4c0cccfb4fe0643a34cc9c847",
+      "published_commit": "0c9230e6414ec3eb074be44cb985769534717a2d",
+      "tree": "5efbbfdeac3e5bff8aa9a13382f3acff33d866e7",
+      "subject": "feat(gc): prototype standalone compact object headers"
+    },
+    {
+      "local_commit": "fb185c43940cc23d2b2b310db3f8787a92f1d2c8",
+      "published_commit": "d39ae07b6d5b7e5a74a497b519367732cb2280d6",
+      "tree": "e232368dea0e57aca2ac8891c83cf23c5d998e34",
+      "subject": "test(gc): validate compact native read boundaries"
+    },
+    {
+      "local_commit": "fbfb48e6bd46d1d29e2a4d773cfabb5e5b96efc3",
+      "published_commit": "2ef89743a74075c5d7f5d2e273ac0a289d877c83",
+      "tree": "17ba64b8130857080ba5c022730774793967d924",
+      "subject": "feat(gc): lower checked compact native reads"
+    },
+    {
+      "local_commit": "fcac5594140a3cc1b1cbe5dd3864ea5c4b1eb900",
+      "published_commit": "9d78b1d788b7a655b50fa2192e7cfc70c2dd7c3f",
+      "tree": "e5e308f4b5bac5f5bca9fd52bfdfa2928046c847",
+      "subject": "refactor(gc): separate mutable payload access from object headers"
+    },
+    {
+      "local_commit": "fcee9bf8d2d758cff0b021afcbc3ea17af311067",
+      "published_commit": "9347ff8fc8e9e134386cdff32184e69080d43761",
+      "tree": "49e9891e683c1707d06c1df36121a10f27900cc2",
+      "subject": "feat(gc): expose separate checked compact read descriptors"
+    },
+    {
+      "local_commit": "fe4baea2aca06b88c312ddcf59ba1d59d9f2801f",
+      "published_commit": "49d84cb0da61e5ef4dbe5cd4b9856045717c839b",
+      "tree": "b2c507940a42e22d7b9b3714aae3a789fcca2d41",
+      "subject": "test(gc): record best pipeline gates at two nursery policies"
+    }
+  ]
+}
