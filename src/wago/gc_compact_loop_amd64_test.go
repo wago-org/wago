@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_loop || wago_gc_compact_pair_loop)
+//go:build linux && amd64 && (wago_gc_compact_loop || wago_gc_compact_pair_loop || wago_gc_compact_range_loop)
 
 package wago
 

@@ -47,6 +47,7 @@ func (f *fn) prepareCompactLoop(reader *wasm.Reader) {
 	f.a.MovImm32(length, 0)
 	f.directLoop = directLoopLease{p.endPC, uint32(p.local), p.typeIndex, obj, length, uint8(p.accesses), loopLeaseCompactPending}
 	if paired {
+		f.prepareCompactRange(reader, p)
 		f.directLoop.local = uint32(p.local) | uint32(p.secondLocal)<<16
 		f.directLoop.kind = loopLeaseCompactPair
 		f.stats.peep("gc-compact-pair-loop-plan")
