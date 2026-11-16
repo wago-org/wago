@@ -327,6 +327,7 @@ func TestCompactDescriptorsAndBounds(t *testing.T) {
 func TestCompactMemoryAndNoAllocCollection(t *testing.T) {
 	c := heap(t, 128, 512, node)
 	m := c.MemoryUsage()
+	t.Logf("memory %+v total=%d fixed=%d", m, m.Total(), c.FixedBytes())
 	if m.Arena != uint64(16+128+1024+15) || m.Starts != uint64((16+128+1024)/8) || m.Queue != uint64((16+128+1024)/16*4) {
 		t.Fatalf("backing %+v", m)
 	}

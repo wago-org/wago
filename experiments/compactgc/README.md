@@ -59,4 +59,15 @@ Tests cover mixed layouts, SIMD payload alignment, packed/empty arrays, cycles,
 sharing and repeated root aliases, i31 values, old-to-young writes, oversized old
 allocation, randomized graph identity, OOM/invalid-root byte invariance, exact
 accounting, bounds, descriptor isolation and allocation-free full collection.
-Tests have been authored but not run until an explicit shared-CPU window opens.
+Package tests passed with Go 1.27.1 on AMD64: normal 0.014s, race 1.103s.
+The randomized oracle covers 40 graphs and four collections per graph; the
+allocation-free assertion reports zero Go allocations for full collection.
+These are correctness runs, not comparative performance measurements.
+
+For the test configuration of 128-byte Eden and two 512-byte old spaces, measured
+backing/accounted components total 2,191 bytes: arena including alignment slack
+1,183; starts 146; dirty 146; marks 16; queue 292; remembered queue 128; collector
+struct 224; descriptor backing 48; reference-offset backing 8. Fixed backing is
+1,911 bytes. This excludes Go allocator rounding/bookkeeping and is not RSS.
+All existing directgc backing geometry remains unchanged in the new package:
+compact headers reduce per-object occupancy, not these fixed arena budgets.
