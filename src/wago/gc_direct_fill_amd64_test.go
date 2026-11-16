@@ -3,11 +3,15 @@
 package wago
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
+	"unsafe"
 )
 
 func directFillModule(storage, value, get byte) []byte {
@@ -76,5 +80,44 @@ func TestDirectGCFillShapesAndBounds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDirectGCFillTrapAndPhysicalExtent(t *testing.T) {
+	data := directFillModule(0x7e, 0x7e, 11)
+	in := newDirectScalarArrayInstance(t, data)
+	m, e := wasm.DecodeModule(data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	want := uint32(bytes.Index(m.Code[1].BodyBytes, []byte{0xfb, 16, 0})) + m.Code[1].LocalDeclBytes
+	checkTrap := func(index, count uint64) {
+		t.Helper()
+		_, e := in.Invoke("fill", index, 99, count)
+		var trap *TrapError
+		if !errors.As(e, &trap) || len(trap.Frames) != 1 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != want {
+			t.Fatalf("trap %v want PC %d", e, want)
+		}
+	}
+	checkTrap(0xffffffff, 0)
+	if _, e := in.Invoke("init"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := in.Invoke("fill", 0, 77, 3); e != nil {
+		t.Fatal(e)
+	}
+	checkTrap(2, 2)
+	v := in.gc.DirectView()
+	arena := unsafe.Slice((*byte)(unsafe.Pointer(v.Arena)), int(v.ArenaBytes))
+	ref := uint32(readGlobalObject(in.globalCells[0], in.c.Globals[0].Type))
+	old := binary.LittleEndian.Uint32(arena[ref+4:])
+	binary.LittleEndian.PutUint32(arena[ref+4:], 16)
+	checkTrap(0, 1)
+	binary.LittleEndian.PutUint32(arena[ref+4:], old)
+	for i := 0; i < 3; i++ {
+		got, e := in.Invoke("get", uint64(i))
+		if e != nil || got[0] != 77 {
+			t.Fatal("physical trap mutated payload", got, e)
+		}
 	}
 }
