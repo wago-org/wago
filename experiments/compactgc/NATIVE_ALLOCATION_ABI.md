@@ -24,4 +24,8 @@ header: compact structs store only TypeID4 and descriptor-aligned payload.
 
 Source tests cover simulated native publication mixed with helper construction,
 minor/full retirement, nondestructive exact accounting, copied-map/backing checks,
-ABI1 rejection, EveryAlloc disabling and Close clearing. Qualification pending.
+ABI1 rejection, EveryAlloc disabling and Close clearing.
+
+Go1.27.1 qualification of1e8588a0: full compactgc passed0.011s;
+compact_reads-tag native TestCompact passed0.003s; default empty-state/footprint
+selection passed0.007s. Native emitted allocator qualification is separate.
