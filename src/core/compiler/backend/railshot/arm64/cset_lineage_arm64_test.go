@@ -203,17 +203,22 @@ func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 }
 
 func TestCsetLineageFinalizesMediumFunction(t *testing.T) {
-	a, _, _, cmp, _ := csetLineageFixture(true, false, true, true, Cond(3), condE)
-	padding := make([]byte, 4096)
-	for pc := range len(padding) / 4 {
-		wrWord(padding, pc*4, nopWord)
-	}
-	a.B = append(padding, a.B...)
-	sc := &scratch{asm: &a}
-	f := fn{a: &a, sc: sc, policy: currentCodegenPolicy()}
-	f.finalizePeepholes()
-	if rdWord(a.B, len(padding)+cmp) != nopWord {
-		t.Fatal("medium function did not reuse comparison flags")
+	for _, targeted := range []bool{false, true} {
+		a, _, _, cmp, _ := csetLineageFixture(true, false, true, true, Cond(3), condE)
+		padding := make([]byte, 4096)
+		for pc := range len(padding) / 4 {
+			wrWord(padding, pc*4, nopWord)
+		}
+		if targeted {
+			wrWord(padding, 0, 0x14000000|uint32((len(padding)+cmp)/4))
+		}
+		a.B = append(padding, a.B...)
+		sc := &scratch{asm: &a}
+		f := fn{a: &a, sc: sc, policy: currentCodegenPolicy()}
+		f.finalizePeepholes()
+		if changed := rdWord(a.B, len(padding)+cmp) == nopWord; changed == targeted {
+			t.Fatalf("targeted=%v changed=%v", targeted, changed)
+		}
 	}
 }
 

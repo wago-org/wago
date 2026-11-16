@@ -108,7 +108,7 @@ func (f *fn) foldCsetLineage(b []byte, n, firstSet int, targets []uint64, entrie
 	if !f.opt(optCsetLineage) || n > csetLineageFunctionLimit || f.opaqueFragments || f.moduleEH || len(f.customInstructions) != 0 {
 		return
 	}
-	var boundaries [16]uint64
+	var boundaries [csetLineageFunctionLimit / (64 * 4)]uint64
 	copy(boundaries[:], targets)
 	for _, entry := range entries {
 		branchTargetAdd(boundaries[:], entry, n)
