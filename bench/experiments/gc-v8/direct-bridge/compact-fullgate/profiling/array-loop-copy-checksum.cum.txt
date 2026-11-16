@@ -1,0 +1,26 @@
+File: candidate.test
+Build ID: 68ca7a08e7d2f9b752c8dd1a811ce44ce67387ab
+Type: cpu
+Time: 2026-11-16 09:51:19 EST
+Duration: 1.35s, Total samples = 1.33s (98.33%)
+Showing nodes accounting for 1.33s, 100% of 1.33s total
+      flat  flat%   sum%        cum   cum%
+     1.31s 98.50% 98.50%      1.31s 98.50%  runtime._ExternalCode
+         0     0% 98.50%      1.31s 98.50%  runtime._System
+         0     0% 98.50%      0.02s  1.50%  github.com/wago-org/wago/src/wago.TestGCDirectBridgeProbe
+         0     0% 98.50%      0.02s  1.50%  testing.tRunner
+         0     0% 98.50%      0.01s  0.75%  github.com/wago-org/wago/src/wago.(*Instance).Close
+         0     0% 98.50%      0.01s  0.75%  github.com/wago-org/wago/src/wago.(*Instance).beginClose
+         0     0% 98.50%      0.01s  0.75%  runtime.(*mcache).releaseAll
+         0     0% 98.50%      0.01s  0.75%  runtime.(*mcentral).uncacheSpan
+     0.01s  0.75% 99.25%      0.01s  0.75%  runtime.(*spanSet).push
+         0     0% 99.25%      0.01s  0.75%  runtime.ReadMemStats
+         0     0% 99.25%      0.01s  0.75%  runtime.ReadMemStats.func1
+         0     0% 99.25%      0.01s  0.75%  runtime.flushallmcaches
+         0     0% 99.25%      0.01s  0.75%  runtime.flushmcache
+         0     0% 99.25%      0.01s  0.75%  runtime.makechan
+         0     0% 99.25%      0.01s  0.75%  runtime.mallocgc
+         0     0% 99.25%      0.01s  0.75%  runtime.mallocgcSmallNoscan
+     0.01s  0.75%   100%      0.01s  0.75%  runtime.memclrNoHeapPointers
+         0     0%   100%      0.01s  0.75%  runtime.readmemstats_m
+         0     0%   100%      0.01s  0.75%  runtime.systemstack
