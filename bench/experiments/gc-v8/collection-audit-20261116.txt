@@ -1,0 +1,28 @@
+=== RUN   TestGCV8ExperimentCollection
+=== RUN   TestGCV8ExperimentCollection/struct-allocation-access
+    gc_v8_experiment_test.go:68: stats {Allocations:26220800 MinorCollections:470 FullCollections:0 MinorObjectsScanned:983244 MinorRememberedScanned:2 YoungBytesCopied:31294576 PromotedBytes:114704 LiveObjects:24582 TenuringThreshold:2}
+=== RUN   TestGCV8ExperimentCollection/array-allocation-access
+    gc_v8_experiment_test.go:68: stats {Allocations:26220800 MinorCollections:1060 FullCollections:0 MinorObjectsScanned:2370178 MinorRememberedScanned:9 YoungBytesCopied:207076640 PromotedBytes:1720400 LiveObjects:32776 TenuringThreshold:2}
+=== RUN   TestGCV8ExperimentCollection/array-fill
+    gc_v8_experiment_test.go:68: stats {Allocations:26220800 MinorCollections:1060 FullCollections:0 MinorObjectsScanned:2370178 MinorRememberedScanned:9 YoungBytesCopied:207076640 PromotedBytes:1720400 LiveObjects:32776 TenuringThreshold:2}
+=== RUN   TestGCV8ExperimentCollection/i31-roundtrip
+=== RUN   TestGCV8ExperimentCollection/cast-subtype
+=== RUN   TestGCV8ExperimentCollection/access-scalar-baseline
+=== RUN   TestGCV8ExperimentCollection/array-copy-checksum
+    gc_v8_experiment_test.go:68: stats {Allocations:12800 MinorCollections:28 FullCollections:0 MinorObjectsScanned:14 MinorRememberedScanned:0 YoungBytesCopied:2016 PromotedBytes:0 LiveObjects:60 TenuringThreshold:2}
+=== RUN   TestGCV8ExperimentCollection/array-loop-copy-checksum
+    gc_v8_experiment_test.go:68: stats {Allocations:12800 MinorCollections:28 FullCollections:0 MinorObjectsScanned:14 MinorRememberedScanned:0 YoungBytesCopied:2016 PromotedBytes:0 LiveObjects:60 TenuringThreshold:2}
+=== RUN   TestGCV8ExperimentCollection/tree-survival
+    gc_v8_experiment_test.go:68: stats {Allocations:6755100 MinorCollections:139 FullCollections:0 MinorObjectsScanned:402168 MinorRememberedScanned:2 YoungBytesCopied:12869376 PromotedBytes:2599808 LiveObjects:100495 TenuringThreshold:2}
+--- PASS: TestGCV8ExperimentCollection (2.97s)
+    --- PASS: TestGCV8ExperimentCollection/struct-allocation-access (0.42s)
+    --- PASS: TestGCV8ExperimentCollection/array-allocation-access (0.81s)
+    --- PASS: TestGCV8ExperimentCollection/array-fill (1.17s)
+    --- PASS: TestGCV8ExperimentCollection/i31-roundtrip (0.00s)
+    --- PASS: TestGCV8ExperimentCollection/cast-subtype (0.00s)
+    --- PASS: TestGCV8ExperimentCollection/access-scalar-baseline (0.00s)
+    --- PASS: TestGCV8ExperimentCollection/array-copy-checksum (0.10s)
+    --- PASS: TestGCV8ExperimentCollection/array-loop-copy-checksum (0.18s)
+    --- PASS: TestGCV8ExperimentCollection/tree-survival (0.28s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	2.983s

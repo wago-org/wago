@@ -1,0 +1,92 @@
+[
+  {
+    "name": "struct-allocation-access",
+    "file": "gc-struct-allocation-access.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": true,
+    "sha256": "27468789ca552b5a12cceaa65fafe966cd395fa7e3a14cc45ebce0d2a182eace",
+    "sourceSha256": "85f0af7f06e3bdf650e60756483299e2da147d8d884c4d5d0bb5c586954227f2"
+  },
+  {
+    "name": "array-allocation-access",
+    "file": "gc-array-allocation-access.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": true,
+    "sha256": "e4c1d1006bc52f9b5433bc23bd0e7b40288786cd69d52eff66e11b28051c805f",
+    "sourceSha256": "6ed4dcc1ed86a13dcd8b1612fb34cabb3bc6cd114e17db596d3d46cd8dcf646f"
+  },
+  {
+    "name": "array-fill",
+    "file": "gc-array-fill.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": true,
+    "sha256": "76983fc232082690da73f7d0d419abcee39c83b707a337f0894e7bad1a7e37bd",
+    "sourceSha256": "045602617c2076e5bc88b23de478eead617dc2167cac6625aa4649b595ea1590"
+  },
+  {
+    "name": "i31-roundtrip",
+    "file": "gc-i31-roundtrip.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": false,
+    "sha256": "a47af09b1a73dcdb085f68787124f2bd9a1e287bd373f5696e77f6a6bed2e4db",
+    "sourceSha256": "46fac2b2dbd8784820a35b230dce28e09fb6db41823c6b2847df5dc1e99d77b2"
+  },
+  {
+    "name": "cast-subtype",
+    "file": "gc-cast-subtype.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": false,
+    "sha256": "ab5f84e9ae69990794b333406eaf49b1b7522fb49ab2e4cbb3bcf4dadbfb995a",
+    "sourceSha256": "3dbafba0616ff4d3927306903bbb44ad5101a49b4dd99d105450d037ea76bc09"
+  },
+  {
+    "name": "access-scalar-baseline",
+    "file": "gc-access-scalar-baseline.wasm",
+    "export": "performance",
+    "n": 4096,
+    "want": 536739840,
+    "retained": false,
+    "sha256": "90b93b1b4921f5276c3564099826f49bc21a513b8f7e93d0127cd739b32823d7",
+    "sourceSha256": "7072469ada686d8a86e6370243f241bf14bf983e647b1ee6cad7cd3a5862b454"
+  },
+  {
+    "name": "array-copy-checksum",
+    "file": "gc-array-copy-checksum.wasm",
+    "export": "performance",
+    "n": 64,
+    "want": 221607936,
+    "retained": false,
+    "sha256": "53667f9e93b1ee082bb65ee584a3d29e317b25e62d88c5f3b0656d42ac8e3881",
+    "sourceSha256": "1443077dd5a3411ec7727844b3a52eae1b016a1281ed52302ec4beebcf60ab45"
+  },
+  {
+    "name": "array-loop-copy-checksum",
+    "file": "gc-array-loop-copy-checksum.wasm",
+    "export": "performance",
+    "n": 64,
+    "want": 221607936,
+    "retained": false,
+    "sha256": "4c8079c9a8cc3bf9e1dc425b31eeda644d2195e828dffa33c0c0524d88a20d15",
+    "sourceSha256": "0598bf3f9e072a51b48151b83376411e440fa92514fb417b536d76377988aa0d"
+  },
+  {
+    "name": "tree-survival",
+    "file": "gc-tree-survival.wasm",
+    "export": "performance",
+    "n": 32,
+    "want": 67551,
+    "retained": true,
+    "sha256": "92d43594c57e352e2c9d96961467378541455bc191652f5d1e176b5726bf6dfa",
+    "sourceSha256": "447eccf2a90ed28c4d9595d137fd075a9b685282f0cf9d6d8e48f48540319f91"
+  }
+]
