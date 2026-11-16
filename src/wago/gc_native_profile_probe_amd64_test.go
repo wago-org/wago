@@ -71,7 +71,7 @@ func TestGCNativeProfileProbe(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer observed.Close()
-			if !bytes.Equal(plain.code, observed.code) {
+			if !bytes.Equal(plain.c.code, observed.c.code) {
 				t.Fatal("profiling changed emitted native code")
 			}
 			config := GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 2 << 20, ThroughputHeapBytes: 8 << 20}
@@ -172,7 +172,7 @@ func TestGCNativeProfileProbe(t *testing.T) {
 			if len(live) != 0 || status.Dropped != 0 {
 				t.Fatal("unretired/lost images", live, status)
 			}
-			receipt := map[string]any{"case": name, "artifact_sha256": digest, "native_sha256": fmt.Sprintf("%x", sha256.Sum256(plain.code)), "native_bytes": len(plain.code), "exact_native_parity": true, "loaded_byte_parity": true, "checksum": want, "calls_per_mode": 128, "config": config, "plain_stats": plainStats, "profile_stats": profileStats, "allocation_elision": false, "image_count": images, "mapped_native_bytes": mapped, "total_image_bytes": total, "unmapped_native_bytes": total - mapped, "status": status, "events": events, "samples_collected": false}
+			receipt := map[string]any{"case": name, "artifact_sha256": digest, "native_sha256": fmt.Sprintf("%x", sha256.Sum256(plain.c.code)), "native_bytes": len(plain.c.code), "exact_native_parity": true, "loaded_byte_parity": true, "checksum": want, "calls_per_mode": 128, "config": config, "plain_stats": plainStats, "profile_stats": profileStats, "allocation_elision": false, "image_count": images, "mapped_native_bytes": mapped, "total_image_bytes": total, "unmapped_native_bytes": total - mapped, "status": status, "events": events, "samples_collected": false}
 			encoded, err := json.MarshalIndent(receipt, "", "  ")
 			if err != nil {
 				t.Fatal(err)
@@ -180,7 +180,7 @@ func TestGCNativeProfileProbe(t *testing.T) {
 			if err = os.WriteFile(filepath.Join(out, name+".json"), encoded, 0644); err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("NATIVE_PROFILE_RESULT case=%s exact_parity=true native_bytes=%d mapped=%d total=%d samples=false", name, len(plain.code), mapped, total)
+			t.Logf("NATIVE_PROFILE_RESULT case=%s exact_parity=true native_bytes=%d mapped=%d total=%d samples=false", name, len(plain.c.code), mapped, total)
 		})
 	}
 }
