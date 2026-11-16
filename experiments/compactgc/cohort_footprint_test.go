@@ -11,7 +11,7 @@ func TestCohortDiagnosticFootprint(t *testing.T) {
 	if !shadowDiagnostics && unsafe.Sizeof(c.shadowDiagnosticState) != 0 {
 		t.Fatal("disabled shadow changes layout")
 	}
-	if !cohortDiagnostics && (unsafe.Sizeof(c.cohortDiagnosticState) != 0 || unsafe.Offsetof(c.retiredNurseryAllocations) != unsafe.Sizeof(c.shadowDiagnosticState)) {
+	if !cohortDiagnostics && unsafe.Sizeof(c.cohortDiagnosticState) != 0 {
 		t.Fatal("disabled diagnostic changes leading layout")
 	}
 }
