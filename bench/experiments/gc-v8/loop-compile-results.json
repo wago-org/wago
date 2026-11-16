@@ -1,0 +1,182 @@
+[
+  {
+    "round": 0,
+    "case": "gc-array-copy-checksum",
+    "mode": "base",
+    "allocs_op": 285.134765625,
+    "bytes_op": 77777.9375,
+    "native_bytes": 5097,
+    "ns_op": 192299.314453125
+  },
+  {
+    "round": 0,
+    "case": "gc-array-copy-checksum",
+    "mode": "loop",
+    "allocs_op": 285.09765625,
+    "bytes_op": 77772.34375,
+    "native_bytes": 5097,
+    "ns_op": 189296.478515625
+  },
+  {
+    "round": 0,
+    "case": "gc-struct-allocation-access",
+    "mode": "base",
+    "allocs_op": 253.115234375,
+    "bytes_op": 66203.828125,
+    "native_bytes": 4020,
+    "ns_op": 160289.603515625
+  },
+  {
+    "round": 0,
+    "case": "gc-struct-allocation-access",
+    "mode": "loop",
+    "allocs_op": 253.119140625,
+    "bytes_op": 66204.328125,
+    "native_bytes": 3956,
+    "ns_op": 145924.599609375
+  },
+  {
+    "round": 1,
+    "case": "gc-array-copy-checksum",
+    "mode": "loop",
+    "allocs_op": 285.1328125,
+    "bytes_op": 77787.0625,
+    "native_bytes": 5097,
+    "ns_op": 186311.57421875
+  },
+  {
+    "round": 1,
+    "case": "gc-array-copy-checksum",
+    "mode": "base",
+    "allocs_op": 285.171875,
+    "bytes_op": 77811.28125,
+    "native_bytes": 5097,
+    "ns_op": 479144.02734375
+  },
+  {
+    "round": 1,
+    "case": "gc-struct-allocation-access",
+    "mode": "loop",
+    "allocs_op": 253.111328125,
+    "bytes_op": 66201.65625,
+    "native_bytes": 3956,
+    "ns_op": 126008.60546875
+  },
+  {
+    "round": 1,
+    "case": "gc-struct-allocation-access",
+    "mode": "base",
+    "allocs_op": 253.09765625,
+    "bytes_op": 66193.0625,
+    "native_bytes": 4020,
+    "ns_op": 145280.181640625
+  },
+  {
+    "round": 2,
+    "case": "gc-array-copy-checksum",
+    "mode": "base",
+    "allocs_op": 285.125,
+    "bytes_op": 77774.8125,
+    "native_bytes": 5097,
+    "ns_op": 170099.751953125
+  },
+  {
+    "round": 2,
+    "case": "gc-array-copy-checksum",
+    "mode": "loop",
+    "allocs_op": 285.125,
+    "bytes_op": 77774.59375,
+    "native_bytes": 5097,
+    "ns_op": 152440.677734375
+  },
+  {
+    "round": 2,
+    "case": "gc-struct-allocation-access",
+    "mode": "base",
+    "allocs_op": 253.1015625,
+    "bytes_op": 66191.078125,
+    "native_bytes": 4020,
+    "ns_op": 119231.724609375
+  },
+  {
+    "round": 2,
+    "case": "gc-struct-allocation-access",
+    "mode": "loop",
+    "allocs_op": 253.107421875,
+    "bytes_op": 66201.125,
+    "native_bytes": 3956,
+    "ns_op": 132544.341796875
+  },
+  {
+    "round": 3,
+    "case": "gc-array-copy-checksum",
+    "mode": "loop",
+    "allocs_op": 285.158203125,
+    "bytes_op": 77789.078125,
+    "native_bytes": 5097,
+    "ns_op": 176299.884765625
+  },
+  {
+    "round": 3,
+    "case": "gc-array-copy-checksum",
+    "mode": "base",
+    "allocs_op": 285.138671875,
+    "bytes_op": 77787.734375,
+    "native_bytes": 5097,
+    "ns_op": 168378.287109375
+  },
+  {
+    "round": 3,
+    "case": "gc-struct-allocation-access",
+    "mode": "loop",
+    "allocs_op": 253.087890625,
+    "bytes_op": 66192.40625,
+    "native_bytes": 3956,
+    "ns_op": 132200.81640625
+  },
+  {
+    "round": 3,
+    "case": "gc-struct-allocation-access",
+    "mode": "base",
+    "allocs_op": 253.119140625,
+    "bytes_op": 66201.96875,
+    "native_bytes": 4020,
+    "ns_op": 147315.083984375
+  },
+  {
+    "round": 4,
+    "case": "gc-array-copy-checksum",
+    "mode": "base",
+    "allocs_op": 285.142578125,
+    "bytes_op": 77785.578125,
+    "native_bytes": 5097,
+    "ns_op": 155463.400390625
+  },
+  {
+    "round": 4,
+    "case": "gc-array-copy-checksum",
+    "mode": "loop",
+    "allocs_op": 285.13671875,
+    "bytes_op": 77785.125,
+    "native_bytes": 5097,
+    "ns_op": 168582.6328125
+  },
+  {
+    "round": 4,
+    "case": "gc-struct-allocation-access",
+    "mode": "base",
+    "allocs_op": 253.125,
+    "bytes_op": 66204.265625,
+    "native_bytes": 4020,
+    "ns_op": 146241.599609375
+  },
+  {
+    "round": 4,
+    "case": "gc-struct-allocation-access",
+    "mode": "loop",
+    "allocs_op": 253.1171875,
+    "bytes_op": 66194.5,
+    "native_bytes": 3956,
+    "ns_op": 130801.291015625
+  }
+]

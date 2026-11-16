@@ -1,0 +1,6 @@
+package main
+import("os";"time";"runtime";"encoding/json";"reflect"; w "github.com/wago-org/wago/src/wago")
+func main(){data,e:=os.ReadFile(os.Args[1]);if e!=nil{panic(e)};cfg:=w.NewRuntimeConfig().WithCoreFeatures(w.CoreFeaturesV3); codeBytes:=0
+run:=func(){c,e:=w.Compile(cfg,data);if e!=nil{panic(e)};codeBytes=reflect.ValueOf(c).Elem().FieldByName("code").Len();if e=c.Close();e!=nil{panic(e)}}
+for j:=0;j<64;j++{run()};runtime.GC();var a,b runtime.MemStats;runtime.ReadMemStats(&a);t:=time.Now();const n=512;for j:=0;j<n;j++{run()};elapsed:=time.Since(t).Nanoseconds();runtime.ReadMemStats(&b)
+json.NewEncoder(os.Stdout).Encode(map[string]any{"ns_op":float64(elapsed)/n,"bytes_op":float64(b.TotalAlloc-a.TotalAlloc)/n,"allocs_op":float64(b.Mallocs-a.Mallocs)/n,"native_bytes":codeBytes})}

@@ -108,3 +108,37 @@ All result checks passed. Raw samples are in
 This small shared-host experiment did not rerun V8, measure compilation costs,
 or establish parity. It is distinct from the earlier allocation-elision-off
 baseline comparison; do not combine the two into a claimed V8 speedup.
+
+## Survivor feedback correction
+
+Tenuring policy now measures occupied survivor capacity rather than all copied
+bytes: promotion copies into old space must not look like a full survivor
+semispace. Nursery growth still receives total copied traffic. Deterministic
+regressions cover promotion-only recovery, real survivor pressure, and large
+objects tenured in place. Heap capacities and maximum tenuring age are unchanged.
+
+Three alternating fresh-process launches per workload compare `3a8ac1f` with
+`3249bea` (the same policy patch before integration), with allocation elision off,
+default sizing, real collections, and retained-value checks. Median invocation
+times changed by about 0% for structs, -11% for arrays, -13% for fill, and -12%
+for the retained tree. Tree process peak RSS fell from 67.0 to 22.4 MiB and timed
+promotion fell from 7.18 MiB to zero, at the same 396 minor collections. Array
+minor counts increased while execution time decreased, showing policy and
+automatic nursery growth interact. No full collections occurred. Process RSS
+includes compilation and the Go runtime; these are not pause measurements.
+See `bench/experiments/gc-v8/tenuring-summary.md` and its raw results. V8 was not
+rerun in this comparison, and the overall acceptance gate remains unmet.
+
+## Compilation-cost check
+
+Five fresh-process rounds compared original `227dfd6` with the loop candidate:
+64 warmup compilations, then 512 Compile+Close iterations, Go 1.27.1. Bulk-copy
+code size stayed 5097 bytes and allocation cost stayed approximately 285
+allocations / 77.8 kB per compile; struct code size fell 4020 to 3956 bytes,
+with approximately 253 allocations / 66.2 kB unchanged. Latency was noisy
+(bulk-copy medians 170 to 176 microseconds, struct 146 to 132), so no reliable
+compile-latency improvement is claimed. Raw data and the standalone probe are
+`loop-compile-results.json` and `compile-cost.go.txt` in the experiment directory.
+The policy probe is `policy-probe.go.txt`, copied into `src/wago` as a temporary
+`*_test.go` for reproduction; set `GC_CASE` and run `TestGCPolicyProbe` from that
+package, then remove it. Probes are excluded from normal builds.

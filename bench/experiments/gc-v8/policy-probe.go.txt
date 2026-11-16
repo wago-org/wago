@@ -1,0 +1,16 @@
+//go:build linux && amd64
+package wago
+import("testing";"os";"encoding/json";"time";"syscall";"strconv")
+func TestGCPolicyProbe(t *testing.T){
+ name:=os.Getenv("GC_CASE");if name==""{t.Skip("set GC_CASE")};eden,_:=strconv.ParseUint(os.Getenv("GC_EDEN"),10,32);survivor,_:=strconv.ParseUint(os.Getenv("GC_SURVIVOR"),10,32)
+ data,e:=os.ReadFile("../../bench/experiments/gc-v8/gc-"+name+".wasm");if e!=nil{t.Fatal(e)}
+ c,e:=Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("dead-gc-new",false),data);if e!=nil{t.Fatal(e)};defer c.Close()
+ i,e:=Instantiate(c,InstantiateOptions{GC:GCConfig{NurseryBytes:uint32(eden),SurvivorBytes:uint32(survivor)}});if e!=nil{t.Fatal(e)};defer i.Close()
+ n,want:=uint64(4096),uint64(536739840);if name=="tree-survival"{n,want=32,67551}
+ call:=func(){r,e:=i.Invoke("performance",n);if e!=nil||len(r)!=1||r[0]!=want{t.Fatalf("%v %v want%d",r,e,want)}}
+ for j:=0;j<100;j++{call()};before:=i.gc.Stats();samples:=[]float64{}
+ for sample:=0;sample<9;sample++{start:=time.Now();for j:=0;j<32;j++{call()};samples=append(samples,float64(time.Since(start).Nanoseconds())/32)}
+ after:=i.gc.Stats();if after.MinorCollections+after.FullCollections<=before.MinorCollections+before.FullCollections{t.Fatal("did not collect during timing")}
+ var usage syscall.Rusage;if e:=syscall.Getrusage(syscall.RUSAGE_SELF,&usage);e!=nil{t.Fatal(e)}
+ b,e:=json.Marshal(map[string]any{"case":name,"eden":eden,"survivor":survivor,"samples_ns":samples,"maxrss_kib":usage.Maxrss,"before":before,"after":after});if e!=nil{t.Fatal(e)};t.Log(string(b))
+}
