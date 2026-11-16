@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkMarkCleanupGraphs/small/live0/fullfalse         	11209920	        36.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live0/fulltrue          	  138746	      2866 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live1/fullfalse         	 9077356	        43.36 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live1/fulltrue          	  129990	      3048 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live64/fullfalse        	 7745451	        47.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live64/fulltrue         	   54006	      8823 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live4096/fullfalse      	 8387428	        67.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live4096/fulltrue       	    1651	    272957 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live0/fullfalse    	 7652764	        41.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live0/fulltrue     	    3081	    113989 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live1/fullfalse    	 8273665	        41.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live1/fulltrue     	    4030	    105382 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live64/fullfalse   	 9235945	        39.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live64/fulltrue    	    3246	    138570 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live4096/fullfalse 	 8590108	        39.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live4096/fulltrue  	    1070	    301890 ns/op	       0 B/op	       0 allocs/op
+PASS

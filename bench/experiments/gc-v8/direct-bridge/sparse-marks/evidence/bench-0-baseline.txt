@@ -1,0 +1,21 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkMarkCleanupGraphs/small/live0/fullfalse         	 2665398	       137.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live0/fulltrue          	  117543	      3031 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live1/fullfalse         	 2880958	       136.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live1/fulltrue          	  139722	      2776 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live64/fullfalse        	 2897373	       122.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live64/fulltrue         	   69794	      5610 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live4096/fullfalse      	 2462367	       147.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/small/live4096/fulltrue       	    2232	    199295 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live0/fullfalse    	   43194	      8713 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live0/fulltrue     	    3512	    136022 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live1/fullfalse    	   44624	      8091 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live1/fulltrue     	    3144	    117828 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live64/fullfalse   	   46711	      8654 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live64/fulltrue    	    3852	    121251 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live4096/fullfalse 	   52880	      7783 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMarkCleanupGraphs/production/live4096/fulltrue  	    1333	    273249 ns/op	       0 B/op	       0 allocs/op
+PASS
