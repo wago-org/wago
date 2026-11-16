@@ -25,6 +25,7 @@ const minimumStride = uint32(16)
 const rememberedParentCapacity = 1024
 
 type Collector struct {
+	shadowDiagnosticState
 	cohortDiagnosticState
 	age2State
 	retiredNurseryAllocations             uint64
@@ -109,6 +110,10 @@ func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 func (c *Collector) collect(roots []*Ref, full bool) (result error) {
 	if age2Build && c.Age2Enabled() {
 		return c.collectAge2(roots, full)
+	}
+	if shadowDiagnostics {
+		pending := c.beginShadowCycle(roots, full)
+		defer func() { c.finishShadowCycle(pending, result) }()
 	}
 	var diagnostic cohortCycle
 	if cohortDiagnostics {
