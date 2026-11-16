@@ -1901,6 +1901,8 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 				f.emitByteReduceLoop(r)
 				if !gcHelperOnly {
 					f.hoistGCLoopResolver(r)
+				} else if gcCompactLoop {
+					f.prepareCompactLoop(r)
 				} else if gcTrustedDirectLoop {
 					f.hoistDirectLoop(r)
 				}

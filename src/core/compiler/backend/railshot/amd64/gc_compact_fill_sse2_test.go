@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_fill || wago_gc_compact_copy)
+//go:build linux && amd64 && (wago_gc_compact_fill || (wago_gc_compact_copy || wago_gc_compact_loop))
 
 package amd64
 

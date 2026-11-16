@@ -15,7 +15,8 @@ import (
 type directLoopLease struct {
 	endPC, local, typeIndex uint32
 	object, length          Reg
-	remaining               uint16
+	remaining               uint8
+	kind                    uint8
 }
 
 func (f *fn) prepareDirectLoop(op byte) {
@@ -44,7 +45,7 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 		return
 	}
 	p, ok := f.planGCLoopResolverMode(reader, true)
-	if !ok {
+	if !ok || p.accesses > 255 {
 		f.stats.peep("gc-direct-loop-no-plan")
 		return
 	}
@@ -75,7 +76,7 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 	f.a.Add64(obj, length)
 	f.a.Load32(length, obj, 8)
 	f.a.PatchRel32(null, f.a.Len())
-	f.directLoop = directLoopLease{p.endPC, uint32(p.local), p.typeIndex, obj, length, p.accesses}
+	f.directLoop = directLoopLease{p.endPC, uint32(p.local), p.typeIndex, obj, length, uint8(p.accesses), loopLeaseTrusted}
 	f.stats.peep("gc-direct-loop-hoist")
 }
 
@@ -90,3 +91,9 @@ func (f *fn) directLoopRegister() Reg {
 	}
 	return regNone
 }
+
+const (
+	loopLeaseTrusted uint8 = iota + 1
+	loopLeaseCompactPending
+	loopLeaseCompactActive
+)
