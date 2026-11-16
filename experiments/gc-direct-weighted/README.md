@@ -7,3 +7,15 @@ The existing final i32 array, one-receiver/no-safepoint scanner and original che
 This is an incremental compiler-parity experiment, NOT an isolated layout comparison: direct still lacks compact's paired/range-transfer stages. Compare direct trusted-loop vs direct weighted first, with identical collector and unrelated options, before making any layout judgment. No allocation elision or constructor/store fusion is included.
 
 Source-only checkpoint. Independent review and fresh tests are required; no performance measurements or gain claims.
+
+## Initial qualification
+
+Independent actual-source review found no blocker. Go 1.27.1, serial `-p 1`:
+
+- Direct scalar weighted backend selection/matcher/direct-loop/receipt filter: PASS 0.030s with `wago_gc_direct_weighted_sum wago_regalloc_checks wago_codegenstats`.
+- Scalar runtime `^(TestDirectGC|TestTrustedDirect|TestCompactNativeWeighted)`: PASS 1.134s, adding `wago_gc_direct_trusted_refstruct wago_gc_direct_trusted_alloc wago_gc_direct_fill_sse2 wago_gc_direct_copy` to those tags.
+- Replacing weighted_sum with weighted_sse2 in the composed configuration: backend PASS 0.032s; same runtime filter PASS 0.686s. Includes lane/tail, negative/high-bit weights, stale-loop, roots, private receipt/null-PC, and ingress coverage.
+- Mixed `wago_gc_direct_weighted_sse2 wago_gc_compact_reads`: explicit compact/native receipt rejection and mode source-selection tests PASS 0.013s.
+- Default untagged `TestReferenceGlobalPersistenceAndFootprintsStayBounded`: PASS 0.007s.
+
+No source fixes were required. No performance timing was conducted. Compact-mode shared-emitter composition should be requalified during canonical integration; the source-only checkpoint status above predates these direct-mode tests.
