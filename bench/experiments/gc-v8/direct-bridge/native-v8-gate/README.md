@@ -1,0 +1,9 @@
+# Current native pipeline versus checked pipeline and V8
+
+Same-source binaries: `checked.test` with `wago_gc_direct_array_alloc`; `trusted.test` with `wago_gc_direct_array_alloc,wago_gc_direct_trusted_arrays`. Build via `go test -p 1 -c`. The trusted candidate includes policy 3 numeric-array access; tree reference-field access remains helper-heavy. Nothing is enabled by default.
+
+Run `run.py --binary-dir DIR --output-dir DIR --audit` first, then omit `--audit`. This uses the historical 100 warmup calls, 9 batches of 32 timed invocations, three rotating fresh-process rounds. V8 runs with `--no-liftoff`; all engines validate identical artifact hashes and numeric checksums. Wago checks exact per-call object allocation counts and reports real collections. V8 collection counts are not instrumented, so do not claim equivalent collection schedules or memory budgets.
+
+Explicit primary policy is 512 KiB Eden plus two 8 MiB old semispaces. A later separately reported `--eden 2097152` sensitivity run is possible; do not combine policies. Allocation elision is disabled. The six workloads include scalar-copy and tree controls, not just favorable cases. Per-process sample medians and every per-workload ratio must be reported; the 1.15x target is a per-workload gate, not an aggregate.
+
+Compilation is excluded; native executable mappings, Go allocation/runtime cost, V8 heap policy, resident memory and pause behavior differ. Process memory and available counters are retained, not normalized into a false apples-to-apples memory claim. Long runs must show actual Wago major collections on retained-object cases; copying kernels may legitimately have only short-lived objects and no major collection. This evidence cannot establish universal superiority over V8 or correctness outside the separately tested supported surface.

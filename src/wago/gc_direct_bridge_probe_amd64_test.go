@@ -125,7 +125,7 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		times = append(times, float64(time.Since(start).Nanoseconds())/float64(batch))
 	}
 	after := in.gc.Stats()
-	if perCall, ok := map[string]uint64{"struct-allocation-access": 262208, "array-allocation-access": 262208, "tree-survival": 67551}[name]; ok {
+	if perCall, ok := map[string]uint64{"struct-allocation-access": 262208, "array-allocation-access": 262208, "array-fill": 262208, "array-copy-checksum": 128, "array-loop-copy-checksum": 128, "tree-survival": 67551}[name]; ok {
 		if got, want := after.Allocations-before.Allocations, uint64(samples*batch)*perCall; got != want {
 			t.Fatalf("allocation accounting got %d want %d", got, want)
 		}
