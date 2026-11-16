@@ -23,6 +23,7 @@ type gcLoopResolverPlan struct {
 	local                     int
 	typeIndex, endPC, firstPC uint32
 	accesses                  uint16
+	secondLocal               int
 }
 
 func (f *fn) planGCLoopResolver(reader *wasm.Reader) (gcLoopResolverPlan, bool) {
@@ -30,6 +31,10 @@ func (f *fn) planGCLoopResolver(reader *wasm.Reader) (gcLoopResolverPlan, bool) 
 }
 
 func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopResolverPlan, ok bool) {
+	return f.planGCLoopResolverModePair(reader, direct, false)
+}
+
+func (f *fn) planGCLoopResolverModePair(reader *wasm.Reader, direct, pair bool) (p gcLoopResolverPlan, ok bool) {
 	if (!direct && !gcResolveReuseEnabled) || !f.gcArrayHelpers || f.interruptible || f.moduleEH || f.inlineDepth != 0 || f.localBase != 0 || f.intervalControl || f.vectorRegion.enabled || len(f.customInstructions) != 0 || f.gcPureIfSites >= 16 || (!direct && f.gcResolvedRegister() == regNone) || (direct && f.directLoopRegister() == regNone) {
 		return p, false
 	}
@@ -49,6 +54,7 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 	var writes [64]int
 	nw := 0
 	object := -1
+	second := -1
 	var typ, firstPC uint32
 	var accesses uint16
 	push := func(v int) bool {
@@ -136,7 +142,7 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 				return p, false
 			}
 			source := stack[n-args]
-			if source < 0 || (object >= 0 && (object != source || typ != t)) {
+			if source < 0 || (object >= 0 && typ != t) || (!pair && object >= 0 && object != source) || (pair && (source > 65535 || accesses >= 2 || (accesses == 1 && source == object))) {
 				return p, false
 			}
 			if object < 0 {
@@ -145,7 +151,11 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 				}
 				firstPC = uint32(opPC)
 			}
-			object, typ = source, t
+			if object < 0 {
+				object, typ = source, t
+			} else if pair {
+				second = source
+			}
 			accesses++
 			if sub == 14 {
 				n -= 3
@@ -164,11 +174,14 @@ func (f *fn) planGCLoopResolverMode(reader *wasm.Reader, direct bool) (p gcLoopR
 				return p, false
 			}
 			for _, x := range writes[:nw] {
-				if x == object {
+				if x == object || (pair && x == second) {
 					return p, false
 				}
 			}
-			return gcLoopResolverPlan{object, typ, uint32(endPC), firstPC, accesses}, true
+			if pair && (accesses != 2 || second < 0) {
+				return p, false
+			}
+			return gcLoopResolverPlan{object, typ, uint32(endPC), firstPC, accesses, second}, true
 		default:
 			return p, false
 		}

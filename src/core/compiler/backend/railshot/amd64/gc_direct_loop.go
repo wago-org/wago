@@ -96,4 +96,5 @@ const (
 	loopLeaseTrusted uint8 = iota + 1
 	loopLeaseCompactPending
 	loopLeaseCompactActive
+	loopLeaseCompactPair
 )

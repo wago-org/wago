@@ -39,7 +39,7 @@ func (f *fn) compactScalarArrayAddress(object, indexValue *elem, t uint32, size 
 	f.a.MovRegReg32(index, index)
 	f.pinned = f.pinned.add(index)
 	tmp := f.allocReg(maskOf(obj, index))
-	if leased {
+	if leased && f.directLoop.kind != loopLeaseCompactPair {
 		f.a.MovRegReg32(tmp, f.directLoop.length)
 	} else {
 		f.a.Load32(tmp, obj, 4)
