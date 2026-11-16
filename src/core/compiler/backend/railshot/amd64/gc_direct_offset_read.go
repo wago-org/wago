@@ -15,6 +15,11 @@ func (f *fn) emitCheckedDirectOffset(object *elem, typeIndex, required uint32) (
 	if gcTrustedDirectReads {
 		return f.emitTrustedDirectOffset(object)
 	}
+	return f.emitFullyCheckedDirectOffset(object, typeIndex, required)
+}
+
+// emitFullyCheckedDirectOffset never inherits trusted-read policy.
+func (f *fn) emitFullyCheckedDirectOffset(object *elem, typeIndex, required uint32) (Reg, func()) {
 	ref := f.materialize(object)
 	f.pinned = f.pinned.add(ref)
 	view := f.allocReg(maskOf(ref))

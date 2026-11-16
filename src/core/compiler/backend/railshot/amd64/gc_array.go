@@ -257,6 +257,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
+		if f.emitDirectOffsetScalarArrayGet(typeIndex, helper) {
+			return nil
+		}
 		if !gcHelperOnly && sub == 11 && f.tryForwardGCFreshArray16Get(typeIndex) {
 			return nil
 		}
@@ -287,6 +290,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		valueType := field.Storage().Val()
 		if field.Storage().Packed() {
 			valueType = wasm.I32
+		}
+		if f.emitDirectOffsetScalarArraySet(typeIndex) {
+			return nil
 		}
 		if !gcHelperOnly && f.emitDirectGCArraySet(typeIndex, 0, 0, false) {
 			return nil
