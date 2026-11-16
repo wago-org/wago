@@ -52,6 +52,11 @@ func (f *fn) loadLinearIdx(dst, index Reg, disp int32, size int, signed, wide bo
 	f.a.LoadIdx(dst, base, index, disp, size, signed, wide)
 }
 
+func (f *fn) loadLinearIdxUXTW(dst, index Reg, disp int32, size int, signed, wide bool) {
+	base, disp := f.linearMemoryPage(disp)
+	f.a.LoadIdxUXTW(dst, base, index, disp, size, signed, wide)
+}
+
 func (f *fn) storeLinearIdx(index, value Reg, disp int32, size int) {
 	base, disp := f.linearMemoryPage(disp)
 	f.a.StoreIdx(base, index, value, disp, size)

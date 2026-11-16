@@ -496,6 +496,14 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+	ea, eaOwned, borrow, disp, _ = f.memAddrMode(off, size, aliasPinned, rangeExtent, guard, false)
+	return
+}
+
+// memAddrMode optionally leaves an otherwise noncanonical memory32 index in
+// its W-register form when the eventual load can encode UXTW itself.
+// Explicit bounds arithmetic still receives the canonical 64-bit value.
+func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int32, guard, allowUXTW bool) (ea Reg, eaOwned bool, borrow int, disp int32, uxtw bool) {
 	if !guard && f.boundsFacts && f.staticallyInBounds(off, size) {
 		guard = true
 		f.stats.peep("static-bounds-elide")
@@ -503,7 +511,8 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	minimumAccess := !guard && !f.memoryAddr64(0) && f.minimumMemoryAccess(0, off, size)
 	f.materializePendingTraps()
 	if f.memoryAddr64(0) {
-		return f.memAddr64(off, size)
+		ea, eaOwned, borrow, disp = f.memAddr64(off, size)
+		return ea, eaOwned, borrow, disp, false
 	}
 	off32 := uint32(off)
 	addressPins := f.pinned
@@ -543,6 +552,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	borrow = -1
 	leaDisp := int32(size)
 	needAdd := int64(off32)+int64(size) > 0x7FFFFFFF && off32 != 0
+	canFoldUXTW := allowUXTW && f.opt(optUXTWAdd) && (guard || minimumAccess) && !needAdd
 	// Deferred-load borrows track local indices, so a global needs an owned
 	// address copy that remains valid if global.set overwrites its pinned value.
 	if aliasPinned && !needAdd && e.st.kind != stGlobReg {
@@ -557,7 +567,13 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	// the canonicalization when the producer already guarantees a zero upper
 	// half (notably every ARM64-backed Wasm i32 local).
 	if !upper32Zero {
-		if regallocCheckEnabled {
+		if canFoldUXTW {
+			uxtw = true
+			f.stats.peep("memory-load-index-uxtw")
+			// Keep following function entry addresses stable for direct A/B code
+			// comparisons while moving the removed hot word to the cold tail.
+			f.phasePadWords++
+		} else if regallocCheckEnabled {
 			f.checkZeroExtendMemAddr(ea)
 		} else {
 			f.a.MovReg32(ea, ea)
@@ -590,7 +606,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		if addressLoan {
 			f.pinned = addressPins
 		}
-		return ea, eaOwned, borrow, disp
+		return ea, eaOwned, borrow, disp, uxtw
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
 	// same-source check in this straight-line region already proved this access
@@ -611,7 +627,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		if addressLoan {
 			f.pinned = addressPins
 		}
-		return ea, eaOwned, borrow, disp
+		return ea, eaOwned, borrow, disp, uxtw
 	}
 	if rangeExtent > leaDisp {
 		leaDisp = rangeExtent
@@ -646,7 +662,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 		if addressLoan {
 			f.pinned = addressPins
 		}
-		return ea, eaOwned, borrow, disp
+		return ea, eaOwned, borrow, disp, uxtw
 	}
 	// A one-byte extent is in bounds exactly when its canonical effective
 	// address is below the byte length, including zero-length memory. Memory32
@@ -680,7 +696,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, 
 	if addressLoan {
 		f.pinned = addressPins
 	}
-	return ea, eaOwned, borrow, disp
+	return ea, eaOwned, borrow, disp, uxtw
 }
 
 // memAddr64 checks full-width memory64 address and offset arithmetic. The
@@ -1150,9 +1166,13 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
+	ea, eaOwned, borrow, disp, uxtw := f.memAddrMode(off, size, true, rangeExtent, f.guardMode, true)
 	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
-		f.a.AddShifted(X16, linMemReg, ea, 0, false)
+		if uxtw {
+			f.a.AddExtUXTW(X16, linMemReg, ea)
+		} else {
+			f.a.AddShifted(X16, linMemReg, ea, 0, false)
+		}
 		out := f.allocReg(maskOf(ea))
 		if f.a.Load32(out, X16, uint32(disp)) {
 			if eaOwned {
@@ -1165,9 +1185,10 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		}
 		f.release(out)
 	}
-	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
+	if f.opt(optLoadPair) && !uxtw && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
 		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
+			!first.st.memUXTW() &&
 			first.st.memAliasLocal() == addrLocal && first.st.memSize() == size &&
 			!first.st.memSigned() && first.st.typ.is64() == wide &&
 			disp == first.st.memDisp()+int32(size) {
@@ -1216,6 +1237,9 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// so unlike x86 there is no r/m consumer, but deferring still lets the consumer
 	// pick the destination register and elide dead loads).
 	st := memRefStorage(ea, disp, size, signed, wide, borrow, aliasLocal)
+	if uxtw {
+		st = st.withMemUXTW()
+	}
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a W register, including sign-extending byte/word
 		// forms, so its physical X-register upper half is known zero.

@@ -135,7 +135,13 @@ func (st storage) slotIndex() int     { return int(st.slot) }
 func (st storage) index() int         { return int(st.idx) }
 func (st storage) memSize() int       { return int(st.idx & 0xff) }
 func (st storage) memSigned() bool    { return st.idx&0x100 != 0 }
+func (st storage) memUXTW() bool      { return st.idx&0x200 != 0 }
 func (st storage) memAliasLocal() int { return int(st.idx>>10) - 1 }
+
+func (st storage) withMemUXTW() storage {
+	st.idx |= 0x200
+	return st
+}
 
 // memBorrow returns the local whose pinned register serves as this deferred
 // load's address, or -1 when the address register is owned.

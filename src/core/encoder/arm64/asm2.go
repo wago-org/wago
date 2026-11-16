@@ -658,6 +658,23 @@ func (a *Asm) LdrIdx(rt, rn, rm Reg, size int, signed, wideDest bool) {
 	}
 }
 
+// LdrIdxUXTW loads rt = [rn + uint32(rm)] (rm is a byte offset, no scaling).
+// It is the memory-address counterpart of AddExtUXTW: the register-offset
+// encoding performs the zero extension without a separate MOV Wm, Wm.
+func (a *Asm) LdrIdxUXTW(rt, rn, rm Reg, size int, signed, wideDest bool) {
+	opc := uint32(1) // load, zero-extend
+	if signed {
+		opc = 3 // sign-extend to 32
+		if wideDest {
+			opc = 2 // sign-extend to 64
+		}
+	}
+	a.word(0x38204800 | sizeField(size) | opc<<22 | r(rm)<<16 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rt, false))
+	}
+}
+
 // StrIdx stores the low `size` bytes of rt to [rn + rm] (unscaled byte offset).
 func (a *Asm) StrIdx(rt, rn, rm Reg, size int) {
 	a.word(0x38206800 | sizeField(size) | r(rm)<<16 | r(rn)<<5 | r(rt))
@@ -960,6 +977,22 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		if !a.loadDisp(dst, X16, disp&0xfff, size, signed, wideDest) {
 			panic("arm64: split load offset not encodable")
 		}
+		return
+	}
+	a.addDispX16(disp)
+	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
+}
+
+// LoadIdxUXTW is LoadIdx for a memory32 byte index whose upper register half is
+// not known canonical. The address extension is folded into either the load or
+// the one address ADD instead of being emitted as a separate W-register move.
+func (a *Asm) LoadIdxUXTW(dst, base, index Reg, disp int32, size int, signed, wideDest bool) {
+	if disp == 0 {
+		a.LdrIdxUXTW(dst, base, index, size, signed, wideDest)
+		return
+	}
+	a.AddExtUXTW(X16, base, index)
+	if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
 		return
 	}
 	a.addDispX16(disp)

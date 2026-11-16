@@ -458,7 +458,11 @@ func (f *fn) loadMemRef(dst Reg, e *elem) {
 		defer f.switchProfileOrigin(previous)
 	}
 	st := e.st
-	f.loadLinearIdx(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	if st.memUXTW() {
+		f.loadLinearIdxUXTW(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	} else {
+		f.loadLinearIdx(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	}
 }
 
 // materializeByType realizes e with the register class required by its machine

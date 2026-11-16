@@ -244,6 +244,8 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 		{"ldrsh x0,[x1,x2]", func(a *Asm) { a.LdrIdx(X0, X1, X2, 2, true, true) }, 0x78a26820},
 		{"ldrsw x0,[x1,x2]", func(a *Asm) { a.LdrIdx(X0, X1, X2, 4, true, true) }, 0xb8a26820},
 		{"strb w0,[x1,x2]", func(a *Asm) { a.StrIdx(X0, X1, X2, 1) }, 0x38226820},
+		{"ldr w0,[x1,w2,uxtw]", func(a *Asm) { a.LdrIdxUXTW(X0, X1, X2, 4, false, false) }, 0xb8624820},
+		{"ldrsh w0,[x1,w2,uxtw]", func(a *Asm) { a.LdrIdxUXTW(X0, X1, X2, 2, true, false) }, 0x78e24820},
 		{"ldr s0,[x1,#4]", func(a *Asm) { a.LdrS(X0, X1, 4) }, 0xbd400420},
 		{"ldr d0,[x1,#8]", func(a *Asm) { a.LdrD(X0, X1, 8) }, 0xfd400420},
 		{"str s0,[x1,#4]", func(a *Asm) { a.StrS(X1, 4, X0) }, 0xbd000420},

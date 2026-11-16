@@ -3,10 +3,68 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
+
+func TestMemoryLoadIndexUXTWFoldsNoncanonicalAddressArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x00,
+		0x20, 0x00, 0x41, 42, 0x36, 0x02, 0x00, // store 42 at param0
+		0x20, 0x00, 0x28, 0x02, 0x00, // reload param0
+		0x0b,
+	})
+	compile := func(enabled bool) (*CodegenStats, []byte) {
+		t.Helper()
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{
+			"uxtw-add":       enabled,
+			"store-load-fwd": false,
+			"store-forward":  false,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { _ = cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0], append([]byte(nil), cm.Code...)
+	}
+	on, onCode := compile(true)
+	off, _ := compile(false)
+	if got := on.Peephole["memory-load-index-uxtw"]; got != 1 {
+		t.Fatalf("UXTW selections = %d, want 1; peeps=%v", got, on.Peephole)
+	}
+	if got := off.Peephole["memory-load-index-uxtw"]; got != 0 {
+		t.Fatalf("disabled UXTW selections = %d, want 0", got)
+	}
+	if on.CodeBytes != off.CodeBytes {
+		t.Fatalf("optimized code = %d bytes, rollback = %d", on.CodeBytes, off.CodeBytes)
+	}
+	var indexed int
+	for at := 0; at+4 <= len(onCode); at += 4 {
+		word := binary.LittleEndian.Uint32(onCode[at:])
+		if word&0x3b20fc00 == 0x38204800 {
+			indexed++
+		}
+	}
+	if indexed < 1 {
+		t.Fatalf("UXTW memory instructions = %d, want at least 1", indexed)
+	}
+	for _, enabled := range []bool{false, true} {
+		opts := CompileOptions{Optimizations: map[string]bool{
+			"uxtw-add":       enabled,
+			"store-load-fwd": false,
+			"store-forward":  false,
+		}}
+		if got, err := runArm64WrapperWithOptions(t, m, opts, 0x8877665500000004); err != nil || got != 42 {
+			t.Fatalf("enabled=%v: got=%d err=%v, want 42", enabled, got, err)
+		}
+	}
+}
 
 func TestCanonicalAddressLoadsPreserveValuesAndInvalidationArm64(t *testing.T) {
 	for _, update := range []bool{false, true} {
