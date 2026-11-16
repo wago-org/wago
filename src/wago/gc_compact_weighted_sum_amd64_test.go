@@ -49,3 +49,52 @@ func TestCompactNativeWeightedSum(t *testing.T) {
 		}
 	}
 }
+
+func compactWeightedRepeatedModule() []byte {
+	// First and third loops match; the middle signed comparison deliberately
+	// does not. Its different weight and bound expose a stale certificate.
+	body := []byte{1, 1, 0x63, 0, 0x20, 3, 0x20, 0, 0xfb, 6, 0, 0x21, 4}
+	for i, spec := range []struct {
+		weight, bound int32
+		compare       byte
+	}{{3, 7, 0x49}, {-5, 11, 0x48}, {9, 5, 0x49}} {
+		if i != 0 {
+			body = append(body, 0x41, 0, 0x21, 1)
+		}
+		body = append(body, 0x03, 0x40, 0x20, 2, 0x20, 1, 0x41)
+		body = append(body, wasmtest.SLEB32(spec.weight)...)
+		body = append(body, 0x6a, 0x20, 4, 0x20, 1, 0xfb, 11, 0, 0x6c, 0x6a, 0x21, 2, 0x20, 1, 0x41, 1, 0x6a, 0x22, 1, 0x41)
+		body = append(body, wasmtest.SLEB32(spec.bound)...)
+		body = append(body, spec.compare, 0x0d, 0, 0x0b)
+	}
+	body = append(body, 0x20, 1, 0x20, 2, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 1}, wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32, wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))))
+}
+
+func TestCompactNativeWeightedMultipleLoops(t *testing.T) {
+	in := compactLoopInstance(t, compactWeightedRepeatedModule())
+	for repeat := 0; repeat < 24; repeat++ {
+		value := uint32(0x80000001) + uint32(repeat)
+		want := uint32(0xfffffff0)
+		for _, spec := range []struct {
+			weight int32
+			bound  uint32
+		}{{3, 7}, {-5, 11}, {9, 5}} {
+			for i := uint32(0); i < spec.bound; i++ {
+				want += (i + uint32(spec.weight)) * value
+			}
+		}
+		got, err := in.Invoke("run", 16, 0, 0xfffffff0, uint64(value))
+		if err != nil || len(got) != 2 || got[0] != 5 || got[1] != uint64(want) {
+			t.Fatalf("repeat%d: got%v %v want5,%x", repeat, got, err, want)
+		}
+	}
+	// First loop succeeds; the nonmatching middle loop must still trap at
+	// its own longer span, not reuse the first loop's shorter bound.
+	if _, err := in.Invoke("run", 7, 0, 1, 3); err == nil {
+		t.Fatal("middle loop lost its late bounds trap")
+	}
+}
