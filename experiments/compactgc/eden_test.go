@@ -166,3 +166,77 @@ func TestEdenInvalidChildRepair(t *testing.T) {
 	}
 	edenCount(t, c, 2)
 }
+
+func TestEdenRememberedOverflowAndZeroAllocation(t *testing.T) {
+	c := edenHeap(t, 32768, 32768, 131072)
+	parents := make([]Ref, rememberedParentCapacity+1)
+	roots := make([]*Ref, len(parents))
+	for i := range parents {
+		parents[i] = obj(t, c, 0)
+		roots[i] = &parents[i]
+	}
+	if err := c.Full(roots); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range parents {
+		child := obj(t, c, 0)
+		set(t, c, p, 0, child)
+	}
+	if !c.rememberedOverflow {
+		t.Fatal("queue did not overflow")
+	}
+	if err := c.Minor(roots); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range parents {
+		if !c.edenYoung(edge(t, c, p, 0)) {
+			t.Fatal("lost first survivor")
+		}
+	}
+	if !c.rememberedOverflow {
+		t.Fatal("survivor barriers not retained")
+	}
+	if err := c.Minor(roots); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range parents {
+		if c.young(edge(t, c, p, 0)) {
+			t.Fatal("child not promoted")
+		}
+	}
+	edenCount(t, c, uint64(2*len(parents)))
+	if n := testing.AllocsPerRun(5, func() {
+		if err := c.Full(roots); err != nil {
+			panic(err)
+		}
+	}); n != 0 {
+		t.Fatal("collection allocated", n)
+	}
+}
+
+func TestEdenFullFailureWithBothYoungSources(t *testing.T) {
+	c := edenHeap(t, 64, 32, 16)
+	survivor := obj(t, c, 0)
+	if err := c.Minor([]*Ref{&survivor}); err != nil {
+		t.Fatal(err)
+	}
+	fresh := obj(t, c, 0)
+	set(t, c, fresh, 0, survivor)
+	before := append([]byte(nil), c.arena...)
+	starts := append([]bool(nil), c.starts...)
+	active, bump := c.edenSurvivorActive, c.edenSurvivorBump
+	if err := c.Full([]*Ref{&fresh}); !errors.Is(err, ErrOOM) {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, c.arena) || !reflect.DeepEqual(starts, c.starts) || active != c.edenSurvivorActive || bump != c.edenSurvivorBump {
+		t.Fatal("failed full altered young sources")
+	}
+	set(t, c, fresh, 0, 0)
+	if err := c.Full([]*Ref{&fresh}); err != nil {
+		t.Fatal(err)
+	}
+	if c.young(fresh) || c.valid(survivor) {
+		t.Fatal("full retry source retirement")
+	}
+	edenCount(t, c, 2)
+}
