@@ -1,0 +1,3 @@
+ld.lld: error: duplicate symbol: tinygo_task_exit
+>>> defined in /tmp/tinygo235390905/main.o
+>>> defined in /workspace/shared/tinygo-cache/tinygo/obj-ec87abf45f2708aa734b203beaabc22807b4b66bf3697fc5220fb71f.bc
