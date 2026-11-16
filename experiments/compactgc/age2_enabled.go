@@ -13,7 +13,7 @@ type age2State struct {
 // Retention is capped at half an active space to reserve fresh allocation room.
 // Existing NewWithTypes remains promote-all, even in an age2-enabled build.
 func NewAge2WithTypes(totalYoungBytes, oldBytes, survivorCapBytes uint32, types []Descriptor) (*Collector, error) {
-	if totalYoungBytes < 64 || totalYoungBytes%32 != 0 || survivorCapBytes%16 != 0 || survivorCapBytes > totalYoungBytes/4 {
+	if !age2DiagnosticCompatible || totalYoungBytes < 64 || totalYoungBytes%32 != 0 || survivorCapBytes%16 != 0 || survivorCapBytes > totalYoungBytes/4 {
 		return nil, ErrConfig
 	}
 	c, e := NewWithTypes(totalYoungBytes, oldBytes, types)

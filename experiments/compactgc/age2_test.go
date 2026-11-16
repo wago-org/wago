@@ -1,4 +1,4 @@
-//go:build wago_gc_compact_age2
+//go:build wago_gc_compact_age2 && !wago_gc_compact_cohort && !wago_gc_compact_shadow
 
 package compactgc
 

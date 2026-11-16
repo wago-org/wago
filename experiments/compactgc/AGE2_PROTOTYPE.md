@@ -54,3 +54,5 @@ Measured amd64 collector footprint: default224B with empty policy state;
 tagged248B with20B policy state plus alignment. Arena and existing tracing
 scratch sizes remain equal for equal TOTAL young budget. Runtime/native
 integration and end-to-end performance remain unqualified.
+
+The promote-all cohort/shadow diagnostic tag combinations are explicitly rejected by the age-two constructor until their accounting and coverage are adapted. The ordinary promote-all constructor remains available. Policy-specific tests exclude these unsupported combinations; a separate negative test checks the rejection.
