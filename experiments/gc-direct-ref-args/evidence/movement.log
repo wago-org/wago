@@ -1,0 +1,6 @@
+=== RUN   TestDirectGCManagedReferenceArguments
+    gc_direct_ref_args_amd64_test.go:51: validate: wasm validate: unknown type: function section
+--- FAIL: TestDirectGCManagedReferenceArguments (0.00s)
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.004s
+FAIL

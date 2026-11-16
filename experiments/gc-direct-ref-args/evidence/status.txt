@@ -1,0 +1,6 @@
+full-direct 0
+race 1
+default 0
+final-race 0
+final-full-direct 0
+final-helper 0

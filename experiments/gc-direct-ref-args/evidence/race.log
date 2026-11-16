@@ -1,0 +1,10 @@
+--- FAIL: TestGCTokenBoundariesUseAuthoritativeRoot (0.01s)
+    --- FAIL: TestGCTokenBoundariesUseAuthoritativeRoot/argument (0.00s)
+        gc_token_root_authority_amd64_test.go:16: wago: native direct-read artifact requires direct-offset collector
+    --- FAIL: TestGCTokenBoundariesUseAuthoritativeRoot/global (0.00s)
+        gc_token_root_authority_amd64_test.go:16: wago: native direct-read artifact requires direct-offset collector
+    --- FAIL: TestGCTokenBoundariesUseAuthoritativeRoot/host-result (0.00s)
+        gc_token_root_authority_amd64_test.go:16: wago: native direct-read artifact requires direct-offset collector
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	0.077s
+FAIL

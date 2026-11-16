@@ -1,0 +1,6 @@
+=== RUN   TestDirectGCManagedReferenceArguments
+--- PASS: TestDirectGCManagedReferenceArguments (0.02s)
+=== RUN   TestDirectGCManagedReferenceAllocationPressure
+--- PASS: TestDirectGCManagedReferenceAllocationPressure (0.01s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	1.050s
