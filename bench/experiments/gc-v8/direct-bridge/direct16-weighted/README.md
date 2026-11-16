@@ -1,7 +1,7 @@
 # Fresh direct16 weighted attribution protocol
 
-Source preparation only. Candidate d335b8f1 is not yet qualified; final canonical
-source pin and explicit CPU release are required before any builds or runs.
+Completed against qualified runtime a2e066d26d0555e03e2831bd359da1d5f2a51b13
+after explicit CPU release. See summary.md and evidence/ for all results.
 
 Three same-source binaries: baseline.test, weighted.test and sse2.test. Baseline
 uses `wago_gc_direct_trusted_loop,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_fill_sse2,wago_gc_direct_copy,wago_gc_direct_array_alloc`. Weighted adds
