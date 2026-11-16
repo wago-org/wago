@@ -8,7 +8,7 @@ import (
 
 func TestRetirementMapMatchesHeaders(t *testing.T) {
 	for _, words := range [][]uint32{{0}, {1}, {7}, {31}, {0, 1, 2, 7, 31, 127}} {
-		c := heap(t, 8192, 8192)
+		c := heap(t, 16384, 16384)
 		for n := 0; n < 7; n++ {
 			for _, w := range words {
 				obj(t, c, 0, w)
@@ -26,7 +26,7 @@ func TestRetirementMapMatchesHeaders(t *testing.T) {
 }
 func TestRetirementCollectionAccounting(t *testing.T) {
 	for _, live := range []bool{false, true} {
-		c := heap(t, 8192, 8192)
+		c := heap(t, 16384, 16384)
 		roots := []*Ref{}
 		values := []Ref{}
 		for _, w := range []uint32{0, 1, 2, 7, 31, 127} {
