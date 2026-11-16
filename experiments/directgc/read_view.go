@@ -27,3 +27,20 @@ func (c *Collector) ReadView() ReadView {
 	}
 	return ReadView{Arena: uintptr(unsafe.Pointer(&c.arena[0])), ArenaBytes: uint32(len(c.arena)), Starts: uintptr(unsafe.Pointer(&c.starts[0])), StartCount: uint32(len(c.starts)), NurseryStart: c.nurseryStart, NurseryBump: c.nurseryBump, OldStart: c.oldStart[c.active], OldBump: c.oldBump}
 }
+
+// AllocationWords exposes the authoritative nursery cursor for a trusted native
+// allocator. The owner must retain this Collector and serialize all accesses.
+// A writer must initialize the complete object and its start byte before
+// advancing Bump, must not cross End, and must not call or safepoint mid-publish.
+// This is not a reservation API and must never be exposed to guest code.
+type AllocationWords struct {
+	Bump *uint32
+	End  uint32
+}
+
+func (c *Collector) AllocationWords() AllocationWords {
+	if c == nil || len(c.arena) == 0 {
+		return AllocationWords{}
+	}
+	return AllocationWords{Bump: &c.nurseryBump, End: c.nurseryEnd}
+}

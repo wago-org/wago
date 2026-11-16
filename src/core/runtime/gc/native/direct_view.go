@@ -12,8 +12,15 @@ import (
 // DirectABIVersion is independent of NativeABIVersion. Only a separately admitted
 // direct-offset artifact may interpret these descriptors; they must NEVER alias
 // NativeCollectorView/NativeInstanceView, even when basedata reuses one slot.
-const DirectABIVersion uint32 = 1
+const DirectABIVersion uint32 = 2
 
+// AllocationEnabled permits only admitted pointer-free scalar struct creation.
+// The generated allocator must check every bound/layout before its first store,
+// initialize header/payload/padding, publish the start byte, advance BOTH the
+// authoritative cursor and NurseryBump, and increment the allocation counter
+// exactly once before exposing the result. No call, trap or safepoint may occur
+// during publication. Disabled views expose no writable word addresses. Stats
+// accounting uses its actual uint64 field, with the existing modulo arithmetic.
 type DirectCollectorView struct {
 	Version                                      uint32
 	Size                                         uint32
@@ -24,20 +31,30 @@ type DirectCollectorView struct {
 	StartCount                                   uint32
 	_                                            uint32
 	NurseryStart, NurseryBump, OldStart, OldBump uint32
+	// ABI2 allocation capability. Zero pointers when disabled. The actual cursor
+	// and Stats counter are owned by the collector, not copies in this view.
+	NurseryBumpAddress uintptr
+	NurseryEnd         uint32
+	AllocationEnabled  uint32
+	AllocationCounter  uintptr
 }
 
 const (
-	DirectViewVersionOffset      = 0
-	DirectViewSizeOffset         = 4
-	DirectViewArenaOffset        = 8
-	DirectViewArenaBytesOffset   = 16
-	DirectViewStartsOffset       = 24
-	DirectViewStartCountOffset   = 32
-	DirectViewNurseryStartOffset = 40
-	DirectViewNurseryBumpOffset  = 44
-	DirectViewOldStartOffset     = 48
-	DirectViewOldBumpOffset      = 52
-	DirectCollectorViewSize      = 56
+	DirectViewVersionOffset            = 0
+	DirectViewSizeOffset               = 4
+	DirectViewArenaOffset              = 8
+	DirectViewArenaBytesOffset         = 16
+	DirectViewStartsOffset             = 24
+	DirectViewStartCountOffset         = 32
+	DirectViewNurseryStartOffset       = 40
+	DirectViewNurseryBumpOffset        = 44
+	DirectViewOldStartOffset           = 48
+	DirectViewOldBumpOffset            = 52
+	DirectViewNurseryBumpAddressOffset = 56
+	DirectViewNurseryEndOffset         = 64
+	DirectViewAllocationEnabledOffset  = 68
+	DirectViewAllocationCounterOffset  = 72
+	DirectCollectorViewSize            = 80
 )
 
 type DirectInstanceView struct {
@@ -64,6 +81,7 @@ func validateDirectViewLayout() error {
 	var i DirectInstanceView
 	if unsafe.Sizeof(uintptr(0)) != 8 || unsafe.Sizeof(bool(false)) != 1 || unsafe.Sizeof(c) != DirectCollectorViewSize ||
 		unsafe.Offsetof(c.Version) != DirectViewVersionOffset || unsafe.Offsetof(c.Size) != DirectViewSizeOffset || unsafe.Offsetof(c.Arena) != DirectViewArenaOffset || unsafe.Offsetof(c.ArenaBytes) != DirectViewArenaBytesOffset || unsafe.Offsetof(c.Starts) != DirectViewStartsOffset || unsafe.Offsetof(c.StartCount) != DirectViewStartCountOffset || unsafe.Offsetof(c.NurseryStart) != DirectViewNurseryStartOffset || unsafe.Offsetof(c.NurseryBump) != DirectViewNurseryBumpOffset || unsafe.Offsetof(c.OldStart) != DirectViewOldStartOffset || unsafe.Offsetof(c.OldBump) != DirectViewOldBumpOffset ||
+		unsafe.Offsetof(c.NurseryBumpAddress) != DirectViewNurseryBumpAddressOffset || unsafe.Offsetof(c.NurseryEnd) != DirectViewNurseryEndOffset || unsafe.Offsetof(c.AllocationEnabled) != DirectViewAllocationEnabledOffset || unsafe.Offsetof(c.AllocationCounter) != DirectViewAllocationCounterOffset ||
 		unsafe.Offsetof(i.Version) != DirectInstanceVersionOffset || unsafe.Offsetof(i.Size) != DirectInstanceSizeOffset || unsafe.Offsetof(i.Collector) != DirectInstanceCollectorOffset || unsafe.Offsetof(i.LocalTypes) != DirectInstanceLocalTypesOffset || unsafe.Offsetof(i.LocalTypeCount) != DirectInstanceLocalTypeCountOffset || unsafe.Offsetof(i.keepTypes) != DirectInstanceViewABISize {
 		return errors.New("gc: unsupported direct view layout")
 	}
@@ -83,6 +101,20 @@ func (c *Collector) refreshDirectView() {
 	}
 	x := c.direct.ReadView()
 	*v = DirectCollectorView{Version: DirectABIVersion, Size: DirectCollectorViewSize, Arena: x.Arena, ArenaBytes: x.ArenaBytes, Starts: x.Starts, StartCount: x.StartCount, NurseryStart: x.NurseryStart, NurseryBump: x.NurseryBump, OldStart: x.OldStart, OldBump: x.OldBump}
+	if c.directNativeAllocationEnabled() {
+		words := c.direct.AllocationWords()
+		v.NurseryBumpAddress = uintptr(unsafe.Pointer(words.Bump))
+		v.NurseryEnd = words.End
+		v.AllocationCounter = uintptr(unsafe.Pointer(&c.stats.Allocations))
+		v.AllocationEnabled = 1
+	}
+}
+
+func (c *Collector) directNativeAllocationEnabled() bool {
+	return c != nil && !c.closed && c.direct != nil && !failureInjectionEnabled &&
+		!c.cfg.CollectEveryAlloc && !c.cfg.VerifyAfterCollect && !c.cfg.PoisonFreed &&
+		!c.cfg.StressBarriers && c.cfg.StressNurseryBytes == 0 && !c.cfg.DisableCollection &&
+		!c.cfg.DisableMovingNursery && c.cfg.Profile == ProfileThroughput
 }
 func (c *Collector) DirectView() *DirectCollectorView {
 	if c == nil || c.closed || c.direct == nil {
@@ -133,6 +165,14 @@ func ValidateDirectInstanceView(v *DirectInstanceView, c *Collector) error {
 	}
 	if uint64(v.LocalTypeCount) != uint64(len(v.keepTypes)) || v.LocalTypes != sliceData(v.keepTypes) {
 		return errors.New("gc: invalid direct canonical type backing")
+	}
+	if c.directNativeAllocationEnabled() {
+		words := c.direct.AllocationWords()
+		if cv.AllocationEnabled != 1 || cv.NurseryBumpAddress != uintptr(unsafe.Pointer(words.Bump)) || cv.NurseryEnd != words.End || cv.AllocationCounter != uintptr(unsafe.Pointer(&c.stats.Allocations)) || cv.NurseryBump != *words.Bump {
+			return errors.New("gc: invalid direct allocation capability")
+		}
+	} else if cv.AllocationEnabled != 0 || cv.NurseryBumpAddress != 0 || cv.NurseryEnd != 0 || cv.AllocationCounter != 0 {
+		return errors.New("gc: disabled direct allocation capability")
 	}
 	for _, id := range v.keepTypes {
 		if uint64(id) >= uint64(len(c.types)) {

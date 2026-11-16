@@ -21,7 +21,7 @@ func TestDirectViewLayoutAndRefresh(t *testing.T) {
 	}
 	defer c.Close()
 	v := c.DirectView()
-	if v == nil || v.Version != 1 || v.Size != 56 || v.Arena == 0 || v.Starts == 0 || v.NurseryStart != v.NurseryBump || v.OldStart != v.OldBump {
+	if v == nil || v.Version != DirectABIVersion || v.Size != DirectCollectorViewSize || v.Arena == 0 || v.Starts == 0 || v.NurseryStart != v.NurseryBump || v.OldStart != v.OldBump {
 		t.Fatal("initial view", v)
 	}
 	arena, starts := v.Arena, v.Starts
@@ -74,7 +74,7 @@ func TestDirectInstanceViewOwnsCanonicalMap(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if v.Version != 1 || v.Size != 32 || v.Collector != uintptr(unsafe.Pointer(c.DirectView())) || v.LocalTypeCount != 1 || v.LocalTypes == 0 {
+	if v.Version != DirectABIVersion || v.Size != 32 || v.Collector != uintptr(unsafe.Pointer(c.DirectView())) || v.LocalTypeCount != 1 || v.LocalTypes == 0 {
 		t.Fatal("instance view", v)
 	}
 	if e = ValidateDirectInstanceView(v, c); e != nil {
