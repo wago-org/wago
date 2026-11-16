@@ -32,10 +32,12 @@ allocation accounting. Default Wago, backend and GC regression suites also passe
 [Qualification logs](../../bench/experiments/gc-v8/direct-bridge/eden-core-qualification/README.md)
 preserve initial fixture/cache failures and successful retries.
 
-[Matched core results](../gc-eden-core/RESULTS.md) retain all controls. On the
-rolling-survivor workload, fixed-total Eden took 1.140 times promote-all's time.
-It reduced age2 minor-collection frequency and avoided the observed full
-collection, but these improvements did not translate into better throughput.
-The separate equal-Eden configuration took 0.978 times promote-all's time while
-using 790,528 additional fixed bytes; that small, noisy difference is not a
-proven gain. These are core-only results, not end-to-end Wasm or V8 comparisons.
+[Matched core results](../gc-eden-core/RESULTS.md) retain the original short-run
+controls. The longer affinity-controlled confirmation uses the same binary,
+128 epochs and five process samples per cell, with our local jobs paused (not an
+exclusive-host guarantee). Equal-total Eden is approximately at parity on rolling
+retention (0.999 times promote-all's time), but slower on the other controls.
+The equal-Eden sensitivity uses 790,528 additional fixed bytes and shows no median
+rolling win (1.009 times). Eden incurs six full collections over 128 epochs, so
+the initial eight-epoch zero-full observation was transient. These are core-only
+results, not end-to-end Wasm or V8 comparisons, and do not justify default enablement.
