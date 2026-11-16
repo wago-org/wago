@@ -263,6 +263,9 @@ func (c *Collector) Close() {
 	c.discardNativeLargeArrayAllocation()
 	c.stats.LiveObjects = 0
 	c.closed = true
+	if c.direct != nil {
+		c.stats.Allocations, _ = c.direct.AllocationSnapshot()
+	}
 	c.direct = nil
 	c.refreshDirectView()
 	c.nursery = nil
@@ -389,7 +392,7 @@ func (c *Collector) Stats() Stats {
 	}
 	s.LiveObjects = c.liveCount()
 	if c.direct != nil {
-		s.LiveObjects = c.direct.LiveObjects()
+		s.Allocations, s.LiveObjects = c.direct.AllocationSnapshot()
 	}
 	if c.nativeView != nil && c.nativeView.deadNurseryCycle() == c.collectionCycle() {
 		s.LiveObjects += c.stats.LiveObjects

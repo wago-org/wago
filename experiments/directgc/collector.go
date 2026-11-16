@@ -25,6 +25,8 @@ const header = uint32(16)
 const rememberedParentCapacity = 1024
 
 type Collector struct {
+	retiredNurseryAllocations             uint64
+	oldAllocations                        uint64
 	arena                                 []byte
 	starts, dirty                         []bool
 	mark                                  []uint64
@@ -212,6 +214,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	}
 	for off := c.nurseryStart; off < c.nurseryBump; off += c.stride(off) {
 		c.starts[off/8] = false
+		c.retiredNurseryAllocations++
 	}
 	if full {
 		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {

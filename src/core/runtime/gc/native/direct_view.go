@@ -12,7 +12,7 @@ import (
 // DirectABIVersion is independent of NativeABIVersion. Only a separately admitted
 // direct-offset artifact may interpret these descriptors; they must NEVER alias
 // NativeCollectorView/NativeInstanceView, even when basedata reuses one slot.
-const DirectABIVersion uint32 = 3
+const DirectABIVersion uint32 = 4
 
 // AllocationEnabled permits only admitted pointer-free scalar struct creation.
 // The generated allocator must check every bound/layout before its first store,
@@ -36,7 +36,7 @@ type DirectCollectorView struct {
 	NurseryBumpAddress uintptr
 	NurseryEnd         uint32
 	AllocationEnabled  uint32
-	AllocationCounter  uintptr
+	AllocationCounter  uintptr // ABI4 reserved zero; nursery accounting is deferred
 	// ABI3 READ-ONLY remembered-parent certificate, indexed by offset/8.
 	// Dirty==1 implies queue/overflow registration. Native code must never set it;
 	// a clean old parent must fall back before publishing its reference store.
@@ -114,7 +114,6 @@ func (c *Collector) refreshDirectView() {
 		words := c.direct.AllocationWords()
 		v.NurseryBumpAddress = uintptr(unsafe.Pointer(words.Bump))
 		v.NurseryEnd = words.End
-		v.AllocationCounter = uintptr(unsafe.Pointer(&c.stats.Allocations))
 		v.AllocationEnabled = 1
 	}
 }
@@ -181,7 +180,7 @@ func ValidateDirectInstanceView(v *DirectInstanceView, c *Collector) error {
 	}
 	if c.directNativeAllocationEnabled() {
 		words := c.direct.AllocationWords()
-		if cv.AllocationEnabled != 1 || cv.NurseryBumpAddress != uintptr(unsafe.Pointer(words.Bump)) || cv.NurseryEnd != words.End || cv.AllocationCounter != uintptr(unsafe.Pointer(&c.stats.Allocations)) || cv.NurseryBump != *words.Bump {
+		if cv.AllocationEnabled != 1 || cv.NurseryBumpAddress != uintptr(unsafe.Pointer(words.Bump)) || cv.NurseryEnd != words.End || cv.AllocationCounter != 0 || cv.NurseryBump != *words.Bump {
 			return errors.New("gc: invalid direct allocation capability")
 		}
 	} else if cv.AllocationEnabled != 0 || cv.NurseryBumpAddress != 0 || cv.NurseryEnd != 0 || cv.AllocationCounter != 0 {

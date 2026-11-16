@@ -20,7 +20,9 @@ func simulateDirectNativeAllocation(t *testing.T, c *Collector, typ uint32, valu
 		t.Fatal("allocation capability disabled")
 	}
 	bump := (*uint32)(unsafe.Pointer(v.NurseryBumpAddress))
-	counter := (*uint64)(unsafe.Pointer(v.AllocationCounter))
+	if v.AllocationCounter != 0 {
+		t.Fatal("ABI4 counter must be reserved zero")
+	}
 	off := *bump
 	if off != v.NurseryBump || off%16 != 0 || off > v.NurseryEnd || v.NurseryEnd-off < 32 {
 		t.Fatal("invalid reservation")
@@ -35,7 +37,6 @@ func simulateDirectNativeAllocation(t *testing.T, c *Collector, typ uint32, valu
 	starts[off/8] = 1
 	*bump = off + 32
 	v.NurseryBump = off + 32
-	*counter++
 	runtime.KeepAlive(c)
 	return Ref(off)
 }
@@ -121,5 +122,34 @@ func TestDirectAllocationCapabilityPolicy(t *testing.T) {
 			t.Fatal("forged allocation pointer accepted")
 		}
 		c.Close()
+	}
+}
+
+func TestDirectDeferredAccountingEveryAllocAndClose(t *testing.T) {
+	d, err := NewStructDesc(0, []StorageKind{StorageI64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewExperimentalDirectCollector(Config{NurseryBytes: 128, ThroughputHeapBytes: 1024, CollectEveryAlloc: true}, []TypeDesc{d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint64(1); i <= 7; i++ {
+		if _, err = c.NewStructDefaultWithRoots(0, RefSliceRoots{}); err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j < 3; j++ {
+			if c.Stats().Allocations != i {
+				t.Fatal(c.Stats())
+			}
+		}
+	}
+	if c.Stats().MinorCollections == 0 {
+		t.Fatal("no collection")
+	}
+	c.Close()
+	c.Close()
+	if c.Stats().Allocations != 7 || c.Stats().LiveObjects != 0 {
+		t.Fatal("close accounting", c.Stats())
 	}
 }

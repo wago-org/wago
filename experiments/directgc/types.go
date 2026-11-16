@@ -155,6 +155,9 @@ func (c *Collector) allocate(id TypeID, payload uint64, aux uint32) (Ref, error)
 	c.put32(off+8, aux)
 	c.put32(off+12, flags)
 	c.starts[off/8] = true
+	if flags&FlagOld != 0 {
+		c.oldAllocations++
+	}
 	return Ref(off), nil
 }
 func (c *Collector) ObjectType(r Ref) (TypeID, error) {
@@ -378,4 +381,22 @@ func (c *Collector) LiveObjects() uint32 {
 		}
 	}
 	return n
+}
+
+// AllocationSnapshot returns exact lifetime allocations and current allocated
+// objects without mutating accounting. Pending nursery objects include garbage;
+// promotion/relocation never counts as another allocation. Like LiveObjects,
+// access is serialized with all mutation, including native publication.
+func (c *Collector) AllocationSnapshot() (allocations uint64, live uint32) {
+	allocations = c.retiredNurseryAllocations + c.oldAllocations
+	first, last := c.nurseryStart/8, c.nurseryBump/8
+	for i, yes := range c.starts {
+		if yes {
+			live++
+			if uint32(i) >= first && uint32(i) < last {
+				allocations++
+			}
+		}
+	}
+	return
 }

@@ -116,7 +116,6 @@ func (c *Collector) directAlloc(d TypeDesc, aux uint32, roots RootSet) (Ref, err
 	if err != nil {
 		return 0, err
 	}
-	c.stats.Allocations++
 	return Ref(r), nil
 }
 
