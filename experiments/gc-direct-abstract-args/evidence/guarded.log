@@ -1,0 +1,128 @@
+=== RUN   TestDirectGCAbstractManagedArguments
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false/null
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false/i31
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false/struct
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false/array
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=false/raw
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true/null
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true/i31
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true/struct
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true/array
+=== RUN   TestDirectGCAbstractManagedArguments/any/nullable=true/raw
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false/null
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false/i31
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false/struct
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false/array
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=false/raw
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true/null
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true/i31
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true/struct
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true/array
+=== RUN   TestDirectGCAbstractManagedArguments/eq/nullable=true/raw
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false/null
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false/i31
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false/struct
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false/array
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=false/raw
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true/null
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true/i31
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true/struct
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true/array
+=== RUN   TestDirectGCAbstractManagedArguments/struct/nullable=true/raw
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false/null
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false/i31
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false/struct
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false/array
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=false/raw
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true/null
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true/i31
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true/struct
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true/array
+=== RUN   TestDirectGCAbstractManagedArguments/array/nullable=true/raw
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false/null
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false/i31
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false/struct
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false/array
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=false/raw
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true/null
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true/i31
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true/struct
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true/array
+=== RUN   TestDirectGCAbstractManagedArguments/none/nullable=true/raw
+--- PASS: TestDirectGCAbstractManagedArguments (0.02s)
+    --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=false/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/any/nullable=true/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=false/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/eq/nullable=true/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=false/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/struct/nullable=true/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=false/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/array/nullable=true/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=false/raw (0.00s)
+    --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true/null (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true/i31 (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true/struct (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true/array (0.00s)
+        --- PASS: TestDirectGCAbstractManagedArguments/none/nullable=true/raw (0.00s)
+=== RUN   TestDirectAbstractArgumentAdmissionFamilies
+--- PASS: TestDirectAbstractArgumentAdmissionFamilies (0.00s)
+=== RUN   TestDirectGCRejectsInternalExternConversion
+--- PASS: TestDirectGCRejectsInternalExternConversion (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.023s

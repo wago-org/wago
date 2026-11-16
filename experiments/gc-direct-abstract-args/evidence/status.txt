@@ -1,0 +1,4 @@
+full-direct 0
+race 0
+helper 0
+default 0
