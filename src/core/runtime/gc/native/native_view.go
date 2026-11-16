@@ -64,8 +64,10 @@ type NativeSpaceView struct {
 
 // NativeCollectorView is a stable, versioned descriptor for the collector's
 // relocatable handle table and fixed heap spaces. The Collector owns this object
-// for its complete lifetime, so generated code may cache only the view pointer;
-// it must reload all backing pointers and lengths for each access.
+// for its complete lifetime. Generated code normally reloads backing pointers
+// and lengths for each access. The optional per-instance parent cache may retain
+// resolved addresses only while RefreshGeneration matches a nonzero,
+// nonsaturated certificate, and must still validate access bounds and barriers.
 //
 // All fields use naturally aligned fixed-width words so their offsets are the
 // same on amd64 and arm64. Keep offset constants below in sync.
@@ -119,7 +121,9 @@ const (
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
-// map needed by generated type checks. Collector points at the shared view above.
+// map needed by generated type checks. Collector points at the shared view above
+// and must never be rebound. Each instance receives a fresh zeroed cache; cached
+// addresses do not keep objects alive or replace roots.
 type NativeInstanceView struct {
 	Version        uint32
 	_              uint32
@@ -268,8 +272,8 @@ func ValidateNativeABI() error {
 
 // ValidateNativeInstanceView proves the immutable per-instance/native collector
 // contract before native execution. Mutable handle, heap, card, and nursery
-// pointers are intentionally not cached or validated here; generated code must
-// continue reloading and semantically validating them at each access.
+// pointers are not validated here; generated code reloads and validates them,
+// or uses a parent resolution certificate guarded by the lifetime generation.
 func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, localTypeCount uint32) error {
 	if err := ValidateNativeABI(); err != nil {
 		return err
