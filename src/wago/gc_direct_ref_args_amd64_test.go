@@ -32,9 +32,9 @@ func directRefArgsBytes() []byte {
 		{0x00, 0x41, 0}, // trap
 		{0x41, 0, 0x41, 0xc0, 0x84, 0x3d, 0xfb, 6, 1, 0x1a, 0x20, 0, 0xfb, 2, 0, 0}, // OOM
 	}
-	bodies = append(bodies, []byte{0x20, 0, 0xd1})
-	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3}
-	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull"}
+	bodies = append(bodies, []byte{0x20, 0, 0xd1}, []byte{0x20, 0, 0x10, 1})
+	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3, 3}
+	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull", "call"}
 	funcs := make([][]byte, len(sig))
 	exports := make([][]byte, len(sig))
 	codes := make([][]byte, len(sig))
@@ -104,6 +104,11 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 			t.Fatal(got, e)
 		}
 		check()
+		got, e = in.Invoke("call", token.token)
+		if e != nil || got[0] != 91 {
+			t.Fatal(got, e)
+		}
+		check()
 		typed, e := in.InvokeValues(context.Background(), "nonnull", result[0])
 		if e != nil || typed[0].Bits() != 91 {
 			t.Fatal(typed, e)
@@ -134,7 +139,7 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 		args []uint64
 	}{
 		{"nonnull", []uint64{0}}, {"read", []uint64{24}}, {"read", []uint64{array[0].Bits()}},
-		{"pair", []uint64{token.token, 24}}, {"read", []uint64{0}}, {"trap", []uint64{token.token}}, {"oom", []uint64{token.token}},
+		{"pair", []uint64{token.token, 24}}, {"read", []uint64{uint64(gc.I31New(17))}}, {"read", []uint64{0}}, {"trap", []uint64{token.token}}, {"oom", []uint64{token.token}},
 	} {
 		if _, e = in.Invoke(args.name, args.args...); e == nil {
 			t.Fatal("expected failure", args.name)
@@ -143,6 +148,24 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 	}
 	if _, e = other.Invoke("read", token.token); e == nil {
 		t.Fatal("other-instance token admitted")
+	}
+	prepared, e := in.WasmFunc("pair")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = prepared.Invoke(token.token, 24); e == nil {
+		t.Fatal("prepared bad token accepted")
+	}
+	check()
+	foreignRT := NewRuntime()
+	defer foreignRT.Close()
+	foreign, e := Instantiate(c, InstantiateOptions{store: foreignRT.refStore, GC: GCConfig{ExperimentalDirectOffsets: true, NurseryBytes: 128, ThroughputHeapBytes: 4096}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer foreign.Close()
+	if _, e = foreign.Invoke("read", token.token); e == nil {
+		t.Fatal("foreign runtime token accepted")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
