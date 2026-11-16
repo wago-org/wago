@@ -157,14 +157,6 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
 		a.TestSelf(RAX, false)
 		guard(condNE)
 	}
-	a.Load64(RDI, R8, gc.DirectViewAllocationCounterOffset)
-	if !gcTrustedDirectAllocation {
-		a.TestSelf(RDI, true)
-		guard(condE)
-	}
-	a.Load64(RAX, RDI, 0)
-	a.AluRI(cmpDigit, RAX, -1, true)
-	guard(condE)
 	a.MovRegReg32(RCX, R10)
 	a.AluRI(0, RCX, int32(stride), false)
 	// No branch, call, trap, allocation or safepoint from first mutation through
@@ -193,9 +185,6 @@ func (f *fn) emitDirectOffsetStructAlloc(t uint32, zero bool, argSlot, resultSlo
 	a.StoreIdx(RSI, RSP, RAX, 0, 1)
 	a.Store32(R9, 0, RCX)
 	a.Store32(R8, gc.DirectViewNurseryBumpOffset, RCX)
-	a.Load64(RAX, RDI, 0)
-	a.AluRI(0, RAX, 1, true)
-	a.Store64(RDI, 0, RAX)
 	a.MovRegReg32(RAX, R10)
 	a.Store64(RSP, f.spillOff(resultSlot)+delta, RAX)
 	done := a.JmpPlaceholder()

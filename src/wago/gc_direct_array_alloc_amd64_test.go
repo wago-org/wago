@@ -1,4 +1,4 @@
-//go:build linux && ((amd64 && wago_gc_direct_array_alloc || wago_gc_direct_fill) || wago_gc_direct_trusted_alloc)
+//go:build linux && ((amd64 && wago_gc_direct_array_alloc) || wago_gc_direct_fill || wago_gc_direct_trusted_alloc)
 
 package wago
 
@@ -138,10 +138,10 @@ func TestDirectGCArrayBumpGuardedFallback(t *testing.T) {
 	in := newDirectArrayBumpInstance(t, directArrayBumpModule(0x7f, 0x7f, 11, false), 128<<10)
 	slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
 	const sentinel = 0x81234567
-	for _, kind := range []string{"disabled", "bump-pointer", "counter-pointer", "starts", "start-count", "snapshot", "cap"} {
+	for _, kind := range []string{"disabled", "bump-pointer", "starts", "start-count", "snapshot", "cap"} {
 		// Private pointer/start-map corruption is checked-mode-only; policy5
 		// relies on admitted ownership. Dynamic capability/capacity checks remain.
-		if in.c.gcTrustedDirectVersion == 5 && (kind == "bump-pointer" || kind == "counter-pointer" || kind == "starts" || kind == "start-count") {
+		if in.c.gcTrustedDirectVersion == 5 && (kind == "bump-pointer" || kind == "starts" || kind == "start-count") {
 			continue
 		}
 		v := in.gc.DirectView()
@@ -151,8 +151,6 @@ func TestDirectGCArrayBumpGuardedFallback(t *testing.T) {
 			v.AllocationEnabled = 0
 		case "bump-pointer":
 			v.NurseryBumpAddress = 0
-		case "counter-pointer":
-			v.AllocationCounter = 0
 		case "starts":
 			v.Starts = 0
 		case "start-count":
@@ -213,6 +211,49 @@ func TestDirectGCArrayBumpPreservesCallerRoots(t *testing.T) {
 		s := in.gc.Stats()
 		if s.Allocations != 64 || s.FullCollections == 0 {
 			t.Fatal("caller fallback accounting", s)
+		}
+	}
+}
+
+// ABI4 counts completed nursery objects on retirement and includes the current
+// nursery in Stats. Observation must neither charge twice nor require JIT stores.
+func TestDirectGCDeferredNativeAllocationAccounting(t *testing.T) {
+	for _, array := range []bool{false, true} {
+		data, args := directBumpScalarModule(false), []uint64{91}
+		if array {
+			data, args = directArrayBumpModule(0x7f, 0x7f, 11, false), []uint64{91, 3, 2}
+		}
+		in := newDirectArrayBumpInstance(t, data, 256)
+		if in.gc.DirectView().AllocationCounter != 0 {
+			t.Fatal("reserved ABI counter must be zero")
+		}
+		const sentinel = 0x81234567
+		slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
+		binary.LittleEndian.PutUint32(slot, sentinel)
+		for i := uint64(1); i <= 33; i++ {
+			got, e := in.Invoke("run", args...)
+			if e != nil || len(got) != 1 || got[0] != 91 {
+				t.Fatal(got, e)
+			}
+			if i == 1 && binary.LittleEndian.Uint32(slot) != sentinel {
+				t.Fatal("native path unexpectedly needs accounting helper")
+			}
+			for n := 0; n < 3; n++ {
+				if in.gc.Stats().Allocations != i {
+					t.Fatal("observation changed accounting", i, in.gc.Stats())
+				}
+			}
+		}
+		before := in.gc.Stats()
+		if before.FullCollections == 0 {
+			t.Fatal("no nursery retirement")
+		}
+		collector := in.gc
+		if e := in.Close(); e != nil {
+			t.Fatal(e)
+		}
+		if collector.Stats().Allocations != before.Allocations {
+			t.Fatal("close lost or duplicated pending objects")
 		}
 	}
 }
