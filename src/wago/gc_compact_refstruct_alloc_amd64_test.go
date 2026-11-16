@@ -8,13 +8,18 @@ import (
 	runtime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"os"
 	"testing"
 )
 
-func compactRefConstructorModule() []byte {
+func compactRefConstructorModule(open ...bool) []byte {
+	leaf := []byte{0x5f, 1, 0x7f, 0}
+	if len(open) > 0 && open[0] {
+		leaf = []byte{0x50, 0, 0x5f, 1, 0x7f, 0}
+	}
 	// Leaf0, parent1 with nullable final-leaf reference, different leaf2.
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x7f, 0}, []byte{0x5f, 1, 0x63, 0, 0}, []byte{0x5f, 1, 0x7e, 0}, []byte{0x60, 1, 0x7f, 1, 0x63, 1}, []byte{0x60, 0, 1, 0x63, 1})),
+		wasmtest.Section(1, wasmtest.Vec(leaf, []byte{0x5f, 1, 0x63, 0, 0}, []byte{0x5f, 1, 0x7e, 0}, []byte{0x60, 1, 0x7f, 1, 0x63, 1}, []byte{0x60, 0, 1, 0x63, 1})),
 		wasmtest.Section(3, wasmtest.Vec([]byte{3}, []byte{4}, []byte{4})),
 		wasmtest.Section(6, wasmtest.Vec([]byte{0x63, 0, 1, 0xd0, 0, 0x0b})),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("make", 0, 0), wasmtest.ExportEntry("wrap", 0, 1), wasmtest.ExportEntry("default", 0, 2))),
@@ -96,5 +101,56 @@ func TestCompactNativeReferenceConstructors(t *testing.T) {
 		if e == nil || in.gc.Stats().Allocations != before {
 			t.Fatal("wrong child published parent", e)
 		}
+	}
+}
+
+func TestCompactReferenceConstructorRecursiveTree(t *testing.T) {
+	data, e := os.ReadFile("../../bench/experiments/gc-v8/gc-tree-survival.wasm")
+	if e != nil {
+		t.Fatal(e)
+	}
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true, NurseryBytes: 4096, ThroughputHeapBytes: 1 << 20}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	got, e := in.Invoke("performance", 32)
+	if e != nil || len(got) != 1 || got[0] != 67551 {
+		t.Fatal(got, e)
+	}
+	if in.gc.Stats().MinorCollections == 0 || in.gc.Stats().Allocations != 67551 {
+		t.Fatal(in.gc.Stats())
+	}
+}
+func TestCompactReferenceConstructorNonfinalFallback(t *testing.T) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), compactRefConstructorModule(true))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	const sentinel = 0x81234567
+	slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
+	binary.LittleEndian.PutUint32(slot, sentinel)
+	v, e := in.InvokeValues(context.Background(), "make", ValueI32(31))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.ReleaseGCRef(v[0].GCRef())
+	if binary.LittleEndian.Uint32(slot) == sentinel {
+		t.Fatal("nonfinal child bypassed full helper")
 	}
 }
