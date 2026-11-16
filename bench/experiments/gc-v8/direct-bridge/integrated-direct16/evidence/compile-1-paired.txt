@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/src/wago
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkGCDirectCompileProbe/struct-allocation-access         	     256	    165367 ns/op	      1775 code-B	   56026 B/op	     232 allocs/op
+BenchmarkGCDirectCompileProbe/array-allocation-access          	     256	    174166 ns/op	      1967 code-B	   56075 B/op	     223 allocs/op
+BenchmarkGCDirectCompileProbe/array-fill                       	     256	    211447 ns/op	      2543 code-B	   59979 B/op	     233 allocs/op
+BenchmarkGCDirectCompileProbe/array-copy-checksum              	     256	    312102 ns/op	      4719 code-B	   76508 B/op	     276 allocs/op
+BenchmarkGCDirectCompileProbe/array-loop-copy-checksum         	     256	    278776 ns/op	      4719 code-B	   76508 B/op	     276 allocs/op
+BenchmarkGCDirectCompileProbe/tree-survival                    	     256	    188247 ns/op	      1455 code-B	   57339 B/op	     267 allocs/op
+PASS
