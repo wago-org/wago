@@ -6,6 +6,8 @@ p.add_argument('--repo',required=True);p.add_argument('--binary',required=True);
 a=p.parse_args();repo=pathlib.Path(a.repo).resolve();binary=pathlib.Path(a.binary).resolve();out=pathlib.Path(a.output);out.mkdir(parents=True,exist_ok=True)
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 cases=json.loads((repo/'bench/experiments/gc-v8/cases.json').read_text())
+names=['struct-allocation-access','array-allocation-access','array-fill','array-copy-checksum','array-loop-copy-checksum','tree-survival']
+cases=[next(c for c in cases if c['name']==name) for name in names]
 variants=[('young2-old8',2,8),('young4-old7',4,7),('young6-old6',6,6)]
 provenance={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'production_source':'2a907dab','binary_sha256':sha(binary),'binary_bytes':binary.stat().st_size,'platform':platform.platform(),'cpu':pathlib.Path('/proc/cpuinfo').read_text(),'protocol':{'warmup':128 if a.audit else 100,'samples':0 if a.audit else 9,'batch':32,'rounds':1 if a.audit else 3,'affinity_pinned':False,'gomaxprocs':1},'tags':'wago_gc_direct_trusted_loop,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_fill_sse2,wago_gc_direct_copy,wago_gc_direct_array_alloc,wago_gc_direct_weighted_sum','scope':'same-binary policy sensitivity; own local jobs paused, external host contention not excluded; no V8 claim'}
 rows=[]
