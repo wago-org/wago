@@ -10,8 +10,11 @@ import (
 // The scalar-array mode deliberately retains the fully checked resolver even
 // when another experimental tag enables attested scalar struct reads.
 func (f *fn) directOffsetScalarArrayLayout(t uint32) (directGCScalar, bool) {
+	if !gcDirectScalarArrays {
+		return directGCScalar{}, false
+	}
 	s, final, ok := f.directGCArrayLayout(t)
-	return s, gcDirectScalarArrays && ok && final && s.size > 0 && s.size <= 8 && t <= math.MaxInt32/4
+	return s, ok && final && s.size > 0 && s.size <= 8 && t <= math.MaxInt32/4
 }
 
 // Resolving the object precedes logical bounds; scaling uses a zero-extended

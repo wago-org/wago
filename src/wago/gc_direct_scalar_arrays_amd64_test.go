@@ -57,6 +57,9 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 		{"i32", 0x7f, 0x7f, 11, 0xdeadbeef, 0xdeadbeef}, {"i64", 0x7e, 0x7e, 11, 0x123456789abcdef, 0x123456789abcdef},
 		{"f32", 0x7d, 0x7d, 11, uint64(math.Float32bits(-1.25)), uint64(math.Float32bits(-1.25))},
 		{"f64", 0x7c, 0x7c, 11, math.Float64bits(-1.25), math.Float64bits(-1.25)},
+		{"f32-nan", 0x7d, 0x7d, 11, 0x7fc12345, 0x7fc12345},
+		{"f64-nan", 0x7c, 0x7c, 11, 0x7ff8123456789abc, 0x7ff8123456789abc},
+		{"f64-negative-zero", 0x7c, 0x7c, 11, 0x8000000000000000, 0x8000000000000000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := newDirectScalarArrayInstance(t, directScalarArrayModule(tc.storage, tc.param, tc.get))
@@ -67,7 +70,7 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 			slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
 			for n := 0; n < 5; n++ {
 				binary.LittleEndian.PutUint32(slot, sentinel)
-				if _, e := in.Invoke("set", 1, tc.arg); e != nil {
+				if _, e := in.Invoke("set", 0x100000001, tc.arg); e != nil {
 					t.Fatal(e)
 				}
 				if binary.LittleEndian.Uint32(slot) != sentinel {
@@ -77,7 +80,7 @@ func TestDirectGCScalarArrayOperations(t *testing.T) {
 					t.Fatal(e)
 				}
 				binary.LittleEndian.PutUint32(slot, sentinel)
-				got, e := in.Invoke("get", 1)
+				got, e := in.Invoke("get", 0x100000001)
 				if e != nil || len(got) != 1 || got[0] != tc.want {
 					t.Fatal(got, e, tc.want)
 				}
