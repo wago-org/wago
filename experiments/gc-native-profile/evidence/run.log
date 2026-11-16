@@ -1,0 +1,21 @@
+=== RUN   TestGCNativeProfileProbe
+=== RUN   TestGCNativeProfileProbe/struct-allocation-access
+    gc_native_profile_probe_amd64_test.go:183: NATIVE_PROFILE_RESULT case=struct-allocation-access exact_parity=true native_bytes=1775 mapped=1176 total=1775 samples=false
+=== RUN   TestGCNativeProfileProbe/array-allocation-access
+    gc_native_profile_probe_amd64_test.go:183: NATIVE_PROFILE_RESULT case=array-allocation-access exact_parity=true native_bytes=1967 mapped=1367 total=1967 samples=false
+=== RUN   TestGCNativeProfileProbe/array-fill
+    gc_native_profile_probe_amd64_test.go:183: NATIVE_PROFILE_RESULT case=array-fill exact_parity=true native_bytes=2543 mapped=1863 total=2543 samples=false
+=== RUN   TestGCNativeProfileProbe/array-copy-checksum
+    gc_native_profile_probe_amd64_test.go:75: profiling changed emitted native code
+=== RUN   TestGCNativeProfileProbe/array-loop-copy-checksum
+    gc_native_profile_probe_amd64_test.go:75: profiling changed emitted native code
+=== RUN   TestGCNativeProfileProbe/tree-survival
+    gc_native_profile_probe_amd64_test.go:183: NATIVE_PROFILE_RESULT case=tree-survival exact_parity=true native_bytes=1455 mapped=1137 total=1455 samples=false
+--- FAIL: TestGCNativeProfileProbe (8.58s)
+    --- PASS: TestGCNativeProfileProbe/struct-allocation-access (1.67s)
+    --- PASS: TestGCNativeProfileProbe/array-allocation-access (2.78s)
+    --- PASS: TestGCNativeProfileProbe/array-fill (3.56s)
+    --- FAIL: TestGCNativeProfileProbe/array-copy-checksum (0.00s)
+    --- FAIL: TestGCNativeProfileProbe/array-loop-copy-checksum (0.00s)
+    --- PASS: TestGCNativeProfileProbe/tree-survival (0.54s)
+FAIL

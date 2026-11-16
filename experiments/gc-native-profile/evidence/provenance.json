@@ -1,0 +1,9 @@
+{
+  "production_source": "647a5098",
+  "probe_source": "38cbe04a",
+  "binary_sha256": "41be93fda2feb2b27eabdb5fa2af4fb5d386ad0cd612a4d2495e44ac0bd9219c",
+  "go": "go1.27.1",
+  "gomaxprocs": 1,
+  "tags": "wago_gc_direct_trusted_loop,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_fill_sse2,wago_gc_direct_copy,wago_gc_direct_array_alloc,wago_gc_direct_weighted_sum,wago_profile",
+  "samples_collected": false
+}

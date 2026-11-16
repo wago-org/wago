@@ -1,6 +1,6 @@
 # Direct bridge native profiling metadata qualification
 
-Source-only diagnostic, qualification pending. Build the exact seven direct
+Partial qualification: four of six pass; copy cases fail emitted-byte parity. See `evidence/summary.md`. Build the exact seven direct
 bridge tags plus `wago_profile`, then run `TestGCNativeProfileProbe` with
 `GC_NATIVE_PROFILE_OUT` naming a new output directory. No sampling tools are
 invoked. The test compares profiling disabled/enabled inside that binary for all

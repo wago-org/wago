@@ -1,0 +1,583 @@
+{
+  "allocation_elision": false,
+  "artifact_sha256": "92d43594c57e352e2c9d96961467378541455bc191652f5d1e176b5726bf6dfa",
+  "calls_per_mode": 128,
+  "case": "tree-survival",
+  "checksum": 67551,
+  "config": {
+    "NurseryBytes": 2097152,
+    "SurvivorBytes": 0,
+    "MinorPauseTargetMicros": 0,
+    "OldBlockBytes": 0,
+    "LargeObjectBytes": 0,
+    "StressNurseryBytes": 0,
+    "TinyHeapBytes": 0,
+    "TinyBlockBytes": 0,
+    "TinyStepBudget": 0,
+    "TinyPacingStepLimit": 0,
+    "ThroughputHeapBytes": 8388608,
+    "ThroughputPageBytes": 0,
+    "ThroughputClassLimit": 0,
+    "Profile": 0,
+    "Allocator": 0,
+    "Runtime": 0,
+    "ExperimentalDirectOffsets": true,
+    "ExperimentalCompactOffsets": false,
+    "ExperimentalCompactAge2": false,
+    "CollectEveryAlloc": false,
+    "ForceMajorEveryMinor": false,
+    "VerifyAfterCollect": false,
+    "PoisonFreed": false,
+    "StressBarriers": false,
+    "DisableMovingNursery": false,
+    "DisableCollection": false,
+    "TinyCollectEveryAlloc": false,
+    "TinyStepEveryAlloc": false
+  },
+  "events": [
+    {
+      "thread_id": 202,
+      "sequence": 1,
+      "timestamp_ns": 23799547725994,
+      "kind": "load",
+      "image_id": 4,
+      "image": {
+        "compiler_sites": [
+          {
+            "offset": 40,
+            "size": 4,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 373,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 404,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 740,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 854,
+            "size": 4,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 886,
+            "size": 5,
+            "kind": "gp-reload"
+          },
+          {
+            "offset": 932,
+            "size": 5,
+            "kind": "gp-reload"
+          },
+          {
+            "offset": 979,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 993,
+            "size": 5,
+            "kind": "gp-reload"
+          },
+          {
+            "offset": 1053,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1203,
+            "size": 4,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1207,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1212,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1217,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1245,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1249,
+            "size": 5,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1254,
+            "size": 5,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1259,
+            "size": 5,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1310,
+            "size": 5,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1323,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1347,
+            "size": 5,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1356,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1361,
+            "size": 5,
+            "kind": "gp-local-store"
+          },
+          {
+            "offset": 1366,
+            "size": 4,
+            "kind": "gp-local-load"
+          },
+          {
+            "offset": 1370,
+            "size": 5,
+            "kind": "gp-local-load"
+          }
+        ],
+        "compiler_site_coverage": "explicit-operand-spills-reloads-and-memory-bounds-branches-and-direct-gp-local-frame-transfers",
+        "sources": [
+          {
+            "offset": 40,
+            "size": 13,
+            "function": 0,
+            "wasm_offset": 4
+          },
+          {
+            "offset": 53,
+            "size": 324,
+            "function": 0,
+            "wasm_offset": 13
+          },
+          {
+            "offset": 377,
+            "size": 10,
+            "function": 0,
+            "wasm_offset": 16
+          },
+          {
+            "offset": 387,
+            "size": 6,
+            "function": 0,
+            "wasm_offset": 21
+          },
+          {
+            "offset": 393,
+            "size": 11,
+            "function": 0,
+            "wasm_offset": 22
+          },
+          {
+            "offset": 404,
+            "size": 4,
+            "function": 0,
+            "wasm_offset": 24
+          },
+          {
+            "offset": 408,
+            "size": 6,
+            "function": 0,
+            "wasm_offset": 28
+          },
+          {
+            "offset": 414,
+            "size": 16,
+            "function": 0,
+            "wasm_offset": 29
+          },
+          {
+            "offset": 430,
+            "size": 305,
+            "function": 0,
+            "wasm_offset": 33
+          },
+          {
+            "offset": 735,
+            "size": 9,
+            "function": 0,
+            "wasm_offset": 36
+          },
+          {
+            "offset": 744,
+            "size": 3,
+            "function": 0,
+            "wasm_offset": 37
+          },
+          {
+            "offset": 840,
+            "size": 14,
+            "function": 1,
+            "wasm_offset": 3
+          },
+          {
+            "offset": 854,
+            "size": 12,
+            "function": 1,
+            "wasm_offset": 4
+          },
+          {
+            "offset": 866,
+            "size": 15,
+            "function": 1,
+            "wasm_offset": 8
+          },
+          {
+            "offset": 881,
+            "size": 41,
+            "function": 1,
+            "wasm_offset": 11
+          },
+          {
+            "offset": 922,
+            "size": 46,
+            "function": 1,
+            "wasm_offset": 17
+          },
+          {
+            "offset": 968,
+            "size": 11,
+            "function": 1,
+            "wasm_offset": 21
+          },
+          {
+            "offset": 979,
+            "size": 4,
+            "function": 1,
+            "wasm_offset": 23
+          },
+          {
+            "offset": 983,
+            "size": 46,
+            "function": 1,
+            "wasm_offset": 25
+          },
+          {
+            "offset": 1029,
+            "size": 11,
+            "function": 1,
+            "wasm_offset": 29
+          },
+          {
+            "offset": 1040,
+            "size": 4,
+            "function": 1,
+            "wasm_offset": 31
+          },
+          {
+            "offset": 1044,
+            "size": 4,
+            "function": 1,
+            "wasm_offset": 32
+          },
+          {
+            "offset": 1048,
+            "size": 9,
+            "function": 1,
+            "wasm_offset": 33
+          },
+          {
+            "offset": 1057,
+            "size": 4,
+            "function": 1,
+            "wasm_offset": 34
+          },
+          {
+            "offset": 1203,
+            "size": 32,
+            "function": 2,
+            "wasm_offset": 8
+          },
+          {
+            "offset": 1235,
+            "size": 10,
+            "function": 2,
+            "wasm_offset": 10
+          },
+          {
+            "offset": 1245,
+            "size": 35,
+            "function": 2,
+            "wasm_offset": 14
+          },
+          {
+            "offset": 1280,
+            "size": 14,
+            "function": 2,
+            "wasm_offset": 21
+          },
+          {
+            "offset": 1294,
+            "size": 13,
+            "function": 2,
+            "wasm_offset": 25
+          },
+          {
+            "offset": 1307,
+            "size": 3,
+            "function": 2,
+            "wasm_offset": 27
+          },
+          {
+            "offset": 1310,
+            "size": 5,
+            "function": 2,
+            "wasm_offset": 29
+          },
+          {
+            "offset": 1315,
+            "size": 24,
+            "function": 2,
+            "wasm_offset": 33
+          },
+          {
+            "offset": 1339,
+            "size": 8,
+            "function": 2,
+            "wasm_offset": 35
+          },
+          {
+            "offset": 1347,
+            "size": 5,
+            "function": 2,
+            "wasm_offset": 38
+          },
+          {
+            "offset": 1352,
+            "size": 4,
+            "function": 2,
+            "wasm_offset": 42
+          },
+          {
+            "offset": 1356,
+            "size": 24,
+            "function": 2,
+            "wasm_offset": 45
+          },
+          {
+            "offset": 1380,
+            "size": 10,
+            "function": 2,
+            "wasm_offset": 51
+          },
+          {
+            "offset": 1390,
+            "size": 16,
+            "function": 2,
+            "wasm_offset": 53
+          },
+          {
+            "offset": 1406,
+            "size": 6,
+            "function": 2,
+            "wasm_offset": 55
+          }
+        ],
+        "source_coverage": "opcode-lowering-and-deferred-origins",
+        "id": 4,
+        "module_id": "92d43594c57e352e2c9d96961467378541455bc191652f5d1e176b5726bf6dfa",
+        "artifact_id": "5e542bbd0e34d96dc9123e0113288c0a6c93770d05421233d1c0be12196b3a7f",
+        "base": 140180565192704,
+        "size": 1455,
+        "target": "linux/amd64",
+        "regions": [
+          {
+            "offset": 0,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 0,
+            "name": "build"
+          },
+          {
+            "offset": 17,
+            "size": 773,
+            "kind": "guest-body",
+            "function": 0,
+            "name": "build"
+          },
+          {
+            "offset": 790,
+            "size": 10,
+            "kind": "padding",
+            "function": -1
+          },
+          {
+            "offset": 800,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 1,
+            "name": "sum"
+          },
+          {
+            "offset": 817,
+            "size": 317,
+            "kind": "guest-body",
+            "function": 1,
+            "name": "sum"
+          },
+          {
+            "offset": 1134,
+            "size": 18,
+            "kind": "padding",
+            "function": -1
+          },
+          {
+            "offset": 1152,
+            "size": 17,
+            "kind": "entry-adapter",
+            "function": 2,
+            "name": "performance"
+          },
+          {
+            "offset": 1169,
+            "size": 286,
+            "kind": "guest-body",
+            "function": 2,
+            "name": "performance"
+          }
+        ],
+        "functions": [
+          {
+            "index": 0,
+            "name": "build",
+            "native_bytes": 790,
+            "frame_bytes": 56,
+            "emitted_spills": 0,
+            "emitted_reloads": 0,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "gcnative": 2,
+              "hostsync": 2,
+              "mixed": 2
+            },
+            "compiler_decisions": {
+              "cmp-branch-fuse": 1,
+              "frame-header-elide": 1,
+              "mixed-call-reg-arg": 2
+            }
+          },
+          {
+            "index": 1,
+            "name": "sum",
+            "native_bytes": 334,
+            "frame_bytes": 40,
+            "emitted_spills": 0,
+            "emitted_reloads": 3,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "mixed": 2
+            },
+            "compiler_decisions": {
+              "commute-mem-left": 1,
+              "frame-header-elide": 1,
+              "late-frame-commute": 1,
+              "lone-predicate": 1,
+              "mixed-call-reg-arg": 2,
+              "recursive-stack-merge": 1
+            }
+          },
+          {
+            "index": 2,
+            "name": "performance",
+            "native_bytes": 303,
+            "frame_bytes": 56,
+            "emitted_spills": 0,
+            "emitted_reloads": 0,
+            "emitted_bounds_checks": 0,
+            "emitted_calls": {
+              "mixed": 4
+            },
+            "compiler_decisions": {
+              "br-pair-fold": 1,
+              "cmp-branch-fuse": 1,
+              "commute-mem-left": 2,
+              "compact-loop-align32": 1,
+              "frame-header-elide": 1,
+              "gc-direct-loop-no-plan": 1,
+              "mixed-call-reg-arg": 2
+            }
+          }
+        ],
+        "code": "SInzUUiLB+gFAAAAWUiJAcNIgew4AAAASItzuEg59A+CzgIAAEGJxESJJCRFheQPhU4BAAC/AAAAAEiJfCQIvwAAAABIiXwkEL8BAAAASIl8JBi/AAAAAEiJfCQgQVBMi4Po/v//SYtAEIsQTYtACEGLQESD+AEPhZ8AAABNi0g4RYsRRTtQLA+FjgAAAEGLSEBBOcoPh4EAAABEKdGD+SAPgnUAAABNi1gITQHTRInQwegDSYtwGEgBxkSJ0YPBIEGJE0HHQwQgAAAAQcdDCAAAAABBx0MMAAAAALgAAAAASYlDEEmJQxiLRCQQQYlDEItEJBhBiUMUi0QkIEGJQxi4AQAAAIgGQYkJQYlILESJ0EiJRCQQ6QUAAAC4AAAAAIXAQVgPhU4AAABMi0PYSItEJAhJiUBISItEJBBJiUBQi0QkGEmJQFiLRCQgSYlAYEHHQEALAQBAQcdARAQAAQBB/1A4TItD2EmLgEgCAABIiUQkCESLJCRIi2wkCOllAQAARInng+8BSIn46ID+//9IicdEiyQkRInmg+4BSIl8JAhIifDoZv7//0iJx0iJfCQQvwEAAABIiXwkGL8AAAAASIl8JCBBUEyLg+j+//9Ji0AQixBNi0AIQYtARIP4AQ+FnwAAAE2LSDhFixFFO1AsD4WOAAAAQYtIQEE5yg+HgQAAAEQp0YP5IA+CdQAAAE2LWAhNAdNEidDB6ANJi3AYSAHGRInRg8EgQYkTQcdDBCAAAABBx0MIAAAAAEHHQwwAAAAAuAAAAABJiUMQSYlDGItEJBBBiUMQi0QkGEGJQxSLRCQgQYlDGLgBAAAAiAZBiQlBiUgsRInQSIlEJBDpBQAAALgAAAAAhcBBWA+FSgAAAEyLQ9hIi0QkCEmJQEhIi0QkEEmJQFCLRCQYSYlAWItEJCBJiUBgQcdAQAsCAEBBx0BEBAABAEH/UDhMi0PYSYuASAIAAEiJRCQISItsJAhEiyQkSInoSIHEOAAAAMO4AAAAAOkAAAAASItzmMdGEAEAAACJRhTHBg0AAABIi2PowwAAAAAAAAAAAABIifNRSIsH6AUAAABZSIkBw0iB7CgAAABIi3O4SDn0D4LoAAAASYnETInnSIX/QA+Ux0APtv9MiSQkhf8PhA8AAAC/AAAAAEiJfCQI6bAAAABMiWQkCEiLfCQIhf8PhM0AAACJ/0iLs+j+//9Ii3YISIt2CEgB/ot+GEiJfCQITIlkJBBIi3wkEIX/D4SfAAAAif9Ii7Po/v//SIt2CEiLdghIAf6LfhBIifjoYf///0iJx0yLJCRIiXwkEEyJZCQYSIt8JBiF/w+EYgAAAIn/SIuz6P7//0iLdghIi3YISAH+i34USIn46CT///9IiccDfCQQA3wkCEiJfCQITIskJItEJAhIgcQoAAAAw7gAAAAA6QAAAABIi3OYx0YQAgAAAIlGFMcGDQAAAEiLY+jDuP////9Ii3OYx0YQAgAAAIlGFMcGEAAAAEiLY+jDAAAAAAAAAAAAAAAAAAAAAAAASInzUUiLB+gFAAAAWUiJAcNIgew4AAAASItzuEg59A+C5wAAAEGJxzHARTHkRTHtRTH2RIk8JESJZCQIRIlsJBBMiXQkGLgKAAAA6EH7//9IicdIi3OQSIs2SIk+RIs8JESLZCQIRItsJBBMi3QkGGYPH4QAAAAAAA8fgAAAAABFOfwPg1sAAAAPH0QAALgKAAAA6Pn6//9IicdJif5Ei2wkEEyJ90yJbCQgTIl0JBhIifjo+f3//0iJx0GJ/UQDbCQgRItkJAhBg8QBRIlkJAhEiWwkEESLPCRMi3QkGOmc////SIt7kEiLP0iLN0yJbCQgSInw6Lb9//9IiceJ+ANEJCBIgcQ4AAAAw7gAAAAA6QAAAABIi3OYx0YQAwAAAIlGFMcGDQAAAEiLY+jD"
+      }
+    },
+    {
+      "thread_id": 199,
+      "sequence": 2,
+      "timestamp_ns": 23800058266897,
+      "kind": "retire",
+      "image_id": 4
+    }
+  ],
+  "exact_native_parity": true,
+  "image_count": 1,
+  "loaded_byte_parity": true,
+  "mapped_native_bytes": 1137,
+  "native_bytes": 1455,
+  "native_sha256": "7593c071979774dbb7c8f14e0d6fd88c647e3c4996b0f994fce62923efb1e3b0",
+  "plain_stats": {
+    "Allocations": 8646528,
+    "MinorCollections": 130,
+    "FullCollections": 1,
+    "MinorObjectsScanned": 0,
+    "MinorRememberedScanned": 0,
+    "YoungBytesCopied": 0,
+    "PromotedBytes": 0,
+    "LiveObjects": 189700,
+    "TenuringThreshold": 0
+  },
+  "profile_stats": {
+    "Allocations": 8646528,
+    "MinorCollections": 130,
+    "FullCollections": 1,
+    "MinorObjectsScanned": 0,
+    "MinorRememberedScanned": 0,
+    "YoungBytesCopied": 0,
+    "PromotedBytes": 0,
+    "LiveObjects": 189700,
+    "TenuringThreshold": 0
+  },
+  "samples_collected": false,
+  "status": {
+    "clock": "monotonic",
+    "dropped_spans": 0,
+    "dropped_records": 0,
+    "retained_bytes": 7102,
+    "closed": false
+  },
+  "total_image_bytes": 1455,
+  "unmapped_native_bytes": 318
+}

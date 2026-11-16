@@ -1,0 +1,5 @@
+# github.com/wago-org/wago/src/wago [github.com/wago-org/wago/src/wago.test]
+src/wago/gc_native_profile_probe_amd64_test.go:74:26: plain.code undefined (type *Module has no field or method code)
+src/wago/gc_native_profile_probe_amd64_test.go:74:41: observed.code undefined (type *Module has no field or method code)
+src/wago/gc_native_profile_probe_amd64_test.go:175:126: plain.code undefined (type *Module has no field or method code)
+src/wago/gc_native_profile_probe_amd64_test.go:183:127: plain.code undefined (type *Module has no field or method code)
