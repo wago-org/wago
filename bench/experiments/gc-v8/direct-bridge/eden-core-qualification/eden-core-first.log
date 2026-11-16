@@ -1,0 +1,6 @@
+--- FAIL: TestAge2PolicyFootprint (0.00s)
+    age2_footprint_test.go:10: collector=256 policy=0 first_regular_offset=32 enabled_build=false
+    age2_footprint_test.go:15: default leading layout changed
+FAIL
+FAIL	github.com/wago-org/wago/experiments/compactgc	0.020s
+FAIL

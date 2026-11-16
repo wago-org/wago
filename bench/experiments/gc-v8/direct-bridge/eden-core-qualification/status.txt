@@ -1,0 +1,11 @@
+default-core 0
+eden-core 0
+coexist-core 0
+reject-wago_gc_compact_cohort 0
+reject-wago_gc_compact_shadow 0
+reject-wago_gc_compact_age2_metrics 0
+reject-wago_gc_compact_age2_queue_reuse 0
+reject-wago_gc_compact8 0
+eden-race 0
+default-regression 0
+tinygo-core 0
