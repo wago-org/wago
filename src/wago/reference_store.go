@@ -2897,6 +2897,9 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 		return gc.Null(), fmt.Errorf("invalid or stale GC reference token")
 	}
 	owner := entry.owner
+	if target.gc.UsesDirectOffsets() && owner != target {
+		return gc.Null(), fmt.Errorf("direct-offset argument token must belong to the receiving instance")
+	}
 	ownerState := owner.existingPublicGCState()
 	if ownerState == nil {
 		return gc.Null(), fmt.Errorf("GC reference token owner state is unavailable")

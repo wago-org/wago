@@ -33,17 +33,23 @@ func (b *instanceBuilder) admitDirectGCExperiment() error {
 	if len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryImport != "" || c.usesManagedFunctionStorage() || c.hasOpaqueExternFrames() || c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.usesAtomicWaitHelpers() || len(c.customInstructions) != 0 || (b.opts.runtime != nil && len(b.opts.runtime.plugins) != 0) {
 		return errors.New("wago: direct-offset GC does not admit imports, tables, exceptions, custom collectors, or managed external references")
 	}
-	// Numeric arguments avoid introducing a partially audited incoming reference
-	// boundary. Reference results and owned GC globals remain supported and rooted.
+	// Managed-reference arguments use authenticated same-instance public tokens,
+	// exact argument roots and the existing compiler frame-root receipt.
 	for _, idx := range c.Exports {
 		if idx < 0 || idx >= len(c.Funcs) {
 			return errors.New("wago: invalid direct-offset export")
 		}
-		for _, v := range c.Funcs[idx].Params {
+		exact, _, err := exactFuncSignatureView(c.Funcs[idx], c.Types)
+		if err != nil {
+			return err
+		}
+		for i, v := range c.Funcs[idx].Params {
 			switch v {
 			case ValI32, ValI64, ValF32, ValF64, ValV128:
 			default:
-				return errors.New("wago: direct-offset exported arguments must be numeric")
+				if compact || i >= len(exact) || !directManagedArgumentType(exact[i], c.Types) {
+					return errors.New("wago: direct-offset exported arguments require numeric or managed reference types")
+				}
 			}
 		}
 	}
@@ -79,4 +85,20 @@ func validCompactReceipts(c *Compiled) bool {
 	h, n := c.gcCompactHelperReceipt(), c.gcCompactNativeReceipt()
 	return (h == gc.CompactABIVersion && n == 0) ||
 		(h == 0 && n == gc.CompactNativeABIVersion && compactNativeRuntimeEnabled)
+}
+
+// Keep function, external, exception and string reference families excluded.
+func directManagedArgumentType(v ValueTypeDescriptor, types []DefinedTypeDescriptor) bool {
+	if v.Kind != ValueTypeReference {
+		return false
+	}
+	h := v.Ref.Heap
+	if h.Defined {
+		return int(h.TypeIndex) < len(types) && (types[h.TypeIndex].Kind == CompositeTypeStruct || types[h.TypeIndex].Kind == CompositeTypeArray)
+	}
+	switch h.Abstract {
+	case AbstractHeapStruct, AbstractHeapArray, AbstractHeapEq, AbstractHeapAny, AbstractHeapI31, AbstractHeapNone:
+		return !v.Ref.Exact
+	}
+	return false
 }
