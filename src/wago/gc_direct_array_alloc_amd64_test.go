@@ -1,4 +1,4 @@
-//go:build linux && ((amd64 && wago_gc_direct_array_alloc) || wago_gc_direct_trusted_alloc)
+//go:build linux && ((amd64 && wago_gc_direct_array_alloc || wago_gc_direct_fill) || wago_gc_direct_trusted_alloc)
 
 package wago
 
