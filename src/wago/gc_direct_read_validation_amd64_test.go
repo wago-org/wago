@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_reads
+//go:build linux && amd64 && (wago_gc_direct_reads || wago_gc_direct_alloc)
 
 package wago
 

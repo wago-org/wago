@@ -12,7 +12,9 @@ package gc
 // Encoding invariants:
 //   - 0 is null.
 //   - low bit 1 is an i31 immediate; bits 1..31 store the low 31 bits.
-//   - low bit 0 and non-zero is a heap-object handle (handle index << 1).
+//   - low bit 0 and non-zero is an object reference. The default collector
+//     encodes a handle index << 1; ExperimentalDirectOffsets encodes a byte
+//     offset into its arena instead. References are always collector-local.
 //
 // Refs are integer guest values, never Go pointers. Native code may keep them in
 // registers/spill slots and exact safepoint maps will identify which slots hold
