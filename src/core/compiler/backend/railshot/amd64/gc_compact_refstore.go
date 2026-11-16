@@ -72,7 +72,11 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 	guard := func(c Cond) { failures = append(failures, a.JccPlaceholder(c)) }
 	// Fixed-size two-object verification, never a descriptor/field-count walk.
 	// Leaves ref in R10, object in R9, collector view in R8 and size in RDX.
-	resolve := func(typ uint32, slot int) {
+	// The optional second resolution reuses only immutable view/backing checks
+	// from the first. No call, safepoint or write intervenes. Each operand still
+	// checks its own type-map bound, reference, start, region, type and full
+	// physical extent. Reloading the same pointers avoids extra pinned state.
+	resolve := func(typ uint32, slot int, reuseCheckedView bool) {
 		header, payload, stride, width, valid := f.compactObjectGeometry(typ)
 		if !valid {
 			panic("amd64: invalid compact store geometry")
@@ -85,30 +89,36 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 		a.TestSelf(RAX, false)
 		guard(condNE)
 		a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-		a.TestSelf(R8, true)
-		guard(condE)
-		a.Load32(RAX, R8, gc.CompactInstanceVersionOffset)
-		a.AluRI(cmpDigit, RAX, int32(gc.CompactNativeABIVersion), false)
-		guard(condNE)
-		a.Load32(RAX, R8, gc.CompactInstanceSizeOffset)
-		a.AluRI(cmpDigit, RAX, gc.CompactInstanceViewABISize, false)
-		guard(condNE)
+		if !reuseCheckedView {
+			a.TestSelf(R8, true)
+			guard(condE)
+			a.Load32(RAX, R8, gc.CompactInstanceVersionOffset)
+			a.AluRI(cmpDigit, RAX, int32(gc.CompactNativeABIVersion), false)
+			guard(condNE)
+			a.Load32(RAX, R8, gc.CompactInstanceSizeOffset)
+			a.AluRI(cmpDigit, RAX, gc.CompactInstanceViewABISize, false)
+			guard(condNE)
+		}
 		a.Load32(RAX, R8, gc.CompactInstanceLocalTypeCountOffset)
 		a.AluRI(cmpDigit, RAX, int32(typ), false)
 		guard(condBE)
 		a.Load64(RAX, R8, gc.CompactInstanceLocalTypesOffset)
-		a.TestSelf(RAX, true)
-		guard(condE)
+		if !reuseCheckedView {
+			a.TestSelf(RAX, true)
+			guard(condE)
+		}
 		a.Load32(R11, RAX, int32(typ*4))
 		a.Load64(R8, R8, gc.CompactInstanceCollectorOffset)
-		a.TestSelf(R8, true)
-		guard(condE)
-		a.Load32(RAX, R8, gc.CompactViewVersionOffset)
-		a.AluRI(cmpDigit, RAX, int32(gc.CompactNativeABIVersion), false)
-		guard(condNE)
-		a.Load32(RAX, R8, gc.CompactViewSizeOffset)
-		a.AluRI(cmpDigit, RAX, gc.CompactCollectorViewSize, false)
-		guard(condNE)
+		if !reuseCheckedView {
+			a.TestSelf(R8, true)
+			guard(condE)
+			a.Load32(RAX, R8, gc.CompactViewVersionOffset)
+			a.AluRI(cmpDigit, RAX, int32(gc.CompactNativeABIVersion), false)
+			guard(condNE)
+			a.Load32(RAX, R8, gc.CompactViewSizeOffset)
+			a.AluRI(cmpDigit, RAX, gc.CompactCollectorViewSize, false)
+			guard(condNE)
+		}
 		a.AluRM(cmpRMcode, R10, R8, gc.CompactViewNurseryStartOffset, false)
 		old := a.JccPlaceholder(condB)
 		a.Load32(RCX, R8, gc.CompactViewNurseryBumpOffset)
@@ -127,8 +137,10 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 		a.AluRM(cmpRMcode, RAX, R8, gc.CompactViewStartCountOffset, false)
 		guard(condAE)
 		a.Load64(R9, R8, gc.CompactViewStartsOffset)
-		a.TestSelf(R9, true)
-		guard(condE)
+		if !reuseCheckedView {
+			a.TestSelf(R9, true)
+			guard(condE)
+		}
 		a.Add64(R9, RAX)
 		a.LoadIdx(RAX, R9, RSP, 0, 1, false, false)
 		a.AluRI(cmpDigit, RAX, 1, false)
@@ -140,8 +152,10 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 		a.AluRI(cmpDigit, RAX, int32(header), false)
 		guard(condB)
 		a.Load64(R9, R8, gc.CompactViewArenaOffset)
-		a.TestSelf(R9, true)
-		guard(condE)
+		if !reuseCheckedView {
+			a.TestSelf(R9, true)
+			guard(condE)
+		}
 		a.Add64(R9, R10)
 		a.AluRI(cmpDigit, RCX, int32(header), false)
 		guard(condB)
@@ -168,7 +182,7 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 		guard(condA)
 
 	}
-	resolve(t, argSlot)
+	resolve(t, argSlot, false)
 	// Validate complete logical length and selected physical slot before looking
 	// at the child, preserving parent/bounds error precedence on the helper path.
 	a.Load32(RAX, R9, 4)
@@ -199,7 +213,7 @@ func (f *fn) emitCompactRefArraySet(t uint32, argSlot int) {
 	a.Load32(R10, RSP, f.spillOff(argSlot+2)+delta)
 	a.TestSelf(R10, false)
 	null := a.JccPlaceholder(condE)
-	resolve(child, argSlot+2)
+	resolve(child, argSlot+2, gcCompactSharedChecks)
 	a.PatchRel32(null, a.Len())
 	// All checks are complete; the one reference store cannot trigger collection.
 	a.Store32(RDI, 0, R10)
