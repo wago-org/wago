@@ -124,3 +124,19 @@ boundaries remain rejected. The previous default full-engine qualification does
 not substitute for a new full-engine run after this adapter change.
 
 No compact-runtime speedup or V8 parity has been measured at this checkpoint.
+
+### Default engine compatibility requalification
+
+At source `4d4b2b39`, the unfiltered default suites passed: Wago 39.440 s,
+native collector 2.091 s, checked wrapper 0.002 s, AMD64 backend 6.156 s,
+direct substrate 0.025 s, and compact substrate 0.011 s. Full native `wagodebug`
+passed (2.357 s); TinyGo 0.42 host tests with `-scheduler=tasks` passed for native
+(2.203 s) and checked wrapper (0.002 s). This replaces the pending-default-run
+caveat above; it does not expand compact runtime feature admission.
+
+The completed same-source full helper-backend experiment found compact slower on
+all six workloads despite smaller struct/tree objects and fewer collections. See
+`bench/experiments/gc-v8/direct-bridge/matched-compact-helper/evidence/summary.md`.
+Those measurements predate the subsequent checked single-resolution `Payload`
+fix; no speedup from that fix is claimed without new measurements. No compact
+native-read emitter is included in this checkpoint, and V8 parity remains unmet.
