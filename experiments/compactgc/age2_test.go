@@ -183,3 +183,45 @@ func TestAge2OversizedAndZeroAllocationCollection(t *testing.T) {
 	}
 	allocations(t, c, 1)
 }
+
+func TestAge2MixedFullFailureAndCapZero(t *testing.T) {
+	var nilHeap *Collector
+	if n, a, cap := nilHeap.YoungBudget(); n != 0 || a != 0 || cap != 0 {
+		t.Fatal("nil budget")
+	}
+	c := ageHeap(t, 128, 32, 32, node)
+	a, b, p := obj(t, c, 0), obj(t, c, 0), obj(t, c, 0)
+	if e := c.Minor([]*Ref{&a, &b, &p}); e != nil {
+		t.Fatal(e)
+	}
+	set(t, c, a, 0, b)
+	set(t, c, p, 0, a)
+	roots := []*Ref{&p}
+	rootBefore := p
+	arena := append([]byte(nil), c.arena...)
+	dirty := append([]bool(nil), c.dirty...)
+	remembered := append([]Ref(nil), c.remembered...)
+	if e := c.Full(roots); e != ErrOOM {
+		t.Fatal("expected mixed full OOM", e)
+	}
+	if p != rootBefore || !bytes.Equal(arena, c.arena) || !reflect.DeepEqual(dirty, c.dirty) || !reflect.DeepEqual(remembered, c.remembered) {
+		t.Fatal("full failure changed graph or barriers")
+	}
+	set(t, c, a, 0, 0)
+	if e := c.Full(roots); e != nil {
+		t.Fatal("retry", e)
+	}
+	if c.young(p) || c.young(edge(t, c, p, 0)) {
+		t.Fatal("full retained young")
+	}
+	allocations(t, c, 3)
+	z := ageHeap(t, 64, 128, 0, node)
+	r := obj(t, z, 0)
+	if e := z.Minor([]*Ref{&r}); e != nil {
+		t.Fatal(e)
+	}
+	if z.young(r) {
+		t.Fatal("cap0 retained survivor")
+	}
+	allocations(t, z, 1)
+}

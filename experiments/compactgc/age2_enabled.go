@@ -30,6 +30,9 @@ func NewAge2WithTypes(totalYoungBytes, oldBytes, survivorCapBytes uint32, types 
 }
 func (c *Collector) Age2Enabled() bool { return c != nil && c.age2 }
 func (c *Collector) YoungBudget() (total, active, cap uint32) {
+	if c == nil {
+		return 0, 0, 0
+	}
 	if !c.Age2Enabled() {
 		return c.nurseryEnd - c.nurseryStart, c.nurseryEnd - c.nurseryStart, 0
 	}
