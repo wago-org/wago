@@ -24,3 +24,20 @@ Independent actual-source review found no blocker. Go 1.27.1, serial `-p 1`:
 - Default untagged `TestReferenceGlobalPersistenceAndFootprintsStayBounded`: PASS 0.007s.
 
 No source fixes were required. No performance timing was conducted. Compact-mode shared-emitter composition should be requalified during canonical integration; the source-only checkpoint status above predates these direct-mode tests.
+
+## Correct-tag canonical requalification
+
+Canonical production source `570e788c` passed shared compact-SIMD runtime/regalloc
+(1.225s) and strongest direct-SIMD runtime/regalloc (1.077s), followed by full
+default Wago (51.192s), amd64 backend (10.649s), native GC (2.875s), direct core
+(0.029s), and compact core (0.022s). These commands used the supported tag
+`wago_regalloccheck`, not the unsupported spelling recorded in initial worker runs.
+
+After the instrumentation audit, explicit fresh runs used `wago_regalloccheck`
+for BOTH direct scalar and SSE variants with trusted alloc/refstruct, array alloc,
+fill SSE2, and copy enabled. Backend selection/matcher/pressure filters passed
+0.040s/0.044s; runtime `^(TestDirectGC|TestTrustedDirect|TestCompactNativeWeighted)`
+passed 1.013s/1.032s. Shared compact weighted-SSE backend pressure/selection tests
+also passed 0.023s with the correct tag and codegenstats. No production fixes were
+needed. These new runs supersede only the earlier instrumentation claim, not the
+historical commands or timing records. No performance measurement is implied.
