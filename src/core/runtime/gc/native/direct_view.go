@@ -14,13 +14,14 @@ import (
 // NativeCollectorView/NativeInstanceView, even when basedata reuses one slot.
 const DirectABIVersion uint32 = 4
 
-// AllocationEnabled permits only admitted pointer-free scalar struct creation.
-// The generated allocator must check every bound/layout before its first store,
-// initialize header/payload/padding, publish the start byte, advance BOTH the
-// authoritative cursor and NurseryBump, and increment the allocation counter
-// exactly once before exposing the result. No call, trap or safepoint may occur
-// during publication. Disabled views expose no writable word addresses. Stats
-// accounting uses its actual uint64 field, with the existing modulo arithmetic.
+// AllocationEnabled permits constructors selected by the admitted compiler policy:
+// bounded scalar/reference structs and numeric arrays. Before any store, validate
+// all dynamic bounds and the policy's remaining layout guards. Initialize the
+// complete header/payload/padding, publish the start byte, then advance BOTH the
+// authoritative cursor and NurseryBump before exposing the result. No call, trap
+// or safepoint may occur during publication. Disabled views expose no writable
+// word addresses. ABI4 defers accounting to collection and Stats snapshots; the
+// former counter pointer stays reserved zero and MUST NOT be dereferenced.
 type DirectCollectorView struct {
 	Version                                      uint32
 	Size                                         uint32
@@ -31,8 +32,8 @@ type DirectCollectorView struct {
 	StartCount                                   uint32
 	_                                            uint32
 	NurseryStart, NurseryBump, OldStart, OldBump uint32
-	// ABI2 allocation capability. Zero pointers when disabled. The actual cursor
-	// and Stats counter are owned by the collector, not copies in this view.
+	// Allocation capability. Zero pointers when disabled. The actual cursor
+	// is owned by the collector, not a copy in this view.
 	NurseryBumpAddress uintptr
 	NurseryEnd         uint32
 	AllocationEnabled  uint32
