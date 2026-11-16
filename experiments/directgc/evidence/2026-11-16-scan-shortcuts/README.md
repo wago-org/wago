@@ -38,3 +38,19 @@ remain necessary before reporting the overall GC checkpoint qualified.
 Reproduce with `go test -c ./experiments/directgc`, then alternate baseline and
 candidate binaries with `-test.run '^$'`, `-test.count=1`, and benchmark selectors
 `^BenchmarkRetirementTraversal$` or `^BenchmarkFullTracingShapes$`.
+
+## Integrated correctness qualification
+
+Source93c7ec34: default wrapper/native/direct/compact collectors, AMD64 backend
+and full `src/wago` pass. Fresh full Wago execution took57.963s; final corrected
+aggregate invocation reused passing cached results. Native wagodebug passes.
+Strong direct range+weighted composition with trusted refstruct/allocation,
+SSE2 fill, copy, `wago_regalloccheck wago_codegenstats` passes applicable direct/
+trusted runtime cases and backend pair/range/weighted/loop/mode selections.
+Patched TinyGo0.42 tasks-scheduler tests pass directgc, native and wrapper GC.
+
+Initial commands failed due unwritable default GOPATH and an incorrect backend
+path; corrected commands use `/workspace/shared/go-path` and
+`src/core/compiler/backend/railshot/amd64`. Failed setup logs are retained beside
+successful retries. These are correctness results, not additional performance
+qualification or proof that every experimental feature supports all WasmGC.

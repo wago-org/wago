@@ -1,0 +1,9 @@
+# ./src/core/backend/railshot/amd64
+stat /workspace/shared/wago-gc-recovered/src/core/backend/railshot/amd64: directory not found
+FAIL	./src/core/backend/railshot/amd64 [setup failed]
+ok  	github.com/wago-org/wago/src/core/runtime/gc	0.005s
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	3.240s
+ok  	github.com/wago-org/wago/experiments/directgc	0.030s
+ok  	github.com/wago-org/wago/experiments/compactgc	(cached)
+ok  	github.com/wago-org/wago/src/wago	57.963s
+FAIL
