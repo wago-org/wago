@@ -25,6 +25,6 @@ this comparison. Source preparation alone supplies no performance conclusion.
 
 Recorded result: all 18 timed launches passed, with identical allocation and
 collection counts. Struct time was consistently lower with native reference
-stores (median75.66→22.87ms). Array and tree contained large opposing outliers;
+stores (median 75.66 → 22.87 ms). Array and tree contained large opposing outliers;
 the array median difference is inconclusive and the tree control supplies no
 reliable gain claim. Full samples, provenance and memory data are under evidence.

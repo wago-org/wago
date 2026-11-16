@@ -1,6 +1,6 @@
 # Matched ABI3 reference-array store experiment
 
-Source c08836aff24e0c3feb67edd40c237ae71a622c55. Same compiler/collector source and explicit64KiB Eden /8MiB per old semispace; only native allocator versus native refstore tag changes. Allocation elision off. Three fresh processes each,3warmup+5checked timed calls.
+Source c08836aff24e0c3feb67edd40c237ae71a622c55. Same compiler/collector source and explicit 64 KiB Eden / 8 MiB per old semispace; only native allocator versus native refstore tag changes. Allocation elision off. Three fresh processes each, with 3 warmup calls and 5 checked timed calls.
 
 | Workload | Variant | median ms | samples ms | timed minor/full | proc VmHWM MiB | Go heap MiB |
 |---|---|---:|---|---|---:|---:|
@@ -18,7 +18,7 @@ Exploratory native-store versus native-allocation median deltas:
 
 Noise warning: array and tree samples show large opposing outliers; the array median delta is inconclusive and the tree control supplies no reliable speed claim. Struct samples were consistently lower in all three launches.
 
-All successful launches require exact artifact SHA256, numeric checksums, expected per-call allocation counts, and actual collection. Full stdout/stderr, configurations, counters, binary hashes and /proc memory data are retained in rawJSON.
+All successful launches require exact artifact SHA256, numeric checksums, expected per-call allocation counts, and actual collection. Full stdout/stderr, configurations, counters, binary hashes and /proc memory data are retained in raw JSON.
 
 This short isolated experimental comparison does not establish V8 parity or a final runtime performance guarantee. Heap policies are fixed; any nursery-size experiment must be reported separately. Direct copied/promoted-byte and scan counters remain uninstrumented. Process memory includes Go and runtime overhead.
 
