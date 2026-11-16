@@ -1,6 +1,6 @@
 # Full-protocol experimental direct pipeline versus V8
 
-Source `ba95cd3043274f6a26814872436ea82c28f5659d`. Wago uses explicit 2048 KiB Eden and two 8 MiB old semispaces, with allocation elision disabled. One candidate combines checked native fill with trusted numeric-array access, reference-struct access and pointer-free allocation. Each fresh process performs 100 warmup invocations and 9 timed batches of 32 invocations. Three process rounds rotate workload and engine order. V8 uses `--no-liftoff`; exact versions and binary/artifact hashes are in raw JSON.
+Source `ba95cd3043274f6a26814872436ea82c28f5659d`. Wago uses explicit 2048 KiB Eden and two 8 MiB old semispaces, with allocation elision disabled. One candidate combines checked native fill with trusted numeric-array access, reference-struct access/allocation and native numeric-array allocation. Each fresh process performs 100 warmup invocations and 9 timed batches of 32 invocations. Three process rounds rotate workload and engine order. V8 uses `--no-liftoff`; exact versions and binary/artifact hashes are in raw JSON.
 
 | Workload | Engine | Median ms/call | Process medians ms | Ratio to V8 | <=1.15x gate | Timed minor/full | Median peak RSS MiB |
 |---|---|---:|---|---:|---|---|---:|
