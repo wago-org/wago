@@ -1947,6 +1947,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.beginAffineLoopSummary(r)
 				if f.affineLoop == nil {
+					if f.emitPopcountLoopSummary(r) {
+						fr.controlSite = f.a.Len()
+						f.pushCtrl(&fr)
+						return nil
+					}
 					f.emitPureReduce(r)
 					if f.loopMemory {
 						f.emitByteReduceLoop(r)
