@@ -22,7 +22,7 @@ func NewExperimentalDirectCollector(config Config, types []TypeDesc) (*Collector
 	return newExperimentalOffsetCollector(config, types)
 }
 func NewExperimentalCompactCollector(config Config, types []TypeDesc) (*Collector, error) {
-	if !directHeapCompact || !nativeCollectorFastPaths || config.ExperimentalDirectOffsets {
+	if !directHeapCompact || !compactTargetEnabled || config.ExperimentalDirectOffsets {
 		return nil, errors.New("gc: compact layout requires exclusive compact helper build/configuration")
 	}
 	config.ExperimentalCompactOffsets = true

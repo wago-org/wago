@@ -234,3 +234,73 @@ func TestCompactAdapterNumericPayloadGeometry(t *testing.T) {
 		t.Fatal("compact native ABI admitted")
 	}
 }
+
+func TestCompactAdapterReferenceBulkAndSIMD(t *testing.T) {
+	leaf, _ := NewStructDesc(0, []StorageKind{StorageI32})
+	arr, _ := NewArrayDesc(1, StorageRefNull)
+	vec, _ := NewArrayDesc(2, StorageV128)
+	c, e := NewExperimentalCompactCollector(Config{NurseryBytes: 256, ThroughputHeapBytes: 4096}, []TypeDesc{leaf, arr, vec})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	ar, e := c.NewArrayDefaultWithRoots(1, 4, EmptyRoots{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	root := Root(ar)
+	if e = c.CollectMinor(Slots{&root}); e != nil {
+		t.Fatal(e)
+	}
+	child, e := c.NewStructWithRoots(0, []Value{I32Value(55)}, Slots{&root})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.ArrayFill(Ref(root), 0, RefValue(child), 2); e != nil {
+		t.Fatal(e)
+	}
+	if e = c.ArrayCopy(Ref(root), 2, Ref(root), 0, 2); e != nil {
+		t.Fatal(e)
+	}
+	if e = c.CollectMinor(Slots{&root}); e != nil {
+		t.Fatal(e)
+	}
+	for i := uint32(0); i < 4; i++ {
+		v, e := c.ArrayGet(Ref(root), i)
+		if e != nil {
+			t.Fatal(e)
+		}
+		x, e := c.StructGet(v.Ref, 0)
+		if e != nil || x.Bits != 55 {
+			t.Fatal(x, e)
+		}
+	}
+	data := make([]byte, 32)
+	for i := range data {
+		data[i] = byte(i + 1)
+	}
+	vr, e := c.NewArrayDataWithRoots(2, 2, data, 0, Slots{&root})
+	if e != nil {
+		t.Fatal(e)
+	}
+	vh, e := c.direct.Header(directRef(vr))
+	if e != nil || vh.PayloadOffset != 16 {
+		t.Fatal(vh, e)
+	}
+	vrroot := Root(vr)
+	if e = c.CollectFull(Slots{&root, &vrroot}); e != nil {
+		t.Fatal(e)
+	}
+	view, e := c.ArrayPayload(Ref(vrroot))
+	if e != nil || len(view.Bytes) != 32 || cap(view.Bytes) != 32 {
+		t.Fatal(view, e)
+	}
+	for i, x := range view.Bytes {
+		if x != data[i] {
+			t.Fatal(i, x)
+		}
+	}
+	if _, _, e := c.checkedHeaderPayload(Null()); e == nil {
+		t.Fatal("null header accepted")
+	}
+}

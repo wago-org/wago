@@ -94,3 +94,12 @@ globals and exported tokens through relocation, initializer scratch roots,
 reference barriers, capacity failure, packed numeric payload borrows/copy/data
 initialization, and default native collector tests. This is not a complete
 conformance or performance qualification, and no V8 comparison is claimed.
+
+The compact-only targeted suite also checks reference-array fill/copy barriers,
+SIMD data construction/alignment through relocation, and graph cloning with
+declared subtypes, i31, nullable references and rejected wrong-type/non-null
+violations. Dedicated build-selected guards reject compact construction under
+TinyGo-target builds. Default native tests retain the 68-byte Config and
+3160-byte Collector footprint assertions; Compiled remains 808 bytes on AMD64.
+Legacy tests specifically requiring direct native ABI or handle-native code
+are not a compact-mode conformance suite and were not reported as passing.
