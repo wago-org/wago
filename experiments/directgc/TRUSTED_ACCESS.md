@@ -101,3 +101,19 @@ complete initialization/publication, exact accounting and rooted fallback.
 Reference stores must retain logical bounds and the remembered-parent barrier;
 a readonly dirty bit is a certificate of prior queue/overflow registration, not
 a bit the JIT may set independently.
+
+## First implementation checkpoint
+
+The opt-in `wago_gc_direct_trusted` compiler mode implements only the read
+reduction above. At `01c6c35`, its applicable `TestDirectGC*` and
+`TestTrustedDirect*` runtime tests pass with `wago_regalloccheck`, including
+unmodified retained workloads, moving roots, null provenance, receipt/private
+snapshot checks, and forged/stale/wrong-type/wrong-domain global token rejection.
+The dedicated trusted clone-ingress test rejects wrong-typed live source edges.
+Unfiltered default Wago, native/checked GC, AMD64 compiler and direct substrate
+tests also pass. `Compiled` footprint remains unchanged.
+
+This is not an unfiltered trusted-mode pass: ordinary handle/Tiny-specific tests
+cannot instantiate trusted artifacts, and checked-mode tests that deliberately
+corrupt private Go metadata do not apply to this attestation. They remain in the
+default/checked test sets. No trusted-read performance result is established yet.
