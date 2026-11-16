@@ -111,3 +111,22 @@ Queue-based scanning and scalar native allocation substantially improve the
 helper-heavy prototype, but these are not comparisons with the fully native
 handle backend or V8. The direct reference-store extension still needs its own
 matched timing. No V8 parity claim is made.
+
+### Integrated native-store checkpoint qualification
+
+At source `e28377e` (subsequent changes were documentation/probe preparation),
+Go 1.27.1 qualification passed:
+
+- `go test -p 1 -tags wago_gc_direct_refstore,wago_regalloccheck ./src/wago -run '^TestDirectGC' -count=1`.
+- Unfiltered tests in `./src/wago`, `./src/core/runtime/gc/native`,
+  `./src/core/runtime/gc`, `./src/core/compiler/backend/railshot/amd64`, and
+  `./experiments/directgc`, with `-p 1 -count=1` and default build tags.
+- TinyGo 0.42.0 host tests with `-scheduler=tasks` for native and checked GC
+  packages, including the new adapter code. This is not a TinyGo direct-runtime
+  performance or supported-mode claim.
+
+The default suite still exercises the default handle backend. The direct-mode
+run qualifies its admitted subset, including unmodified retained artifacts,
+constructor roots, public moving tokens/globals, malformed checked reads, native
+allocation accounting, and clean/dirty reference-store barriers. It does not
+establish full-feature experimental GC conformance or the requested V8 target.
