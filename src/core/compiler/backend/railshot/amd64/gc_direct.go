@@ -1296,9 +1296,7 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
-	a.Load32(RAX, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.LoadIdx(RAX, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condNE))
 	if !site.dynamic {
@@ -1739,8 +1737,6 @@ func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot,
 	addFallback := func(site int) { fallback = append(fallback, site) }
 
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
-	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
-	a.Load32(RDX, R10, int32(typeIndex*4))
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 
 	// A constructor may consume a batch prepared for a smaller type.
@@ -2650,9 +2646,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
 	addFallback(a.JccPlaceholder(condB))
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
@@ -2701,9 +2695,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 	a.Load64(R10, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R10, RAX)
-	a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.LoadIdx(RAX, R10, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
 	// Old/large parents may bypass the Go barrier for a young child only
@@ -2827,9 +2819,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
-	a.Load32(R10, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, R10, 16, false)
-	a.AluRI(4, R10, 0xff, false)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceNursery), false)
 	addFallback(a.JccPlaceholder(condB))
 	a.AluRI(cmpDigit, R10, int32(gc.NativeSpaceLarge), false)
@@ -2868,9 +2858,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	// Like V8's host-first write barrier, reject the generational case from the
 	// parent alone. Compact children are trusted JIT values, and a nursery parent
 	// cannot create an old-to-young edge, so avoid resolving the child handle.
-	a.Load32(RAX, R9, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.LoadIdx(RAX, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
 	parentNursery := a.JccPlaceholder(condE)
 
@@ -2887,9 +2875,7 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 	a.Load64(R10, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R10, RAX)
-	a.Load32(RAX, R10, gc.NativeHandleMetadataOffset)
-	a.ShiftImm(5, RAX, 16, false)
-	a.AluRI(4, RAX, 0xff, false)
+	a.LoadIdx(RAX, R10, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(RAX, false)
 	addFallback(a.JccPlaceholder(condE))
 	a.AluRI(cmpDigit, RAX, int32(gc.NativeSpaceNursery), false)
