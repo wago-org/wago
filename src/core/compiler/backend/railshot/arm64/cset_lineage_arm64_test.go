@@ -191,7 +191,7 @@ func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 		}
 	}
 	b := append([]byte(nil), base.B...)
-	for len(b) <= 4096 {
+	for len(b) <= csetLineageFunctionLimit {
 		b = append(b, 0x1f, 0x20, 0x03, 0xd5)
 	}
 	before := append([]byte(nil), b...)
@@ -199,6 +199,21 @@ func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 	f.foldCsetLineage(b, len(b), 0, nil)
 	if !bytes.Equal(b, before) {
 		t.Fatal("size cap")
+	}
+}
+
+func TestCsetLineageFinalizesMediumFunction(t *testing.T) {
+	a, _, _, cmp, _ := csetLineageFixture(true, false, true, true, Cond(3), condE)
+	padding := make([]byte, 4096)
+	for pc := range len(padding) / 4 {
+		wrWord(padding, pc*4, nopWord)
+	}
+	a.B = append(padding, a.B...)
+	sc := &scratch{asm: &a}
+	f := fn{a: &a, sc: sc, policy: currentCodegenPolicy()}
+	f.finalizePeepholes()
+	if rdWord(a.B, len(padding)+cmp) != nopWord {
+		t.Fatal("medium function did not reuse comparison flags")
 	}
 }
 

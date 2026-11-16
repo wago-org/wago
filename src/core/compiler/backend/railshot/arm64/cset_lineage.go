@@ -16,6 +16,8 @@ import (
 
 var csetLineageEnabled = os.Getenv("WAGO_ARM64_NO_CSET_LINEAGE") != "1"
 
+const csetLineageFunctionLimit = 8192
+
 func csetLineagePair(cmp, sel uint32) bool {
 	return cmp & ^uint32(31<<5) == 0x7100001f && sel&0x7fe00c00 == 0x1a800000 && sel>>12&15 < 2
 }
@@ -103,7 +105,7 @@ func csetLineageSetDead(b []byte, set, cmp, sel, n int, reg uint32) bool {
 // only exact W/X MOV copies propagate them. The pass adds no function metadata
 // and caps both function size and producer-to-consumer distance.
 func (f *fn) foldCsetLineage(b []byte, n, firstSet int, targets []uint64, entries ...int) {
-	if !f.opt(optCsetLineage) || n > 4096 || f.opaqueFragments || f.moduleEH || len(f.customInstructions) != 0 {
+	if !f.opt(optCsetLineage) || n > csetLineageFunctionLimit || f.opaqueFragments || f.moduleEH || len(f.customInstructions) != 0 {
 		return
 	}
 	var boundaries [16]uint64

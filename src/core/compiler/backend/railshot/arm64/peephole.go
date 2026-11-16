@@ -71,7 +71,7 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	addressSiteN := 0
 	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
 	guardedCandidate := false
-	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	lineageEligible := f.opt(optCsetLineage) && n <= csetLineageFunctionLimit && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
 	b = b[:n:n]
