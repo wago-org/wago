@@ -7,13 +7,15 @@ import "testing"
 // diagnostic, not an end-to-end Wasm or V8 benchmark.
 func BenchmarkFullTracingShapes(b *testing.B) {
 	for _, shape := range []struct {
-		name string
-		desc Descriptor
+		name  string
+		desc  Descriptor
+		dense bool
 	}{
-		{"scalarStruct", Descriptor{Kind: KindStruct, Align: 8, PayloadBytes: 8}},
-		{"scalarArray", Descriptor{Kind: KindArray, Align: 8, ElementSize: 4}},
-		{"refStruct", Descriptor{Kind: KindStruct, Align: 8, PayloadBytes: 8, RefOffsets: []uint32{0}}},
-		{"refArray", Descriptor{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}},
+		{"scalarStruct", Descriptor{Kind: KindStruct, Align: 8, PayloadBytes: 8}, false},
+		{"scalarArray", Descriptor{Kind: KindArray, Align: 8, ElementSize: 4}, false},
+		{"refStruct", Descriptor{Kind: KindStruct, Align: 8, PayloadBytes: 8, RefOffsets: []uint32{0}}, false},
+		{"refArray", Descriptor{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}, false},
+		{"denseRefArray", Descriptor{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}, true},
 	} {
 		b.Run(shape.name, func(b *testing.B) {
 			c, err := NewWithTypes(256<<10, 256<<10, []Descriptor{
@@ -40,8 +42,14 @@ func BenchmarkFullTracingShapes(b *testing.B) {
 					b.Fatal(err)
 				}
 				if shape.desc.ElementRef || len(shape.desc.RefOffsets) != 0 {
-					if err := c.SetRef(child, 0, root); err != nil {
-						b.Fatal(err)
+					slots := uint32(1)
+					if shape.dense {
+						slots = 32
+					}
+					for j := uint32(0); j < slots; j++ {
+						if err := c.SetRef(child, j, root); err != nil {
+							b.Fatal(err)
+						}
 					}
 				}
 			}
