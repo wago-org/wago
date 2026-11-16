@@ -1314,11 +1314,12 @@ type Compiled struct {
 	memoryDir               *compiledMemoryDirectory
 
 	// gcHelperOnlyReceipt occupies flag padding and is never serialized.
-	gcHelperOnlyReceipt bool
-	HasStart            bool // module declares a start function to run at instantiate
-	StartLocalFunc      int  // its local function index (valid when HasStart && !StartIsImport)
-	StartIsImport       bool // start is an imported function (run its host binding at instantiate)
-	StartImportIdx      int  // its imported-function index (valid when HasStart && StartIsImport)
+	gcHelperOnlyReceipt    bool
+	HasStart               bool // module declares a start function to run at instantiate
+	gcDirectReadABIVersion uint32
+	StartLocalFunc         int  // its local function index (valid when HasStart && !StartIsImport)
+	StartIsImport          bool // start is an imported function (run its host binding at instantiate)
+	StartImportIdx         int  // its imported-function index (valid when HasStart && StartIsImport)
 
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means eligible memory-0 memory32 checks were elided and execution requires

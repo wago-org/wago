@@ -1619,6 +1619,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.customInstructions = customInstructions
 	c.requiresNotifyPending = atomicWaitHelpers && cfg.optimizations["atomic-notify-empty"]
 	c.gcHelperOnlyReceipt = cm.GCHelperOnlyReceipt && len(customInstructions) == 0
+	if len(customInstructions) == 0 {
+		c.gcDirectReadABIVersion = cm.GCDirectReadABIVersion
+	}
 	c.requiresARM64LSE = cm.RequiresARM64LSE
 	c.requiredAMD64Features = shared.AMD64Features(cm.RequiredAMD64Features)
 	c.syncHostSlots = uint16(syncHostSlots)

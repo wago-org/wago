@@ -32,6 +32,7 @@ type CompiledModule struct {
 	// GCHelperOnlyReceipt is a live compiler capability, never serialized.
 	// Only the helper-only AMD64 compiler may issue it.
 	GCHelperOnlyReceipt                                        bool
+	GCDirectReadABIVersion                                     uint32 // live direct-offset read ABI receipt; never serialized
 	GCDeadInductionLayouts                                     []uint64
 	GCI31Inductions                                            []uint64
 	NativeReferenceCalls                                       bool

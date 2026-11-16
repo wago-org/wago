@@ -1841,7 +1841,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		compiled, err = compileModuleWith(m, opts)
 	}
 	if err == nil && compiled != nil {
-		compiled.GCHelperOnlyReceipt = gcHelperOnly
+		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads
+		if gcDirectReads {
+			compiled.GCDirectReadABIVersion = 1
+		}
 	}
 	runtime.KeepAlive(m)
 	runtime.KeepAlive(opts)

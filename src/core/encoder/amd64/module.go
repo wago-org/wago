@@ -17,7 +17,8 @@ import "github.com/wago-org/wago/src/core/codeimage"
 type CompiledModule struct {
 	// GCHelperOnlyReceipt is a live compiler capability, never serialized.
 	// Only the helper-only AMD64 compiler may issue it.
-	GCHelperOnlyReceipt bool
+	GCHelperOnlyReceipt    bool
+	GCDirectReadABIVersion uint32 // live direct-offset read ABI receipt; never serialized
 	// GCDeadInductionLayouts proves the complete function charges max(n,1)
 	// nonescaping pointer-free objects and returns i32(n*(n-1)/2).
 	// Low/high words hold object size/alignment. Zero means no proof.
