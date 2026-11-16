@@ -86,3 +86,11 @@ Typed tests cover mixed scalar/reference/vector payloads, packed/numeric/referen
 arrays, descriptor ownership/atomic append, i31 roots/edges, raw-write barriers,
 and exact length preservation across repeated copies. A header-compatible layout
 does **not** yet make this collector a drop-in Wago adapter.
+
+Typed allocations whose physical stride exceeds the entire nursery capacity
+allocate directly into the active old semispace, with `Old|Large` flags. They
+still move during Full; there is no pinning promise. Normal nursery exhaustion
+does not silently spill into old space. Trusted constructors must Remember an
+old object after initializing references through borrowed bytes. `ObjectBytes`
+provides a full native-Size lease for adapter use, but never authorizes changing
+layout/header metadata; `IsYoung` and `LiveObjects` expose basic adapter state.

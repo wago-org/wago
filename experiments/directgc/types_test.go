@@ -254,3 +254,65 @@ func TestAdapterObjectViewAndLiveCount(t *testing.T) {
 		t.Fatal("stale bytes accepted", e)
 	}
 }
+
+func TestOversizedOldAllocationAndBarrier(t *testing.T) {
+	c, e := NewWithTypes(64, 512, []Descriptor{{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}, {Kind: KindStruct, Align: 8}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := c.NewArray(0, 20)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if c.IsYoung(p) || c.nurseryBump != c.nurseryStart {
+		t.Fatal("oversized allocation used Eden")
+	}
+	h, e := c.Header(p)
+	if e != nil || h.Flags&(FlagOld|FlagLarge) != (FlagOld|FlagLarge) {
+		t.Fatal(h, e)
+	}
+	child, e := c.NewStruct(1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.ArraySetRef(p, 19, child); e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Minor([]*Ref{&p}); e != nil {
+		t.Fatal(e)
+	}
+	moved := get(t, c, p, 19)
+	if moved == child || c.IsYoung(moved) || !c.IsValid(moved) {
+		t.Fatal("oversized parent lost young child")
+	}
+	if e = c.Full([]*Ref{&p}); e != nil {
+		t.Fatal(e)
+	}
+	if n, e := c.ArrayLen(p); e != nil || n != 20 {
+		t.Fatal(n, e)
+	}
+}
+func TestOversizedOOMAtomicAndNoNurseryBypass(t *testing.T) {
+	c, e := NewWithTypes(32, 64, []Descriptor{{Kind: KindArray, Align: 8, ElementSize: 8}, {Kind: KindStruct, Align: 8, PayloadBytes: 16}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	before := append([]byte(nil), c.arena...)
+	n, o := c.nurseryBump, c.oldBump
+	if _, e = c.NewArray(0, 100); !errors.Is(e, ErrOOM) {
+		t.Fatal(e)
+	}
+	if !reflect.DeepEqual(before, c.arena) || n != c.nurseryBump || o != c.oldBump || c.LiveObjects() != 0 {
+		t.Fatal("oversized failure mutated heap")
+	}
+	if _, e = c.NewStruct(1); e != nil {
+		t.Fatal(e)
+	}
+	o = c.oldBump
+	if _, e = c.NewStruct(1); !errors.Is(e, ErrOOM) {
+		t.Fatal("full Eden bypassed", e)
+	}
+	if c.oldBump != o {
+		t.Fatal("normal allocation spilled old")
+	}
+}

@@ -128,13 +128,24 @@ func (c *Collector) NewArray(id TypeID, length uint32) (Ref, error) {
 func (c *Collector) allocate(id TypeID, payload uint64, aux uint32) (Ref, error) {
 	size := (uint64(header) + payload + 7) &^ uint64(7)
 	stride := (size + 15) &^ uint64(15)
-	if stride > uint64(c.nurseryEnd-c.nurseryBump) {
-		return 0, ErrOOM
-	}
 	off := c.nurseryBump
-	c.nurseryBump += uint32(stride)
-	clear(c.arena[off:c.nurseryBump])
 	flags := uint32(0)
+	if stride > uint64(c.nurseryEnd-c.nurseryStart) {
+		// Only inherently oversized objects bypass Eden. A normally sized object
+		// with a full nursery still asks its caller to collect and retry.
+		if stride > uint64(c.oldStart[c.active]+c.oldSize-c.oldBump) {
+			return 0, ErrOOM
+		}
+		off = c.oldBump
+		c.oldBump += uint32(stride)
+		flags |= FlagOld | FlagLarge
+	} else {
+		if stride > uint64(c.nurseryEnd-c.nurseryBump) {
+			return 0, ErrOOM
+		}
+		c.nurseryBump += uint32(stride)
+	}
+	clear(c.arena[off : off+uint32(stride)])
 	d := c.types[id]
 	if !d.ElementRef && len(d.RefOffsets) == 0 {
 		flags |= FlagPointerFree
