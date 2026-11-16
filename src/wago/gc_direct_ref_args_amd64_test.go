@@ -22,6 +22,7 @@ func directRefArgsBytes() []byte {
 		{0x60, 1, 0x63, 0x6c, 1, 0x7f},       // i31
 	}
 	types = append(types, []byte{0x5f, 1, 0x7e, 0}, []byte{0x60, 0, 1, 0x63, 9})
+	types = append(types, []byte{0x5f, 2, 0x63, 11, 1, 0x7f, 0}, []byte{0x60, 1, 0x63, 11, 1, 0x63, 11}, []byte{0x60, 1, 0x63, 11, 1, 0x7f})
 	alloc := []byte{0xfb, 1, 0, 0x1a}
 	read := append(append([]byte{}, alloc...), 0x20, 0, 0xfb, 2, 0, 0)
 	bodies := [][]byte{
@@ -34,8 +35,9 @@ func directRefArgsBytes() []byte {
 		{0x41, 0, 0x41, 0xc0, 0x84, 0x3d, 0xfb, 6, 1, 0x1a, 0x20, 0, 0xfb, 2, 0, 0}, // OOM
 	}
 	bodies = append(bodies, []byte{0x20, 0, 0xd1}, []byte{0x20, 0, 0x10, 1}, []byte{0x42, 1, 0xfb, 0, 9})
-	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3, 3, 10}
-	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull", "call", "newOther"}
+	bodies = append(bodies, []byte{0xd0, 11, 0x41, 0xc9, 0x00, 0xfb, 0, 11, 0x21, 0, 0x20, 0, 0x20, 0, 0xfb, 5, 11, 0, 0x20, 0}, append(append([]byte{}, alloc...), 0x20, 0, 0xfb, 2, 11, 0, 0xfb, 2, 11, 1))
+	sig := []byte{2, 3, 4, 5, 6, 7, 8, 3, 3, 3, 3, 10, 12, 13}
+	names := []string{"new", "read", "nonnull", "pair", "newArray", "readArray", "i31", "trap", "oom", "isNull", "call", "newOther", "newCycle", "readCycle"}
 	funcs := make([][]byte, len(sig))
 	exports := make([][]byte, len(sig))
 	codes := make([][]byte, len(sig))
@@ -131,6 +133,16 @@ func TestDirectGCManagedReferenceArguments(t *testing.T) {
 		}
 		check()
 	}
+	cycle, e := in.Invoke("newCycle", 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.ReleaseGCRef(GCRef{token: cycle[0]})
+	cycleValue, e := in.Invoke("readCycle", cycle[0])
+	if e != nil || cycleValue[0] != 73 {
+		t.Fatal(cycleValue, e)
+	}
+	check()
 	different, e := in.InvokeValues(context.Background(), "newOther")
 	if e != nil {
 		t.Fatal(e)
