@@ -1896,7 +1896,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			}
 			if pN == 0 && rN == 0 {
 				f.emitByteReduceLoop(r)
-				f.hoistGCLoopResolver(r)
+				if !gcHelperOnly {
+					f.hoistGCLoopResolver(r)
+				}
 			}
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()

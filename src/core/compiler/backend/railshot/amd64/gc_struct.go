@@ -167,7 +167,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			} else {
 				f.stats.peep("gc-constructor-get-forward")
 			}
-		} else if freshOK {
+		} else if !gcHelperOnly && freshOK {
 			f.setGCFreshStructFact(gcFreshStructFact{
 				objectLocal: -1,
 				typeIndex:   typeIndex,
@@ -228,10 +228,10 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain struct.get cannot access packed type %d field %d", typeIndex, fieldIndex)
 		}
-		if sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
+		if !gcHelperOnly && sub == 2 && f.tryForwardGCFreshStructGet(typeIndex, fieldIndex) {
 			return nil
 		}
-		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
+		if !gcHelperOnly && f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -261,11 +261,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
-		if f.emitDirectGCStructSet(typeIndex, fieldIndex) {
+		if !gcHelperOnly && f.emitDirectGCStructSet(typeIndex, fieldIndex) {
 			return nil
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
-			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && final && layout.CollectorRef && layout.Size == 4 {
+			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); !gcHelperOnly && layoutOK && final && layout.CollectorRef && layout.Size == 4 {
 				f.gcOpcodeBarrier = true
 				f.stats.peep("gc-barrier-slow")
 				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, layout.Offset, field.Storage().Val())
@@ -442,6 +442,9 @@ func (f *fn) tryForwardGCFreshStructGet(typeIndex, fieldIndex uint32) bool {
 // reads, which can be read again after the allocation helper without retaining
 // a register or compiler object snapshot across the call.
 func (f *fn) tryForwardGCConstructorGet(r *wasm.Reader, sourceType uint32, source wasm.SubType) (storage, wasm.Reader, bool) {
+	if gcHelperOnly {
+		return storage{}, *r, false
+	}
 	next := *r
 	op, err := next.Byte()
 	if err != nil || op != 0xfb {
@@ -572,7 +575,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
 		return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 	}
-	if f.gcStructHelpers && heap >= 0 {
+	if !gcHelperOnly && f.gcStructHelpers && heap >= 0 {
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
 			return f.emitNativeDefinedTest(uint32(heap), nullable)
 		}
@@ -652,7 +655,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			finalTarget = true
 		}
 	}
-	if f.gcStructHelpers && heap >= 0 {
+	if !gcHelperOnly && f.gcStructHelpers && heap >= 0 {
 		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
 			return err
 		}
@@ -1014,7 +1017,7 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	f.markGCReference(original)
 	copyValue := f.pushReg(copyReg, mtI64) // copied helper operand
 	f.markGCReference(copyValue)
-	if !exactTarget && target >= 0 {
+	if !gcHelperOnly && !exactTarget && target >= 0 {
 		if typ, ok := f.stagedGCType(uint32(target)); ok && (typ.Comp.Kind == wasm.CompStruct || typ.Comp.Kind == wasm.CompArray) {
 			if err := f.emitNativeDefinedTest(uint32(target), flags&2 != 0); err != nil {
 				return err

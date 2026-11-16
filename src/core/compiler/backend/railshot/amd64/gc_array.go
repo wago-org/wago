@@ -89,7 +89,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			return err
 		}
 		f.markTopGCReference()
-		if freshOK {
+		if !gcHelperOnly && freshOK {
 			f.setGCFreshStructFact(gcFreshStructFact{objectLocal: -1, typeIndex: typeIndex, value: freshValue})
 		}
 		if fuseFill {
@@ -257,13 +257,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		} else if field.Storage().Packed() {
 			return fmt.Errorf("amd64: plain array.get cannot access packed type %d", typeIndex)
 		}
-		if sub == 11 && f.tryForwardGCFreshArray16Get(typeIndex) {
+		if !gcHelperOnly && sub == 11 && f.tryForwardGCFreshArray16Get(typeIndex) {
 			return nil
 		}
-		if f.emitDirectGCArrayGet(typeIndex, helper, 0, 0, false) {
+		if !gcHelperOnly && f.emitDirectGCArrayGet(typeIndex, helper, 0, 0, false) {
 			return nil
 		}
-		if sub == 11 && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
+		if !gcHelperOnly && sub == 11 && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			if target, ok := f.stagedGCType(typeIndex); ok && target.Final {
 				return f.emitNativeFinalArrayRefGet(typeIndex)
 			}
@@ -288,10 +288,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if field.Storage().Packed() {
 			valueType = wasm.I32
 		}
-		if f.emitDirectGCArraySet(typeIndex, 0, 0, false) {
+		if !gcHelperOnly && f.emitDirectGCArraySet(typeIndex, 0, 0, false) {
 			return nil
 		}
-		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
+		if target, found := f.stagedGCType(typeIndex); !gcHelperOnly && found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			f.gcOpcodeBarrier = true
 			f.stats.peep("gc-barrier-slow")
 			return f.emitNativeCardSafeArrayRefSet(typeIndex, valueType)
@@ -304,7 +304,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
 	case 15: // array.len
-		if typeIndex, ok := f.gcArrayLenParameterType(); ok && f.emitDirectGCArrayLen(typeIndex) {
+		if typeIndex, ok := f.gcArrayLenParameterType(); !gcHelperOnly && ok && f.emitDirectGCArrayLen(typeIndex) {
 			return nil
 		}
 		object := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapArray), false))
@@ -323,7 +323,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		helper := uint32(gcArrayFill)
-		if f.emitDirectGCArrayFill(typeIndex) || f.emitDynamicGCArrayFill(typeIndex) {
+		if !gcHelperOnly && (f.emitDirectGCArrayFill(typeIndex) || f.emitDynamicGCArrayFill(typeIndex)) {
 			return nil
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
@@ -388,7 +388,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		if _, ok := f.stagedArrayType(srcType); !ok {
 			return fmt.Errorf("amd64: array.copy source type %d is unavailable", srcType)
 		}
-		if f.emitDirectGCArrayCopy(dstType, srcType) || f.emitDynamicGCArrayCopy(dstType, srcType) {
+		if !gcHelperOnly && (f.emitDirectGCArrayCopy(dstType, srcType) || f.emitDynamicGCArrayCopy(dstType, srcType)) {
 			return nil
 		}
 		if dstField.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, dstField.Storage().Val()) {

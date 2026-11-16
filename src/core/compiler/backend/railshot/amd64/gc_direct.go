@@ -443,6 +443,9 @@ func countGCSharedStubBodies(offsets [gcSharedStubMax]int) int {
 // That mode writes the length to hcResults on success and returns R8=control
 // frame on either path, so each caller needs only the status branch.
 func emitModuleGCResolveObjectStub(a *x64.Asm, subtype, bounded, arrayOperand bool) {
+	if gcHelperOnly {
+		panic("amd64: native GC lowering in helper-only bridge")
+	}
 	a.Push(R9)
 	a.Push(R10)
 	a.Push(R11)
@@ -600,6 +603,9 @@ func (f *fn) emitDirectGCObjectWithSubtype(object *elem, localType, requiredByte
 // A nonzero kind selects a shared leaf without changing the ordinary exact
 // resolver's crossover counts. Both paths can reuse the same extent proof.
 func (f *fn) emitDirectGCObjectWithStub(object *elem, localType, requiredBytes uint32, local int, hasLocal bool, kind gcSharedStubKind, retain bool) (obj Reg, done func()) {
+	if gcHelperOnly {
+		panic("amd64: native GC lowering in helper-only bridge")
+	}
 	if gcResolveReuseEnabled && hasLocal && f.gcResolved.valid &&
 		f.gcResolved.local == local && f.gcResolved.typeIndex == localType &&
 		requiredBytes <= f.gcResolved.requiredBytes {
@@ -1155,6 +1161,9 @@ func (f *fn) emitNativeGCStubs() {
 // reference initializers are validated before publication, and the complete
 // payload is initialized before the handle's space byte becomes visible.
 func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
+	if gcHelperOnly {
+		panic("amd64: native GC lowering in helper-only bridge")
+	}
 	layout, ok := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
 	if site.mode == gcArrayNativeDefault {
 		layout, ok = nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
@@ -1648,6 +1657,9 @@ func (f *fn) emitNativeStructAllocSlots(typeIndex uint32, dead bool, argSlot, re
 }
 
 func (f *fn) emitNativeStructAlloc(typeIndex uint32, dead, inline bool, argSlot, resultSlot int) {
+	if gcHelperOnly {
+		panic("amd64: native GC lowering in helper-only bridge")
+	}
 	plan, ok := f.nativeGCStructAllocLayout(typeIndex)
 	if !ok {
 		panic("amd64: invalid native struct allocation layout")

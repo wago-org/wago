@@ -617,6 +617,9 @@ type fn struct {
 }
 
 func (f *fn) opt(option optimization.Option) bool {
+	if gcHelperOnly && (option == optGCNativeAlloc || option == optDeadGCNew) {
+		return false
+	}
 	return f.policy.EnabledResolvedOption(option)
 }
 

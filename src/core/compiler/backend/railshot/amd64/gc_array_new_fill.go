@@ -24,6 +24,9 @@ type gcArrayNewFillPlan struct {
 }
 
 func (f *fn) matchGCArrayNewFill(r *wasm.Reader, typeIndex uint32, field wasm.FieldType) (gcArrayNewFillPlan, bool) {
+	if gcHelperOnly {
+		return gcArrayNewFillPlan{}, false
+	}
 	if f.localBase != 0 || field.Mut() != wasm.Var || field.Storage().Packed() ||
 		field.Storage().Val().Kind() != wasm.ValNum || field.Storage().Val().Num() != wasm.NumI32 {
 		return gcArrayNewFillPlan{}, false
