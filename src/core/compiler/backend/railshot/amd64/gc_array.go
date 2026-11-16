@@ -78,6 +78,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
+		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok {
+			f.directArrayAllocType = typeIndex + 1
+			f.directArrayAllocDefault = false
+		}
 		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			length, bytes, static := nativeGCStaticArraySize(f, layout)
 			if !static || bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
@@ -219,6 +223,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
+		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok {
+			f.directArrayAllocType = typeIndex + 1
+			f.directArrayAllocDefault = true
+		}
 		if layout, native := nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeLargeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault, large: bytes > uint64(gc.NativeArrayAllocMaxBytes)}

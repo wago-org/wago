@@ -1324,6 +1324,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
 		(uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait32 || uint32(importIdx)&^shared.AtomicWaitDispatchBit == shared.AtomicHelperWait64)
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
+	directArrayAlloc, directArrayDefault := f.directArrayAllocType, f.directArrayAllocDefault
+	f.directArrayAllocType, f.directArrayAllocDefault = 0, false
 	directArraySet := f.directArraySetType
 	f.directArraySetType = 0
 	directStructType, directDefault := f.directStructAllocType, f.directStructAllocDefault
@@ -1364,6 +1366,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// inline frame. Keep them for small helpers in a wide-capacity module, but a
 	// call that actually uses the extension must take the checked Go helper path.
 	if wide {
+		directArrayAlloc = 0
 		directArraySet = 0
 		directStructType = 0
 		nativeStructType = 0
@@ -1425,21 +1428,26 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
+	if directArrayAlloc != 0 {
+		if localStates, ok := f.snapshotLocalStates(); ok {
+			return f.callNativeStructDirectSlots(importIdx, ft, directArrayAlloc-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, directArrayDefault, false, true)
+		}
+	}
 	if directArraySet != 0 {
 		if localStates, ok := f.snapshotLocalStates(); ok {
-			return f.callNativeStructDirectSlots(importIdx, ft, directArraySet-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, true)
+			return f.callNativeStructDirectSlots(importIdx, ft, directArraySet-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, true, false)
 		}
 	}
 	if directStructType != 0 {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
-			return f.callNativeStructDirectSlots(importIdx, ft, directStructType-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, true, directDefault, false)
+			return f.callNativeStructDirectSlots(importIdx, ft, directStructType-1, false, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, true, directDefault, false, false)
 		}
 	}
 	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
-			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, false)
+			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates, false, false, false, false)
 		}
 	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
@@ -1673,7 +1681,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 // callNativeStructDirectSlots keeps the ordinary allocation path entirely in
 // generated code. Constructor fields stay in canonical operand slots until the
 // native reservation succeeds or the cold Go-helper fallback marshals them.
-func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot, directOffset, directDefault, directRefStore bool) error {
+func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeIndex uint32, dead bool, paramSlots, resultSlots int, slotOf []uint32, depth, paramCount int, belowTypes []machineType, belowGCRoots []bool, localStates localStateSnapshot, directOffset, directDefault, directRefStore, directArrayAlloc bool) error {
 	if (!directRefStore && len(ft.Results) != 1) || (directRefStore && len(ft.Results) != 0) || paramCount == 0 {
 		return fmt.Errorf("native struct helper has %d parameter(s), %d result(s)", paramCount, len(ft.Results))
 	}
@@ -1682,7 +1690,9 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
-	if directRefStore {
+	if directArrayAlloc {
+		f.emitDirectOffsetArrayAlloc(typeIndex, directDefault, argSlot, resultSlot)
+	} else if directRefStore {
 		f.emitDirectOffsetRefArraySet(typeIndex, argSlot)
 	} else if directOffset {
 		f.emitDirectOffsetStructAlloc(typeIndex, directDefault, argSlot, resultSlot)

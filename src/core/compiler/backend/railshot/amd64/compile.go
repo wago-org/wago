@@ -606,6 +606,8 @@ type fn struct {
 	gcCallsiteIndex          int
 	compactFrameHeader       bool // register ABI: no wrapper results-pointer header
 	directArraySetType       uint32
+	directArrayAllocType     uint32
+	directArrayAllocDefault  bool
 	directStructAllocType    uint32
 	directStructAllocDefault bool
 	nativeStructAllocType    uint32 // type index + 1 for the next gcStructAllocOne call
