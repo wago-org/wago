@@ -25,3 +25,11 @@ Runtime source `50c3065d` adds lazy checked single-receiver loop certificates an
 Serial qualification passed with `wago_gc_compact_loop wago_gc_compact_refstruct wago_gc_compact_shared_checks wago_regalloccheck`: applicable runtime 0.579 s; build-constraint exclusivity 0.006 s. Unfiltered default Wago 40.296 s, native GC 2.166 s, wrapper 0.015 s, AMD64 backend 6.293 s, direct core 0.020 s, compact core 0.013 s all passed. Native debug passed 2.009 s; TinyGo native/wrapper passed 2.590/0.004 s. No failures in this composed qualification.
 
 The matched loop evidence retains a 10.022x scalar-copy/V8 miss and an unexplained array control regression. Shared-view performance is not yet measured. These test passes are not a performance-target completion claim.
+
+## Paired checked loop checkpoint
+
+Runtime `7483b3e0`, evidence through `879f4137`: the opt-in paired certificate caches two checked receivers for exactly two static accesses while retaining lazy validation at each original site, per-access length/bounds checks and the existing compiler-state footprint. Canonical paired/reference-constructor/shared-view composition with regalloc checks passed 0.622 s; mode-exclusivity passed 0.006 s.
+
+Unfiltered default Wago 40.394 s, native GC 2.018 s, wrapper 0.003 s, AMD64 backend 6.519 s, direct core 0.020 s and compact core 0.012 s passed. Native debug passed 1.958 s; TinyGo native/wrapper passed 2.334/0.003 s. No failures in these runs.
+
+Matched scalar-copy timing improved in every paired round, but its full-protocol result remains 0.6463 ms versus V8 0.1444 ms (4.476x, target missed). Bulk-copy and other control regressions are retained in the evidence. Both copy artifacts contain both kernels; code-size growth alone cannot establish which executed instructions changed. Exact function-site diagnostics are separate and pending. This checkpoint is not a blanket performance recommendation or target completion.
