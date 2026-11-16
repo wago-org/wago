@@ -361,3 +361,66 @@ func TestForwardingPreservesPackedAuxAndAliasRoots(t *testing.T) {
 		}
 	}
 }
+
+func TestPointerFreeTracingFlagsSurviveCollections(t *testing.T) {
+	c := typedHeap(t, []Descriptor{
+		{Kind: KindStruct, Align: 8, PayloadBytes: 8},
+		{Kind: KindStruct, Align: 8, PayloadBytes: 8, RefOffsets: []uint32{0}},
+		{Kind: KindArray, Align: 8, ElementSize: 4},
+		{Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true},
+	})
+	var refs []Ref
+	for _, id := range []TypeID{0, 1} {
+		r, err := c.NewStruct(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, r)
+	}
+	for _, pair := range [][2]uint32{{2, 3}, {3, 3}, {3, 0}} {
+		r, err := c.NewArray(TypeID(pair[0]), pair[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, r)
+	}
+	edge(t, c, refs[1], 0, refs[0])
+	edge(t, c, refs[3], 0, refs[0])
+	roots := make([]*Ref, len(refs))
+	for i := range refs {
+		roots[i] = &refs[i]
+	}
+	wantFree := []bool{true, false, true, false, false}
+	wantSlots := []int{0, 1, 0, 3, 0}
+	for phase := 0; phase < 3; phase++ {
+		for i, r := range refs {
+			h, err := c.Header(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (h.Flags&FlagPointerFree != 0) != wantFree[i] {
+				t.Fatalf("phase %d object %d: flags %x", phase, i, h.Flags)
+			}
+			slots := 0
+			if err := c.eachRef(uint32(r), func(uint32) error { slots++; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if slots != wantSlots[i] {
+				t.Fatalf("phase %d object %d: slots %d", phase, i, slots)
+			}
+		}
+		if get(t, c, refs[1], 0) != refs[0] || get(t, c, refs[3], 0) != refs[0] {
+			t.Fatal("lost reference")
+		}
+		if phase == 0 {
+			if err := c.Minor(roots); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if phase == 1 {
+			if err := c.Full(roots); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
