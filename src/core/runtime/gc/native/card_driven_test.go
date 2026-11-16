@@ -462,8 +462,8 @@ func TestCardMetadataFootprint(t *testing.T) {
 	}
 	// Bounds, lazy major-block state, and one large-array list-index hint have
 	// fixed descriptor costs. The hint does not change the native state layout.
-	// Explicit direct-mode Config alignment and the optional backend pointer add16 bytes.
-	wantCollector := uintptr(1184) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
+	// Explicit direct-mode Config alignment, backend pointer and read-view pointer add24 bytes.
+	wantCollector := uintptr(1192) + unsafe.Sizeof((*[]uint64)(nil)) + unsafe.Sizeof(objectCardBounds{}) + uintptr(nativeStructHandleBatch-32)*4 + unsafe.Sizeof([]uint64(nil)) + unsafe.Sizeof(int(0))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

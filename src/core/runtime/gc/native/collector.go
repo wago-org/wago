@@ -185,6 +185,7 @@ type Collector struct {
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
 	direct                       *directgc.Collector
+	directView                   *DirectCollectorView
 }
 
 const defaultNursery = 64 << 10
@@ -263,6 +264,7 @@ func (c *Collector) Close() {
 	c.stats.LiveObjects = 0
 	c.closed = true
 	c.direct = nil
+	c.refreshDirectView()
 	c.nursery = nil
 	c.tiny.Close()
 	c.throughput.Close()

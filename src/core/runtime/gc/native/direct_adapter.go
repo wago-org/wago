@@ -80,6 +80,7 @@ func (c *Collector) directRemember(r Ref) {
 	}
 }
 func (c *Collector) directAlloc(d TypeDesc, aux uint32, roots RootSet) (Ref, error) {
+	defer c.refreshDirectView()
 	if err := c.errIfClosed(); err != nil {
 		return 0, err
 	}
@@ -124,6 +125,7 @@ func (c *Collector) directAlloc(d TypeDesc, aux uint32, roots RootSet) (Ref, err
 // slots and mirrors (e.g. runtime global cell plus collector-owned root) without
 // observing partially rewritten inputs. Production optimization comes later.
 func (c *Collector) directCollect(roots RootSet, full bool) error {
+	defer c.refreshDirectView()
 	full = full || c.cfg.ForceMajorEveryMinor
 	if err := c.errIfClosed(); err != nil {
 		return err
