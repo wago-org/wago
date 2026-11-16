@@ -1,0 +1,67 @@
+File: candidate.test
+Build ID: 76bd733cec468776261ade2b84acac8b6ae8ea26
+Type: cpu
+Time: 2026-11-16 12:08:50 EST
+Duration: 5.65s, Total samples = 5.57s (98.59%)
+Showing nodes accounting for 5.36s, 96.23% of 5.57s total
+Dropped 48 nodes (cum <= 0.03s)
+      flat  flat%   sum%        cum   cum%
+     3.86s 69.30% 69.30%      3.86s 69.30%  runtime._ExternalCode
+     0.65s 11.67% 80.97%      1.48s 26.57%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect
+     0.26s  4.67% 85.64%      0.30s  5.39%  github.com/wago-org/wago/experiments/compactgc.(*Collector).layoutAt
+     0.17s  3.05% 88.69%      0.17s  3.05%  runtime.memmove
+     0.11s  1.97% 90.66%      0.11s  1.97%  runtime.memclrNoHeapPointers
+     0.07s  1.26% 91.92%      0.09s  1.62%  github.com/wago-org/wago/experiments/compactgc.(*Collector).u32 (partial-inline)
+     0.05s   0.9% 92.82%      0.41s  7.36%  github.com/wago-org/wago/experiments/compactgc.(*Collector).eachRef
+     0.04s  0.72% 93.54%      0.18s  3.23%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func1
+     0.04s  0.72% 94.25%      0.04s  0.72%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func3
+     0.03s  0.54% 94.79%      0.04s  0.72%  github.com/wago-org/wago/experiments/compactgc.(*Collector).put32 (partial-inline)
+     0.02s  0.36% 95.15%      0.20s  3.59%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func2.func1
+     0.01s  0.18% 95.33%      0.05s   0.9%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func2.1
+     0.01s  0.18% 95.51%      0.06s  1.08%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func4.1
+     0.01s  0.18% 95.69%      0.04s  0.72%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func4.func1
+     0.01s  0.18% 95.87%      1.68s 30.16%  github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostLoop
+     0.01s  0.18% 96.05%      1.65s 29.62%  github.com/wago-org/wago/src/wago.(*hostLoopActivation).dispatch
+     0.01s  0.18% 96.23%      1.64s 29.44%  github.com/wago-org/wago/src/wago.(*hostLoopActivation).dispatchActive
+         0     0% 96.23%      0.06s  1.08%  github.com/wago-org/wago/experiments/compactgc.(*Collector).Full (inline)
+         0     0% 96.23%      1.42s 25.49%  github.com/wago-org/wago/experiments/compactgc.(*Collector).Minor (inline)
+         0     0% 96.23%      0.05s   0.9%  github.com/wago-org/wago/experiments/compactgc.(*Collector).NewArray
+         0     0% 96.23%      0.05s   0.9%  github.com/wago-org/wago/experiments/compactgc.(*Collector).allocate
+         0     0% 96.23%      0.27s  4.85%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func2 (partial-inline)
+         0     0% 96.23%      0.14s  2.51%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func4 (partial-inline)
+         0     0% 96.23%      0.06s  1.08%  github.com/wago-org/wago/experiments/compactgc.(*Collector).collect.func5
+         0     0% 96.23%      0.11s  1.97%  github.com/wago-org/wago/experiments/compactgc.(*Collector).rangeRemembered
+         0     0% 96.23%      0.03s  0.54%  github.com/wago-org/wago/experiments/compactgc.(*Collector).resetRemembered
+         0     0% 96.23%      1.68s 30.16%  github.com/wago-org/wago/src/core/runtime.(*Engine).CallWithHostBase (inline)
+         0     0% 96.23%      1.68s 30.16%  github.com/wago-org/wago/src/core/runtime.(*Engine).callWithHostBase
+         0     0% 96.23%      1.06s 19.03%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).NewArrayDefaultPrevalidatedWithRoots (inline)
+         0     0% 96.23%      0.53s  9.52%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).NewStructWordsPrevalidatedWithRootScratch
+         0     0% 96.23%      1.57s 28.19%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).alloc
+         0     0% 96.23%      1.57s 28.19%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).directAlloc
+         0     0% 96.23%      0.05s   0.9%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).directAlloc.func1 (inline)
+         0     0% 96.23%      1.50s 26.93%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).directCollect
+         0     0% 96.23%      1.06s 19.03%  github.com/wago-org/wago/src/core/runtime/gc/native.(*Collector).newArrayDefaultWithRoots
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).Invoke
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).callNativeSyncAdmitted
+         0     0% 96.23%      1.68s 30.16%  github.com/wago-org/wago/src/wago.(*Instance).callNativeSyncUnpreparedAdmitted
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).callNativeSyncWithTrapContext
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).callNativeSyncWithTrapContext.func1
+         0     0% 96.23%      1.10s 19.75%  github.com/wago-org/wago/src/wago.(*Instance).dispatchGCArrayHelperParked
+         0     0% 96.23%      1.63s 29.26%  github.com/wago-org/wago/src/wago.(*Instance).dispatchGCHelperParkedOnStack
+         0     0% 96.23%      0.53s  9.52%  github.com/wago-org/wago/src/wago.(*Instance).dispatchGCStructHelperParked
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeEntry
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeEntry.func1
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLocked (inline)
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeEntryLockedBody
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithToken.func1
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmitted
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmitted.func1
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenAdmittedBody
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenLeased
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*Instance).invokeWithTokenLeased.func1
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.(*resourceCleanup).run
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.TestGCDirectBridgeProbe
+         0     0% 96.23%      1.69s 30.34%  github.com/wago-org/wago/src/wago.TestGCDirectBridgeProbe.func2 (inline)
+         0     0% 96.23%      3.86s 69.30%  runtime._System
+         0     0% 96.23%      1.69s 30.34%  testing.tRunner
