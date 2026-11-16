@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "code_source": "93c7ec34",
+    "build_checkout": "4d524db8",
+    "sha256": "1f6b680e7f10865615f8f88219103f737b67f5bc6825e5ba175ee95f0377589d"
+  },
+  "adaptive": {
+    "code_source": "93c7ec34",
+    "build_checkout": "4327a2eb",
+    "sha256": "1b1b456ea1d8bbead4d8808ac5a0f0ead1f5fb046729705a1abeb05db7c015e8"
+  },
+  "initheaders": {
+    "code_source": "d62c7ca2e5e02ceecb6464965a025c88d276091a",
+    "build_checkout": "d62c7ca2",
+    "sha256": "98d3be81fe71545540a491ed4c119ffb6eff629232f7ba0efb23a9b48ef29bd5"
+  },
+  "initadaptive": {
+    "code_source": "d62c7ca2e5e02ceecb6464965a025c88d276091a",
+    "build_checkout": "d62c7ca2",
+    "sha256": "f1bddfcdc955be826b11037a3a74615423ac5fec7dc07de051af8efcf31a3855"
+  }
+}
