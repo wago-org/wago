@@ -34,3 +34,21 @@ and repeat without `--audit` into a separate output directory. Audits use 512
 warmup calls uniformly; timed processes retain 100 warmups and 9×32 calls.
 Keep other local jobs paused and preserve failures. `summarize.py` regenerates
 the committed summary from evidence next to the script.
+
+## Old-live-set capacity control (qualification pending)
+
+`GC_EQUAL_CAPACITY=1 go test ./experiments/directgc -run '^TestEqualBudgetOldCapacity$' -count=1 -v`
+checks 27 independent heaps: all three splits crossed with exact live-byte targets
+6, 7 and 8 MiB, each at -16, equal, and +16 bytes. A 64-slot reference-array root
+retains scalar byte arrays of at most 256 KiB stride; the final child makes the
+requested total precise. Every child payload carries checked index/offset IDs.
+Each child is attached through an old-to-young edge and explicitly minor-collected.
+
+When live bytes first exceed each-old capacity, Minor and Full must both report
+ErrOOM without changing roots or old cursor; all payloads remain readable.
+Dropping only the newest edge must permit Full and move the surviving graph.
+Successful graphs also undergo two moving Full collections. Finally dropping all
+roots must reclaim old storage and allow allocation plus Minor again. Record the
+first failed attempted live size separately from the requested larger graph,
+which cannot be built once capacity is reached. No runtime timing or V8 claim;
+this core control does not replace runtime GC semantic qualification.
