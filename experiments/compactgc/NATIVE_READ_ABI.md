@@ -127,5 +127,14 @@ not change constructor validation or the default checked store. The tag is a
 separate A/B candidate; no performance benefit has been established. Source
 qualification must include the usual malformed operands, relocation and dirty
 barrier tests plus `TestCompactNativeSharedStoreChecks`, which proves common
-metadata and child type failures still reach the checked helper. Runtime tests
-and timing are pending at this checkpoint.
+metadata and child type failures still reach the checked helper. Runtime qualification on source `3d09e695` passed with Go 1.27.1 and
+`wago_gc_compact_shared_checks,wago_regalloccheck`: focused shared-check/refstore
+tests (0.021 s), the applicable compact runtime/receipt/moving-root matrix
+(2.274 s), and backend native-read receipt/disassembly tests (0.014 s). This
+includes corrupted common metadata selecting the helper, child canonical type
+mismatch, malformed child references and unchanged parent contents on rejection,
+null/index precedence, young/clean-old/dirty-old barriers, SIMD-array child extent,
+pinned locals, and actual major relocation. Independent source review found no
+blocker. No failed test attempts occurred in this qualification. These are
+selected experimental-mode tests, not full GC conformance or an unfiltered
+repository suite. LICM composition and performance timing remain untested.
