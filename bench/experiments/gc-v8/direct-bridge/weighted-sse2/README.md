@@ -1,7 +1,8 @@
-# weighted-sse2 matched protocol (prepared, not run)
+# weighted-sse2 matched protocol
 
-Final qualified source pin is pending. These files are source-only preparation;
-no candidate has been built or measured for this protocol.
+Measured qualified runtime: `b92d0e24f03e032c30700cea25badfd60b5c48fe`.
+Builds, audits, bounded/full measurements and separate compile checks completed.
+See `summary.md` and retained raw `evidence/` for results and limitations.
 
 Build two binaries sequentially from the SAME qualified source, with the SAME
 probe: `baseline.test` uses `wago_gc_compact_weighted_sum,wago_gc_compact_refstruct`; `candidate.test` uses `wago_gc_compact_weighted_sse2,wago_gc_compact_refstruct`.
