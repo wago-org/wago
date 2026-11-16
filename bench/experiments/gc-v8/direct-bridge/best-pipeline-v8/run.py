@@ -15,6 +15,7 @@ p.add_argument('--node', default='node')
 p.add_argument('--eden', type=int, default=524288)
 p.add_argument('--audit', action='store_true')
 a = p.parse_args()
+warmup = 128 if a.audit and a.eden >= 2097152 else 100
 root = pathlib.Path(__file__).resolve().parents[5]
 base = pathlib.Path(a.binary_dir).resolve()
 out = pathlib.Path(a.output_dir).resolve()
@@ -29,7 +30,7 @@ def digest(path):
         for block in iter(lambda: f.read(262144), b''):
             h.update(block)
     return h.hexdigest()
-provenance = {'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(), 'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'platform': platform.platform(), 'cpu': pathlib.Path('/proc/cpuinfo').read_text(), 'variants': {}, 'protocol': {'warmup': 100, 'samples': 0 if a.audit else 9, 'batch': 32, 'rounds': 1 if a.audit else 3}, 'eden_bytes': a.eden, 'old_semispace_bytes': 8 << 20, 'old_semispace_count': 2, 'allocation_elision': False, 'policy_sensitivity': a.eden != 524288, 'binary_source_note': 'Existing binary hashes identify the measured source; driver source may include reporting-only changes.'}
+provenance = {'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(), 'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'platform': platform.platform(), 'cpu': pathlib.Path('/proc/cpuinfo').read_text(), 'variants': {}, 'protocol': {'warmup': warmup, 'samples': 0 if a.audit else 9, 'batch': 32, 'rounds': 1 if a.audit else 3}, 'eden_bytes': a.eden, 'old_semispace_bytes': 8 << 20, 'old_semispace_count': 2, 'allocation_elision': False, 'policy_sensitivity': a.eden != 524288, 'binary_source_note': 'Existing binary hashes identify the measured source; driver source may include reporting-only changes.'}
 for label, tag in variants:
     if label != 'v8':
         binary = base / (label + '.test')
@@ -44,9 +45,9 @@ for round in range(1 if a.audit else 3):
         for label, tag in variants[round % len(variants):] + variants[:round % len(variants)]:
             env = dict(os.environ, GOMAXPROCS='1')
             if label == 'v8':
-                cmd = [a.node, '--no-liftoff', str(pathlib.Path(__file__).with_name('v8.cjs')), str(corpus / c['file']), c['export'], str(c['n']), str(c['want']), c['sha256'], '100', '0' if a.audit else '9', '32']
+                cmd = [a.node, '--no-liftoff', str(pathlib.Path(__file__).with_name('v8.cjs')), str(corpus / c['file']), c['export'], str(c['n']), str(c['want']), c['sha256'], str(warmup), '0' if a.audit else '9', '32']
             else:
-                env.update(GC_BRIDGE_CASE=case, GC_BRIDGE_MODE='direct', GC_BRIDGE_COMPILER_MODE=label, GC_BRIDGE_EDEN=str(a.eden), GC_BRIDGE_WARMUP='100', GC_BRIDGE_SAMPLES='0' if a.audit else '9', GC_BRIDGE_BATCH='32')
+                env.update(GC_BRIDGE_CASE=case, GC_BRIDGE_MODE='direct', GC_BRIDGE_COMPILER_MODE=label, GC_BRIDGE_EDEN=str(a.eden), GC_BRIDGE_WARMUP=str(warmup), GC_BRIDGE_SAMPLES='0' if a.audit else '9', GC_BRIDGE_BATCH='32')
                 cmd = [str(base / (label + '.test')), '-test.run=^TestGCDirectBridgeProbe$', '-test.v', '-test.count=1']
             r = subprocess.run(cmd, cwd=root / 'src/wago', env=env, text=True, capture_output=True)
             row = {'round': round, 'case': case, 'variant': label, 'returncode': r.returncode, 'stdout': r.stdout, 'stderr': r.stderr}
