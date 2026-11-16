@@ -49,6 +49,7 @@ func (f *fn) hoistDirectLoop(reader *wasm.Reader) {
 		f.stats.peep("gc-direct-loop-no-plan")
 		return
 	}
+	f.prepareDirectWeighted(reader, p)
 	obj := f.directLoopRegister()
 	if obj == regNone {
 		return

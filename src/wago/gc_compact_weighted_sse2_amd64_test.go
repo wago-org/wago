@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_compact_weighted_sse2
+//go:build linux && amd64 && (wago_gc_compact_weighted_sse2 || wago_gc_direct_weighted_sse2)
 
 package wago
 
@@ -9,7 +9,7 @@ func TestCompactNativeWeightedSSE2Tails(t *testing.T) {
 	for _, weight := range []int32{0, 1, -7, 0x7fffffff, -0x80000000} {
 		// Remaining count after the checked first iteration is 3/4/5/7/8/9.
 		for _, bound := range []int32{4, 5, 6, 8, 9, 10} {
-			in := compactLoopInstance(t, compactWeightedModule(weight, bound, pattern...))
+			in := weightedLoopInstance(t, compactWeightedModule(weight, bound, pattern...))
 			for _, first := range []uint32{0, 1, uint32(bound) - 1} {
 				index, sum := first, uint32(0xfffffff0)
 				for {

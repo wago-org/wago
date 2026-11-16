@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)
+//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2)
 
 package amd64
 
@@ -30,14 +30,20 @@ func TestCompactWeightedExactSelection(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer cm.CodeImage.Close()
-	if stats.Funcs[0].Peephole["gc-compact-weighted-sum"] != 1 {
+	key := "gc-compact-weighted-sum"
+	simdKey := "gc-compact-weighted-sse2"
+	if gcDirectWeighted {
+		key = "gc-direct-weighted-sum"
+		simdKey = "gc-direct-weighted-sse2"
+	}
+	if stats.Funcs[0].Peephole[key] != 1 {
 		t.Fatalf("missing weighted sum %+v", stats.Funcs[0].Peephole)
 	}
-	if gcCompactWeightedSSE2 && stats.Funcs[0].Peephole["gc-compact-weighted-sse2"] != 1 {
+	if gcCompactWeightedSSE2 && stats.Funcs[0].Peephole[simdKey] != 1 {
 		t.Fatal("missing weighted SSE2 selection")
 	}
 	for _, i := range []int{1, 2, 3} {
-		if stats.Funcs[i].Peephole["gc-compact-weighted-sum"] != 0 {
+		if stats.Funcs[i].Peephole[key] != 0 {
 			t.Fatalf("unexpected func%d selection", i)
 		}
 	}
@@ -66,7 +72,7 @@ func TestCompactWeightedMatcherResets(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := fn{m: m, localType: []machineType{mtI64, mtI32, mtI32}}
 			r := wasm.ReaderFrom(body)
-			f.prepareCompactWeighted(&r, plan, false)
+			f.prepareWeighted(&r, plan, false, directGCScalar{size: 4, typ: mtI32}, true)
 			if f.weightedBound != 7 {
 				t.Fatal("canonical pattern not selected")
 			}
@@ -77,7 +83,7 @@ func TestCompactWeightedMatcherResets(t *testing.T) {
 			r = wasm.ReaderFrom(b)
 			p := plan
 			p.accesses = tc.accesses
-			f.prepareCompactWeighted(&r, p, tc.paired)
+			f.prepareWeighted(&r, p, tc.paired, directGCScalar{size: 4, typ: mtI32}, true)
 			if f.weightedBound != 0 {
 				t.Fatal("rejected loop retained stale certificate")
 			}
@@ -85,7 +91,7 @@ func TestCompactWeightedMatcherResets(t *testing.T) {
 				t.Fatal("matcher advanced caller reader")
 			}
 			r = wasm.ReaderFrom(body)
-			f.prepareCompactWeighted(&r, plan, false)
+			f.prepareWeighted(&r, plan, false, directGCScalar{size: 4, typ: mtI32}, true)
 			if f.weightedBound != 7 {
 				t.Fatal("subsequent valid loop not admitted")
 			}
@@ -95,7 +101,7 @@ func TestCompactWeightedMatcherResets(t *testing.T) {
 		f := fn{m: m, localType: []machineType{mtI64, mtI32, mtI32}}
 		f.weightedBound = 99
 		r := wasm.ReaderFrom(body[:n])
-		f.prepareCompactWeighted(&r, plan, false)
+		f.prepareWeighted(&r, plan, false, directGCScalar{size: 4, typ: mtI32}, true)
 		if f.weightedBound != 0 {
 			t.Fatalf("truncated pattern length%d retained certificate", n)
 		}

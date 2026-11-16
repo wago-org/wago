@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2)
+//go:build amd64 && (wago_gc_compact_weighted_sum || wago_gc_compact_weighted_sse2 || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2)
 
 package amd64
 
@@ -10,12 +10,21 @@ type compactWeightedState struct {
 }
 
 func (f *fn) prepareCompactWeighted(reader *wasm.Reader, p gcLoopResolverPlan, paired bool) {
+	scalar, _, ok := f.compactScalarArrayLayout(p.typeIndex)
+	f.prepareWeighted(reader, p, paired, scalar, ok)
+}
+
+func (f *fn) prepareDirectWeighted(reader *wasm.Reader, p gcLoopResolverPlan) {
+	scalar, final, ok := f.directGCArrayLayout(p.typeIndex)
+	f.prepareWeighted(reader, p, false, scalar, gcDirectWeighted && final && ok)
+}
+
+func (f *fn) prepareWeighted(reader *wasm.Reader, p gcLoopResolverPlan, paired bool, scalar directGCScalar, valid bool) {
 	f.weightedBound = 0
 	if paired || p.accesses != 1 {
 		return
 	}
-	scalar, _, ok := f.compactScalarArrayLayout(p.typeIndex)
-	if !ok || scalar.size != 4 || scalar.typ != mtI32 {
+	if !valid || scalar.size != 4 || scalar.typ != mtI32 {
 		return
 	}
 	r := *reader
@@ -108,7 +117,13 @@ func (f *fn) prepareCompactWeighted(reader *wasm.Reader, p gcLoopResolverPlan, p
 
 func (f *fn) tryCompactWeightedLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	l := f.directLoop
-	if f.weightedBound == 0 || l.kind != loopLeaseCompactActive || l.remaining != 0 || fi != len(f.ctrl)-1 || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.branchArity() != 0 || fr.has(ctrlRegMerge1) || k != 0 || f.depth() != 0 || f.interruptible || f.a.Len()-fr.controlSite > 1024 || cc != condB {
+	payload := int32(8)
+	validLease := l.kind == loopLeaseCompactActive
+	if gcDirectWeighted && l.kind == loopLeaseTrusted {
+		validLease = true
+		payload = 16
+	}
+	if f.weightedBound == 0 || !validLease || l.remaining != 0 || fi != len(f.ctrl)-1 || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.branchArity() != 0 || fr.has(ctrlRegMerge1) || k != 0 || f.depth() != 0 || f.interruptible || f.a.Len()-fr.controlSite > 1024 || cc != condB {
 		return false
 	}
 	index, total := int(f.weightedIndex), int(f.weightedTotal)
@@ -138,11 +153,11 @@ func (f *fn) tryCompactWeightedLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	exit := f.a.JccPlaceholder(invertCond(cc))
 	f.a.AluRI(cmpDigit, l.length, int32(f.weightedBound), false)
 	short := f.a.JccPlaceholder(condB)
-	vectorDone := f.emitCompactWeightedSSE2(l, ir, tr, offset, value)
+	vectorDone := f.emitCompactWeightedSSE2(l, ir, tr, offset, value, payload)
 	fast := f.a.Len()
 	f.a.MovRegReg32(offset, ir)
 	f.a.ImulRI(offset, 4, true)
-	f.a.LoadIdx(value, l.object, offset, 8, 4, false, false)
+	f.a.LoadIdx(value, l.object, offset, payload, 4, false, false)
 	f.a.LeaDispW(offset, ir, f.weightedWeight, false)
 	f.a.IMul(value, offset, false)
 	f.a.AluRR(0x01, tr, value, false)
@@ -160,6 +175,10 @@ func (f *fn) tryCompactWeightedLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	f.a.JmpBack(fr.controlSite)
 	f.a.PatchRel32(done, f.a.Len())
 	f.a.PatchRel32(exit, f.a.Len())
-	f.stats.peep("gc-compact-weighted-sum")
+	if l.kind == loopLeaseTrusted {
+		f.stats.peep("gc-direct-weighted-sum")
+	} else {
+		f.stats.peep("gc-compact-weighted-sum")
+	}
 	return true
 }

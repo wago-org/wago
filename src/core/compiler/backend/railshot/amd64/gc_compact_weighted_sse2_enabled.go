@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_weighted_sse2
+//go:build amd64 && (wago_gc_compact_weighted_sse2 || wago_gc_direct_weighted_sse2)
 
 package amd64
 
@@ -7,7 +7,7 @@ const gcCompactWeightedSSE2 = true
 // Full-span proof and the original checked first iteration precede this call.
 // Only accumulator lanes 0 and 2 are meaningful: each collects the low dword
 // of one even and one odd PMULUDQ product. PADDD cannot carry between lanes.
-func (f *fn) emitCompactWeightedSSE2(l directLoopLease, index, total, offset, value Reg) int {
+func (f *fn) emitCompactWeightedSSE2(l directLoopLease, index, total, offset, value Reg, payload int32) int {
 	if f.weightedBound < 4 {
 		return -1
 	}
@@ -43,7 +43,7 @@ func (f *fn) emitCompactWeightedSSE2(l directLoopLease, index, total, offset, va
 	f.a.MovRegReg32(offset, index)
 	f.a.ImulRI(offset, 4, true)
 	loop := f.a.Len()
-	f.a.MovdquLoadIdx(data, l.object, offset, 8)
+	f.a.MovdquLoadIdx(data, l.object, offset, payload)
 	// Duplicate odd lanes into even positions without changing source weights.
 	f.a.Pshufd(oddData, data, 0xf5)
 	f.a.Pshufd(oddWeights, weights, 0xf5)
@@ -68,6 +68,10 @@ func (f *fn) emitCompactWeightedSSE2(l directLoopLease, index, total, offset, va
 	for _, r := range regs {
 		f.releaseF(r)
 	}
-	f.stats.peep("gc-compact-weighted-sse2")
+	if l.kind == loopLeaseTrusted {
+		f.stats.peep("gc-direct-weighted-sse2")
+	} else {
+		f.stats.peep("gc-compact-weighted-sse2")
+	}
 	return done
 }

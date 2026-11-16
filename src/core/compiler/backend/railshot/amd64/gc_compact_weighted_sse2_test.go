@@ -1,4 +1,4 @@
-//go:build amd64 && wago_gc_compact_weighted_sse2
+//go:build amd64 && (wago_gc_compact_weighted_sse2 || wago_gc_direct_weighted_sse2)
 
 package amd64
 
@@ -20,7 +20,7 @@ func TestCompactWeightedSSE2Emitter(t *testing.T) {
 			f.fpinned = f.fpinned.add(r)
 		}
 		pins := f.fpinned
-		done := f.emitCompactWeightedSSE2(directLoopLease{object: R12, length: R13}, R14, R15, RAX, RCX)
+		done := f.emitCompactWeightedSSE2(directLoopLease{object: R12, length: R13}, R14, R15, RAX, RCX, 8)
 		if free < 6 {
 			if done != -1 || len(f.a.B) != 0 {
 				t.Fatal("pressure fallback emitted fragment")
