@@ -114,12 +114,16 @@ func (c *Collector) collectAge2(roots []*Ref, full bool) (result error) {
 	}
 	scanningRemembered := false
 	scan := func(r Ref) error {
-		// Remembered parents were not necessarily visited by visit during a minor.
-		if !c.valid(r) {
-			return ErrRef
-		}
-		if _, e := c.layoutAt(uint32(r)); e != nil {
-			return e
+		// Queue entries were validated by visit before enqueue. No authoritative
+		// heap mutation or external callback occurs before this scan. Remembered
+		// old parents are not queue entries and still require the complete check.
+		if !age2QueueReuse || scanningRemembered {
+			if !c.valid(r) {
+				return ErrRef
+			}
+			if _, e := c.layoutAt(uint32(r)); e != nil {
+				return e
+			}
 		}
 		if age2MetricsEnabled && scanningRemembered {
 			metric.rememberedParent()
