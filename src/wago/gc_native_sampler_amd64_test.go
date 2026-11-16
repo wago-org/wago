@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -220,20 +221,26 @@ func TestGCNativeStructSampler(t *testing.T) {
 			t.Fatal(e)
 		}
 		goNames := map[string]uint64{}
+		var totalWeight, goWeight uint64
 		unknown := uint64(0)
 		for _, s := range samples {
+			totalWeight += s.Period
 			if f := runtime.FuncForPC(uintptr(s.PC)); f != nil {
 				goNames[f.Name()] += s.Period
+				goWeight += s.Period
 			} else {
 				unknown += s.Period
 			}
 		}
-		receipt := map[string]any{"repeat": repeat, "start_ns": start, "end_ns": end, "calls": calls, "before": before, "after": after, "config": config, "period_ns": 10000000, "thread_id": unix.Gettid(), "samples": samples, "lost": lost, "journal_status": status, "events": events, "resolved": report, "go_symbol_weight_ns": goNames, "non_go_or_unknown_weight_ns": unknown, "scope": "self-thread user CPU only; other Go threads excluded; native gaps unknown; no benchmark speed claim"}
-		b, _ := json.MarshalIndent(receipt, "", "  ")
+		receipt := map[string]any{"artifact_sha256": fmt.Sprintf("%x", sha256.Sum256(raw)), "native_sha256": fmt.Sprintf("%x", sha256.Sum256(plain.code)), "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0), "total_sample_weight_ns": totalWeight, "native_resolved_weight_ns": report.Weight - report.UnknownWeight, "native_unresolved_weight_ns": report.UnknownWeight, "go_symbol_weight_total_ns": goWeight, "repeat": repeat, "start_ns": start, "end_ns": end, "calls": calls, "before": before, "after": after, "config": config, "period_ns": 10000000, "thread_id": unix.Gettid(), "samples": samples, "lost": lost, "journal_status": status, "events": events, "resolved": report, "go_symbol_weight_ns": goNames, "non_go_or_unknown_weight_ns": unknown, "scope": "self-thread user CPU only; other Go threads excluded; native gaps unknown; no benchmark speed claim"}
+		b, marshalErr := json.MarshalIndent(receipt, "", "  ")
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
 		if e = os.WriteFile(filepath.Join(out, fmt.Sprintf("repeat%d.json", repeat)), b, 0644); e != nil {
 			t.Fatal(e)
 		}
-		if len(samples) == 0 || lost != 0 || status.Dropped != 0 {
+		if len(samples) == 0 || lost != 0 || status.Dropped != 0 || status.Clock != "monotonic" {
 			t.Fatal("incomplete capture", len(samples), lost, status)
 		}
 		if after.Allocations-before.Allocations != calls*262208 {
