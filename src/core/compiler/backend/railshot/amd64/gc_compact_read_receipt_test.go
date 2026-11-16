@@ -8,6 +8,13 @@ import (
 )
 
 func TestCompactNativeReadArtifactReceipt(t *testing.T) {
+	if gcDirectReads {
+		cm, err := CompileModuleWith(nil, CompileOptions{})
+		if cm != nil || err == nil {
+			t.Fatal("mixed compact/direct lowering accepted")
+		}
+		return
+	}
 	m := gcNativeAttributionModule(t, false)
 	cm, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true})
 	if err != nil {

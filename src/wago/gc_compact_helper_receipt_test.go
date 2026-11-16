@@ -17,19 +17,23 @@ func TestGCCompactHelperReceiptIsPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.gcCompactHelperVersion = 1
+	c.gcCompactNativeVersion = 1
 	after, err := compiledMetadataBytes(c, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if c.gcCompactNativeReceipt() != 1 {
+		t.Fatal("missing native receipt")
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("compact capability leaked into metadata")
 	}
 	snapshot := cloneCompiledExecutionMetadata(c)
-	if snapshot == c || snapshot.gcCompactHelperReceipt() != 1 {
+	if snapshot == c || snapshot.gcCompactHelperReceipt() != 1 || snapshot.gcCompactNativeReceipt() != 1 {
 		t.Fatal("private snapshot lost receipt")
 	}
 	c.gcCompactHelperVersion = 0
-	if snapshot.gcCompactHelperReceipt() != 1 {
+	if snapshot.gcCompactHelperReceipt() != 1 || snapshot.gcCompactNativeReceipt() != 1 {
 		t.Fatal("public view mutation affected snapshot")
 	}
 	if unsafe.Sizeof(uintptr(0)) == 8 && unsafe.Sizeof(Compiled{}) != 808 {
