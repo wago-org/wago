@@ -78,7 +78,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
-		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok {
+		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok || f.compactArrayAllocEligible(typeIndex) {
 			f.directArrayAllocType = typeIndex + 1
 			f.directArrayAllocDefault = false
 		}
@@ -223,7 +223,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok {
+		if _, ok := f.directOffsetArrayAllocLayout(typeIndex); ok || f.compactArrayAllocEligible(typeIndex) {
 			f.directArrayAllocType = typeIndex + 1
 			f.directArrayAllocDefault = true
 		}

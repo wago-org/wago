@@ -1691,7 +1691,11 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 		f.checkCallClobber()
 	}
 	if directArrayAlloc {
-		f.emitDirectOffsetArrayAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		if gcCompactArrayAlloc {
+			f.emitCompactArrayAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		} else {
+			f.emitDirectOffsetArrayAlloc(typeIndex, directDefault, argSlot, resultSlot)
+		}
 	} else if directRefStore {
 		if gcCompactRefStore {
 			f.emitCompactRefArraySet(typeIndex, argSlot)
