@@ -1,0 +1,4 @@
+ok  	github.com/wago-org/wago/src/wago	56.865s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	(cached)

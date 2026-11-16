@@ -1,0 +1,2 @@
+ok  	github.com/wago-org/wago/experiments/compactgc	0.060s
+ok  	github.com/wago-org/wago/experiments/gc-eden-core	0.004s [no tests to run]
