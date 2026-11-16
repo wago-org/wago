@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_helper_only
+//go:build linux && amd64 && (wago_gc_helper_only || wago_gc_direct_reads)
 
 package wago
 
@@ -17,7 +17,8 @@ import (
 )
 
 // TestGCDirectBridgeProbe is an opt-in evidence collector, not a performance
-// acceptance test. Both modes use the SAME helper-only compiled binary/source.
+// acceptance test. Handle/direct helper comparisons use the SAME compiled
+// binary/source. The separate native-read binary admits only direct offsets.
 func TestGCDirectBridgeProbe(t *testing.T) {
 	name := os.Getenv("GC_BRIDGE_CASE")
 	if name == "" {
@@ -123,7 +124,7 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 	if e = syscall.Getrusage(syscall.RUSAGE_SELF, &usage); e != nil {
 		t.Fatal(e)
 	}
-	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "helper_only": true, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
+	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
 	if mode == "direct" {
 		out["direct_old_semispaces"] = 2
 		out["direct_arena_bytes"] = 16 + config.NurseryBytes + 2*config.ThroughputHeapBytes
