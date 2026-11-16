@@ -1,0 +1,48 @@
+{
+  "source": "aaf25f6",
+  "protocol": "Separate Compile+Close 256 iterations, three rotating process rounds",
+  "rows": [
+    {
+      "round": 0,
+      "variant": "baseline",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    144785 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    135865 ns/op\t      2479 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 0,
+      "variant": "candidate",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    124066 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    129483 ns/op\t      2543 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "candidate",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    131599 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    125552 ns/op\t      2543 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "baseline",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    172388 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    154500 ns/op\t      2479 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "baseline",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    135275 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    135062 ns/op\t      2479 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "candidate",
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/wago\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkGCDirectCompileProbe/array-allocation-access         \t     256\t    152673 ns/op\t      1967 code-B\t   56074 B/op\t     223 allocs/op\nBenchmarkGCDirectCompileProbe/array-fill                      \t     256\t    139004 ns/op\t      2543 code-B\t   59979 B/op\t     233 allocs/op\nPASS\n",
+      "stderr": ""
+    }
+  ]
+}
