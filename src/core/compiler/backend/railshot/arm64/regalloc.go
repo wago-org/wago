@@ -34,10 +34,26 @@ func (f *fn) cachedIntConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadLoopIntConsts(h *funcHintView) {
-	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
+	if !f.opt(optLoopIntConst) || f.makesCalls || (h.loopIntConstCount == 0 && h.loopIntOneHints() == 0) {
 		return
 	}
-	f.reserveLoopIntConsts(h, false)
+	if h.loopIntConstCount != 0 {
+		f.reserveLoopIntConsts(h, false)
+	}
+	if hints := h.loopIntOneHints(); hints != 0 {
+		inline := funcHintView{funcHints: h.funcHints}
+		if hints&loopI32OneHintMask != 0 {
+			inline.loopIntConst[inline.loopIntConstCount] = 1
+			inline.loopIntConstTypes |= 1 << (2 * inline.loopIntConstCount)
+			inline.loopIntConstCount++
+		}
+		if hints&loopI64OneHintMask != 0 {
+			inline.loopIntConst[inline.loopIntConstCount] = 1
+			inline.loopIntConstTypes |= 2 << (2 * inline.loopIntConstCount)
+			inline.loopIntConstCount++
+		}
+		f.reserveLoopIntConsts(&inline, false)
+	}
 }
 
 func (f *fn) reserveLoopIntConsts(h *funcHintView, scoped bool) {

@@ -115,17 +115,27 @@ type funcHints struct {
 	// The high bits retain sparse loop-constant presence and fail closed for
 	// non-table dynamic/helper calls without growing the compact hint record.
 	callRelocSites   uint16
-	immediateFreeOps uint16 // low 15 bits: saturated density; high bit: decoded i32-add run
+	immediateFreeOps uint16 // saturated density plus compact loop/stream pattern flags
 }
 
-const streamingReductionHintMask = uint16(1 << 15)
+const (
+	immediateFreeOpCountMask   = uint16(1<<9 - 1)
+	loopI32OneHintMask         = uint16(1 << 13)
+	loopI64OneHintMask         = uint16(1 << 14)
+	streamingReductionHintMask = uint16(1 << 15)
+	loopIntOneHintMask         = loopI32OneHintMask | loopI64OneHintMask
+)
 
 func (h funcHints) immediateFreeOpCount() uint16 {
-	return h.immediateFreeOps &^ streamingReductionHintMask
+	return h.immediateFreeOps & immediateFreeOpCountMask
 }
 
 func (h funcHints) hasStreamingReduction() bool {
 	return h.immediateFreeOps&streamingReductionHintMask != 0
+}
+
+func (h funcHints) loopIntOneHints() uint16 {
+	return h.immediateFreeOps & loopIntOneHintMask
 }
 
 const (
@@ -1081,7 +1091,16 @@ func loopIntConstNeedsRegister(next byte, bits int64, typ uint8) bool {
 	}
 }
 
-func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64, consumer byte) {
+// A constant addend is an immediate in isolation, but the normal tree selector
+// folds `mul; const; add` into MADD, whose accumulator is a register. Account for
+// that selected instruction during the existing loop-constant prepass so equal
+// addends can share one immutable lease across iterations.
+func loopIntConstNeedsMulAddRegister(previous, next byte, typ uint8) bool {
+	return typ == 1 && previous == 0x6c && next == 0x6a || // i32.mul, i32.add
+		typ == 2 && previous == 0x7e && next == 0x7c // i64.mul, i64.add
+}
+
+func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int, pathWeight int64, consumer byte, selectedRegister bool) {
 	if loopDepth == 0 {
 		return
 	}
@@ -1090,7 +1109,7 @@ func (s *byteBodyScanner) noteLoopIntConst(bits int64, typ uint8, loopDepth int,
 	// Keep the bounded discovery frontier stable. An immediate-only use still
 	// occupies its original candidate slot, but cannot displace a costly use.
 	// A later multiply of the same value contributes its ordinary score.
-	if discountShiftedImmediateHint(consumer, bits) {
+	if !selectedRegister && discountShiftedImmediateHint(consumer, bits) {
 		score = 0
 	}
 	for i := 0; i < int(s.loopIntConstN); i++ {
@@ -1137,9 +1156,39 @@ func (s *byteBodyScanner) finishLoopIntConsts() {
 		s.h.loopIntConstCount++
 		best.scoreType = 0
 	}
-	if s.h.loopIntConstCount != 0 {
-		s.h.markLoopIntConsts()
+	if s.h.loopIntConstCount == 0 {
+		return
 	}
+	// The fused accumulator value one needs no payload bits. When every selected
+	// loop constant is that value, retain its type(s) in otherwise unused bits of
+	// the fixed function header. Arbitrary constants and mixed selections continue
+	// to use the ranked sparse sidecar unchanged.
+	inline := uint16(0)
+	for i := 0; i < int(s.h.loopIntConstCount); i++ {
+		if s.h.loopIntConst[i] != 1 {
+			inline = 0
+			break
+		}
+		switch s.h.loopIntConstTypes >> (2 * i) & 3 {
+		case 1:
+			inline |= loopI32OneHintMask
+		case 2:
+			inline |= loopI64OneHintMask
+		default:
+			inline = 0
+		}
+		if inline == 0 {
+			break
+		}
+	}
+	if inline != 0 {
+		s.h.immediateFreeOps |= inline
+		s.h.loopIntConst = [4]int64{}
+		s.h.loopIntConstTypes = 0
+		s.h.loopIntConstCount = 0
+		return
+	}
+	s.h.markLoopIntConsts()
 }
 
 func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
@@ -1384,8 +1433,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if s.collectLoopIntConsts && loopDepth != 0 {
 				if next, ok := s.r.Reader.Peek(); ok {
-					if value, valueType, needed := loopIntConstRegisterValue(next, bits, typ); needed {
-						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, next)
+					value, valueType, needed := loopIntConstRegisterValue(next, bits, typ)
+					selectedRegister := loopIntConstNeedsMulAddRegister(prevOp, next, typ)
+					if needed || selectedRegister {
+						s.noteLoopIntConst(value, valueType, loopDepth, pathWeight, next, selectedRegister)
 					}
 				}
 			}
