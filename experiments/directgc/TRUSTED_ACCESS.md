@@ -149,3 +149,23 @@ checked object resolver for numeric array get/set, even when combined with
 policy 1 or 2. It retains logical index and selected-element physical extent
 checks, admits only final numeric layouts up to eight bytes, and does not inherit
 the trusted struct-read resolver through tag composition.
+
+## Native reference and allocation extensions
+
+Policy 4 (`wago_gc_direct_trusted_refstruct`) admits bounded reference-containing
+struct allocation and final reference-field loads. Loaded references are explicitly
+marked as roots with the normal reference stack representation; nursery object
+initialization needs no old-to-young barrier. Rooted helper fallback remains.
+
+Policy 5 (`wago_gc_direct_trusted_alloc`) omits admission-certified metadata checks
+from native allocation. Capability, authoritative/snapshot cursor agreement,
+capacity, dynamic array arithmetic/caps, counter overflow and full publication
+remain checked. It does not itself enable reference-struct allocation. See
+[`TRUSTED_ALLOCATION.md`](TRUSTED_ALLOCATION.md).
+
+At integrated `c937bed`, the combined fill, policy 4 and policy 5 runtime suite
+passed with register checks. Unfiltered default Wago, native/checked GC, AMD64
+backend and direct substrate tests also passed. Checked bulk fill keeps its
+own full resolver and span checks even when combined with these policies.
+The full six-case V8 comparison of this newer pipeline is pending. Earlier
+full-protocol evidence missed every target; no target completion is claimed.
