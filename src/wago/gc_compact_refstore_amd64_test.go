@@ -13,6 +13,9 @@ import (
 func compactRefStoreModule() []byte           { return compactRefStoreTypedChildModule(false) }
 func compactRefStoreArrayChildModule() []byte { return compactRefStoreTypedChildModule(true) }
 func compactRefStoreTypedChildModule(arrayChild bool) []byte {
+	return compactRefStoreTypedChildShape(arrayChild, false)
+}
+func compactRefStoreTypedChildShape(arrayChild, vector bool) []byte {
 	childType := []byte{0x5f, 1, 0x7f, 0}
 	ctor, defaultCtor, getValue := []byte{0xfb, 0, 0}, []byte{0xfb, 1, 0}, []byte{0xfb, 2, 0, 0}
 	if arrayChild {
@@ -20,6 +23,12 @@ func compactRefStoreTypedChildModule(arrayChild bool) []byte {
 		ctor = []byte{0x41, 2, 0xfb, 6, 0}
 		defaultCtor = []byte{0x41, 2, 0xfb, 7, 0}
 		getValue = []byte{0x41, 0, 0xfb, 11, 0}
+	}
+	if vector {
+		childType = []byte{0x5e, 0x7b, 1}
+		ctor = []byte{0xfd, 0x11, 0x41, 2, 0xfb, 6, 0}
+		defaultCtor = []byte{0x41, 2, 0xfb, 7, 0}
+		getValue = []byte{0x41, 0, 0xfb, 11, 0, 0xfd, 0x1b, 0}
 	}
 	types := wasmtest.Vec(childType, []byte{0x5e, 0x63, 0, 1}, []byte{0x60, 0, 0}, []byte{0x60, 1, 0x7f, 1, 0x7f}, []byte{0x60, 1, 0x7f, 0}, []byte{0x60, 0, 1, 0x7f})
 	init := append([]byte{0x41, 4, 0xfb, 7, 1, 0x24, 0, 0x41, 0xdb, 0}, ctor...)
@@ -169,4 +178,10 @@ func testCompactRefStoreRejectsInvalidInputs(t *testing.T, data []byte) {
 	if !errors.As(e, &trap) || trap.Code != TrapNullReference {
 		t.Fatalf("null parent must precede index trap: %v", e)
 	}
+}
+
+func TestCompactNativeGCRefStoreSIMDArrayChildGeometry(t *testing.T) {
+	data := compactRefStoreTypedChildShape(true, true)
+	testCompactRefStoreRememberedFastPath(t, data)
+	testCompactRefStoreRejectsInvalidInputs(t, data)
 }
