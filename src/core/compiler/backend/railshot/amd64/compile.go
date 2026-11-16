@@ -1848,6 +1848,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		compiled.GCHelperOnlyReceipt = gcHelperOnly && !gcDirectReads
 		if gcDirectReads {
 			compiled.GCDirectReadABIVersion = gc.DirectABIVersion
+			if gcTrustedDirectReads {
+				compiled.GCTrustedDirectVersion = 1
+			}
 		}
 	}
 	runtime.KeepAlive(m)

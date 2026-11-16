@@ -292,7 +292,7 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 }
 
 func (b *instanceBuilder) prepareCollector() error {
-	if b.c.gcDirectReadABIReceipt() != 0 && b.c.needsNativeGCABI() && !b.opts.GC.ExperimentalDirectOffsets {
+	if (b.c.gcTrustedDirectVersion != 0 || b.c.gcDirectReadABIReceipt() != 0) && b.c.needsNativeGCABI() && !b.opts.GC.ExperimentalDirectOffsets {
 		return errors.New("wago: native direct-read artifact requires direct-offset collector")
 	}
 	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()

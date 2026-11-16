@@ -12,6 +12,9 @@ import (
 // This resolver intentionally retains no address certificate. Every access
 // reloads the explicitly direct-offset view, including after moving helpers.
 func (f *fn) emitCheckedDirectOffset(object *elem, typeIndex, required uint32) (Reg, func()) {
+	if gcTrustedDirectReads {
+		return f.emitTrustedDirectOffset(object)
+	}
 	ref := f.materialize(object)
 	f.pinned = f.pinned.add(ref)
 	view := f.allocReg(maskOf(ref))
@@ -155,6 +158,13 @@ func (f *fn) emitDirectOffsetArrayLen(typeIndex uint32) bool {
 	r := f.allocReg(maskOf(obj))
 	f.pinned = f.pinned.add(r)
 	f.a.Load32(r, obj, 8)
+	if gcTrustedDirectReads {
+		f.pinned = f.pinned.remove(r)
+		done()
+		f.spillFloor = floor
+		f.pushReg(r, mtI32)
+		return true
+	}
 	tmp := f.allocReg(maskOf(obj, r))
 	f.a.Load32(tmp, obj, 4)
 	f.a.AluRI(5, tmp, int32(gc.HeaderSize), false)
@@ -172,4 +182,25 @@ func (f *fn) emitDirectOffsetArrayLen(typeIndex uint32) bool {
 	f.spillFloor = floor
 	f.pushReg(r, mtI32)
 	return true
+}
+
+// emitTrustedDirectOffset is selected only by the separately attested compiler
+// mode. Validated static final types and checked public ingress establish object
+// identity/layout; exact moving roots and domain serialization establish lifetime.
+// Unsafe host mutation of private metadata is outside this mode's contract.
+func (f *fn) emitTrustedDirectOffset(object *elem) (Reg, func()) {
+	ref := f.materialize(object)
+	f.pinned = f.pinned.add(ref)
+	f.a.TestSelf(ref, false)
+	f.trapIf(condE, trapNullReference)
+	f.a.MovRegReg32(ref, ref)
+	obj := f.allocReg(maskOf(ref))
+	f.pinned = f.pinned.add(obj)
+	f.a.Load64(obj, RBX, -int32(abi.GCNativeViewPtrOffset))
+	f.a.Load64(obj, obj, gc.DirectInstanceCollectorOffset)
+	f.a.Load64(obj, obj, gc.DirectViewArenaOffset)
+	f.a.Add64(obj, ref)
+	f.pinned = f.pinned.remove(ref)
+	f.release(ref)
+	return obj, func() { f.pinned = f.pinned.remove(obj) }
 }

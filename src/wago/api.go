@@ -1621,6 +1621,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	c.gcHelperOnlyReceipt = cm.GCHelperOnlyReceipt && len(customInstructions) == 0
 	if len(customInstructions) == 0 {
 		c.gcDirectReadABIVersion = cm.GCDirectReadABIVersion
+		c.gcTrustedDirectVersion = cm.GCTrustedDirectVersion
 	}
 	c.requiresARM64LSE = cm.RequiresARM64LSE
 	c.requiredAMD64Features = shared.AMD64Features(cm.RequiredAMD64Features)

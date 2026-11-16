@@ -19,6 +19,7 @@ type CompiledModule struct {
 	// Only the helper-only AMD64 compiler may issue it.
 	GCHelperOnlyReceipt    bool
 	GCDirectReadABIVersion uint32 // live direct-offset read ABI receipt; never serialized
+	GCTrustedDirectVersion uint8  // private compiler attestation; never serialized
 	// GCDeadInductionLayouts proves the complete function charges max(n,1)
 	// nonescaping pointer-free objects and returns i32(n*(n-1)/2).
 	// Low/high words hold object size/alignment. Zero means no proof.
