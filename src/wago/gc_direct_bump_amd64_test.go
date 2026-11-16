@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_alloc
+//go:build linux && amd64 && (wago_gc_direct_alloc || wago_gc_direct_refstore)
 
 package wago
 

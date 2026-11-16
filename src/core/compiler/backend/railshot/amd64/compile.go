@@ -605,6 +605,7 @@ type fn struct {
 	gcFrameRoots             *shared.GCFrameRootPlan
 	gcCallsiteIndex          int
 	compactFrameHeader       bool // register ABI: no wrapper results-pointer header
+	directArraySetType       uint32
 	directStructAllocType    uint32
 	directStructAllocDefault bool
 	nativeStructAllocType    uint32 // type index + 1 for the next gcStructAllocOne call

@@ -296,6 +296,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			f.stats.peep("gc-barrier-slow")
 			return f.emitNativeCardSafeArrayRefSet(typeIndex, valueType)
 		}
+		if _, ok := f.directOffsetRefArrayChild(typeIndex); ok {
+			f.directArraySetType = typeIndex + 1
+		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			f.gcOpcodeBarrier = true
 			f.stats.peep("gc-barrier-slow")

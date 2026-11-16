@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc)
+//go:build amd64 && (wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore)
 
 package amd64
 
