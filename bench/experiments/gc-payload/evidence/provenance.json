@@ -1,0 +1,12 @@
+{
+  "baseline_commit": "ccbb2594d3e70069622c1d77bfd1c086a221262c",
+  "baseline_runtime_base": "bb0c4e38cdffc55ed31c9ec7b0a109f6e5a59d03",
+  "candidate_commit": "737ea3c1f2c32d0db7344d67bf57198c5f7a270c",
+  "benchmark_sha256": "46720caabeceb8fb30a4a3484778a74ddac7f3b975e2c4107618d6696ab94905",
+  "go": "go version go1.27.1 linux/amd64",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "build": "GOCACHE=/workspace/shared/go127-cache GOPATH=/workspace/shared/go-path /workspace/shared/toolchains/go127/bin/go test -p 1 -c -o <variant>.test ./src/core/runtime/gc/native",
+  "GOMAXPROCS": 1,
+  "known_worker_overlap": false,
+  "shared_host_uncontrolled": true
+}

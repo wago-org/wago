@@ -1,0 +1,92 @@
+{
+  "binary_sha256": {
+    "baseline": "07b2d2afc9115cfd6b3cf7b1508d9fc207ca6ef7367113c1b3e3c6bdebe528c8",
+    "candidate": "a57b9e215c5af3a0974d38d6392c32713f7a1057605277564644e386bddfde7f"
+  },
+  "runs": [
+    {
+      "round": 0,
+      "variant": "baseline",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 7689234\t        15.88 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 3888819\t        30.57 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4494349\t        27.41 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 2861714\t        37.97 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2471462\t        67.32 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 2043327\t        61.97 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 4836286\t        23.53 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 6948410\t        17.04 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3648008\t        32.61 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4113574\t        28.43 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 3030441\t        39.04 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t  984438\t       106.4 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t  920233\t       137.3 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 5388056\t        23.24 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 0,
+      "variant": "candidate",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 7061478\t        17.12 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 3764995\t        32.24 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4588608\t        26.69 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 3328554\t        43.97 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2551027\t        46.69 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 1994683\t        57.74 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 6721786\t        19.86 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 6544075\t        17.78 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3654213\t        34.17 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4132311\t        28.98 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 2962735\t        40.32 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t 1210458\t        95.05 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t 1000000\t       135.8 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 6970525\t        17.60 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "candidate",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 7200787\t        16.30 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 3987406\t        30.30 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4570928\t        32.41 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 3195652\t        38.51 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2618613\t        44.76 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 1984578\t        55.41 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 7135435\t        17.18 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 7063892\t        16.77 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3912855\t        31.49 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4419417\t        27.18 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 3217809\t        37.18 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t 1298132\t        92.86 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t  999607\t       122.0 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 6479985\t        18.20 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 1,
+      "variant": "baseline",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 6459994\t        18.98 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 4101271\t        31.27 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4054677\t        27.60 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 3203232\t        36.13 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2581510\t        47.86 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 2177796\t        55.92 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 5864076\t        21.65 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 7891843\t        16.20 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3663609\t        32.38 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4110108\t        27.65 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 3216262\t        36.59 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t 1256845\t        95.80 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t  993937\t       133.0 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 5390883\t        22.79 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "baseline",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/baseline.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 6423354\t        19.44 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 3954404\t        29.06 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4552029\t        26.51 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 3077481\t        41.13 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2380806\t        50.96 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 2049602\t        58.00 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 5378334\t        22.10 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 7869907\t        16.78 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3886648\t        30.20 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4327945\t        27.93 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 3019593\t        49.38 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t  995074\t       105.7 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t  901239\t       139.2 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 5557389\t        21.85 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    },
+    {
+      "round": 2,
+      "variant": "candidate",
+      "command": [
+        "/workspace/shared/gc-payload-evidence/candidate.test",
+        "-test.run=^$",
+        "-test.bench=^BenchmarkPayloadBoundary$",
+        "-test.benchtime=100ms",
+        "-test.count=1"
+      ],
+      "returncode": 0,
+      "stdout": "goos: linux\ngoarch: amd64\npkg: github.com/wago-org/wago/src/core/runtime/gc/native\ncpu: AMD EPYC 9V74 80-Core Processor                \nBenchmarkPayloadBoundary/throughput/struct-get         \t 7231878\t        16.65 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-set         \t 3572686\t        30.55 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-get          \t 4636471\t        26.36 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-set          \t 3243748\t        36.02 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/struct-new         \t 2841156\t        42.90 ns/op\t       1 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-new          \t 2183654\t        55.41 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/throughput/array-borrow       \t 6841982\t        17.20 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-get               \t 7228872\t        16.86 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-set               \t 3764380\t        31.53 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-get                \t 4567900\t        30.77 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-set                \t 3206772\t        37.54 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/struct-new               \t 1250074\t        98.47 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-new                \t  960218\t       123.4 ns/op\t       0 B/op\t       0 allocs/op\nBenchmarkPayloadBoundary/tiny/array-borrow             \t 6651543\t        18.64 ns/op\t       0 B/op\t       0 allocs/op\nPASS\n",
+      "stderr": ""
+    }
+  ]
+}
