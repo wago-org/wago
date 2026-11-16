@@ -18,7 +18,7 @@ func TestTrustedDirectReceiptAndPrivateSnapshot(t *testing.T) {
 	}
 	defer c.Close()
 	snapshot := c.executionView()
-	if snapshot == c || (snapshot.gcTrustedDirectVersion < 1 || snapshot.gcTrustedDirectVersion > 4) || snapshot.gcDirectReadABIReceipt() != gc.DirectABIVersion || snapshot.hasGCHelperOnlyReceipt() {
+	if snapshot == c || (snapshot.gcTrustedDirectVersion < 1 || snapshot.gcTrustedDirectVersion > 5) || snapshot.gcDirectReadABIReceipt() != gc.DirectABIVersion || snapshot.hasGCHelperOnlyReceipt() {
 		t.Fatal("missing private trusted snapshot")
 	}
 	before, e := compiledMetadataBytes(snapshot, false)
