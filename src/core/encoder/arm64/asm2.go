@@ -939,6 +939,10 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
+	if a.reuseIndexedAddress(base, index, disp) {
+		a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
+		return
+	}
 	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
 	if foldIdxDispEnabled && (a.DenseIdxDisp || reused) {
 		if !reused {
@@ -979,6 +983,10 @@ func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if disp == 0 {
 		a.StrIdx(src, base, index, size)
+		return
+	}
+	if a.reuseIndexedAddress(base, index, disp) {
+		a.StrIdx(src, X16, XZR, size)
 		return
 	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
@@ -1065,6 +1073,68 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 		}
 	}
 	return false
+}
+
+// reuseIndexedAddress proves that X16 still holds the exact
+// base+index+disp address produced by a nearby access. This complements the
+// base-only proof above: once a large displacement has been added to X16, an
+// identical later access can use that full address directly. The proof accepts
+// one architectural add/sub-immediate displacement, the access which consumed
+// it, and at most one independent integer result between the two accesses.
+func (a *Asm) reuseIndexedAddress(base, index Reg, disp int32) bool {
+	if !a.ReuseIndexedBase || len(a.B) < 12 || base == X16 || index == X16 || base == ZR || index == ZR {
+		return false
+	}
+	wantDisp, ok := indexedAddressDispWord(disp)
+	if !ok {
+		return false
+	}
+	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	pos := len(a.B) - 4
+	if dst, ok := gpResultDestination(a.wordAt(pos)); ok {
+		if dst == X16 || dst == base || dst == index || pos < 4 {
+			return false
+		}
+		pos -= 4
+	}
+	if !indexedAddressMemoryPreserves(a.wordAt(pos), base, index) || pos < 8 ||
+		a.wordAt(pos-4) != wantDisp || a.wordAt(pos-8) != wantAdd {
+		return false
+	}
+	a.IndexedBaseReuses++
+	return true
+}
+
+func indexedAddressMemoryPreserves(instruction uint32, base, index Reg) bool {
+	unsignedImmediate := instruction&0x3B000000 == 0x39000000 && Reg(instruction>>5&31) == X16
+	registerOffset := instruction&0x3B20FC00 == 0x38206800 && Reg(instruction>>5&31) == X16
+	if !unsignedImmediate && !registerOffset {
+		return false
+	}
+	if !loadStoreMayWriteGPR(instruction) {
+		return true
+	}
+	dst := Reg(instruction & 31)
+	return dst != X16 && dst != base && dst != index
+}
+
+func indexedAddressDispWord(disp int32) (uint32, bool) {
+	base := uint32(0x91000000) // ADD X16,X16,#imm
+	magnitude := int64(disp)
+	if magnitude < 0 {
+		base = 0xD1000000 // SUB X16,X16,#imm
+		magnitude = -magnitude
+	}
+	var immediate uint32
+	switch {
+	case magnitude > 0 && magnitude <= 0xfff:
+		immediate = uint32(magnitude) << 10
+	case magnitude > 0 && magnitude&0xfff == 0 && magnitude <= 0xfff000:
+		immediate = 1<<22 | uint32(magnitude>>12)<<10
+	default:
+		return 0, false
+	}
+	return base | immediate | uint32(X16)<<5 | uint32(X16), true
 }
 
 // loadStoreMayWriteGPR applies only to the non-writeback unsigned-immediate

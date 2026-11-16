@@ -109,7 +109,7 @@ type Asm struct {
 	// patch can expand to an inverted condition followed by an unconditional B.
 	ReserveBranch19               bool
 	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
-	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
+	ReuseIndexedBase              bool // reuse a nearby proven X16 indexed address
 	DisableLogicalMoveImmediate   bool
 	DisableCompactMoveImmediate32 bool
 	AllowSingleNegativeMove32     bool // allow one W-MOVN independently of the full compact-i32 policy

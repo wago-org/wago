@@ -49,6 +49,52 @@ func TestIndexedBaseCanonicalSignedLoad(t *testing.T) {
 	}
 }
 
+func TestIndexedAddressReuseAcrossAccumulator(t *testing.T) {
+	for _, disp := range []int32{65536, -65536} {
+		for _, store := range []bool{false, true} {
+			t.Run(fmt.Sprintf("disp%d/store=%t", disp, store), func(t *testing.T) {
+				a := Asm{DenseIdxDisp: true, ReuseIndexedBase: true}
+				a.LoadIdx(X1, X26, X22, disp, 4, false, false)
+				a.Add32(X3, X3, X4)
+				before := len(a.B)
+				if store {
+					a.StoreIdx(X26, X22, X2, disp, 4)
+				} else {
+					a.LoadIdx(X2, X26, X22, disp, 4, false, false)
+				}
+				if got := len(a.B); got != before+4 || a.IndexedBaseReuses != 1 {
+					t.Fatalf("%d bytes/%d reuses, want %d/1", got, a.IndexedBaseReuses, before+4)
+				}
+			})
+		}
+	}
+}
+
+func TestIndexedAddressReuseInvalidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		emit func(*Asm)
+		disp int32
+	}{
+		{"scratch", func(a *Asm) { a.Add32(X16, X3, X4) }, 65536},
+		{"base", func(a *Asm) { a.Add32(X26, X3, X4) }, 65536},
+		{"index", func(a *Asm) { a.Add32(X22, X3, X4) }, 65536},
+		{"unknown", func(a *Asm) { a.word(0) }, 65536},
+		{"different-disp", func(a *Asm) { a.Add32(X3, X3, X4) }, 69632},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := Asm{DenseIdxDisp: true, ReuseIndexedBase: true}
+			a.LoadIdx(X1, X26, X22, 65536, 4, false, false)
+			tc.emit(&a)
+			before := len(a.B)
+			a.StoreIdx(X26, X22, X2, tc.disp, 4)
+			if got := len(a.B); got != before+12 || a.IndexedBaseReuses != 0 {
+				t.Fatalf("%d bytes/%d reuses, want %d/0", got, a.IndexedBaseReuses, before+12)
+			}
+		})
+	}
+}
+
 func TestIndexedBaseEqualInputs(t *testing.T) {
 	for _, dst := range []Reg{X22, X16, X0} {
 		t.Run(fmt.Sprintf("rt%d", dst), func(t *testing.T) {
