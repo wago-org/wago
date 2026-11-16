@@ -3,6 +3,8 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/src/core/compiler/codegen"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -47,7 +49,11 @@ func TestCompactNativeReadInstructions(t *testing.T) {
 	if diagnosticsEnabled {
 		stats = &ModuleStats{}
 	}
-	cm, e := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: stats})
+	metadata, e := frontend.BuildGCTypeMetadata(m)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cm, e := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: stats, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}}})
 	if e != nil {
 		t.Fatal(e)
 	}
