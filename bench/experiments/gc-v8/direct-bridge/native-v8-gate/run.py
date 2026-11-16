@@ -14,6 +14,7 @@ p.add_argument('--output-dir', required=True)
 p.add_argument('--node', default='node')
 p.add_argument('--eden', type=int, default=524288)
 p.add_argument('--audit', action='store_true')
+p.add_argument('--policy-sensitivity', action='store_true', help='Use existing trusted binary and V8 on struct/array/fill only')
 a = p.parse_args()
 root = pathlib.Path(__file__).resolve().parents[5]
 base = pathlib.Path(a.binary_dir).resolve()
@@ -23,25 +24,33 @@ corpus = root / 'bench/experiments/gc-v8'
 manifest = {c['name']: c for c in json.loads((corpus / 'cases.json').read_text())}
 cases = ['struct-allocation-access', 'array-allocation-access', 'array-fill', 'array-copy-checksum', 'array-loop-copy-checksum', 'tree-survival']
 variants = [('checked', 'wago_gc_direct_array_alloc'), ('trusted', 'wago_gc_direct_array_alloc,wago_gc_direct_trusted_arrays'), ('v8', '--no-liftoff')]
+if a.policy_sensitivity:
+    cases = cases[:3]
+    variants = variants[1:]
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
         for block in iter(lambda: f.read(262144), b''):
             h.update(block)
     return h.hexdigest()
-provenance = {'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(), 'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'platform': platform.platform(), 'cpu': pathlib.Path('/proc/cpuinfo').read_text(), 'variants': {}, 'protocol': {'warmup': 100, 'samples': 0 if a.audit else 9, 'batch': 32, 'rounds': 1 if a.audit else 3}, 'eden_bytes': a.eden, 'old_semispace_bytes': 8 << 20, 'old_semispace_count': 2, 'allocation_elision': False}
+provenance = {'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(), 'started_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'platform': platform.platform(), 'cpu': pathlib.Path('/proc/cpuinfo').read_text(), 'variants': {}, 'protocol': {'warmup': 100, 'samples': 0 if a.audit else 9, 'batch': 32, 'rounds': 1 if a.audit else 3}, 'eden_bytes': a.eden, 'old_semispace_bytes': 8 << 20, 'old_semispace_count': 2, 'allocation_elision': False, 'policy_sensitivity': a.policy_sensitivity, 'binary_source_note': 'Existing binary hashes identify the measured source; driver source may include reporting-only changes.'}
 for label, tag in variants:
     if label != 'v8':
         binary = base / (label + '.test')
         provenance['variants'][label] = {'tag': tag, 'sha256': digest(binary), 'bytes': binary.stat().st_size}
     else:
         provenance['variants'][label] = {'flags': tag, 'versions': json.loads(subprocess.check_output([a.node, '-p', 'JSON.stringify(process.versions)'], text=True))}
+if a.policy_sensitivity:
+    original = json.loads((pathlib.Path(__file__).parent / 'evidence/results.json').read_text())['provenance']
+    if provenance['variants']['trusted']['sha256'] != original['variants']['trusted']['sha256']:
+        raise SystemExit('Sensitivity requires the identical original trusted binary')
+    provenance['measured_binary_source_commit'] = original['source_commit']
 rows = []
 output = out / ('audit.json' if a.audit else 'results.json')
 for round in range(1 if a.audit else 3):
     for case in cases[round:] + cases[:round]:
         c = manifest[case]
-        for label, tag in variants[round:] + variants[:round]:
+        for label, tag in variants[round % len(variants):] + variants[:round % len(variants)]:
             env = dict(os.environ, GOMAXPROCS='1')
             if label == 'v8':
                 cmd = [a.node, '--no-liftoff', str(pathlib.Path(__file__).with_name('v8.cjs')), str(corpus / c['file']), c['export'], str(c['n']), str(c['want']), c['sha256'], '100', '0' if a.audit else '9', '32']
