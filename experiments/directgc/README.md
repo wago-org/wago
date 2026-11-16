@@ -1,8 +1,9 @@
 # Experimental direct-offset collector substrate
 
 This package explores a breaking reference representation, independently of Wago's
-runtime. It is **not wired into Wago**, does not replace the native or checked
-collectors, and provides no V8 performance claim.
+default runtime. An opt-in AMD64 owned-domain adapter now integrates it with Wago;
+see [the bridge contract](../../docs/research/gc-direct-offsets/README.md). It does
+not replace the default native or checked collectors or establish V8 parity.
 
 Implemented correctness baseline: one bounded byte arena, a copying nursery, two old
 semispaces, exact mutable roots, object-declared reference fields, and an explicit
@@ -11,11 +12,11 @@ indices into a handle table. Collection plans destinations before mutation so
 capacity failure leaves roots and the object graph unchanged. Every nursery
 survivor is initially promoted; survivor aging is deliberately deferred.
 
-A runtime integration would require a new reference ABI, compiler object access,
-precise writable safepoint stack/register maps, host handles that pin or update,
-mutable globals/tables/exception roots, and snapshot/checked-reference adaptation.
-Unregistered Go copies of offsets cannot survive collection. Existing collector
-and Tiny behavior remain unchanged.
+The admitted runtime bridge uses a separate reference ABI, writable safepoint
+roots, authoritative public token roots, and owned mutable globals. Tables,
+exceptions, imports and serialized-artifact reuse remain outside its admission.
+Unregistered Go copies of offsets cannot survive collection. The existing handle
+collectors remain the default; this experiment is not available in Tiny mode.
 
 ## Prototype contract and limits
 
@@ -32,9 +33,10 @@ non-failing disjoint copies and rewrites. Repeated/aliased root pointers are
 supported. Nursery survivors all tenure immediately. Minor scans all dirty old
 objects conservatively, including globally unreachable ones; Full reclaims those.
 
-There is no concurrency, type/subtype enforcement,
-large-object path, pinning, finalization, weak references, stack map, or host-token
-adapter. Interior and inactive-space addresses are rejected. **Stale offsets that
+The substrate itself supplies no concurrency, Wasm subtype enforcement, pinning,
+finalization, weak references, stack maps, or host-token adapter. The Wago bridge
+supplies the admitted semantic/root boundary; oversized allocation is described
+below. Interior and inactive-space addresses are rejected. **Stale offsets that
 alias a later allocation cannot be detected:** callers must register every live
 reference across collection and may not use an offset from another collector.
 Go process allocation failure during construction is not an `ErrOOM`; controlled
