@@ -29,3 +29,22 @@ ABI1 rejection, EveryAlloc disabling and Close clearing.
 Go1.27.1 qualification of1e8588a0: full compactgc passed0.011s;
 compact_reads-tag native TestCompact passed0.003s; default empty-state/footprint
 selection passed0.007s. Native emitted allocator qualification is separate.
+
+## Checked native constructor qualification
+
+The bounded pointer-free numeric struct emitter is opt-in via
+`wago_gc_compact_alloc`; reads-only remains selectable with the same ABI2.
+At tested source `357ec42a` (integrated production source `5d0d106c`), focused
+native tests passed (0.021 s), the applicable compact runtime/regalloc matrix
+passed (2.797 s), and backend receipt/disassembly tests passed (0.011 s).
+Coverage includes actual no-helper publication, exact deferred allocation totals,
+small-nursery rooted fallback, default and 0/8/9-field selection, mixed numeric
+payload/padding, disabled capability, and moving initializer roots.
+
+Initial test-only failures were corrected without changing production checks:
+a malformed-version fixture had hardcoded version 2, which became the valid ABI,
+and an overly broad name filter selected unrelated import fixtures that cannot
+run compact-only artifacts. The applicable runtime filter is
+`^(TestCompactGC|TestCompactNative|TestGCCompact)`; this is not full compact
+feature conformance. Performance and default adoption remain unproven at this
+checkpoint; the same-source diagnostic is separate.
