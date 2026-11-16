@@ -117,10 +117,29 @@ Retained for spread and ordering inspection; do not treat 27 samples from 3 proc
 
 ## Verdict and regressions
 
-All six cases miss the ≤1.15× V8 target for every Wago variant. Adaptive improves struct/tree medians but regresses array-fill by 13.9% with the old constructor and 11.9% with the new one; loop-copy also regresses. Refined constructor alone regresses copy and loop-copy by 10.4% and 12.7%, while other cases improve. These mixed effects do not justify globally promoting either change from this experiment.
+All six cases miss the ≤1.15× V8 target for every Wago variant. Adaptive improves struct/tree medians but regresses array-fill by 13.9% with the old constructor and 11.9% with the new one; loop-copy also regresses. Refined constructor alone regresses copy and loop-copy by 10.4% and 12.7%, while other cases improve. These mixed observed effects do not justify globally promoting either change from this experiment; neither do they establish that either algorithm is intrinsically worse. See the process-level sensitivity below.
 
 Generated code size, Go allocation bytes and allocations per compilation are identical across all four variants for each corpus case. Compilation timing moves substantially even where code and allocation counts are unchanged. Do not claim a measured compilation improvement or attribute all runtime control movement to these mechanisms. These results justify targeted attribution/repetition, not V8 parity or a universal speedup.
 
 ## Preserved setup failure
 
 The initial full run stopped after four successful Wago struct processes and one failed Node process because the relocated harness lacked adjacent `v8.cjs` (MODULE_NOT_FOUND). Raw failed attempt is retained separately and excluded from every table. The exact canonical runner was copied (SHA-256 `640fe8db000f7cde9a12929c3d85a89f469920bd5f62860c48885cee69b9d3a8`), then all 90 runtime processes restarted from round zero. No partial results were spliced. Audit results were already complete and unaffected. No engine failure was concealed.
+
+## Process-level sensitivity and environment caveat
+
+The stored provenance starts at `2026-11-16T19:35:41Z`, Linux 6.18.57 x86-64/glibc 2.41, Intel Xeon Platinum 8573C. Cases rotate by round and variants rotate through baseline, adaptive, initheaders, initadaptive, V8. Per-process sample vectors and process order are retained. There are three independent processes per cell, not 27 independent repetitions.
+
+| Comparison | Round 0 ratio | Round 1 ratio | Round 2 ratio | Median round ratio |
+|---|---:|---:|---:|---:|
+| Fill adaptive/headers | 1.927 | 0.980 | 1.009 | 1.009 |
+| Fill initadaptive/initheaders | 1.213 | 1.133 | 0.838 | 1.133 |
+| Copy initheaders/headers | 0.994 | 1.589 | 0.881 | 0.994 |
+| Loop-copy initheaders/headers | 1.012 | 1.109 | 1.138 | 1.109 |
+| Copy initadaptive/adaptive | 0.725 | 0.948 | 1.485 | 0.948 |
+| Loop-copy initadaptive/adaptive | 1.039 | 0.919 | 1.076 | 1.039 |
+
+These ratios use each process's nine-sample median, paired by round. They are a diagnostic sensitivity analysis, not a replacement selected to improve the primary pooled-median result. Fill's old-constructor policy regression is dominated by round 0: adaptive median 29.661 ms (20.416–63.939 ms sample range), versus 16.209 and 14.770 ms in rounds 1–2. Constructor copy changes sign by round; its median-of-process-medians ratio is 0.994, versus the primary pooled ratio 1.104. Constructor loop-copy is slower in all three header-policy rounds, but effect size varies; its adaptive-policy comparison changes sign. V8 control medians also move (fill 8.936 → 11.593 → 11.821 ms; copy 0.161 → 0.237 → 0.150 ms).
+
+The coordinator reported a transient execution-environment `starting` state near completion. The output files, all 90 runtime receipts and 12 compile files persisted; no process reported a runtime failure. No per-row wall-clock timestamps, CPU-frequency/steal-time traces, affinity isolation, or external host-load telemetry were collected, so the event cannot be aligned to particular samples or ruled out as a source of variation. A reserved assistant CPU window does not establish an uncontended physical host. Do not discard the retained data or infer that this event caused any particular regression.
+
+Identical code byte counts are not proof of identical instructions. Nevertheless, the large control movement and ordering sensitivity prevent attributing the pooled regressions specifically to collector or constructor logic. Repeat adjacent baseline/candidate pairs with reversed order across fresh processes on a stable host, first fill and both copy cases, keeping constructor and policy comparisons separate. Preserve process-level statistics and telemetry if available. Constructor header loop-copy merits particular confirmation because its direction is consistent across these three rounds. No default source/policy promotion or categorical bad-algorithm conclusion should follow without that confirmation. The large observed V8 gaps remain unmet in this run; this variance analysis does not manufacture parity.
