@@ -4,6 +4,7 @@ package wago
 
 import (
 	"context"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"testing"
 )
 
@@ -57,5 +58,30 @@ func TestCompactAge2PublicRootsAndFlips(t *testing.T) {
 		}
 		in.Close()
 		rt.Close()
+	}
+}
+
+func TestCompactAge2CloneIngress(t *testing.T) {
+	source := newForeignCloneBoundaryInstance(t, foreignCloneEdgeModule(), GCConfig{ExperimentalCompactOffsets: true, ExperimentalCompactAge2: true, NurseryBytes: 256, ThroughputHeapBytes: 4096}, nil)
+	target := newForeignCloneBoundaryInstance(t, foreignCloneEdgeModule(), GCConfig{ExperimentalCompactOffsets: true, ExperimentalCompactAge2: true, NurseryBytes: 256, ThroughputHeapBytes: 4096, CollectEveryAlloc: true}, nil)
+	token := foreignCloneSourceToken(t, source)
+	for i := 0; i < 12; i++ {
+		clone, e := target.CloneGCRefFrom(source, token)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = target.ReleaseGCRef(clone); e != nil {
+			t.Fatal(e)
+		}
+	}
+	root := cloneEdgeRawRoot(t, source, token)
+	if e := source.gc.StructSet(root, 0, gc.RefValue(gc.I31New(1))); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := target.CloneGCRefFrom(source, token); e == nil {
+		t.Fatal("wrong typed clone edge admitted")
+	}
+	if target.gc.Stats().MinorCollections == 0 {
+		t.Fatal("clone did not exercise movement")
 	}
 }

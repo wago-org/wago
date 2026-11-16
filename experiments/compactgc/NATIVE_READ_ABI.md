@@ -149,7 +149,7 @@ requires `ExperimentalCompactOffsets`, a compatible `wago_gc_compact_age2`
 build plus a compact helper/native mode, enabled throughput collection, and a
 total nursery budget at least64 bytes and divisible by32. Cohort/shadow diagnostic
 combinations reject this policy. The fixed retention cap is one quarter of the
-TOTAL nursery budget; the two active/inactive spaces split that budget rather
+TOTAL nursery budget rounded down to16-byte alignment; the two active/inactive spaces split that budget rather
 than doubling it. Existing promote-all defaults do not change.
 
 After every collection/allocation/error path the typed view reloads the active

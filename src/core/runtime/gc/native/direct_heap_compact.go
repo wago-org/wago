@@ -21,7 +21,7 @@ var errDirectHeapOOM = compactgc.ErrOOM
 
 func newDirectHeap(n, o uint32, d []directHeapDescriptor, age2 bool) (*directHeap, error) {
 	if age2 {
-		return compactgc.NewAge2WithTypes(n, o, n/4, d)
+		return compactgc.NewAge2WithTypes(n, o, (n/4)&^15, d)
 	}
 	return compactgc.NewWithTypes(n, o, d)
 }

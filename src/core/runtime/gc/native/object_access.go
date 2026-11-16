@@ -267,7 +267,11 @@ func (c *Collector) CheckArrayAllocation(typeID TypeID, length uint32) error {
 	}
 	limit := c.throughput.limit
 	if c.direct != nil {
-		limit = max(c.cfg.NurseryBytes, c.cfg.ThroughputHeapBytes)
+		youngCapacity := c.cfg.NurseryBytes
+		if c.cfg.ExperimentalCompactAge2 {
+			youngCapacity /= 2
+		} // validated equal split; inactive space is not allocatable
+		limit = max(youngCapacity, c.cfg.ThroughputHeapBytes)
 	}
 	if uint64(Align16(size)) > uint64(limit) {
 		return errThroughputHeapExhausted
