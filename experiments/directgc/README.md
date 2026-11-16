@@ -42,11 +42,11 @@ arena exhaustion during allocation/collection is. The declared bounds concern
 collector-owned backing, not arbitrary caller root-list size.
 
 This first correctness representation deliberately spends substantial fixed
-metadata: two booleans and one 32-bit forwarding entry per 8-byte arena granule,
+metadata: two booleans per 8-byte arena granule, a mark bit per 16-byte granule,
 plus a 32-bit queue entry per minimum 16-byte object. `FixedBytes` reports the
 exact scalar backing bytes including arena/alignment slack, excluding Go headers
 and separately registered descriptors/convenience shape mappings. For a 1 MiB
-nursery and two 4 MiB old spaces, this is approximately 18 MiB before Go headers.
+nursery and two 4 MiB old spaces, this is approximately 13.57 MiB before Go headers.
 No handle lookup is needed for an object's address, but checked API validation
 still consults an object-start bitmap. These tradeoffs are **not** evidence of a
 memory or throughput improvement.
@@ -94,3 +94,13 @@ does not silently spill into old space. Trusted constructors must Remember an
 old object after initializing references through borrowed bytes. `ObjectBytes`
 provides a full native-Size lease for adapter use, but never authorizes changing
 layout/header metadata; `IsYoung` and `LiveObjects` expose basic adapter state.
+
+Collection no longer allocates a dense offset-to-forwarding table. Preflight
+validates/marks the graph and reserves the total destination extent without
+changing source headers. Only after all fallible work succeeds does commit copy
+each original object to its disjoint destination, then reuse the source header's
+Aux/Forwarded fields for forwarding. The destination retains the original Aux,
+so packed-array lengths are never reconstructed from padded Size. Existing roots
+and edges are rewritten before retiring source objects. This reduces fixed
+backing allocation by about 4.43 MiB for the 9 MiB arena example; it is an exact
+backing-size reduction, not an RSS, pause-time, or throughput measurement.

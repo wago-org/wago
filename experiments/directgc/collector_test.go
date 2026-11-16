@@ -120,9 +120,9 @@ func TestTransactionalOOM(t *testing.T) {
 			if !bytes.Equal(before, c.arena) || !reflect.DeepEqual(starts, c.starts) || !reflect.DeepEqual(dirty, c.dirty) || a != saved || nb != c.nurseryBump || ob != c.oldBump || active != c.active {
 				t.Fatal("failed collection mutated heap")
 			}
-			for _, f := range c.forward {
+			for _, f := range c.mark {
 				if f != 0 {
-					t.Fatal("failed plan leaked forwarding")
+					t.Fatal("failed plan leaked marks")
 				}
 			}
 			edge(t, c, a, 0, 0)

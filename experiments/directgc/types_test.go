@@ -316,3 +316,48 @@ func TestOversizedOOMAtomicAndNoNurseryBypass(t *testing.T) {
 		t.Fatal("normal allocation spilled old")
 	}
 }
+
+func TestForwardingScratchMemoryAccounting(t *testing.T) {
+	c := heap(t, 1<<20, 4<<20)
+	want := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue))
+	if c.FixedBytes() != want {
+		t.Fatal("backing accounting", c.FixedBytes(), want)
+	}
+	former := uint64(len(c.arena)) + 15 + uint64(len(c.starts)+len(c.dirty)) + 4*uint64(len(c.arena)/8) + 4*uint64(len(c.queue))
+	saved := former - c.FixedBytes()
+	if saved != 4*uint64(len(c.arena)/8)-8*uint64(len(c.mark)) || saved < 4<<20 {
+		t.Fatal("forwarding memory not removed", saved)
+	}
+}
+func TestForwardingPreservesPackedAuxAndAliasRoots(t *testing.T) {
+	c := typedHeap(t, []Descriptor{{Kind: KindArray, Align: 8, ElementSize: 1}, {Kind: KindArray, Align: 8, ElementSize: 4, ElementRef: true}})
+	packed, e := c.NewArray(0, 3)
+	if e != nil {
+		t.Fatal(e)
+	}
+	parent, e := c.NewArray(1, 2)
+	if e != nil {
+		t.Fatal(e)
+	}
+	edge(t, c, parent, 0, packed)
+	edge(t, c, parent, 1, parent)
+	if e = c.WriteBytes(packed, 0, []byte{9, 8, 7}); e != nil {
+		t.Fatal(e)
+	}
+	for cycle := 0; cycle < 12; cycle++ {
+		if e = c.Full([]*Ref{&packed, &packed, &parent, &parent}); e != nil {
+			t.Fatal(e)
+		}
+		h, e := c.Header(packed)
+		if e != nil || h.Aux != 3 || h.Size != 24 || h.Flags&FlagForwarded != 0 {
+			t.Fatal("copied source forwarding into live header", h, e)
+		}
+		if get(t, c, parent, 0) != packed || get(t, c, parent, 1) != parent {
+			t.Fatal("graph rewrite mismatch")
+		}
+		p, e := c.Payload(packed)
+		if e != nil || !reflect.DeepEqual(p, []byte{9, 8, 7}) {
+			t.Fatal("packed payload", p, e)
+		}
+	}
+}

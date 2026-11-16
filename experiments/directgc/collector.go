@@ -26,7 +26,7 @@ const header = uint32(16)
 type Collector struct {
 	arena                                 []byte
 	starts, dirty                         []bool
-	forward                               []Ref
+	mark                                  []uint64
 	queue                                 []Ref
 	nurseryStart, nurseryEnd, nurseryBump uint32
 	oldStart                              [2]uint32
@@ -47,7 +47,7 @@ func New(nurseryBytes, oldBytes uint32) (*Collector, error) {
 	raw := make([]byte, int(total)+15)
 	start := int((16 - uintptr(unsafe.Pointer(&raw[0]))%16) % 16)
 	arena := raw[start : start+int(total) : start+int(total)]
-	c := &Collector{arena: arena, starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), forward: make([]Ref, int(total/8)), queue: make([]Ref, int(total/uint64(header))), nurseryStart: 16, nurseryEnd: 16 + nurseryBytes, nurseryBump: 16, oldSize: oldBytes}
+	c := &Collector{arena: arena, starts: make([]bool, int(total/8)), dirty: make([]bool, int(total/8)), mark: make([]uint64, int((total/16+63)/64)), queue: make([]Ref, int(total/uint64(header))), nurseryStart: 16, nurseryEnd: 16 + nurseryBytes, nurseryBump: 16, oldSize: oldBytes}
 	c.oldStart = [2]uint32{c.nurseryEnd, c.nurseryEnd + oldBytes}
 	c.oldBump = c.oldStart[0]
 	return c, nil
@@ -58,7 +58,7 @@ func New(nurseryBytes, oldBytes uint32) (*Collector, error) {
 // Go slice/object headers. Scratch deliberately favors a simple bounded proof of
 // correctness, not low memory overhead.
 func (c *Collector) FixedBytes() uint64 {
-	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 4*uint64(len(c.forward)) + 4*uint64(len(c.queue))
+	return uint64(len(c.arena)) + 15 + uint64(len(c.starts)) + uint64(len(c.dirty)) + 8*uint64(len(c.mark)) + 4*uint64(len(c.queue))
 }
 func (c *Collector) young(r Ref) bool {
 	return uint32(r) >= c.nurseryStart && uint32(r) < c.nurseryBump
@@ -106,8 +106,8 @@ func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 
 func (c *Collector) collect(roots []*Ref, full bool) error {
 	// Scratch is not authoritative heap state and is cleared on ALL outcomes.
-	clear(c.forward)
-	defer clear(c.forward)
+	clear(c.mark)
+	defer clear(c.mark)
 	target := c.active
 	next := c.oldBump
 	if full {
@@ -126,7 +126,8 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		if !full && !c.young(r) {
 			return nil
 		}
-		if c.forward[uint32(r)/8] != 0 {
+		slot := uint32(r) / 16
+		if c.mark[slot/64]&(uint64(1)<<(slot%64)) != 0 {
 			return nil
 		}
 		size := c.stride(uint32(r))
@@ -136,7 +137,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		if count >= len(c.queue) {
 			return ErrOOM
 		} // header bounds make this unreachable.
-		c.forward[uint32(r)/8] = Ref(next)
+		c.mark[slot/64] |= uint64(1) << (slot % 64)
 		next += size
 		c.queue[count] = r
 		count++
@@ -172,23 +173,34 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		if r == 0 || r.IsI31() {
 			return r
 		}
-		if f := c.forward[uint32(r)/8]; f != 0 {
-			return f
+		// Destinations are outside the original live ranges. This also makes
+		// repeated root pointers idempotent without consulting overwritten Aux.
+		if c.valid(r) && c.u32(uint32(r)+12)&FlagForwarded != 0 {
+			return Ref(c.u32(uint32(r) + 8))
 		}
 		return r
 	}
+	dst := c.oldBump
+	if full {
+		dst = c.oldStart[target]
+	}
 	for i := 0; i < count; i++ {
 		src := uint32(c.queue[i])
-		dst := uint32(c.forward[src/8])
-		copy(c.arena[dst:dst+c.stride(src)], c.arena[src:src+c.stride(src)])
-		c.put32(dst+12, c.u32(dst+12)|FlagOld)
+		stride := c.stride(src)
+		// Preserve original Aux (packed array length) in the destination BEFORE
+		// overwriting source Aux with its forwarding address. No failures remain.
+		copy(c.arena[dst:dst+stride], c.arena[src:src+stride])
+		c.put32(dst+12, (c.u32(dst+12)&^FlagForwarded)|FlagOld)
+		c.put32(src+8, dst)
+		c.put32(src+12, c.u32(src+12)|FlagForwarded)
+		dst += stride
 	}
 	fix := func(off uint32) {
 		_ = c.eachRef(off, func(at uint32) error { c.put32(at, uint32(rewrite(Ref(c.u32(at))))); return nil })
 	}
 
 	for i := 0; i < count; i++ {
-		fix(uint32(c.forward[uint32(c.queue[i])/8]))
+		fix(c.u32(uint32(c.queue[i]) + 8))
 	}
 	if !full {
 		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
@@ -197,8 +209,8 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 			}
 		}
 	}
-	// Duplicate root pointers are idempotent: destination offsets have no forward
-	// entry because all targets are outside the precollection live source ranges.
+	// Duplicate root pointers are idempotent: destinations lie outside the
+	// precollection live source ranges and cannot expose a source forwarding flag.
 	for _, p := range roots {
 		*p = rewrite(*p)
 	}
@@ -211,7 +223,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 		}
 	}
 	for i := 0; i < count; i++ {
-		c.starts[uint32(c.forward[uint32(c.queue[i])/8])/8] = true
+		c.starts[c.u32(uint32(c.queue[i])+8)/8] = true
 	}
 	clear(c.dirty)
 	c.nurseryBump = c.nurseryStart
