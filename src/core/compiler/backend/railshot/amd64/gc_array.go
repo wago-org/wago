@@ -352,6 +352,9 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 			valueType = wasm.I32
 		}
 		helper := uint32(gcArrayFill)
+		if f.emitCompactArrayFill(typeIndex) {
+			return nil
+		}
 		if f.emitDirectOffsetArrayFill(typeIndex) {
 			return nil
 		}
