@@ -404,6 +404,9 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		// loads and stores before the conditional jump.
 		f.convergeBranchLocals(fr)
 	}
+	if !coldExit && f.tryCompactWeightedLatch(fr, fi, k, cc) {
+		return nil
+	}
 	if !coldExit && f.tryCompactRangeLatch(fr, fi, k, cc) {
 		return nil
 	}

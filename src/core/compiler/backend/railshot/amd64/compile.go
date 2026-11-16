@@ -316,6 +316,7 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	compactWeightedState
 	compactRangeState
 	byteReduceLoop    *byteReduceState
 	filledCopyEnd     uint32

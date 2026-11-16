@@ -32,6 +32,7 @@ func (f *fn) prepareCompactLoop(reader *wasm.Reader) {
 	if _, _, valid := f.compactScalarArrayLayout(p.typeIndex); !valid {
 		return
 	}
+	f.prepareCompactWeighted(reader, p, paired)
 	obj := f.directLoopRegister()
 	if obj == regNone {
 		return
