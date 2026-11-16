@@ -41,3 +41,9 @@ Runtime `d0c35039`, measured evidence through `697706d7`: exact transfer-loop sp
 Unfiltered default Wago 43.000 s, native GC 2.207 s, wrapper 0.003 s, AMD64 backend 7.168 s, direct core 0.025 s and compact core 0.014 s passed. Native debug passed 2.176 s; TinyGo native/wrapper passed 2.491/0.008 s. No failures.
 
 Matched scalar timing improves every pair, but full scalar-copy remains 0.4383 ms versus V8 0.1474 ms (2.974x, missed target). Bulk and tree control regressions and outliers remain in evidence. No blanket enablement or all-workload target claim is made.
+
+## Optional stride experiment checkpoint
+
+Runtime `6237226a`, measured evidence through `a01a9e3d`: the separate byte-stride transfer option demonstrated no speed gain and is not recommended as a default. Canonical composition with reference constructors/shared checks/regalloc passed 1.099 s; exclusivity passed 0.011 s. Worker corrected one compile-time uint32/int32 immediate mismatch before passing tests; no runtime failure occurred.
+
+Unfiltered default Wago 46.800 s, native GC 2.382 s, wrapper 0.003 s, AMD64 backend 7.800 s, direct core 0.024 s and compact core 0.014 s passed. Native debug passed 2.328 s; TinyGo native/wrapper passed 2.784/0.003 s. Full scalar-copy remains 0.4443 ms versus V8 0.1521 ms (2.922x, missed target). Cohort instrumentation and SIMD transfer work are excluded from this checkpoint.
