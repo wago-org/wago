@@ -30,8 +30,10 @@ func (c *Collector) retireNurseryHeaders() (count uint64) {
 }
 func (c *Collector) retireNurseryMap() (count uint64) {
 	region := c.starts[c.nurseryStart/8 : c.nurseryBump/8]
-	for _, yes := range region {
-		if yes {
+	// All object strides and nursery bounds are 16-byte aligned. The
+	// eight-byte start map therefore cannot contain a valid odd-index start.
+	for i := 0; i < len(region); i += 2 {
+		if region[i] {
 			count++
 		}
 	}
