@@ -141,3 +141,39 @@ func TestCompactAllocationViewCapability(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactDirtyViewOwnership(t *testing.T) {
+	d, _ := NewStructDesc(0, []StorageKind{StorageI32})
+	c, e := NewExperimentalCompactCollector(Config{NurseryBytes: 128, ThroughputHeapBytes: 256}, []TypeDesc{d})
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, e := BuildCompactInstanceView(c, []TypeID{0})
+	if e != nil {
+		t.Fatal(e)
+	}
+	cv := c.CompactView()
+	owned := c.direct.ReadView()
+	if cv.Dirty == 0 || cv.Dirty != owned.Dirty || cv.DirtyCount != owned.DirtyCount {
+		t.Fatal("dirty backing")
+	}
+	cv.Dirty++
+	if ValidateCompactInstanceView(v, c) == nil {
+		t.Fatal("foreign dirty accepted")
+	}
+	c.refreshCompactView()
+	cv.DirtyCount--
+	if ValidateCompactInstanceView(v, c) == nil {
+		t.Fatal("short dirty accepted")
+	}
+	c.refreshCompactView()
+	cv.Version = 2
+	if ValidateCompactInstanceView(v, c) == nil {
+		t.Fatal("ABI2 accepted")
+	}
+	c.refreshCompactView()
+	c.Close()
+	if cv.Dirty != 0 || cv.DirtyCount != 0 {
+		t.Fatal("closed dirty backing exposed")
+	}
+}

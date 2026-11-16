@@ -16,6 +16,8 @@ func (c *Collector) compactReadSnapshot() CompactCollectorView {
 	v.ArenaBytes = x.ArenaBytes
 	v.Starts = x.Starts
 	v.StartCount = x.StartCount
+	v.Dirty = x.Dirty
+	v.DirtyCount = x.DirtyCount
 	v.NurseryStart = x.NurseryStart
 	v.NurseryBump = x.NurseryBump
 	v.OldStart = x.OldStart
