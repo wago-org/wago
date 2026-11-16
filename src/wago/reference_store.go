@@ -672,7 +672,7 @@ type funcrefTokenEntry struct {
 
 type gcRefTokenEntry struct {
 	token      uint64
-	ref        gc.Ref
+	ref        gc.Ref // issuance identity only; slot is authoritative after collection
 	slot       uint32
 	ownerIndex uint32
 	exact      ValueTypeDescriptor // owner-local diagnostic identity
@@ -2917,21 +2917,25 @@ func (s *referenceStore) stageGCRefArgument(target *Instance, token uint64, requ
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
 		return gc.Null(), fmt.Errorf("GC reference token belongs to a different collector domain")
 	}
-	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
+	ref, err := target.gc.CheckedGlobalSlot(current.slot)
+	if err != nil || !ref.IsObj() {
+		return gc.Null(), fmt.Errorf("GC reference token has no live object root")
+	}
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(ref, required) {
 		return gc.Null(), fmt.Errorf("GC reference token does not match the required structural argument type")
 	}
 	rootIndex := targetState.argumentRootCount
 	if rootIndex == targetState.argumentRootsMade {
-		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(current.ref, gc.RootForeignInstance)
+		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootForeignInstance)
 		if err != nil {
 			return gc.Null(), fmt.Errorf("root GC reference argument: %w", err)
 		}
 		targetState.appendArgumentRootSlot(slot)
-	} else if err := target.gc.SetGlobalSlot(targetState.argumentRootSlot(rootIndex), current.ref); err != nil {
+	} else if err := target.gc.SetGlobalSlot(targetState.argumentRootSlot(rootIndex), ref); err != nil {
 		return gc.Null(), fmt.Errorf("root GC reference argument: %w", err)
 	}
 	targetState.argumentRootCount++
-	return current.ref, nil
+	return ref, nil
 }
 
 // publishGCRefGlobal authenticates one public token and installs its compact
@@ -2971,13 +2975,17 @@ func (s *referenceStore) publishGCRefGlobal(target *Instance, token uint64, requ
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
 		return gc.Null(), fmt.Errorf("GC reference token belongs to a different collector domain")
 	}
-	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
+	ref, err := target.gc.CheckedGlobalSlot(current.slot)
+	if err != nil || !ref.IsObj() {
+		return gc.Null(), fmt.Errorf("GC reference token has no live object root")
+	}
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(ref, required) {
 		return gc.Null(), fmt.Errorf("GC reference token does not match the required structural global type")
 	}
-	if err := target.gc.SetGlobalSlot(slot, current.ref); err != nil {
+	if err := target.gc.SetGlobalSlot(slot, ref); err != nil {
 		return gc.Null(), fmt.Errorf("root GC reference global: %w", err)
 	}
-	return current.ref, nil
+	return ref, nil
 }
 
 func (in *Instance) rootGCHostArguments(token gcHostActivationToken, dispatch uint32, args []uint64) error {
@@ -3088,7 +3096,11 @@ func (s *referenceStore) stageGCHostResult(target *Instance, parked gcHostActiva
 	if ownerRecord == nil || ownerRecord.resourcesReleased || targetRecord == nil || targetRecord.resourcesReleased || owner.refStore != s || target.refStore != s || owner.gc == nil || owner.gc != target.gc {
 		return gc.Null(), fmt.Errorf("GC host result token belongs to a different collector domain")
 	}
-	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(current.ref, required) {
+	ref, err := target.gc.CheckedGlobalSlot(current.slot)
+	if err != nil || !ref.IsObj() {
+		return gc.Null(), fmt.Errorf("GC reference token has no live object root")
+	}
+	if required.Kind != ValueTypeReference || !target.gcRefMatchesValueType(ref, required) {
 		return gc.Null(), fmt.Errorf("GC host result token does not match the required structural result type")
 	}
 	// Multiple public roots can park on the same producer control frame. The
@@ -3103,17 +3115,17 @@ func (s *referenceStore) stageGCHostResult(target *Instance, parked gcHostActiva
 		return gc.Null(), fmt.Errorf("GC host result count exceeds %d", len(targetState.hostResultRootSlots[activation]))
 	}
 	if count == targetState.hostResultRootsMade[activation] {
-		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(current.ref, gc.RootForeignInstance)
+		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootForeignInstance)
 		if err != nil {
 			return gc.Null(), fmt.Errorf("root GC host result: %w", err)
 		}
 		targetState.hostResultRootSlots[activation][count] = slot
 		targetState.hostResultRootsMade[activation]++
-	} else if err := target.gc.SetGlobalSlot(targetState.hostResultRootSlots[activation][count], current.ref); err != nil {
+	} else if err := target.gc.SetGlobalSlot(targetState.hostResultRootSlots[activation][count], ref); err != nil {
 		return gc.Null(), fmt.Errorf("root GC host result: %w", err)
 	}
 	targetState.hostResultRootCount[activation]++
-	return current.ref, nil
+	return ref, nil
 }
 
 func (in *Instance) clearGCHostResultRoots(token gcHostActivationToken) {
