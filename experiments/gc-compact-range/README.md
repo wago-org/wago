@@ -1,5 +1,7 @@
 # Checked compact scalar transfer range version
 
+> Qualification correction: historical worker “regalloc” wording below must not be treated as instrumented evidence without a supported-tag receipt. See [the build-tag audit](../qualification-audits/REGALLOC_TAG_CORRECTION.md). Original commands and timings are preserved.
+
 Experimental tag: `wago_gc_compact_range_loop`, composed with `wago_gc_compact_refstruct` for the complete tested pipeline. Baseline comparator: `wago_gc_compact_pair_loop`, with shared-checks disabled in both.
 
 This stage recognizes only a bounded, canonical scalar array transfer: two unchanged final same-type array locals, a shared i32 index, one load/store pair, index increment by one, and unsigned comparison to a positive constant bound. It preserves the initial checked iteration at the original instruction PCs. On its true backedge, full-span predicates choose an ordered scalar steady loop or return to the original checked header. A short receiver therefore still traps after exactly the original partial writes. There is no allocation elimination, bulk/memmove substitution, trusted ingress shortcut, or new ISA requirement.

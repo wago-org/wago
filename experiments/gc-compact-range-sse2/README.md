@@ -1,5 +1,7 @@
 # Guarded SSE2 scalar-transfer version
 
+> Qualification correction: historical worker “regalloc” wording below must not be treated as instrumented evidence without a supported-tag receipt. See [the build-tag audit](../qualification-audits/REGALLOC_TAG_CORRECTION.md). Original commands and timings are preserved.
+
 Tag `wago_gc_compact_range_sse2` implies the checked range-loop stage, NOT the independently selectable byte-stride stage. The matched baseline should use `wago_gc_compact_range_loop`; both may compose with `wago_gc_compact_refstruct`. Do not enable cohort diagnostic tags for timing.
 
 The original checked first iteration and full-span predicates remain intact. Vector selection requires a clean XMM register, a complete 16-byte chunk remaining, and either identical source/destination bases or disjoint remaining touched byte ranges. The absolute pointer displacement is compared against widened remaining bytes. Dependent overlap, unavailable XMM, or short spans retain the ordered scalar path. Full 16-byte unaligned SSE2 loads/stores advance both induction and byte offset; a precise scalar tail follows. Final pin/frame-slot synchronization is unchanged. No allocation is removed and no AVX requirement is added.
