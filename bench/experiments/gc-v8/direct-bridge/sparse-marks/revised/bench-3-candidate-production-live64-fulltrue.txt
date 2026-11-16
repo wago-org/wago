@@ -1,0 +1,6 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: INTEL(R) XEON(R) PLATINUM 8573C
+BenchmarkMarkCleanupGraphs/production/live64/fulltrue         	    3444	    101311 ns/op	       0 B/op	       0 allocs/op
+PASS
