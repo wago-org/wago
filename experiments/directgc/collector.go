@@ -212,10 +212,7 @@ func (c *Collector) collect(roots []*Ref, full bool) error {
 	for _, p := range roots {
 		*p = rewrite(*p)
 	}
-	for off := c.nurseryStart; off < c.nurseryBump; off += c.stride(off) {
-		c.starts[off/8] = false
-		c.retiredNurseryAllocations++
-	}
+	c.retireNursery()
 	if full {
 		for off := c.oldStart[c.active]; off < c.oldBump; off += c.stride(off) {
 			c.starts[off/8] = false
