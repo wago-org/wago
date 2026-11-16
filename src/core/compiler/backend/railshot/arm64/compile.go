@@ -3609,7 +3609,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		for _, r := range [...]Reg{X24, X25, X27} {
 			f.reserved = f.reserved.add(r)
 		}
-		for _, r := range [...]Reg{X9, X10, X11, mergeReg} {
+		for _, r := range [...]Reg{X8, X9, X10, X11, mergeReg} {
 			f.reserved = f.reserved.add(r)
 		}
 	}
@@ -3697,6 +3697,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	safeMemoryCallPins := ((hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) || safeColdLocalCalls) && len(m.Tables) == 0
 	if safeLoopLocalCalls && safeMemoryCallPins && !(hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) {
 		loopLocalPinSites = hints.callRelocSiteCount()
+	}
+	// An ordinary direct same-instance call publishes dirty locals before argument
+	// staging; a pin-preserving leaf reserves X8 above. X8 is therefore available
+	// as one more STACK_REG-managed local between proven local calls. Keep it out
+	// of modules with imports and the ordinary call-making pool: imports, indirect
+	// calls, tables and unproven sites have wider fixed-register surfaces. The
+	// assignment gate below charges every known boundary before using it.
+	if loopLocalPinSites != 0 && m.ImportedFuncCount() == 0 && f.opt(optX8Pin) && !f.reserved.has(X8) {
+		gpPool = append(gpPool, X8)
 	}
 	if touchesMemory && hasCall && !safeMemoryCallPins {
 		gpPool = callSafePinPool(gpPool)
@@ -4146,7 +4155,7 @@ func localLoopPinThreshold(reg Reg, callSites uint16) uint32 {
 	if callSites == 0 {
 		return 0
 	}
-	if reg == X27 {
+	if reg == X8 || reg == X27 {
 		return max(uint32(callSites)*localLoopLastPinCallCost, localLoopLastPinMinScore)
 	}
 	return uint32(callSites) * localLoopPinCallCost
@@ -4270,11 +4279,11 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		// Direct same-instance calls preserve the ordinary STACK_REG contract, but
 		// each extra caller-saved pin adds publication/reload work at every call.
 		// Admit X15 only when its loop-weighted traffic repays that boundary cost;
-		// X27 has a higher threshold because it is the last opportunistic pin and
-		// also increases pressure around memory/call setup. This uses the generic
-		// hint scores and relocation count, rather than recognizing source shapes.
+		// X8 and X27 have a higher threshold because they are opportunistic pins
+		// that increase pressure around call setup. This uses the generic hint
+		// scores and relocation count, rather than recognizing source shapes.
 		if loopLocalPinSites != 0 {
-			if (gpPool[k] == X15 || gpPool[k] == X27) && !localLoopPinProfitable(gpPool[k], loopLocalPinSites, c.score) {
+			if (gpPool[k] == X8 || gpPool[k] == X15 || gpPool[k] == X27) && !localLoopPinProfitable(gpPool[k], loopLocalPinSites, c.score) {
 				break
 			}
 		}
@@ -4288,6 +4297,9 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		}
 		if gpPool[k] == X27 {
 			f.stats.peep("cold-call-x27-pin")
+		}
+		if gpPool[k] == X8 {
+			f.stats.peep("direct-call-x8-pin")
 		}
 		idx := int(c.idx)
 		if c.global {
