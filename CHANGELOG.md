@@ -6,6 +6,12 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Performance
+
+- Reuse the consumed mask for AMD64 `v128.bitselect` on non-AVX CPUs, avoiding
+  legacy-SSE scratch saves and reducing generated code. AVX and AVX-512 lowering
+  remain unchanged.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking

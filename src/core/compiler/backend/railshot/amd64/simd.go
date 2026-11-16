@@ -944,8 +944,15 @@ func (f *fn) v128Bitselect() {
 	f.fpinned = f.fpinned.add(xb)
 	xa := f.materializeV128(aElem)
 	opVPand.emit(f, xa, xa, mask)
-	opVPandn.emit(f, xb, mask, xb)
-	opVPor.emit(f, xa, xa, xb)
+	if f.cpuHas(shared.AMD64AVX) {
+		opVPandn.emit(f, xb, mask, xb)
+		opVPor.emit(f, xa, xa, xb)
+	} else {
+		// The mask is owned and dead after this operation. Reusing it avoids
+		// saving a right-hand destination through scratch on legacy SSE.
+		opVPandn.emit(f, mask, mask, xb)
+		opVPor.emit(f, xa, xa, mask)
+	}
 	f.fpinned = f.fpinned.remove(mask).remove(xb)
 	f.releaseF(mask)
 	f.releaseF(xb)

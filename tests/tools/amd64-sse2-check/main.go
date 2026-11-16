@@ -59,12 +59,16 @@ func main() {
 	checkSIMD()
 }
 
-func checkVector(sub uint32, left, right, want [16]byte, unary bool) {
+func checkVector(sub uint32, left, right, want [16]byte, unary bool, masks ...[16]byte) {
 	params := []wasm.ValType{wasm.V128, wasm.V128}
 	body := []byte{0x20, 0, 0x20, 1}
 	if unary {
 		params = params[:1]
 		body = body[:2]
+	}
+	if len(masks) != 0 {
+		params = append(params, wasm.V128)
+		body = append(body, 0x20, 2)
 	}
 	body = append(body, 0xfd)
 	body = append(body, wasmtest.ULEB(sub)...)
@@ -104,9 +108,12 @@ func checkVector(sub uint32, left, right, want [16]byte, unary bool) {
 	if err != nil {
 		panic(err)
 	}
-	args, out, trap := ar.Alloc(32), ar.Alloc(16), ar.Alloc(runtime.TrapBufferBytes)
+	args, out, trap := ar.Alloc(48), ar.Alloc(16), ar.Alloc(runtime.TrapBufferBytes)
 	copy(args, left[:])
 	copy(args[16:], right[:])
+	if len(masks) != 0 {
+		copy(args[32:], masks[0][:])
+	}
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, out); err != nil {
 		panic(err)
 	}
@@ -142,10 +149,20 @@ func checkSIMD() {
 		}
 	}
 	checkVector(14, a, b, want, false)
+	// Exercise every mask byte through the owned-mask baseline lowering.
+	for start := 0; start < 256; start += 16 {
+		var mask [16]byte
+		for i := range mask {
+			a[i], b[i], mask[i] = byte(i*19+start), byte(i*31+7), byte(start+i)
+			want[i] = (a[i] & mask[i]) | (b[i] &^ mask[i])
+		}
+		checkVector(82, a, b, want, false, mask)
+	}
+
 	binary.LittleEndian.PutUint64(a[:], math.Float64bits(2.5))
 	binary.LittleEndian.PutUint64(a[8:], math.Float64bits(-2.5))
 	binary.LittleEndian.PutUint64(want[:], math.Float64bits(2))
 	binary.LittleEndian.PutUint64(want[8:], math.Float64bits(-2))
 	checkVector(148, a, b, want, true)
-	println("forced-SSE2 SIMD multiply, relaxed q15, swizzle and packed rounding passed")
+	println("forced-SSE2 SIMD multiply, relaxed q15, swizzle, bitselect and packed rounding passed")
 }
