@@ -4,8 +4,8 @@ This document specifies the safety boundary for a separately attested native
 read experiment. It is not evidence that the experiment has passed qualification
 or outperforms another engine. Checked direct access remains the reference mode.
 The initial scope is scalar `struct.get` on the existing final-type/layout slice
-and `array.len`. Allocation, reference stores, casts, and array element bounds
-remain unchanged in this first experiment.
+and `array.len`. Allocation, casts, and array element bounds remain checked. The policies below
+separate the read experiment from the subsequent reference-store experiment.
 
 ## What the compiler may rely on
 
@@ -116,4 +116,36 @@ tests also pass. `Compiled` footprint remains unchanged.
 This is not an unfiltered trusted-mode pass: ordinary handle/Tiny-specific tests
 cannot instantiate trusted artifacts, and checked-mode tests that deliberately
 corrupt private Go metadata do not apply to this attestation. They remain in the
-default/checked test sets. No trusted-read performance result is established yet.
+default/checked test sets. Subsequent matched read measurements show mixed results,
+not a general speedup; see the direct-bridge evidence.
+
+## Attestation policies
+
+- Policy 1, `wago_gc_direct_trusted`: only the scalar struct-read and array-length
+  resolver reduction described above. Reference stores remain checked.
+- Policy 2, `wago_gc_direct_trusted_store`: includes policy 1 and reduces the
+  reference-store resolver only for the existing final array of nullable final
+  struct references. Static operand typing plus checked ingress establish the
+  parent layout and null-or-compatible child; no child object dereference is
+  needed to copy its compact reference.
+
+Policy 2 retains parent null checking before reading Aux, unsigned logical
+index bounds, zero-extended 64-bit scaled address arithmetic, and the current
+nursery membership test. An old parent still requires an in-range readonly dirty
+certificate equal to one; a missing certificate takes the entire checked helper
+before payload mutation. The JIT never sets dirty bits or appends queue entries.
+All guards precede the single 32-bit payload store. No helper or safepoint
+intervenes between address derivation and that store, and helper fallback does
+not resume using the pre-helper address. Native allocation remains checked in
+both policies.
+
+Public token/global/clone ingress negatives remain required in policy 2. Tests
+that deliberately write a wrong-typed child directly into private native state
+exercise checked reference stores (including policy 1), not policy 2's contract.
+They must remain available rather than being removed.
+
+The independent `wago_gc_direct_scalar_arrays` experiment always uses the fully
+checked object resolver for numeric array get/set, even when combined with
+policy 1 or 2. It retains logical index and selected-element physical extent
+checks, admits only final numeric layouts up to eight bytes, and does not inherit
+the trusted struct-read resolver through tag composition.
