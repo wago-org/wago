@@ -103,3 +103,24 @@ TinyGo-target builds. Default native tests retain the 68-byte Config and
 3160-byte Collector footprint assertions; Compiled remains 808 bytes on AMD64.
 Legacy tests specifically requiring direct native ABI or handle-native code
 are not a compact-mode conformance suite and were not reported as passing.
+
+## Helper-only runtime checkpoint
+
+The compact helper adapter is opt-in (`wago_gc_compact_helpers` plus
+`ExperimentalCompactOffsets`). It has a separate private compiler receipt;
+handle/direct-native artifacts and mixed layout configurations are rejected.
+No compact native access or allocation path is enabled by this checkpoint.
+
+At runtime source `62fc59f3`, the canonical compact/regalloc runtime qualification
+passed (3.305 s), and compact native-adapter tests passed (0.004 s). The isolated
+same-source qualification additionally passed the compiler receipt test, complete
+default native collector suite, and explicit TinyGo-target rejection. Coverage
+includes the five exact wasm.fyi smoke artifacts with real collections, relocated
+initializer roots and public tokens/globals, graph-clone edge validation, reference
+bulk barriers, packed payload/data access, and SIMD layout. These are restricted
+admitted-mode tests, not a claim that the compact runtime supports the entire Wasm
+GC conformance suite. Imports, tables, EH, custom collectors and other unsupported
+boundaries remain rejected. The previous default full-engine qualification does
+not substitute for a new full-engine run after this adapter change.
+
+No compact-runtime speedup or V8 parity has been measured at this checkpoint.
