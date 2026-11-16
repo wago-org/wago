@@ -17,7 +17,7 @@ queue-reuse and compact8 combinations reject the new constructor explicitly.
 New tests are source-stage, NOT executed or qualified yet. They cover distinct
 regions, first/second survival, cycles, duplicate roots, old-to-young barriers,
 retention overflow, Full across both young regions, partial OOM/invalid-reference
-preflight repair and exact allocation accounting. Broader remembered overflow,
-random graph/property checks, zero-allocation checks and TinyGo core build remain
-qualification work. No performance or V8 comparison has been run. Full test and
+preflight repair and exact allocation accounting. Remembered overflow, zero-allocation assertions and Full failure with both young
+source regions also have unexecuted tests. Random graph/property checks and
+TinyGo core build remain additional qualification work. No performance or V8 comparison has been run. Full test and
 fixed-total/equal-Eden benchmark gates are required before any conclusions.
