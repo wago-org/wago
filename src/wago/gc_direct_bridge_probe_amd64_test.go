@@ -85,7 +85,15 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer mod.Close()
-	config := GCConfig{ExperimentalDirectOffsets: mode == "direct", NurseryBytes: 64 << 10, ThroughputHeapBytes: 8 << 20}
+	eden := uint64(64 << 10)
+	if value := os.Getenv("GC_BRIDGE_EDEN"); value != "" {
+		var err error
+		eden, err = strconv.ParseUint(value, 10, 32)
+		if err != nil || eden < 16 || eden%16 != 0 {
+			t.Fatal("GC_BRIDGE_EDEN must be uint32 bytes aligned to16")
+		}
+	}
+	config := GCConfig{ExperimentalDirectOffsets: mode == "direct", NurseryBytes: uint32(eden), ThroughputHeapBytes: 8 << 20}
 	in, e := rt.Instantiate(context.Background(), mod, WithGC(config))
 	if e != nil {
 		t.Fatal(e)
