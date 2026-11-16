@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || ((wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop) || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2) || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
+//go:build linux && amd64 && (wago_gc_compact_copy || wago_gc_compact_refstruct || wago_gc_compact_scalar_arrays || wago_gc_compact_array_alloc || wago_gc_compact_refstore || wago_gc_compact_shared_checks || wago_gc_compact_alloc || wago_gc_compact_reads || wago_gc_compact_helpers || wago_gc_helper_only || wago_gc_direct_reads || wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_trusted_loop || wago_gc_direct_pair_loop || wago_gc_direct_range_loop || wago_gc_direct_weighted_sum || wago_gc_direct_weighted_sse2 || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc || wago_gc_direct_fill || wago_gc_direct_fill_sse2 || wago_gc_direct_copy || wago_gc_compact_refstruct)
 
 package wago
 
@@ -85,16 +85,11 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer mod.Close()
-	eden := uint64(64 << 10)
-	if value := os.Getenv("GC_BRIDGE_EDEN"); value != "" {
-		var err error
-		eden, err = strconv.ParseUint(value, 10, 32)
-		if err != nil || eden < 16 || eden%16 != 0 {
-			t.Fatal("GC_BRIDGE_EDEN must be uint32 bytes aligned to16")
-		}
+	config, e := gcBridgeGeometry(mode, os.Getenv("GC_BRIDGE_EDEN"), os.Getenv("GC_BRIDGE_OLD"), os.Getenv("GC_BRIDGE_AGE2") == "1")
+	if e != nil {
+		t.Fatal(e)
 	}
-	age2 := os.Getenv("GC_BRIDGE_AGE2") == "1"
-	config := GCConfig{ExperimentalCompactAge2: age2, ExperimentalDirectOffsets: mode == "direct", ExperimentalCompactOffsets: mode == "compact", NurseryBytes: uint32(eden), ThroughputHeapBytes: 8 << 20}
+	eden, age2 := uint64(config.NurseryBytes), config.ExperimentalCompactAge2
 	in, e := rt.Instantiate(context.Background(), mod, WithGC(config))
 	if e != nil {
 		t.Fatal(e)
@@ -102,6 +97,15 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 	defer in.Close()
 	if in.gc == nil || in.gc.UsesDirectOffsets() != (mode == "direct" || mode == "compact") {
 		t.Fatal("collector selection mismatch")
+	}
+	// Inspect actual collector geometry before guest execution, not just requested config.
+	var geometry map[string]uint64
+	if mode == "direct" && !age2 {
+		v := in.gc.DirectView()
+		if v == nil || v.NurseryEnd-v.NurseryStart != config.NurseryBytes || v.NurseryStart != 16 || v.OldStart != v.NurseryEnd || uint64(v.ArenaBytes) != 16+uint64(config.NurseryBytes)+2*uint64(config.ThroughputHeapBytes) {
+			t.Fatal("actual direct collector geometry mismatch")
+		}
+		geometry = map[string]uint64{"arena_bytes": uint64(v.ArenaBytes), "nursery_bytes": uint64(v.NurseryEnd - v.NurseryStart), "each_old_bytes": (uint64(v.ArenaBytes) - uint64(v.NurseryEnd)) / 2, "start_entries": uint64(v.StartCount), "dirty_entries": uint64(v.DirtyCount), "derived_fixed_bytes": gcBridgeFixedBytes(config.NurseryBytes, config.ThroughputHeapBytes)}
 	}
 	call := func() {
 		got, e := in.Invoke(export, n)
@@ -141,6 +145,7 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		t.Fatal(e)
 	}
 	out := map[string]any{"case": name, "mode": mode, "artifact_sha256": digest, "checksum": want, "warmup_calls": warmup, "samples": samples, "batch": batch, "samples_ns": times, "config": config, "before": before, "after": after, "zero_collection_diagnostic_allowed": os.Getenv("GC_BRIDGE_ALLOW_ZERO_COLLECTION") == "1", "timed_collections": after.MinorCollections + after.FullCollections - before.MinorCollections - before.FullCollections, "maxrss_kib": usage.Maxrss, "go_before": map[string]any{"HeapAlloc": beforeMem.HeapAlloc, "HeapInuse": beforeMem.HeapInuse, "HeapSys": beforeMem.HeapSys, "Sys": beforeMem.Sys}, "go_after": map[string]any{"HeapAlloc": afterMem.HeapAlloc, "HeapInuse": afterMem.HeapInuse, "HeapSys": afterMem.HeapSys, "Sys": afterMem.Sys, "TotalAllocDelta": afterMem.TotalAlloc - beforeMem.TotalAlloc, "MallocsDelta": afterMem.Mallocs - beforeMem.Mallocs}, "allocation_elision": false, "compiler_mode": os.Getenv("GC_BRIDGE_COMPILER_MODE"), "native_direct_view_installed": in.gcDirectView != nil, "runtime_owned": true, "go_version": runtime.Version(), "gomaxprocs": runtime.GOMAXPROCS(0)}
+	out["actual_direct_geometry"] = geometry
 	if mode == "direct" || mode == "compact" {
 		out["direct_old_semispaces"] = 2
 		out["total_young_budget_bytes"] = eden
@@ -175,4 +180,37 @@ func TestGCDirectBridgeProbe(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Log("DIRECT_BRIDGE_RESULT " + string(b))
+}
+
+// This probe deliberately keeps the old override to the qualified promote-all
+// direct collector. Other collectors have different geometry/accounting rules.
+func gcBridgeGeometry(mode, youngText, oldText string, age2 bool) (GCConfig, error) {
+	cfg := GCConfig{ExperimentalCompactAge2: age2, ExperimentalDirectOffsets: mode == "direct", ExperimentalCompactOffsets: mode == "compact", NurseryBytes: 64 << 10, ThroughputHeapBytes: 8 << 20}
+	if oldText != "" && (mode != "direct" || age2) {
+		return cfg, fmt.Errorf("GC_BRIDGE_OLD requires promote-all direct mode")
+	}
+	for _, field := range []struct {
+		name, text string
+		dest       *uint32
+	}{{"GC_BRIDGE_EDEN", youngText, &cfg.NurseryBytes}, {"GC_BRIDGE_OLD", oldText, &cfg.ThroughputHeapBytes}} {
+		if field.text == "" {
+			continue
+		}
+		v, err := strconv.ParseUint(field.text, 10, 32)
+		if err != nil || v < 16 || v%16 != 0 {
+			return cfg, fmt.Errorf("%s must be positive uint32 bytes aligned to 16", field.name)
+		}
+		*field.dest = uint32(v)
+	}
+	if uint64(16)+uint64(cfg.NurseryBytes)+2*uint64(cfg.ThroughputHeapBytes) > uint64(^uint32(0)) {
+		return cfg, fmt.Errorf("direct arena exceeds uint32 offsets")
+	}
+	return cfg, nil
+}
+
+// Matches directgc.FixedBytes: excludes descriptors, slice/object headers and
+// host runtime storage. This is reserved metadata, not measured process RSS.
+func gcBridgeFixedBytes(young, old uint32) uint64 {
+	r := uint64(16) + uint64(young) + 2*uint64(old)
+	return r + 15 + 2*(r/8) + 8*((r/16+63)/64) + 4*(r/16) + 4*min(uint64(1024), uint64(old)/16)
 }
