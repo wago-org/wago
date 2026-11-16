@@ -1,0 +1,5 @@
+=== RUN   TestCompactNativeGCBumpPublicationAndFallback
+--- PASS: TestCompactNativeGCBumpPublicationAndFallback (0.00s)
+=== RUN   TestCompactNativeGCBumpBoundedShapes
+--- PASS: TestCompactNativeGCBumpBoundedShapes (0.00s)
+PASS
