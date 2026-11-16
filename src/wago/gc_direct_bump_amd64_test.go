@@ -1,4 +1,4 @@
-//go:build linux && amd64 && (wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct)
+//go:build linux && amd64 && (wago_gc_direct_alloc || wago_gc_direct_refstore || wago_gc_direct_trusted || wago_gc_direct_trusted_store || wago_gc_direct_scalar_arrays || wago_gc_direct_trusted_arrays || wago_gc_direct_array_alloc || wago_gc_direct_trusted_refstruct || wago_gc_direct_trusted_alloc)
 
 package wago
 
@@ -79,6 +79,11 @@ func TestDirectGCBumpPublicationAndFallback(t *testing.T) {
 		}
 
 		for _, kind := range []string{"disabled", "bump-pointer", "counter-pointer", "end", "starts", "start-count"} {
+			// Private pointer/start-map corruption is checked-mode-only; policy5
+			// relies on admitted ownership. Dynamic capability/capacity checks remain.
+			if in.c.gcTrustedDirectVersion == 5 && (kind == "bump-pointer" || kind == "counter-pointer" || kind == "starts" || kind == "start-count") {
+				continue
+			}
 			v := in.gc.DirectView()
 			switch kind {
 			case "disabled":

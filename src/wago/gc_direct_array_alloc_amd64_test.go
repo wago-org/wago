@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_gc_direct_array_alloc
+//go:build linux && ((amd64 && wago_gc_direct_array_alloc) || wago_gc_direct_trusted_alloc)
 
 package wago
 
@@ -139,6 +139,11 @@ func TestDirectGCArrayBumpGuardedFallback(t *testing.T) {
 	slot := in.ctrl[runtime.HostCtrlImportIndexOffset:]
 	const sentinel = 0x81234567
 	for _, kind := range []string{"disabled", "bump-pointer", "counter-pointer", "starts", "start-count", "snapshot", "cap"} {
+		// Private pointer/start-map corruption is checked-mode-only; policy5
+		// relies on admitted ownership. Dynamic capability/capacity checks remain.
+		if in.c.gcTrustedDirectVersion == 5 && (kind == "bump-pointer" || kind == "counter-pointer" || kind == "starts" || kind == "start-count") {
+			continue
+		}
 		v := in.gc.DirectView()
 		length := uint64(3)
 		switch kind {
