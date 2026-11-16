@@ -240,3 +240,75 @@ func TestEdenFullFailureWithBothYoungSources(t *testing.T) {
 	}
 	edenCount(t, c, 2)
 }
+
+func TestEdenMinimumGeometryAtomicRetry(t *testing.T) {
+	c := edenHeap(t, 16, 16, 16)
+	a := obj(t, c, 0)
+	if err := c.Minor([]*Ref{&a}); err != nil {
+		t.Fatal(err)
+	}
+	b := obj(t, c, 0)
+	if err := c.Minor([]*Ref{&a, &b}); err != nil {
+		t.Fatal(err)
+	}
+	d := obj(t, c, 0)
+	set(t, c, a, 0, d)
+	roots := []*Ref{&a, &b, &d}
+	rootValues := []Ref{a, b, d}
+	before := *c
+	before.arena = append([]byte(nil), c.arena...)
+	before.starts = append([]bool(nil), c.starts...)
+	before.dirty = append([]bool(nil), c.dirty...)
+	before.remembered = append(make([]Ref, 0, cap(c.remembered)), c.remembered...)
+	// Marks and traversal queue are scratch, intentionally excluded.
+	before.mark = nil
+	before.queue = nil
+	if err := c.Minor(roots); !errors.Is(err, ErrOOM) {
+		t.Fatal(err)
+	}
+	after := *c
+	after.mark = nil
+	after.queue = nil
+	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(rootValues, []Ref{a, b, d}) {
+		t.Fatal("failed minor changed authoritative state")
+	}
+	if err := c.Full([]*Ref{&d}); err != nil {
+		t.Fatal(err)
+	}
+	edenCount(t, c, 3)
+	if n := testing.AllocsPerRun(5, func() {
+		if err := c.Minor([]*Ref{&d}); err != nil {
+			panic(err)
+		}
+	}); n != 0 {
+		t.Fatal("minor allocated", n)
+	}
+}
+
+func TestEdenOldDirectThresholdWithLargerSurvivor(t *testing.T) {
+	desc := Descriptor{Kind: KindArray, Align: 4, ElementSize: 4}
+	c, err := NewEdenWithTypes(32, 128, 256, []Descriptor{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Header8 plus payload gives physical strides16,32,48.
+	for _, n := range []uint32{2, 6, 10} {
+		r, err := c.NewArray(0, n)
+		if err == ErrOOM {
+			if err = c.Minor(nil); err != nil {
+				t.Fatal(err)
+			}
+			r, err = c.NewArray(0, n)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.young(r) != (n <= 6) {
+			t.Fatal("threshold follows survivor instead of Eden", n)
+		}
+	}
+	edenCount(t, c, 3)
+	if c.oldAllocations != 1 {
+		t.Fatal(c.oldAllocations)
+	}
+}
