@@ -57,3 +57,15 @@ still have no references requiring a write barrier. No pointer crosses a call.
 Intentional private-header corruption tests remain in checked mode, separate from
 null/bounds/relocation tests shared by both modes. This is an opt-in conventional
 validated-Wasm access experiment, not allocation elision or a performance claim.
+
+At integrated `d2079ee`, checked native numeric array allocation is also available
+under `wago_gc_direct_array_alloc`. It initializes final numeric arrays up to
+64 KiB in the nursery with complete header/payload/padding initialization and
+exact allocation accounting. Disabled capabilities, interruptible functions,
+unsupported shapes, oversized lengths and exhaustion use rooted helpers before
+any native mutation. Allocation proofs/elision remain off in the comparison.
+The combined array-allocation/trusted-array runtime suite passed with register
+checks, and unfiltered default Wago/native GC/checked GC/AMD64 backend/direct
+substrate tests passed. Full-protocol comparisons with V8 are pending; this does
+not establish the requested target. Reference-containing struct construction
+and reference-field reads remain helper paths at this checkpoint.
