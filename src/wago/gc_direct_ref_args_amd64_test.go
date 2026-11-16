@@ -21,6 +21,7 @@ func directRefArgsBytes() []byte {
 		{0x60, 1, 0x63, 1, 1, 0x7f},          // array read
 		{0x60, 1, 0x63, 0x6c, 1, 0x7f},       // i31
 	}
+	types = append(types, []byte{0x5f, 1, 0x7e, 0}, []byte{0x60, 0, 1, 0x63, 9})
 	alloc := []byte{0xfb, 1, 0, 0x1a}
 	read := append(append([]byte{}, alloc...), 0x20, 0, 0xfb, 2, 0, 0)
 	bodies := [][]byte{
