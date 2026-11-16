@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/wago-org/wago/experiments/directgc
+cpu: AMD EPYC 9V74 80-Core Processor                
+BenchmarkRetirementTraversal/tiny16/headers-9 	     249	    472708 ns/op	4436.46 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/headers-9 	     230	    478573 ns/op	4382.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/headers-9 	     255	    474597 ns/op	4418.80 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map-9     	    1384	     90609 ns/op	23145.01 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map-9     	    1429	     96962 ns/op	21628.62 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/tiny16/map-9     	    1437	     93339 ns/op	22468.03 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers-9         	     454	    303622 ns/op	6907.11 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers-9         	     411	    253326 ns/op	8278.48 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/headers-9         	     475	    261699 ns/op	8013.59 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map-9             	    1246	     95081 ns/op	22056.48 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map-9             	    1263	     96765 ns/op	21672.73 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/small32/map-9             	    1262	    123843 ns/op	16933.96 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers-9       	    8457	     13219 ns/op	158611.87 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers-9       	    8659	     13075 ns/op	160349.33 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/headers-9       	    9122	     13095 ns/op	160104.80 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map-9           	    1260	     89579 ns/op	23405.44 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map-9           	    1321	     88796 ns/op	23611.84 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/large1040/map-9           	    1303	     90075 ns/op	23276.53 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers-9           	    1743	     62438 ns/op	33586.06 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers-9           	    1879	     62544 ns/op	33528.94 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/headers-9           	    2006	     58017 ns/op	36145.53 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map-9               	    1371	     90084 ns/op	23278.61 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map-9               	    1425	     87848 ns/op	23871.15 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRetirementTraversal/mixed/map-9               	    1311	     85406 ns/op	24553.90 MB/s	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/wago-org/wago/experiments/directgc	3.486s
