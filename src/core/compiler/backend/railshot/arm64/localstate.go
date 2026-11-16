@@ -249,7 +249,18 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.
 func (f *fn) spillLocalsForCall() {
-	f.spillLocalsForClobbers(^regMask(0), ^regMask(0))
+	position, discardDead := f.deadCallLocalPosition()
+	f.spillLocalsForClobbersAt(^regMask(0), ^regMask(0), discardDead, position)
+}
+
+// Loop-free interval candidates retain exact source offsets for every local's
+// final read. Backedges, EH and inlined readers decline through the existing
+// interval-admission and local guards.
+func (f *fn) deadCallLocalPosition() (uint32, bool) {
+	if f.hasLoop || f.moduleEH || f.inlineDepth != 0 || f.wasmPC < f.tracePCBase || len(f.intervalLast) != f.nLocals {
+		return 0, false
+	}
+	return uint32(f.wasmPC - f.tracePCBase), true
 }
 
 // spillLocalsForClobbers applies the call-spill state transition only to locals
@@ -257,6 +268,10 @@ func (f *fn) spillLocalsForCall() {
 // sequences that do not make a native call use this to preserve their actual
 // scratch bank without evicting unrelated local pins.
 func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
+	f.spillLocalsForClobbersAt(gpClobbers, fpClobbers, false, 0)
+}
+
+func (f *fn) spillLocalsForClobbersAt(gpClobbers, fpClobbers regMask, discardDead bool, position uint32) {
 	if f.pinnedLocalMask&gpClobbers == 0 && f.fpinnedLocalMask&fpClobbers == 0 {
 		return
 	}
@@ -279,9 +294,14 @@ func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
 		if f.locals[x].state == lsConstZero {
 			continue // a clobbered register does not change the wasm local's zero value
 		}
-		if f.locals[x].state == lsReg { // dirty: write it back
-			f.storeLocalReg(x, reg, isFloat)
-			f.stats.peep("call-local-store")
+		if f.locals[x].state == lsReg { // dirty: write it back unless no source read remains
+			last := f.intervalLast
+			if discardDead && (last[x] == 0 || last[x] <= position) {
+				f.stats.peep("dead-call-local-store")
+			} else {
+				f.storeLocalReg(x, reg, isFloat)
+				f.stats.peep("call-local-store")
+			}
 		}
 		f.locals[x].state = lsMem // the fixed sequence or callee clobbers the register
 	}
