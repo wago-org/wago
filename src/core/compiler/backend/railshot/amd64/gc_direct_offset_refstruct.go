@@ -29,7 +29,7 @@ func (f *fn) emitTrustedDirectStructRefGet(t, fieldIndex uint32) bool {
 	f.a.Load32(r, obj, int32(gc.PayloadOffset+off))
 	done()
 	f.spillFloor = floor
-	f.pushReg(r, mtI32)
+	f.pushReg(r, mtI64)
 	f.markTopGCReference()
 	return true
 }

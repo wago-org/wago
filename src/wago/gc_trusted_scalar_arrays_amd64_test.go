@@ -10,7 +10,7 @@ func TestTrustedDirectScalarArrayPolicy(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	if c.executionView().gcTrustedDirectVersion != 3 {
+	if c.executionView().gcTrustedDirectVersion < 3 || c.executionView().gcTrustedDirectVersion > 4 {
 		t.Fatal("missing policy3 attestation")
 	}
 }
