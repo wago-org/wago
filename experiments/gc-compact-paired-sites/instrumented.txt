@@ -1,0 +1,18 @@
+=== RUN   TestCompactExactArtifactSites
+    gc_compact_site_diagnostic_test.go:19: BEGIN gc-array-copy-checksum wasm_sha256=53667f9e93b1ee082bb65ee584a3d29e317b25e62d88c5f3b0656d42ac8e3881 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+PAIR_SITE func=0 loop_pc=3 first_pc=16 locals=0,-1 accesses=1 pair=false registers=5,7 free=11
+PAIR_SITE func=1 loop_pc=24 first_pc=38 locals=1,-1 accesses=1 pair=false registers=5,7 free=8
+PAIR_SITE func=2 loop_pc=24 first_pc=38 locals=1,-1 accesses=1 pair=false registers=5,7 free=8
+PAIR_SITE func=2 loop_pc=87 first_pc=97 locals=1,2 accesses=2 pair=true registers=5,7 free=8
+    gc_compact_site_diagnostic_test.go:28: entries=[0 736 4080 7424] internal=[17 753 4097 7441]
+    gc_compact_site_diagnostic_test.go:31: END gc-array-copy-checksum native_bytes=7599 native_sha256=b0310a5e436adcc788ed8c8f2dc2cfd9ca680f648c88f307941b7964249f6773
+    gc_compact_site_diagnostic_test.go:19: BEGIN gc-array-loop-copy-checksum wasm_sha256=4c8079c9a8cc3bf9e1dc425b31eeda644d2195e828dffa33c0c0524d88a20d15 options=Runtime.Compile/CoreFeaturesV3/dead-gc-new=false
+PAIR_SITE func=0 loop_pc=3 first_pc=16 locals=0,-1 accesses=1 pair=false registers=5,7 free=11
+PAIR_SITE func=1 loop_pc=24 first_pc=38 locals=1,-1 accesses=1 pair=false registers=5,7 free=8
+PAIR_SITE func=2 loop_pc=24 first_pc=38 locals=1,-1 accesses=1 pair=false registers=5,7 free=8
+PAIR_SITE func=2 loop_pc=87 first_pc=97 locals=1,2 accesses=2 pair=true registers=5,7 free=8
+    gc_compact_site_diagnostic_test.go:28: entries=[0 736 4080 7424] internal=[17 753 4097 7441]
+    gc_compact_site_diagnostic_test.go:31: END gc-array-loop-copy-checksum native_bytes=7599 native_sha256=ff7595474ac0ee12e8c9397f2b699ecc4ca2cf453c42e493ce73def1929be5ee
+--- PASS: TestCompactExactArtifactSites (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.006s

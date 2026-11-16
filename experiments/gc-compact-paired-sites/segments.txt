@@ -1,0 +1,2 @@
+gc-array-copy-checksum: baseline/paired prefix [0,4080) identical; paired/instrumented identical; relocated wrapper byte diffs: [(76, 225, 161)]
+gc-array-loop-copy-checksum: baseline/paired prefix [0,4080) identical; paired/instrumented identical; relocated wrapper byte diffs: [(76, 241, 177)]
