@@ -11,4 +11,10 @@ lines+=['','Exploratory native-store versus native-allocation median deltas:']
 for case in ['struct-allocation-access','array-allocation-access','tree-survival']:
  if (case,'native_alloc')in med and(case,'native_refstore')in med:lines.append(f'- {case}: {(med[case,"native_refstore"]/med[case,"native_alloc"]-1)*100:+.1f}% elapsed time.')
 lines+=['', 'Noise warning: array and tree samples show large opposing outliers; the array median delta is inconclusive and the tree control supplies no reliable speed claim. Struct samples were consistently lower in all three launches.', '', 'All successful launches require exact artifact SHA256, numeric checksums, expected per-call allocation counts, and actual collection. Full stdout/stderr, configurations, counters, binary hashes and /proc memory data are retained in rawJSON.','', 'This short isolated experimental comparison does not establish V8 parity or a final runtime performance guarantee. Heap policies are fixed; any nursery-size experiment must be reported separately. Direct copied/promoted-byte and scan counters remain uninstrumented. Process memory includes Go and runtime overhead.']
+lines += ['', '## Go allocations per timed invocation', '', '| Workload | Variant | median mallocs/call | median allocated bytes/call |', '|---|---|---:|---:|']
+for case in ['struct-allocation-access','array-allocation-access','tree-survival']:
+ for variant in ['native_alloc','native_refstore']:
+  rs=[r['result']for r in d['rows']if r['case']==case and r['variant']==variant and 'result'in r]
+  lines.append(f'|{case}|{variant}|{statistics.median(r["go_after"]["MallocsDelta"]/(r["samples"]*r["batch"])for r in rs):.1f}|{statistics.median(r["go_after"]["TotalAllocDelta"]/(r["samples"]*r["batch"])for r in rs):.1f}|')
+lines += ['', 'These counters are consistent with several host scratch allocations per collection, but allocation bytes are modest relative to the live Go heap. They do not alone prove material host-GC pressure or quantify time attributable to scratch management; profile before prioritizing reuse.']
 (p/'summary.md').write_text('\n'.join(lines)+'\n');print('\n'.join(lines))

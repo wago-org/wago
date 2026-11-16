@@ -21,3 +21,16 @@ Noise warning: array and tree samples show large opposing outliers; the array me
 All successful launches require exact artifact SHA256, numeric checksums, expected per-call allocation counts, and actual collection. Full stdout/stderr, configurations, counters, binary hashes and /proc memory data are retained in rawJSON.
 
 This short isolated experimental comparison does not establish V8 parity or a final runtime performance guarantee. Heap policies are fixed; any nursery-size experiment must be reported separately. Direct copied/promoted-byte and scan counters remain uninstrumented. Process memory includes Go and runtime overhead.
+
+## Go allocations per timed invocation
+
+| Workload | Variant | median mallocs/call | median allocated bytes/call |
+|---|---|---:|---:|
+|struct-allocation-access|native_alloc|902.6|19254.4|
+|struct-allocation-access|native_refstore|902.6|19254.4|
+|array-allocation-access|native_alloc|2065.4|44059.2|
+|array-allocation-access|native_refstore|2065.4|44059.2|
+|tree-survival|native_alloc|360.2|14576.0|
+|tree-survival|native_refstore|360.2|14576.0|
+
+These counters are consistent with several host scratch allocations per collection, but allocation bytes are modest relative to the live Go heap. They do not alone prove material host-GC pressure or quantify time attributable to scratch management; profile before prioritizing reuse.
