@@ -1,4 +1,4 @@
-//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_compact_range_stride)
+//go:build amd64 && (wago_gc_compact_range_loop || wago_gc_compact_range_sse2 || wago_gc_compact_range_stride)
 
 package amd64
 
@@ -134,6 +134,7 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	f.a.Load32(value, l.length, 4)
 	f.a.AluRI(cmpDigit, value, int32(f.rangeBound), false)
 	badB := f.a.JccPlaceholder(condB)
+	vectorDone := f.emitCompactRangeSSE2(l, ir, offset, value, scalar.size, payload)
 	// Only a positive sign-extended immediate can compare the widened byte
 	// endpoint. Other bounds retain the existing element-index loop.
 	byteEnd := uint64(f.rangeBound) * uint64(scalar.size)
@@ -161,6 +162,9 @@ func (f *fn) tryCompactRangeLatch(fr *ctrlFrame, fi, k int, cc Cond) bool {
 	if stride {
 		f.a.MovImm32(ir, int32(f.rangeBound))
 		f.stats.peep("gc-compact-range-stride")
+	}
+	if vectorDone >= 0 {
+		f.a.PatchRel32(vectorDone, f.a.Len())
 	}
 	// The index is the only modified local. Preserve the same clean pin+slot
 	// contract as the original converged latch, including the false first edge.
