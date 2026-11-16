@@ -109,3 +109,54 @@ func TestCompactNativeReferenceStructRoots(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactNativeReferenceGetterRejectsMalformedReceiver(t *testing.T) {
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), compactReferenceStructModule(true))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	if _, e = in.Invoke("init"); e != nil {
+		t.Fatal(e)
+	}
+	original := readGlobalObject(in.globalCells[0], in.c.Globals[0].Type)
+	defer writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, original)
+	for _, bad := range []uint64{0, 3, original + 2, original + 16} {
+		writeGlobalObject(in.globalCells[0], in.c.Globals[0].Type, bad)
+		if _, e = in.Invoke("read"); e == nil {
+			t.Fatalf("malformed receiver %d accepted", bad)
+		}
+	}
+}
+func TestCompactNativeI31ReferenceGetter(t *testing.T) {
+	// The extracted i31 stays on the operand stack across an allocating call.
+	// It must not be interpreted as a moving object root.
+	churn := []byte{0xfb, 1, 0, 0x1a, 0x0b}
+	run := []byte{0x41, 0x79, 0xfb, 0x1c, 0xfb, 0, 0, 0xfb, 2, 0, 0, 0x10, 1, 0xfb, 0x1d, 0x0b}
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 1, 0x6d, 0}, []byte{0x60, 0, 1, 0x7f}, []byte{0x60, 0, 0})), wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run), wasmtest.Code(churn))))
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false), data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true, CollectEveryAlloc: true, ForceMajorEveryMinor: true}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer in.Close()
+	for i := 0; i < 8; i++ {
+		v, e := in.Invoke("run")
+		if e != nil || len(v) != 1 || v[0] != uint64(uint32(0xfffffff9)) {
+			t.Fatal(v, e)
+		}
+	}
+}
