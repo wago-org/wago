@@ -183,8 +183,9 @@ type Collector struct {
 	majorBlocks    []uint64 // lazy AMD64 full-collection occupancy; one bit per256handles
 	// A validated list-position hint; compaction may move or remove the entry.
 	nativeLargeArrayNurseryIndex int
-	direct                       *directHeap
-	directView                   *DirectCollectorView
+	compactViewState
+	direct     *directHeap
+	directView *DirectCollectorView
 }
 
 const defaultNursery = 64 << 10

@@ -101,6 +101,7 @@ func validateDirectViewLayout() error {
 // refreshDirectView preserves descriptor identity. The owner serializes native
 // execution with every mutation; publication is not an atomic concurrency API.
 func (c *Collector) refreshDirectView() {
+	c.refreshCompactView()
 	if c == nil || c.directView == nil {
 		return
 	}
