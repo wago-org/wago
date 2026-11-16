@@ -9,6 +9,9 @@ import (
 )
 
 func TestCompactAge2ViewFlipsAndPolicy(t *testing.T) {
+	if unsafe.Sizeof(Config{}) != 68 || unsafe.Sizeof(Collector{}) != 3168 {
+		t.Fatal("unexpected compact adapter footprint", unsafe.Sizeof(Config{}), unsafe.Sizeof(Collector{}))
+	}
 	d, _ := NewStructDesc(0, []StorageKind{StorageI32})
 	c, e := NewExperimentalCompactCollector(Config{ExperimentalCompactAge2: true, NurseryBytes: 128, ThroughputHeapBytes: 1024}, []TypeDesc{d})
 	if e != nil {

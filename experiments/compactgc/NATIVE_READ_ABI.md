@@ -163,3 +163,27 @@ policy words fail the ordinary view snapshot validation.
 Source-stage only: runtime/native flip, rooted token/global, stress, OOM,
 barrier/deferred accounting and footprint qualification are pending. The policy
 has no measured speed or V8 parity claim.
+
+### ABI4 adapter qualification
+
+Go1.27.1 serial tests passed with the age2 core from `17a1535f`:
+- compact_helpers + compact_alloc + compact_refstore + age2 + regalloccheck:
+  applicable compact runtime matrix8.307s, including six exact artifact checksum
+  cases with real minor collections, age2 initializer stress, native constructor
+  sentinel after both flip directions, global/token retention and clone ingress.
+- compact_helpers + age2 + regalloccheck: age2 runtime matrix6.853s.
+- native adapter/view/flip/barrier/OOM/full-retry/accounting matrix0.004s;
+  shadow and cohort incompatible-build rejection0.008s/0.004s.
+- untagged native config rejection and unchanged footprint checks0.003s.
+
+Source review found two geometry issues before tests: total96 requires cap16
+(round quarter-budget down to16), and deterministic array allocation bounds must
+use active-half capacity, not total nursery. Both are corrected and tested.
+No semantic test failed. Initial broad qualification included generic footprint
+assertions intended for handle-mode layouts; these failed in optional compact
+mode (Collector3168, native Instance912). They remain unchanged and pass in the
+default mode. Explicit compact-mode assertions check Config68, Collector3168,
+Compiled808, helper Instance904/native Instance912. The age2 flag fits existing
+Config padding and introduces no new runtime/collector pointer. This is not an
+unfiltered repository or full WasmGC conformance pass, and does not qualify SSE
+recovery/LICM combinations or establish performance improvement.

@@ -5,10 +5,19 @@ package wago
 import (
 	"context"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+	"os"
 	"testing"
+	"unsafe"
 )
 
 func TestCompactAge2PublicRootsAndFlips(t *testing.T) {
+	wantInstance := uintptr(904)
+	if compactNativeRuntimeEnabled {
+		wantInstance = 912
+	}
+	if unsafe.Sizeof(Compiled{}) != 808 || unsafe.Sizeof(Instance{}) != wantInstance {
+		t.Fatal("unexpected compact runtime footprint", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}))
+	}
 	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), compactPublicRootsModule())
 	if e != nil {
 		t.Fatal(e)
@@ -83,5 +92,84 @@ func TestCompactAge2CloneIngress(t *testing.T) {
 	}
 	if target.gc.Stats().MinorCollections == 0 {
 		t.Fatal("clone did not exercise movement")
+	}
+}
+
+func TestCompactAge2ExactBenchmarksSmoke(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		n, want uint64
+	}{
+		{"gc-struct-allocation-access", 4096, 536739840},
+		{"gc-array-allocation-access", 4096, 536739840},
+		{"gc-array-fill", 4096, 536739840},
+		{"gc-array-copy-checksum", 64, 221607936},
+		{"gc-array-loop-copy-checksum", 64, 221607936},
+		{"gc-tree-survival", 32, 67551},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, e := os.ReadFile("../../bench/experiments/gc-v8/" + tc.name + ".wasm")
+			if e != nil {
+				t.Fatal(e)
+			}
+			c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer c.Close()
+			rt := NewRuntime()
+			defer rt.Close()
+			in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true, ExperimentalCompactAge2: true, NurseryBytes: 64 << 10, ThroughputHeapBytes: 8 << 20}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer in.Close()
+			if in.gc == nil || !in.gc.UsesDirectOffsets() {
+				t.Fatal("direct backend not active")
+			}
+			calls := 3
+			if tc.name == "gc-array-copy-checksum" || tc.name == "gc-array-loop-copy-checksum" {
+				calls = 12
+			}
+			for i := 0; i < calls; i++ {
+				got, e := in.Invoke("performance", tc.n)
+				if e != nil || len(got) != 1 || got[0] != tc.want {
+					t.Fatalf("got %v err %v want %d", got, e, tc.want)
+				}
+			}
+			if in.gc.Stats().MinorCollections == 0 {
+				t.Fatal("no real collections")
+			}
+		})
+	}
+}
+
+func TestCompactAge2InitializerStress(t *testing.T) {
+	for _, kind := range []string{"struct", "uniform", "fixed"} {
+		t.Run(kind, func(t *testing.T) {
+			data := helperInitializerRewriteModule(kind)
+			c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", false), data)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer c.Close()
+			rt := NewRuntime()
+			defer rt.Close()
+			in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalCompactOffsets: true, ExperimentalCompactAge2: true, CollectEveryAlloc: true, NurseryBytes: 128, ThroughputHeapBytes: 64 << 10}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer in.Close()
+			for i := 0; i < 20; i++ {
+				got, e := in.Invoke("run")
+				want := uint64(37)
+				if kind == "fixed" {
+					want = 74
+				}
+				if e != nil || len(got) != 1 || got[0] != want {
+					t.Fatal(got, e)
+				}
+			}
+		})
 	}
 }
