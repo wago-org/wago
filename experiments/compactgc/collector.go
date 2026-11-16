@@ -26,7 +26,7 @@ const rememberedParentCapacity = 1024
 
 type Collector struct {
 	cohortDiagnosticState
-
+	age2State
 	retiredNurseryAllocations             uint64
 	oldAllocations                        uint64
 	arena                                 []byte
@@ -107,6 +107,9 @@ func (c *Collector) Minor(roots []*Ref) error { return c.collect(roots, false) }
 func (c *Collector) Full(roots []*Ref) error { return c.collect(roots, true) }
 
 func (c *Collector) collect(roots []*Ref, full bool) (result error) {
+	if age2Build && c.Age2Enabled() {
+		return c.collectAge2(roots, full)
+	}
 	var diagnostic cohortCycle
 	if cohortDiagnostics {
 		diagnostic = c.beginCohortCycle(full)

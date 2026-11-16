@@ -351,7 +351,7 @@ func (c *Collector) LiveObjects() uint32 {
 // access is serialized with all mutation, including native publication.
 func (c *Collector) AllocationSnapshot() (allocations uint64, live uint32) {
 	allocations = c.retiredNurseryAllocations + c.oldAllocations
-	first, last := c.nurseryStart/8, c.nurseryBump/8
+	first, last := c.freshStart()/8, c.nurseryBump/8
 	for i, yes := range c.starts {
 		if yes {
 			live++
