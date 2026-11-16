@@ -1,0 +1,23 @@
+import argparse,hashlib,json,os,pathlib,subprocess,time,platform
+p=argparse.ArgumentParser();p.add_argument('--audit',action='store_true');p.add_argument('--before-root',required=True);p.add_argument('--after-root',required=True);p.add_argument('--binary-dir',required=True);p.add_argument('--output-dir',required=True);a=p.parse_args()
+base=pathlib.Path(a.binary_dir).resolve();output_dir=pathlib.Path(a.output_dir).resolve();output_dir.mkdir(parents=True,exist_ok=True)
+variants=[('reads_before_queue',str(pathlib.Path(a.before_root).resolve()),'wago_gc_direct_reads'),('reads_after_queue',str(pathlib.Path(a.after_root).resolve()),'wago_gc_direct_reads'),('alloc_after_queue',str(pathlib.Path(a.after_root).resolve()),'wago_gc_direct_alloc')]
+def digest(path):
+ h=hashlib.sha256()
+ with open(path,'rb')as f:
+  for block in iter(lambda:f.read(262144),b''):h.update(block)
+ return h.hexdigest()
+provenance={'started_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'platform':platform.platform(),'cpu':pathlib.Path('/proc/cpuinfo').read_text(),'variants':{},'protocol':{'warmup':3,'samples':0 if a.audit else 1,'batch':5,'rounds':1 if a.audit else 3},'caution':'exploratory short matched comparison; no V8 claim'}
+for label,root,tag in variants:
+ binary=base/(label+'.test');provenance['variants'][label]={'root':root,'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'tag':tag,'binary_sha256':digest(binary),'binary_bytes':binary.stat().st_size}
+rows=[];cases=['struct-allocation-access','array-allocation-access','tree-survival'];output=output_dir/('audit.json'if a.audit else 'results.json')
+for round in range(1 if a.audit else 3):
+ for case in cases[round:]+cases[:round]:
+  for label,root,tag in variants[round:]+variants[:round]:
+   env=dict(os.environ,GC_BRIDGE_CASE=case,GC_BRIDGE_MODE='direct',GC_BRIDGE_COMPILER_MODE=label,GC_BRIDGE_WARMUP='3',GC_BRIDGE_SAMPLES='0'if a.audit else'1',GC_BRIDGE_BATCH='5',GOMAXPROCS='1')
+   r=subprocess.run([str(base/(label+'.test')),'-test.run=^TestGCDirectBridgeProbe$','-test.v','-test.count=1'],cwd=pathlib.Path(root)/'src/wago',env=env,text=True,capture_output=True)
+   row={'round':round,'case':case,'variant':label,'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}
+   for line in r.stdout.splitlines():
+    if 'DIRECT_BRIDGE_RESULT 'in line:row['result']=json.loads(line.split('DIRECT_BRIDGE_RESULT ',1)[1])
+   rows.append(row);output.write_text(json.dumps({'provenance':provenance,'rows':rows},indent=2));print(round,case,label,r.returncode,flush=True)
+if any(r['returncode'] or 'result'not in r for r in rows):raise SystemExit(1)
