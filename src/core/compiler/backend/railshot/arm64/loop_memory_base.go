@@ -33,18 +33,31 @@ func (s *byteBodyScanner) noteLoopMemoryBase(page int64, depth int, weight int64
 	s.loopMemoryBaseN++
 }
 
-func (f *fn) loadLinearIdx(dst, index Reg, disp int32, size int, signed, wide bool) {
+func (f *fn) linearMemoryPage(disp int32) (Reg, int32) {
 	if f.opt(optLoopMemoryBase) && disp >= 0x1000 {
 		page := int64(disp &^ 0xfff)
 		for i := 0; i < int(f.iconstN); i++ {
 			c := f.iconsts[i]
 			if c.address && c.bits == page {
-				f.a.LoadIdx(dst, c.reg, index, disp&0xfff, size, signed, wide)
-
 				f.stats.peep("loop-memory-base-hit")
-				return
+				return c.reg, disp & 0xfff
 			}
 		}
 	}
-	f.a.LoadIdx(dst, linMemReg, index, disp, size, signed, wide)
+	return linMemReg, disp
+}
+
+func (f *fn) loadLinearIdx(dst, index Reg, disp int32, size int, signed, wide bool) {
+	base, disp := f.linearMemoryPage(disp)
+	f.a.LoadIdx(dst, base, index, disp, size, signed, wide)
+}
+
+func (f *fn) storeLinearIdx(index, value Reg, disp int32, size int) {
+	base, disp := f.linearMemoryPage(disp)
+	f.a.StoreIdx(base, index, value, disp, size)
+}
+
+func (f *fn) storeLinearImmIdx(index Reg, disp, value int32, size int) {
+	base, disp := f.linearMemoryPage(disp)
+	f.a.StoreImmIdx(base, index, disp, value, size)
 }

@@ -1300,13 +1300,13 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		}
 		if size == 8 && v == 0 && wideZeroStoreEnabled {
 			// memAddr has proved all eight bytes valid before this store.
-			f.a.StoreImmIdx(linMemReg, ea, disp, 0, 8)
+			f.storeLinearImmIdx(ea, disp, 0, 8)
 			f.stats.peep("wide-zero-store")
 		} else if size == 8 {
-			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), 4)
-			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
+			f.storeLinearImmIdx(ea, disp, int32(v), 4)
+			f.storeLinearImmIdx(ea, disp+4, int32(v>>32), 4)
 		} else {
-			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), size)
+			f.storeLinearImmIdx(ea, disp, int32(v), size)
 		}
 		if trackRepeatedStore {
 			f.recordRepeatedWasmStores(storeStart, f.a.Len())
@@ -1339,7 +1339,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if regallocCheckEnabled {
 		checkRestoreRead(f, read)
 	}
-	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
+	f.storeLinearIdx(ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {

@@ -1482,7 +1482,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.loopMemoryGrow = true
 			}
 			if s.collectLoopMemoryBases && s.collectLoopIntConsts && loopDepth != 0 &&
-				(op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x35) &&
+				(op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e) &&
 				(!imm.HasMemIndex || imm.MemIndex == 0) && imm.MemOffset >= 0x1000 && imm.MemOffset <= 0x7fffffff {
 				s.noteLoopMemoryBase(int64(imm.MemOffset&^0xfff), loopDepth, pathWeight)
 			}

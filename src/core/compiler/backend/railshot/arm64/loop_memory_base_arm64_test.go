@@ -77,8 +77,48 @@ func TestLoopMemoryBaseAdmissionAndGrowRejection(t *testing.T) {
 			cm.CodeImage.Close()
 		}
 		hits := stats.Funcs[0].Peephole["loop-memory-base-hit"]
-		if grow && hits != 0 || !grow && hits != 2 {
+		if grow && hits != 0 || !grow && hits != 4 {
 			t.Fatalf("grow=%v hits=%d", grow, hits)
+		}
+	}
+}
+
+func loopMemoryBaseStoreModule(t testing.TB) *wasm.Module {
+	b := []byte{1, 1, 0x7f, 0x20, 0, 0x21, 3, 0x02, 0x40, 0x03, 0x40}
+	b = append(b, 0x20, 3, 0x45, 0x0d, 1)
+	for _, off := range []uint32{0x1004, 0x1008} {
+		b = append(b, 0x20, 1, 0x20, 2, 0x36, 2)
+		b = append(b, wasmtest.ULEB(off)...)
+	}
+	b = append(b, 0x20, 3, 0x41, 1, 0x6b, 0x21, 3, 0x0c, 0, 0x0b, 0x0b)
+	for _, off := range []uint32{0x1004, 0x1008} {
+		b = append(b, 0x20, 1, 0x28, 2)
+		b = append(b, wasmtest.ULEB(off)...)
+	}
+	b = append(b, 0x6a, 0x0b)
+	return modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
+}
+
+func TestLoopMemoryBaseStores(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	old := loopMemoryBaseEnabled
+	defer func() { loopMemoryBaseEnabled = old }()
+	loopMemoryBaseEnabled = true
+	m := loopMemoryBaseStoreModule(t)
+	for _, guard := range []bool{false, true} {
+		for _, n := range []uint64{0, 1, 7} {
+			stats := &ModuleStats{}
+			got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Stats: stats, ElideBoundsChecks: guard, CompactNative: false}, n, 3, 0x12345678)
+			want := uint64(0)
+			if n != 0 {
+				want = 0x2468acf0
+			}
+			if err != nil || got != want {
+				t.Fatalf("guard=%v n=%d got=%x want=%x err=%v", guard, n, got, want, err)
+			}
+			if hits := stats.Funcs[0].Peephole["loop-memory-base-hit"]; hits != 4 {
+				t.Fatalf("guard=%v n=%d hits=%d", guard, n, hits)
+			}
 		}
 	}
 }
