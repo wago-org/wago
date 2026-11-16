@@ -350,7 +350,7 @@ type fn struct {
 	gcSharedResolver    bool
 	gcDeferResolver     bool
 	gcDynamicCopySites  uint8 // bounded native-copy expansion within this function
-	gcPureIfSites       uint8 // bounded raw-address preservation attempts
+	gcPureIfSites       uint8 // shared bounded if/loop raw-address proof attempts
 	gcPureIfEndPC       uint32
 	gcHandleResolutions int
 	gcSubtypeProofs     [4]gcSubtypeProof

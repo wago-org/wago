@@ -11,9 +11,10 @@ package amd64
 
 // gcResolvedObject is a transient raw-address certificate. Unlike collector
 // roots, it never survives a call, allocation, or unknown effect. A bounded,
-// effect-free if may retain an unchanged entry certificate.
+// effect-free if or fully inspected noncollecting loop may retain a certificate.
 type gcResolvedObject struct {
 	valid         bool
+	loopEndPC     uint32 // fits former alignment padding; zero outside a loop lease
 	local         int
 	typeIndex     uint32
 	requiredBytes uint32
@@ -21,13 +22,22 @@ type gcResolvedObject struct {
 }
 
 // prepareGCResolvedObject is the central invalidation gate. Apart from proven
-// pure void ifs, only
+// pure void ifs and bounded loop leases, only
 // noncollecting integer operations, local reads, and assignments to other
 // locals retain the transient address. Assigning its source local invalidates
 // it in setLocal. Calls, other control boundaries, and unknown effects drop it.
 func (f *fn) prepareGCResolvedObject(op byte) {
 	if !f.gcResolved.valid {
 		return
+	}
+	if f.gcResolved.loopEndPC != 0 {
+		if f.wasmPC >= f.gcResolved.loopEndPC {
+			f.invalidateGCResolvedObject()
+			return
+		}
+		if op == 0x0d {
+			return
+		}
 	}
 	if f.gcPureIfEndPC != 0 && f.wasmPC > f.gcPureIfEndPC {
 		f.gcPureIfEndPC = 0
@@ -61,6 +71,7 @@ func (f *fn) prepareGCResolvedFB(sub uint32) {
 
 func (f *fn) invalidateGCResolvedObject() {
 	f.gcPureIfEndPC = 0
+	f.gcResolved.loopEndPC = 0
 	if !f.gcResolved.valid {
 		return
 	}
