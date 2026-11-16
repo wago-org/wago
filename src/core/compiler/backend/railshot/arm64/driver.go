@@ -1252,10 +1252,10 @@ func mtI32OrWide(wide bool) machineType {
 }
 
 // trySelectOnFlags lowers `select` on the flags of a fusable compare condition
-// (cond, the top operand). It materializes the two integer branches into owned
-// registers, emits the compare's CMP (which sets NZCV last), and CSELs — no Cset/
-// TEST. Returns false (leaving the operand stack untouched) when the branches are
-// not both integer (floats/v128 have no CSEL here) or the block shape is
+// (cond, the top operand). It materializes the nonzero integer branches into
+// owned registers, emits the compare's CMP (which sets NZCV last), and CSELs — no
+// Cset/TEST. Returns false (leaving the operand stack untouched) when the branches
+// are not both integer (floats/v128 have no CSEL here) or the block shape is
 // unexpected, so the caller falls back to the materialized-boolean path.
 func (f *fn) trySelectOnFlags(cond *elem) bool {
 	bRoot := f.s.prev(f.s.baseOfValentBlock(cond))
@@ -1271,23 +1271,50 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		return false
 	}
 	w := at.is64() || bt.is64()
-	// Materialize both branches into owned registers BEFORE the compare: their loads
-	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
-	// are pinned so condensing the compare's operands cannot spill them.
+	// Materialize nonzero branches into owned registers BEFORE the compare: their
+	// loads clobber flags harmlessly (the CMP comes after and sets them cleanly), and
+	// they are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.elemKind() == ekValue && aRoot.st.hasGCRoot()) || (bRoot.elemKind() == ekValue && bRoot.st.hasGCRoot())
-	aReg := f.materialize(aRoot)
-	f.pinned = f.pinned.add(aReg)
-	bReg := f.materialize(bRoot)
-	f.pinned = f.pinned.add(bReg)
+	aZero := f.opt(optSelectSourceRead) && aRoot.elemKind() == ekValue && aRoot.st.kind == stConst && aRoot.st.cval == 0
+	bZero := f.opt(optSelectSourceRead) && bRoot.elemKind() == ekValue && bRoot.st.kind == stConst && bRoot.st.cval == 0
+	if aZero == bZero {
+		aZero, bZero = false, false
+	}
+	aReg := ZR
+	if !aZero {
+		aReg = f.materialize(aRoot)
+		f.pinned = f.pinned.add(aReg)
+	}
+	bReg := ZR
+	if !bZero {
+		bReg = f.materialize(bRoot)
+		f.pinned = f.pinned.add(bReg)
+	}
+	dest := aReg
+	if aZero {
+		dest = bReg
+	}
 	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
 	f.stats.peep("select-flags")
-	f.a.Csel(aReg, bReg, aReg, invertCond(cc), w) // cond false → a = b (both sources explicit)
-	f.pinned = f.pinned.remove(aReg)
-	f.pinned = f.pinned.remove(bReg)
-	f.release(bReg)
+	f.a.Csel(dest, bReg, aReg, invertCond(cc), w) // cond false → a = b (both sources explicit)
+	if aZero || bZero {
+		f.stats.peep("select-source-read")
+	}
+	if aReg != ZR {
+		f.pinned = f.pinned.remove(aReg)
+	}
+	if bReg != ZR {
+		f.pinned = f.pinned.remove(bReg)
+	}
+	if aReg != ZR && aReg != dest {
+		f.release(aReg)
+	}
+	if bReg != ZR && bReg != dest {
+		f.release(bReg)
+	}
 	f.erase(bRoot)
 	f.erase(aRoot)
-	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
+	f.pushReg(dest, mtI32OrWide(w)).st.setGCRoot(gcRoot)
 	return true
 }
 

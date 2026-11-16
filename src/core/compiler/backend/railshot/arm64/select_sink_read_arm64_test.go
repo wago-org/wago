@@ -142,3 +142,56 @@ func TestSelectSourceReadOrdinaryZero(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectSourceReadFlagsZero(t *testing.T) {
+	old := selectSourceReadEnabled
+	defer func() { selectSourceReadEnabled = old }()
+	for _, wide := range []bool{false, true} {
+		typ, constant := wasm.I32, byte(0x41)
+		if wide {
+			typ, constant = wasm.I64, 0x42
+		}
+		for _, zeroOnTrue := range []bool{false, true} {
+			value := []byte{0x20, 0}
+			zero := []byte{constant, 0}
+			body := []byte{0}
+			if zeroOnTrue {
+				body = append(body, zero...)
+				body = append(body, value...)
+			} else {
+				body = append(body, value...)
+				body = append(body, zero...)
+			}
+			body = append(body, 0x20, 1, 0x41, 7, 0x49, 0x1b, 0x0b)
+			m := modMem(t, 1, []wasm.ValType{typ, wasm.I32}, []wasm.ValType{typ}, body)
+			for _, enabled := range []bool{false, true} {
+				selectSourceReadEnabled = enabled
+				for _, x := range []uint64{0, 1, 0xffffffff, 0x8000000000000000, ^uint64(0)} {
+					for _, condition := range []uint64{0, 6, 7, 8, 0xffffffff, 1 << 32} {
+						trueCondition := uint32(condition) < 7
+						want := x
+						if trueCondition == zeroOnTrue {
+							want = 0
+						}
+						if !wide {
+							want = uint64(uint32(want))
+						}
+						got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, x, condition)
+						if err != nil || got != want {
+							t.Fatalf("wide=%v true=%v enabled=%v x=%x condition=%x got=%x want=%x err=%v", wide, zeroOnTrue, enabled, x, condition, got, want, err)
+						}
+					}
+				}
+				if diagnosticsEnabled {
+					stats := compileWithStats(t, m, false).Funcs[0]
+					if stats.Peephole["select-flags"] == 0 {
+						t.Fatal("flags select not selected")
+					}
+					if got := stats.Peephole["select-source-read"]; (got != 0) != enabled {
+						t.Fatalf("enabled=%v select source reads=%d", enabled, got)
+					}
+				}
+			}
+		}
+	}
+}
