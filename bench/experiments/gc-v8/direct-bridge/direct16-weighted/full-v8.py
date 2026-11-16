@@ -61,3 +61,9 @@ for round in range(1 if a.audit else 3):
             print(round, case, label, r.returncode, flush=True)
             if r.returncode or 'result' not in row:
                 raise SystemExit('Probe failed; raw evidence retained')
+            if label != 'v8':
+                observed = row['result']
+                if observed.get('mode') != 'direct' or not observed.get('native_direct_view_installed'):
+                    raise SystemExit('Direct receipt/view audit failed; raw evidence retained')
+                if observed['config']['ExperimentalCompactOffsets'] or observed['config']['ExperimentalCompactAge2']:
+                    raise SystemExit('Unexpected compact/age2 configuration; raw evidence retained')

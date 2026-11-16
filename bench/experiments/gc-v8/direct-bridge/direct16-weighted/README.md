@@ -7,7 +7,8 @@ Three same-source binaries: baseline.test, weighted.test and sse2.test. Baseline
 uses `wago_gc_direct_trusted_loop,wago_gc_direct_trusted_refstruct,wago_gc_direct_trusted_alloc,wago_gc_direct_fill_sse2,wago_gc_direct_copy,wago_gc_direct_array_alloc`. Weighted adds
 `wago_gc_direct_weighted_sum`; SSE2 adds `wago_gc_direct_weighted_sse2` instead.
 All use runtime mode DIRECT, age2 OFF, no compact tags or diagnostic tags.
-Codegen confirmed explicit direct_array_alloc is needed for numeric constructors.
+Explicit direct_array_alloc is redundant with trusted_alloc/fill_sse2, but is
+retained identically in all variants for a clear constructor-stage configuration.
 No direct/compact ABI aliases are introduced. Elision stays OFF.
 
 Young nursery is 2 MiB, two old semispaces are 8 MiB each. Exact six artifacts,
