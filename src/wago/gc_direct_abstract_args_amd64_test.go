@@ -6,6 +6,7 @@ import (
 	"fmt"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,27 @@ func TestDirectAbstractArgumentAdmissionFamilies(t *testing.T) {
 		if directManagedArgumentType(ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Exact: true, Heap: HeapTypeDescriptor{Abstract: h}}}, nil) {
 			t.Fatal("exact abstract admitted", h)
 		}
+	}
+}
+
+func TestDirectGCRejectsInternalExternConversion(t *testing.T) {
+	data := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0}, []byte{0x60, 1, 0x63, 0x6e, 1, 0x63, 0x6e})), wasmtest.Section(3, wasmtest.Vec([]byte{1})), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 0))), wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 1, 0, 0x1a, 0x20, 0, 0xfb, 0x1b, 0xfb, 0x1a, 0x0b}))))
+	c, e := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	if !c.stagedGCStructProduct().requiresExternConversion() {
+		t.Fatal("fixture missed conversion product")
+	}
+	rt := NewRuntime()
+	defer rt.Close()
+	in, e := Instantiate(c, InstantiateOptions{store: rt.refStore, GC: GCConfig{ExperimentalDirectOffsets: true}})
+	if e == nil {
+		in.Close()
+		t.Fatal("internal conversion admitted")
+	}
+	if !strings.Contains(e.Error(), "extern conversion products") {
+		t.Fatal("fixture did not reach conversion guard", e)
 	}
 }

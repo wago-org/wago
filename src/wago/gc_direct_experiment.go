@@ -11,6 +11,11 @@ import (
 func (b *instanceBuilder) admitDirectGCExperiment() error {
 	c := b.c
 	compact := b.opts.GC.ExperimentalCompactOffsets
+	// The AMD64 extern-conversion product has a separate public anyref token
+	// path, not the authenticated direct collector argument-root protocol.
+	if !compact && c.stagedGCStructProduct().requiresExternConversion() {
+		return errors.New("wago: direct-offset GC does not admit extern conversion products")
+	}
 	if compact {
 		if !validCompactReceipts(c) || c.hasGCHelperOnlyReceipt() || c.gcDirectReadABIReceipt() != 0 || c.gcTrustedDirectVersion != 0 || c.loadValidateMemo().executionView() != c {
 			return errors.New("wago: compact helper GC requires a fresh private compact compiler snapshot")
