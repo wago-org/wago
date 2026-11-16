@@ -1,0 +1,50 @@
+[
+  {
+    "allocs_op": 253.111328125,
+    "bytes_op": 66201.375,
+    "native_bytes": 3956,
+    "ns_op": 140425.3046875,
+    "round": 0,
+    "name": "base"
+  },
+  {
+    "allocs_op": 253.13671875,
+    "bytes_op": 66205.265625,
+    "native_bytes": 4084,
+    "ns_op": 128447.42578125,
+    "round": 0,
+    "name": "cache"
+  },
+  {
+    "allocs_op": 253.103515625,
+    "bytes_op": 66202.796875,
+    "native_bytes": 3956,
+    "ns_op": 128245.12890625,
+    "round": 1,
+    "name": "base"
+  },
+  {
+    "allocs_op": 253.134765625,
+    "bytes_op": 66195.5625,
+    "native_bytes": 4084,
+    "ns_op": 135056.798828125,
+    "round": 1,
+    "name": "cache"
+  },
+  {
+    "allocs_op": 253.119140625,
+    "bytes_op": 66203.890625,
+    "native_bytes": 3956,
+    "ns_op": 128613.701171875,
+    "round": 2,
+    "name": "base"
+  },
+  {
+    "allocs_op": 253.13671875,
+    "bytes_op": 66212.828125,
+    "native_bytes": 4084,
+    "ns_op": 129776.158203125,
+    "round": 2,
+    "name": "cache"
+  }
+]
