@@ -361,6 +361,14 @@ func (a *Asm) Movn32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x12800000, rd
 // MOVZ/MOVN + MOVK sequence (1..4 instructions), mirroring the amd64 encoder's
 // MovImm64. Picks MOVN-based when the value has more 0xFFFF halfwords than 0x0000.
 func (a *Asm) MovImm64(rd Reg, val uint64) {
+	if val <= 0xffff {
+		a.Movz64(rd, uint16(val), 0)
+		return
+	}
+	if ^val <= 0xffff {
+		a.Movn64(rd, uint16(^val), 0)
+		return
+	}
 	// Count halfwords equal to 0x0000 and 0xFFFF to choose MOVZ vs MOVN start.
 	var zeros, ones int
 	for i := 0; i < 4; i++ {

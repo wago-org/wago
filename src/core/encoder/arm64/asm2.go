@@ -2479,6 +2479,19 @@ func (a *Asm) MovImm32(rd Reg, val int32) {
 		a.MovImm64(rd, uint64(u))
 		return
 	}
+	if u <= 0xffff {
+		shift := uint32(0)
+		if u == 0 {
+			shift = 1 // Preserve the existing zero encoding.
+		}
+		a.Movz32(rd, uint16(u), shift)
+		return
+	}
+	if u > 0xffff0000 {
+		a.Movn32(rd, uint16(^u), 0)
+		a.CompactMoveImmediates32++
+		return
+	}
 	lo, hi := uint16(u), uint16(u>>16)
 	zeros, ones := 0, 0
 	for _, h := range [...]uint16{lo, hi} {
