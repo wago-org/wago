@@ -1397,7 +1397,7 @@ func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 
 func tailLoopInlineCandidate(m *wasm.Module, h []funcHints, index int, policy CodegenPolicy) bool {
 	ft, ok := m.LocalFuncType(index)
-	if !ok || policy.CompactNative || !policy.EnabledOption(optTailLoopInline) || !policy.EnabledOption(optTailSelfLoop) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
+	if !ok || !h[index].hasTailTransfer() || policy.CompactNative || !policy.EnabledOption(optTailLoopInline) || !policy.EnabledOption(optTailSelfLoop) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
 		return false
 	}
 	for _, run := range m.Code[index].Locals.Runs {
@@ -1405,6 +1405,10 @@ func tailLoopInlineCandidate(m *wasm.Module, h []funcHints, index int, policy Co
 			return false
 		}
 	}
+	return proveTailLoopInlineCandidate(m, ft, index, policy)
+}
+
+func proveTailLoopInlineCandidate(m *wasm.Module, ft *wasm.CompType, index int, policy CodegenPolicy) bool {
 	proof := fn{m: m, ft: ft, traceFuncIdx: uint32(index + m.ImportedFuncCount()), policy: policy, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	return proof.onlySelfTailTransfers(m.Code[index].BodyBytes)
 }
