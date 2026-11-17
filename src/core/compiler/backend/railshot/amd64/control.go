@@ -1761,8 +1761,14 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 	loopFloatConstOK := false
 	var loopPinPlan uint64
 	var loopPinWrites uint64
+	var region loopRegionFacts
+	callFreeNeeded := kind == cfLoop && !f.unreachable && f.usesCalls && !f.callFreeRegMerges() && !f.moduleEH && len(f.customInstructions) == 0
 	if kind == cfLoop && !f.unreachable && pN == 0 && rN == 0 && loopPinExchangeEnabled {
-		loopPinPlan, loopPinWrites = f.planLoopPinExchange(r)
+		var facts *loopRegionFacts
+		if sharedLoopRegionFactsEnabled && callFreeNeeded {
+			facts = &region
+		}
+		loopPinPlan, loopPinWrites = f.planLoopPinExchangeFacts(r, facts)
 	}
 	if kind == cfLoop && !f.unreachable && f.usesCalls && !f.callFreeRegMerges() && !f.moduleEH && len(f.customInstructions) == 0 {
 		loopRegState = f.opt(optLoopRegState) && len(f.pinnedLocals) <= 64
@@ -1770,7 +1776,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		if loopRegState {
 			pins = f.pinnedLocals
 		}
-		if callFree, writes, st, hasFloat := scanLoopCallFreeDetails(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes); callFree {
+		if callFree, writes, st, hasFloat := scanLoopCallFreeRegion(r, f.classifier, f.gcStructHelpers, pins, len(f.fconsts) < 2, &f.callFreeLoopLookaheadBytes, &region); callFree {
 			fr.set(ctrlLoopCallFree, true)
 			loopPinnedWrites = writes
 			loopFloatConst, loopFloatConstOK = st, hasFloat

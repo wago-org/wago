@@ -29,6 +29,10 @@ func loopPinEntry(old, new int, reg Reg) uint64 {
 }
 
 func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
+	return f.planLoopPinExchangeFacts(r, nil)
+}
+
+func (f *fn) planLoopPinExchangeFacts(r *wasm.Reader, facts *loopRegionFacts) (uint64, uint64) {
 	if f.nLocals == 0 || f.nLocals > 64 || f.localBase != 0 || f.moduleEH || len(f.customInstructions) != 0 || f.intervalActive != 0 || len(f.pinnedLocals) == 0 {
 		return 0, 0
 	}
@@ -41,8 +45,12 @@ func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
 	closed := false
 	for step := 0; step < 96 && look.Offset()-start <= 512; step++ {
 		op, err := look.Byte()
+		immediate := look
 		if err != nil || f.classifier.ClassifyInto(&look, op, &imm) != nil {
 			return 0, 0
+		}
+		if facts != nil {
+			facts.observe(op, immediate)
 		}
 		if backedge {
 			if op != 0x0b {
@@ -78,6 +86,11 @@ func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
 	}
 	if !closed {
 		return 0, 0
+	}
+	if facts != nil {
+		facts.complete = true
+		facts.bytes = look.Offset() - start
+		facts.written = written
 	}
 	var plan uint64
 	var selected uint64
