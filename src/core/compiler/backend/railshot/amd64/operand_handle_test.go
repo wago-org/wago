@@ -31,13 +31,16 @@ func TestOperandHandleNavigationAcrossChunks(t *testing.T) {
 	runtime.GC()
 	for i := len(ids) - 1; i >= 0; i-- {
 		e := s.node(ids[i])
-		if e != s.back() || e.st.cval != int64(i) {
+		if e != s.back() || e.st.cval != int64(i) || s.ref(e) != ids[i] {
 			t.Fatalf("navigation lost at %d", i)
 		}
 		s.erase(e)
 	}
 	if s.node(0) != nil || s.ref(nil) != 0 || s.back() != nil {
 		t.Fatal("nil or empty handle mismatch")
+	}
+	if s.refSearches == 0 {
+		t.Fatal("cross-chunk fallback was not exercised")
 	}
 	runtime.KeepAlive(s)
 }
