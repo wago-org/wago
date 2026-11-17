@@ -198,14 +198,13 @@ func (f *fn) preloadV128Consts(code []byte) {
 		}
 	}
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return
 		}
 		if op != 0xfd {
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
 			continue
@@ -262,7 +261,7 @@ func (f *fn) preloadV128Consts(code []byte) {
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
 		}
-		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := f.classifier.SkipImmediate(r, op); err != nil {
 			return
 		}
 	}

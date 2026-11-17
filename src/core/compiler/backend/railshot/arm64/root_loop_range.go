@@ -30,7 +30,6 @@ func (f *fn) proveRootLoopRange(body []byte, known uint64, entries *[64]uint32) 
 	var writes [64]uint16
 	count, branches := 0, 0
 	r := wasm.ReaderFrom(body)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -40,14 +39,15 @@ func (f *fn) proveRootLoopRange(body []byte, known uint64, entries *[64]uint32) 
 			return
 		}
 		in := instruction{op: op}
-		copy := r
 		switch op {
 		case 0x41:
-			in.constant, err = copy.I32()
+			in.constant, err = r.I32()
 		case 0x20, 0x21, 0x22, 0x0d:
-			in.index, err = copy.U32()
+			in.index, err = r.U32()
+		default:
+			err = f.classifier.SkipImmediate(&r, op)
 		}
-		if err != nil || f.classifier.ClassifyInto(&r, op, &imm) != nil {
+		if err != nil {
 			return
 		}
 		if op == 0x21 || op == 0x22 {
