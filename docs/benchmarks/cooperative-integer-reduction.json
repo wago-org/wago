@@ -1,0 +1,133 @@
+{
+  "trials": 21,
+  "verified_records": 63,
+  "variant_median_ns_per_op": {
+    "baseline": 11648.76318359375,
+    "control": 11475.08837890625,
+    "candidate": 8506.73291015625
+  },
+  "median_paired_candidate_baseline": 0.7236618834089139,
+  "median_paired_control_baseline": 0.9875750588126748,
+  "median_paired_candidate_mean_controls": 0.7248241069914209,
+  "bootstrap95_conditional_median_ratio": [
+    0.7054460493771872,
+    0.7429569292471466
+  ],
+  "binary_sha256": "684abb159b31b39acd9747ea3cc78521bd241374823007996b802fc83bd9ff66",
+  "raw_sha256": "1c89447ff5c3191fbc598ee91af17bc463c653ece09c7c80c476a20806155be9",
+  "trial_medians": {
+    "0": {
+      "baseline": 11650.03271484375,
+      "candidate": 8838.68701171875,
+      "control": 11248.57568359375
+    },
+    "1": {
+      "baseline": 11934.61767578125,
+      "control": 11355.43603515625,
+      "candidate": 8440.59619140625
+    },
+    "2": {
+      "control": 11740.03662109375,
+      "baseline": 11488.68701171875,
+      "candidate": 8296.5107421875
+    },
+    "3": {
+      "candidate": 8354.7265625,
+      "baseline": 11079.5166015625,
+      "control": 11934.1201171875
+    },
+    "4": {
+      "baseline": 11507.69677734375,
+      "candidate": 8247.26171875,
+      "control": 11842.17578125
+    },
+    "5": {
+      "candidate": 8960.7333984375,
+      "control": 11402.548828125,
+      "baseline": 12151.47802734375
+    },
+    "6": {
+      "baseline": 12922.55859375,
+      "control": 11455.47802734375,
+      "candidate": 8506.73291015625
+    },
+    "7": {
+      "baseline": 12396.7666015625,
+      "candidate": 8523.0224609375,
+      "control": 11973.6923828125
+    },
+    "8": {
+      "control": 12405.3291015625,
+      "candidate": 8664.29052734375,
+      "baseline": 11303.978515625
+    },
+    "9": {
+      "candidate": 8713.37744140625,
+      "control": 11351.01806640625,
+      "baseline": 11258.00341796875
+    },
+    "10": {
+      "candidate": 8278.2841796875,
+      "baseline": 11439.4365234375,
+      "control": 11475.08837890625
+    },
+    "11": {
+      "baseline": 13077.83203125,
+      "candidate": 8685.84912109375,
+      "control": 11344.099609375
+    },
+    "12": {
+      "candidate": 8531.09814453125,
+      "control": 11185.31103515625,
+      "baseline": 11648.76318359375
+    },
+    "13": {
+      "baseline": 12281.33740234375,
+      "candidate": 8363.74560546875,
+      "control": 11918.880859375
+    },
+    "14": {
+      "control": 11187.82763671875,
+      "baseline": 11146.9111328125,
+      "candidate": 8296.68701171875
+    },
+    "15": {
+      "baseline": 12828.3193359375,
+      "control": 12668.92822265625,
+      "candidate": 8094.23486328125
+    },
+    "16": {
+      "candidate": 8510.60205078125,
+      "control": 11410.46240234375,
+      "baseline": 12212.86376953125
+    },
+    "17": {
+      "candidate": 8582.6533203125,
+      "baseline": 11552.02001953125,
+      "control": 11885.98095703125
+    },
+    "18": {
+      "candidate": 8453.13232421875,
+      "control": 11493.4814453125,
+      "baseline": 11982.67724609375
+    },
+    "19": {
+      "baseline": 11428.56298828125,
+      "candidate": 8461.55908203125,
+      "control": 11476.2451171875
+    },
+    "20": {
+      "control": 11328.56591796875,
+      "candidate": 8751.369140625,
+      "baseline": 11418.93505859375
+    }
+  },
+  "scope": "Current-main extraction dabe1be8; test-only forced-cooperative API overlay under Go host; NOT ordinary Go API or TinyGo-host timing.",
+  "source_commit": "dabe1be823328e8d3b7dbb01aca63c990d8e3ca9",
+  "base_commit": "227dfd64ddb3760ae8547eb69a27da38c6cd8676",
+  "limitations": [
+    "Forced-cooperative Go-host diagnostic, not ordinary Go API or TinyGo-host performance.",
+    "One affected workload, other144 native+metadata unchanged; +627 native bytes.",
+    "Full CI and TinyGo-host qualification outstanding."
+  ]
+}
