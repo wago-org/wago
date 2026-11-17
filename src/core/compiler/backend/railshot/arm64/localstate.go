@@ -76,6 +76,18 @@ func (s *packedLocStates) set(index int, state locState) {
 	s.states[word] = s.states[word]&^mask | uint64(state)<<shift
 }
 
+func packLocalStates(locals []localDef) (snapshot packedLocStates) {
+	snapshot.present = len(locals) != 0
+	for base := 0; base < len(locals); base += 32 {
+		var word uint64
+		for x := min(base+32, len(locals)); x > base; x-- {
+			word = word<<2 | uint64(locals[x-1].state)
+		}
+		snapshot.states[base>>5] = word
+	}
+	return
+}
+
 type localDef struct {
 	facts   valueFacts
 	reg     Reg
@@ -440,20 +452,23 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
 		return
 	}
-	for x := range locals {
-		local := &locals[x]
-		reg, isFloat := local.reg, local.isFloat
-		if reg == regNone {
-			continue
-		}
-		// The first edge may choose a register-only target. Later edges
-		// materialize a dirty slot only when the recorded target requires it.
-		if locals[x].state == lsReg && (!registerTarget || !target.empty() && target.get(x) != lsReg) {
-			f.storeLocalReg(x, reg, isFloat)
-			locals[x].state = lsStackReg
+	firstEdge := target.empty()
+	if !registerTarget || !firstEdge {
+		for x := range locals {
+			local := &locals[x]
+			reg, isFloat := local.reg, local.isFloat
+			if reg == regNone {
+				continue
+			}
+			// The first edge may choose a register-only target. Later edges
+			// materialize a dirty slot only when the recorded target requires it.
+			if locals[x].state == lsReg && (!registerTarget || target.get(x) != lsReg) {
+				f.storeLocalReg(x, reg, isFloat)
+				locals[x].state = lsStackReg
+			}
 		}
 	}
-	if target.empty() { // first edge fixes the frame's merge state
+	if firstEdge { // first edge fixes the frame's merge state
 		var t packedLocStates
 		preferEntry := registerTarget && implicitEntryRegisterMergeEnabled && preferredEntry != nil && !preferredEntry.empty()
 		changed := false
@@ -474,9 +489,7 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 				t.set(x, state)
 			}
 		} else {
-			for x := range locals {
-				t.set(x, locals[x].state)
-			}
+			t = packLocalStates(locals)
 		}
 		*target = t
 		if changed {

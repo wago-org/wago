@@ -499,3 +499,21 @@ func TestLoopSetScanUnusedImmediateEffects(t *testing.T) {
 		}
 	}
 }
+
+func TestPackLocalStatesMatchesIncrementalSnapshots(t *testing.T) {
+	for seed := uint32(0); seed < 32; seed++ {
+		for count := 0; count <= 64; count++ {
+			var locals [64]localDef
+			var want packedLocStates
+			random := seed
+			for x := 0; x < count; x++ {
+				random = random*1664525 + 1013904223
+				locals[x].state = locState(random >> 30)
+				want.set(x, locals[x].state)
+			}
+			if got := packLocalStates(locals[:count]); got != want {
+				t.Fatalf("seed=%d count=%d: packed=%+v want=%+v", seed, count, got, want)
+			}
+		}
+	}
+}

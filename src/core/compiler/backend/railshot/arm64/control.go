@@ -815,10 +815,7 @@ func (f *fn) convergeFrameBranchStateWithDead(fr *ctrlFrame, deadGP, deadFP regM
 
 func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
 	if f.frameLocalsDie(fr) {
-		var state packedLocStates
-		for x := 0; x < f.nLocals; x++ {
-			state.set(x, f.locals[x].state)
-		}
+		state := packLocalStates(f.locals[:f.nLocals])
 		f.ensureCtrlMerge(fr).entryState = state
 		return
 	}
