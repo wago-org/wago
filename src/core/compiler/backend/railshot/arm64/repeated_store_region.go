@@ -197,7 +197,7 @@ func repeatedStoreRegionSafe(b []byte, first, second, words int, targets []uint6
 
 func repeatedStoreChainBranchPrefix(b []byte, first int, matches []int, words int) int {
 	safe := len(matches)
-	for at := 0; at+4 <= len(b); at += 4 {
+	for at := 0; safe != 0 && at+4 <= len(b); at += 4 {
 		to, branch := branchTarget(at, rdWord(b, at))
 		if !branch {
 			continue
