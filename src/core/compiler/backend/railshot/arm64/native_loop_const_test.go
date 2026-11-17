@@ -93,10 +93,18 @@ func TestNativeLoopConstantCandidateScreen(t *testing.T) {
 	if hasNativeLoopConstCandidate(a.B) {
 		t.Fatal("accepted only two-word materializations")
 	}
-	// A two-word use can accompany a three-or-more-word candidate.
+	// An unrelated long constant cannot make the repeated short one profitable.
 	a.MovImm64(X14, 0x123456789abcdef1)
+	if hasNativeLoopConstCandidate(a.B) {
+		t.Fatal("admitted unrelated long and short constants")
+	}
+	// Equivalent values can have different materialization lengths.
+	a = &enc.Asm{}
+	a.MovImm64(X12, 0x12345678)
+	a.MovImm64(X13, 0x12345678)
+	a.B = binary.LittleEndian.AppendUint32(a.B, 0xf2c0000d) // redundant MOVK X13,#0,LSL#32
 	if !hasNativeLoopConstCandidate(a.B) {
-		t.Fatal("rejected a long materialization with another use")
+		t.Fatal("rejected matching values with different materialization lengths")
 	}
 }
 

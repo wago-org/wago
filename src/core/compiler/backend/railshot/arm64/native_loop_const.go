@@ -64,12 +64,11 @@ func nativeLoopConstAt(b []byte, pc, end int) (c nativeLoopConstant, ok bool) {
 	return c, c.words >= 2
 }
 
-// A profitable loop needs at least two materializations, one of three words
-// or more. Reject functions without those prerequisites before allocating the
-// branch-target map or performing loop and exit analysis.
+// A profitable loop needs repeated materializations of the same value, one
+// of three words or more. Fingerprints conservatively admit collisions while
+// rejecting unrelated constants before branch-target and effect analysis.
 func hasNativeLoopConstCandidate(b []byte) bool {
-	count := 0
-	long := false
+	var seen, long uint64
 	for at := 0; at+8 <= len(b); at += 4 {
 		w := rdWord(b, at)
 		if w&0x1f800000 != 0x12800000 || w>>29&3 != 0 && w>>29&3 != 2 {
@@ -79,10 +78,14 @@ func hasNativeLoopConstCandidate(b []byte) bool {
 		if !ok {
 			continue
 		}
-		count++
-		long = long || c.words >= 3
-		if count >= 2 && long {
+		key := (c.value ^ (c.value >> 32)) * uint64(0x9e3779b97f4a7c15)
+		bit := uint64(1) << (key >> 58)
+		if seen&bit != 0 && (c.words >= 3 || long&bit != 0) {
 			return true
+		}
+		seen |= bit
+		if c.words >= 3 {
+			long |= bit
 		}
 		at += (c.words - 1) * 4
 	}
@@ -245,14 +248,26 @@ func (f *fn) emitNativeLoopConsts(n int, entries []int) {
 		if to, branch := branchTarget(at, w); branch {
 			branchTargetAdd(targets, to, n)
 		}
-		if x, valid := nativeLoopConstWord(w); valid {
-			knownWrites |= x.writes
-		}
 	}
+	writesKnown := false
 	versions := 0
 	for back := 16; back < n && versions < 2; back += 4 {
+		if rdWord(f.a.B, back)&0xff80001f != 0x54800001 {
+			continue
+		}
 		p, ok := matchNativeLoopConst(f.a.B[:n], back, targets, entries, f.relocs)
-		if !ok || knownWrites&(uint32(1)<<uint32(p.cache)) == 0 {
+		if !ok {
+			continue
+		}
+		if !writesKnown {
+			for at := 0; at < n; at += 4 {
+				if x, valid := nativeLoopConstWord(rdWord(f.a.B, at)); valid {
+					knownWrites |= x.writes
+				}
+			}
+			writesKnown = true
+		}
+		if knownWrites&(uint32(1)<<uint32(p.cache)) == 0 {
 			continue
 		}
 		original := append([]byte{}, f.a.B[p.start:p.back+4]...)
