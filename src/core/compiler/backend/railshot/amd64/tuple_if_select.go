@@ -152,7 +152,7 @@ func (f *fn) tryTupleIfSelectStores(r *wasm.Reader, signature wasm.Reader, types
 	if !f.opt(optTupleIfSelect) || profileEnabled || f.unreachable || f.makesCalls || f.usesCalls ||
 		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 ||
 		f.intervalControl || f.policy.CompactNative || f.inlineForwardN != 0 || len(types) != 2 ||
-		f.stats != nil && f.stats.RecordSources || !treeReorderSafe(f.s.back()) {
+		f.stats != nil && f.stats.RecordSources || !treeReorderSafe(f.s, f.s.back()) {
 		return false, nil
 	}
 	index, err := signature.I64()

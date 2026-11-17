@@ -48,7 +48,7 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 			}
 			if op != opNone {
 				right := f.s.back()
-				left := baseOfValentBlock(right).prev
+				left := f.s.node(baseOfValentBlock(f.s, right).prev)
 				node := f.s.tryAlloc()
 				if node == nil {
 					node = f.s.allocNextChunk()
@@ -62,8 +62,8 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 				if profileEnabled && f.stats != nil && f.stats.RecordSources {
 					f.rememberProfileNode(node)
 				}
-				node.arg0, node.arg1 = left, right
-				labelDeferredNode(node)
+				node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
+				labelDeferredNode(f.s, node)
 				f.s.pushDeferred(node)
 				f.stats.peep("float-branch-defer")
 				return
@@ -76,7 +76,7 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 // Emit the comparison last so all earlier reconciliation may safely precede it.
 // Above/above-equal reject unordered inputs; swap operands for less/less-equal.
 func (f *fn) emitFloatCompareFlags(node *elem) Cond {
-	left, right := node.arg0, node.arg1
+	left, right := f.s.node(node.arg0), f.s.node(node.arg1)
 	f64 := left.st.typ == mtF64
 	xa, ownA := f.operandRegF(left)
 	old := f.fpinned

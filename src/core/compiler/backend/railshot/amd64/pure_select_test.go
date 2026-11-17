@@ -292,7 +292,7 @@ func TestPureSelectProofBound(t *testing.T) {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 17})
 		f.pushBinOp(opMul, mtI32)
 	}
-	if _, ok := provePureSelectChain(f.s.back(), mtI32); ok {
+	if _, ok := provePureSelectChain(f.s, f.s.back(), mtI32); ok {
 		t.Fatal("accepted chain beyond scan bound")
 	}
 }

@@ -39,7 +39,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	var shift byte
 	bounded := false
 	if boundedUnsignedDivEnabled && !w && !signed {
-		if b, ok := boundedUnsignedDividend(node.arg0); ok {
+		if b, ok := boundedUnsignedDividend(f.s, f.s.node(node.arg0)); ok {
 			bound = b
 			mult, shift, bounded = boundedUnsignedReciprocal(bound, uint32(c))
 		}
@@ -48,7 +48,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	// original destination exclusions even when the final operation is bounded.
 	res := f.allocReg(maskOf(RAX, RDX))
 	f.pinned = f.pinned.add(res)
-	f.condenseInto(node.arg0, res) // res = n (dividend)
+	f.condenseInto(f.s.node(node.arg0), res) // res = n (dividend)
 
 	if bounded {
 		f.divConstUnsignedBounded(res, uint32(c), bound, mult, shift, wantRem)

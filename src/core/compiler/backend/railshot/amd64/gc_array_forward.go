@@ -30,7 +30,7 @@ func (f *fn) gcFreshArray16Candidate(typeIndex uint32, field wasm.FieldType) (st
 	if length == nil || !length.isValue() || length.st.kind != stConst || length.st.typ != mtI32 || uint32(length.st.cval) != 16 {
 		return storage{}, false
 	}
-	value := baseOfValentBlock(length).prev
+	value := f.s.node(baseOfValentBlock(f.s, length).prev)
 	if value == nil || !value.isValue() {
 		return storage{}, false
 	}
@@ -57,9 +57,9 @@ func (f *fn) tryForwardGCFreshArray16Get(typeIndex uint32) bool {
 		return false
 	}
 	index := f.s.back()
-	object := baseOfValentBlock(index).prev
+	object := f.s.node(baseOfValentBlock(f.s, index).prev)
 	local, ok := gcLocalProvenance(object)
-	if !ok || local != fact.objectLocal || !gcI32Mask15(index) {
+	if !ok || local != fact.objectLocal || !gcI32Mask15(f.s, index) {
 		f.invalidateGCFreshStructFact()
 		return false
 	}
@@ -71,11 +71,11 @@ func (f *fn) tryForwardGCFreshArray16Get(typeIndex uint32) bool {
 	return true
 }
 
-func gcI32Mask15(root *elem) bool {
+func gcI32Mask15(s *stack, root *elem) bool {
 	if root == nil || !root.isDeferred() || root.deferredOp() != opAnd || root.valueType() != mtI32 {
 		return false
 	}
-	return gcI32Mask15Leaves(root.arg0, root.arg1) || gcI32Mask15Leaves(root.arg1, root.arg0)
+	return gcI32Mask15Leaves(s.node(root.arg0), s.node(root.arg1)) || gcI32Mask15Leaves(s.node(root.arg1), s.node(root.arg0))
 }
 
 func gcI32Mask15Leaves(value, mask *elem) bool {

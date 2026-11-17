@@ -38,10 +38,10 @@ func pureSelectLeaf(e *elem, typ machineType) bool {
 	return false
 }
 
-func provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, ok bool) {
+func provePureSelectChain(s *stack, e *elem, typ machineType) (p pureSelectChain, ok bool) {
 	for e != nil && e.isDeferred() {
 		if p.n == len(p.nodes) || e.valueType() != typ || e.st.hasGCRoot() ||
-			!isBinALU(e.deferredOp()) || !pureSelectLeaf(e.arg1, typ) {
+			!isBinALU(e.deferredOp()) || !pureSelectLeaf(s.node(e.arg1), typ) {
 			return p, false
 		}
 		p.nodes[p.n] = e
@@ -51,7 +51,7 @@ func provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, ok bool)
 			p.cost += 2
 			p.muls++
 		}
-		e = e.arg0
+		e = s.node(e.arg0)
 	}
 	p.leaf = e
 	return p, pureSelectLeaf(e, typ) && p.muls != 0 && p.cost >= 4
@@ -69,11 +69,11 @@ func (f *fn) tryPureExpensiveSelect() bool {
 	if cond == nil {
 		return false
 	}
-	b := baseOfValentBlock(cond).prev
+	b := f.s.node(baseOfValentBlock(f.s, cond).prev)
 	if b == f.s.head {
 		return false
 	}
-	a := baseOfValentBlock(b).prev
+	a := f.s.node(baseOfValentBlock(f.s, b).prev)
 	if a == f.s.head {
 		return false
 	}
@@ -82,10 +82,10 @@ func (f *fn) tryPureExpensiveSelect() bool {
 		return false
 	}
 	costly, cheap, skipCC := a, b, condE
-	p, ok := provePureSelectChain(costly, typ)
+	p, ok := provePureSelectChain(f.s, costly, typ)
 	if !ok || !pureSelectLeaf(cheap, typ) {
 		costly, cheap, skipCC = b, a, condNE
-		p, ok = provePureSelectChain(costly, typ)
+		p, ok = provePureSelectChain(f.s, costly, typ)
 		if !ok || !pureSelectLeaf(cheap, typ) {
 			return false
 		}
@@ -110,7 +110,7 @@ func (f *fn) tryPureExpensiveSelect() bool {
 	// x86 fixed registers). Reprove the tree after it completes. A rejection here
 	// leaves a valid materialized condition for the ordinary select fallback.
 	creg := f.materialize(cond)
-	p, ok = provePureSelectChain(costly, typ)
+	p, ok = provePureSelectChain(f.s, costly, typ)
 	if !ok || !pureSelectLeaf(cheap, typ) {
 		return false
 	}
@@ -125,7 +125,7 @@ func (f *fn) tryPureExpensiveSelect() bool {
 	f.readPureSelectLeaf(result, p.leaf)
 	w := typ == mtI64
 	for i := p.n - 1; i >= 0; i-- {
-		node, right := p.nodes[i], p.nodes[i].arg1
+		node, right := p.nodes[i], f.s.node(p.nodes[i].arg1)
 		if regallocCheckEnabled {
 			f.checkUse(right)
 		}
@@ -160,7 +160,7 @@ func (f *fn) tryPureExpensiveSelect() bool {
 		f.release(p.leaf.st.reg)
 	}
 	for i := 0; i < p.n; i++ {
-		if right := p.nodes[i].arg1; right.st.kind == stReg {
+		if right := f.s.node(p.nodes[i].arg1); right.st.kind == stReg {
 			f.release(right.st.reg)
 		}
 	}
@@ -183,7 +183,7 @@ func (f *fn) pureSelectFreeRegisters(p *pureSelectChain, cheap *elem, cond Reg) 
 		}
 	}
 	for i := 0; i < p.n; i++ {
-		right := p.nodes[i].arg1
+		right := f.s.node(p.nodes[i].arg1)
 		if right.st.kind == stReg || right.st.kind == stLocalReg {
 			block = block.add(right.st.reg)
 		}

@@ -73,7 +73,7 @@ func (f *fn) homeVectorLocal(i int) {
 	f.storeFrameVector(f.localAddr(x), reg)
 	// All vector operations are eager. Pending reads can become lazy frame reads
 	// after writeback, since this boundary does not change the local's value.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stLocalReg && e.st.typ == mtV128 && e.st.index() == x {
 			f.replaceStorage(e, storage{kind: stLocalRef, typ: mtV128, idx: uint32(x)})
 		}
@@ -94,7 +94,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
 		}
 	}
 	if i < 0 {
-		i = int(f.vectorRegion.next)
+		i = int(f.s.node(f.vectorRegion.next))
 		f.homeVectorLocal(i)
 	}
 	reg := f.materializeV128(e)
@@ -109,7 +109,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
 	f.locals[x].state = lsReg
 	f.fpinnedLocalMask = f.fpinnedLocalMask.add(reg)
 	f.vectorRegion.locals[i] = uint16(x + 1)
-	f.vectorRegion.next = uint8((i + 1) % len(f.vectorRegion.locals))
+	f.vectorRegion.next = f.s.ref(uint8((i + 1) % len(f.vectorRegion.locals)))
 	if tee {
 		f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: reg, idx: uint32(x)})
 	} else {

@@ -168,14 +168,14 @@ type elem struct {
 	st storage
 
 	// Intrusive doubly-linked list (physical stack order).
-	prev, next *elem
+	prev, next nodeID
 
 	// Deferred-action tree (valid when kind == ekDeferred): the two operand
 	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
 	// the right/second. This is the explicit-child form of WARP's implicit
 	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
 	// deferred tree condensed by the same allocator), simpler for nesting.
-	arg0, arg1 *elem
+	arg0, arg1 nodeID
 }
 
 const deferredStorageKind storageKind = 1 << 6
@@ -248,6 +248,8 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 // can be reused at proven-empty top-level reader checkpoints; other node
 // pointers remain stable until the function finishes.
 type stack struct {
+	refChunk           uint32
+	refSearches        uint64 // checked cross-chunk pointer conversions, for PoC attribution
 	arena              *operandArena
 	chunks             [][]elem
 	activeChunk        *[]elem // points into chunks; refreshed after header-array growth
@@ -285,6 +287,9 @@ func newStackWithCap(capHint int) *stack {
 // initWithCap initializes an empty stack without replacing its address. The
 // function compiler may already hold an alias when fallback first needs it.
 func (s *stack) initWithCap(capHint int) {
+	if capHint > nodeChunkMask {
+		capHint = nodeChunkMask
+	}
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
@@ -312,11 +317,12 @@ func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
 // initSentinel rewinds to the first chunk and installs the sentinel node.
 func (s *stack) initSentinel() {
 	s.cur = 0
+	s.refChunk = 0
 	chunk := &s.chunks[0]
 	s.activeChunk = chunk
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
-	s.head.prev, s.head.next = s.head, s.head
+	s.head.prev, s.head.next = s.ref(s.head), s.ref(s.head)
 	s.logicalDepth = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
@@ -443,6 +449,9 @@ func (s *stack) tryAlloc() *elem {
 //
 //go:noinline
 func (s *stack) allocNextChunk() *elem {
+	if s.cur == nodeChunkMask {
+		panic("amd64: operand handle chunk capacity exceeded")
+	}
 	s.cur++
 	if int(s.cur) == len(s.chunks) {
 		s.chunks = append(s.chunks, operandArenaChunk(s.arena, int(s.nextChunkCap)))
@@ -464,9 +473,9 @@ func (s *stack) allocNextChunk() *elem {
 
 // push appends e as the new top of the stack and returns it.
 func (s *stack) push(e *elem) *elem {
-	last := s.head.prev
-	e.prev, e.next = last, s.head
-	last.next, s.head.prev = e, e
+	last := s.node(s.head.prev)
+	e.prev, e.next = s.ref(last), s.ref(s.head)
+	last.next, s.head.prev = s.ref(e), s.ref(e)
 	return e
 }
 
@@ -534,18 +543,18 @@ func (s *stack) pushDeferred(e *elem) *elem {
 	}
 	s.canonicalSlots = false
 	arity := 1
-	if e.arg1 != nil {
+	if e.arg1 != 0 {
 		arity = 2
 	}
-	if e.arg0 == nil || int(s.logicalDepth) < arity {
+	if e.arg0 == 0 || int(s.logicalDepth) < arity {
 		panic("amd64: deferred node has invalid logical operands")
 	}
-	if !e.arg0.st.hasLogicalRoot() || (arity == 2 && !e.arg1.st.hasLogicalRoot()) {
+	if !s.node(e.arg0).st.hasLogicalRoot() || (arity == 2 && !s.node(e.arg1).st.hasLogicalRoot()) {
 		panic("amd64: deferred node operands are not stack roots")
 	}
-	e.arg0.st.setLogicalRoot(false)
+	s.node(e.arg0).st.setLogicalRoot(false)
 	if arity == 2 {
-		e.arg1.st.setLogicalRoot(false)
+		s.node(e.arg1).st.setLogicalRoot(false)
 	}
 	e.st.setLogicalRoot(true)
 	if arity == 2 {
@@ -556,17 +565,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
 
 // back returns the top element, or nil when empty.
 func (s *stack) back() *elem {
-	if s.head.prev == s.head {
+	if s.node(s.head.prev) == s.head {
 		return nil
 	}
-	return s.head.prev
+	return s.node(s.head.prev)
 }
 
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
 	if s.pendingPrefix == e {
-		s.pendingPrefix = e.prev
+		s.pendingPrefix = s.node(e.prev)
 	}
 	s.forgetSpill(e)
 	s.canonicalSlots = false
@@ -577,9 +586,9 @@ func (s *stack) erase(e *elem) {
 		}
 		s.logicalDepth--
 	}
-	e.prev.next, e.next.prev = e.next, e.prev
-	e.prev, e.next = nil, nil
-	if s.head.next == s.head {
+	s.node(e.prev).next, s.node(e.next).prev = e.next, e.prev
+	e.prev, e.next = 0, 0
+	if s.node(s.head.next) == s.head {
 		s.pendingEffects &^= pendingLocalRef
 	}
 }
@@ -600,10 +609,10 @@ func (s *stack) exposeLogicalRoot(e *elem) {
 // baseOfValentBlock walks the left spine of the valent block rooted at `root`
 // down to its deepest leaf — the physical bottom of the block. Mirrors WARP's
 // findBaseOfValentBlock.
-func baseOfValentBlock(root *elem) *elem {
+func baseOfValentBlock(s *stack, root *elem) *elem {
 	top := root
 	for top.isDeferred() {
-		top = top.arg0
+		top = s.node(top.arg0)
 	}
 	return top
 }
@@ -613,7 +622,7 @@ func baseOfValentBlock(root *elem) *elem {
 // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
 	right := f.s.back()
-	left := baseOfValentBlock(right).prev
+	left := f.s.node(baseOfValentBlock(f.s, right).prev)
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
 	if right.isValue() && right.st.kind == stConst &&
 		left.isValue() && left.st.kind == stConst {
@@ -679,8 +688,8 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0, node.arg1 = left, right
-	labelDeferredNode(node)
+	node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
+	labelDeferredNode(f.s, node)
 	f.s.pushDeferred(node)
 	if f.guardMode && isDivRem(op) {
 		// A later guard-backed load can execute when its address is evicted.
@@ -860,8 +869,8 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0 = operand
-	labelDeferredNode(node)
+	node.arg0 = f.s.ref(operand)
+	labelDeferredNode(f.s, node)
 	f.s.pushDeferred(node)
 }
 
@@ -880,7 +889,8 @@ func (s *stack) noteSpill(st storage) {
 }
 
 func (s *stack) forgetSpill(e *elem) {
-	if e.prev == nil || e.next == nil || !e.isValue() || e.st.kind != stSlot {
+	if e.prev == 0 ||
+		e.next == 0 || !e.isValue() || e.st.kind != stSlot {
 		return
 	}
 	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
@@ -896,9 +906,9 @@ func (s *stack) firstUnspilled() *elem {
 	if last == nil {
 		last = s.head
 	}
-	e := last.next
+	e := s.node(last.next)
 	for e != s.head && e.isValue() && e.st.kind == stSlot {
-		last, e = e, e.next
+		last, e = e, s.node(e.next)
 	}
 	s.spilledPrefix = last
 	return e

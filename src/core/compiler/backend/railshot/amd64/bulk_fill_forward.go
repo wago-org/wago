@@ -41,8 +41,8 @@ func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
 		return
 	}
 	count := f.s.back()
-	value := baseOfValentBlock(count).prev
-	dst := baseOfValentBlock(value).prev
+	value := f.s.node(baseOfValentBlock(f.s, count).prev)
+	dst := f.s.node(baseOfValentBlock(f.s, value).prev)
 	countKey, countOK := bulkOperandKey(count)
 	dstKey, dstOK := bulkOperandKey(dst)
 	if !countOK || !dstOK || value == nil || !value.isValue() || value.st.kind != stConst {

@@ -612,7 +612,9 @@ func v128LocalAlias(e *elem) (int, bool) {
 func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 	for _, e := range f.fregUser {
 		// Only linked register owners can supply a still-live stack alias.
-		if e == nil || e.prev == nil || e.next == nil {
+		if e == nil ||
+			e.prev == 0 ||
+			e.next == 0 {
 			continue
 		}
 		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
@@ -648,7 +650,7 @@ func (f *fn) clearV128LocalAliases(x int) {
 	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
 		return
 	}
-	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
+	for e := f.s.back(); e != nil && e != f.s.head; e = f.s.node(e.prev) {
 		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
 			e.st.cval = 0
 		}
@@ -830,7 +832,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op simdBinaryOp) {
 		return
 	}
 	right := f.s.back()
-	left := baseOfValentBlock(right).prev
+	left := f.s.node(baseOfValentBlock(f.s, right).prev)
 	memElem, regElem := right, left
 	disp, ok := f.v128StackMem(memElem)
 	if !ok {
@@ -2082,11 +2084,11 @@ func (f *fn) topThreeV128Values() bool {
 	if top == nil || top == f.s.head || !top.isValue() || top.st.typ != mtV128 {
 		return false
 	}
-	middle := baseOfValentBlock(top).prev
+	middle := f.s.node(baseOfValentBlock(f.s, top).prev)
 	if middle == f.s.head || !middle.isValue() || middle.st.typ != mtV128 {
 		return false
 	}
-	bottom := baseOfValentBlock(middle).prev
+	bottom := f.s.node(baseOfValentBlock(f.s, middle).prev)
 	return bottom != f.s.head && bottom.isValue() && bottom.st.typ == mtV128
 }
 

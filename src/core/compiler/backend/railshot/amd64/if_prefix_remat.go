@@ -22,16 +22,18 @@ var ifPrefixRematEnabled = os.Getenv("WAGO_AMD64_IF_PREFIX_REMAT") != "0"
 // ifPrefixLocal admits one non-trapping local read, optionally plus an i32
 // constant. Every leaf is reconstructible; no owned register, frame operand,
 // guest load, or observable operation may be detached from the operand stack.
-func ifPrefixLocal(root *elem) *elem {
+func ifPrefixLocal(s *stack, root *elem) *elem {
 	if root == nil || rootMachineType(root) != mtI32 || root.st.hasGCRoot() {
 		return nil
 	}
 	value := root
 	if root.isDeferred() {
-		if root.deferredOp() != opAdd || root.arg0 == nil || root.arg1 == nil {
+		if root.deferredOp() != opAdd ||
+			root.arg0 == 0 ||
+			root.arg1 == 0 {
 			return nil
 		}
-		value, constant := root.arg0, root.arg1
+		value, constant := s.node(root.arg0), s.node(root.arg1)
 		if value.isValue() && value.st.kind == stConst {
 			value, constant = constant, value
 		}
@@ -91,11 +93,11 @@ func (f *fn) deferIfPrefix(reader *wasm.Reader, fr *ctrlFrame) {
 		f.depth() != 2 || f.moduleEH || f.gcFrameRoots != nil || f.interruptible || len(f.customInstructions) != 0 {
 		return
 	}
-	root := baseOfValentBlock(f.s.back()).prev
+	root := f.s.node(baseOfValentBlock(f.s, f.s.back()).prev)
 	if root == f.s.head {
 		return
 	}
-	local := ifPrefixLocal(root)
+	local := ifPrefixLocal(f.s, root)
 	if local == nil || !f.ifPrefixUnchanged(reader, local.st.index()) {
 		return
 	}
@@ -120,7 +122,7 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 		panic("amd64: invalid deferred if prefix contract")
 	}
 	root := f.ctrlMerge(fr).baseTypeTop
-	local := ifPrefixLocal(root)
+	local := ifPrefixLocal(f.s, root)
 	if local == nil {
 		panic("amd64: lost deferred if prefix recipe")
 	}
@@ -140,9 +142,9 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	result := f.s.back()
 	first := root
 	if root.isDeferred() {
-		first = root.arg0
-		f.s.push(root.arg0)
-		f.s.push(root.arg1)
+		first = f.s.node(root.arg0)
+		f.s.push(f.s.node(root.arg0))
+		f.s.push(f.s.node(root.arg1))
 	}
 	f.s.push(root)
 	f.s.exposeLogicalRoot(root)
@@ -151,8 +153,8 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	// Rotate the reconstructed prefix below the existing result without moving
 	// the result's storage or changing its allocator ownership.
 	head := f.s.head
-	head.next, first.prev = first, head
-	root.next, result.prev = result, root
-	result.next, head.prev = head, result
+	head.next, first.prev = f.s.ref(first), f.s.ref(head)
+	root.next, result.prev = f.s.ref(result), f.s.ref(root)
+	result.next, head.prev = f.s.ref(head), f.s.ref(result)
 	f.s.pendingPrefix = nil
 }

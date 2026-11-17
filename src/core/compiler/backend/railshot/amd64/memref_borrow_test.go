@@ -68,6 +68,8 @@ func TestBorrowedLocalSurvivesDeferredCompareLoad(t *testing.T) {
 }
 
 func TestApplyMulMemRefOwnership(t *testing.T) {
+	s := newStack()
+
 	for _, tc := range []struct {
 		name   string
 		size   int
@@ -88,7 +90,7 @@ func TestApplyMulMemRefOwnership(t *testing.T) {
 			if tc.borrow >= 0 {
 				f.pinnedLocalMask = maskOf(R12)
 			}
-			right := testValueElem(memRefStorage(R12, 0, tc.size, false, false, tc.borrow))
+			right := testValueElem(s, memRefStorage(R12, 0, tc.size, false, false, tc.borrow))
 
 			f.applyMul(RAX, right, false)
 

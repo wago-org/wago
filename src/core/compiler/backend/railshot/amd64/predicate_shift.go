@@ -18,11 +18,11 @@ var predicateShiftEnabled = os.Getenv("WAGO_AMD64_PREDICATE_SHIFT") != "0"
 // Keep both candidates outside fixed registers until the predicate is consumed:
 // its subtrees can contain division or another variable shift.
 func (f *fn) tryPredicateShift(node *elem, dest Reg) (Reg, bool) {
-	right := node.arg1
+	right := f.s.node(node.arg1)
 	if !predicateShiftEnabled || node.valueType() != mtI32 || !isFusableCompare(right) || right.valueType().isFloat() {
 		return regNone, false
 	}
-	value := f.materializeSelectBranch(node.arg0, mtI32)
+	value := f.materializeSelectBranch(f.s.node(node.arg0), mtI32)
 	f.pinned = f.pinned.add(value)
 	shifted := f.allocReg(maskOf(RAX, RDX, RCX, value))
 	f.pinned = f.pinned.add(shifted)

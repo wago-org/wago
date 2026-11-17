@@ -32,7 +32,9 @@ func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 		if cap(s.chunks[0]) != tc.want {
 			t.Fatalf("newStackWithCap(%d) first chunk cap = %d, want %d", tc.hint, cap(s.chunks[0]), tc.want)
 		}
-		if s.head == nil || s.head.next != s.head || s.head.prev != s.head {
+		if s.head == nil ||
+			s.node(s.head.next) != s.head ||
+			s.node(s.head.prev) != s.head {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
 		}
 	}
@@ -77,6 +79,8 @@ func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
 }
 
 func TestStackArenaGrowthCaps(t *testing.T) {
+	s := newStack()
+
 	for _, tc := range []struct {
 		first, next, geometric int
 	}{
@@ -89,8 +93,9 @@ func TestStackArenaGrowthCaps(t *testing.T) {
 		{9000, 7384, 8192},
 	} {
 		next, geometric := stackArenaGrowthCaps(tc.first)
-		if next != tc.next || geometric != tc.geometric {
-			t.Fatalf("first %d: growth=(%d,%d), want (%d,%d)", tc.first, next, geometric, tc.next, tc.geometric)
+		if next !=
+			s.node(tc.next) || geometric != tc.geometric {
+			t.Fatalf("first %d: growth=(%d,%d), want (%d,%d)", tc.first, next, geometric, s.node(tc.next), tc.geometric)
 		}
 	}
 }
@@ -170,7 +175,10 @@ func TestStackFinishFunctionRetainsBoundedReusableOverflow(t *testing.T) {
 			t.Fatalf("discarded chunk %d still has a slice header", i)
 		}
 	}
-	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nil || stale.next != nil || stale.arg0 != nil || stale.arg1 != nil {
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != 0 ||
+		stale.next != 0 ||
+		stale.arg0 != 0 ||
+		stale.arg1 != 0 {
 		t.Fatal("retained backing still points at prior-function nodes")
 	}
 }
@@ -285,7 +293,7 @@ func TestStackArenaPointerStabilityAcrossChunks(t *testing.T) {
 	}
 	// Walk the whole physical list and confirm contiguous values 1..total.
 	want := int64(1)
-	for e := s.head.next; e != s.head; e = e.next {
+	for e := s.node(s.head.next); e != s.head; e = s.node(e.next) {
 		if e.st.cval != want {
 			t.Fatalf("list value at position %d = %d, want %d", want, e.st.cval, want)
 		}
@@ -307,7 +315,8 @@ func TestStackArenaReusesChunksAcrossReset(t *testing.T) {
 	}
 	s.reset()
 	// After reset the sentinel is back and every chunk is retained for reuse.
-	if s.cur != 0 || len(s.chunks[0]) != 1 || s.head.next != s.head {
+	if s.cur != 0 || len(s.chunks[0]) != 1 ||
+		s.node(s.head.next) != s.head {
 		t.Fatalf("reset did not rewind: cur=%d len0=%d", s.cur, len(s.chunks[0]))
 	}
 	for i := 0; i < 4*minStackArenaCap; i++ {
@@ -415,20 +424,23 @@ func TestStackValentBlock(t *testing.T) {
 	b := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opAdd, mtI32) // a + b
 	add := f.s.back()
-	if !add.isDeferred() || add.arg0 != a || add.arg1 != b {
-		t.Fatalf("add node operands wrong: arg0=%p arg1=%p (want a=%p b=%p)", add.arg0, add.arg1, a, b)
+	if !add.isDeferred() ||
+		f.s.node(add.arg0) != a ||
+		f.s.node(add.arg1) != b {
+		t.Fatalf("add node operands wrong: arg0=%p arg1=%p (want a=%p b=%p)", f.s.node(add.arg0), f.s.node(add.arg1), a, b)
 	}
-	if base := baseOfValentBlock(add); base != a {
+	if base := baseOfValentBlock(f.s, add); base != a {
 		t.Fatalf("baseOfValentBlock(add) = %p, want a=%p", base, a)
 	}
 	// nest: (a+b) + c
 	c := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 2})
 	f.pushBinOp(opAdd, mtI32)
 	outer := f.s.back()
-	if outer.arg0 != add || outer.arg1 != c {
-		t.Fatalf("outer operands wrong: arg0=%p arg1=%p (want add=%p c=%p)", outer.arg0, outer.arg1, add, c)
+	if f.s.node(outer.arg0) != add ||
+		f.s.node(outer.arg1) != c {
+		t.Fatalf("outer operands wrong: arg0=%p arg1=%p (want add=%p c=%p)", f.s.node(outer.arg0), f.s.node(outer.arg1), add, c)
 	}
-	if base := baseOfValentBlock(outer); base != a {
+	if base := baseOfValentBlock(f.s, outer); base != a {
 		t.Fatalf("baseOfValentBlock(outer) = %p, want a=%p (deepest-left leaf)", base, a)
 	}
 }

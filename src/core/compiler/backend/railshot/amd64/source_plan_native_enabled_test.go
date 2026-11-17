@@ -142,7 +142,7 @@ func TestNativeSourcePlanActualDAGControls(t *testing.T) {
 			e.setElemKind(ekDeferred)
 			e.setDeferredOp(opAdd)
 			e.setValueType(mtI32)
-			e.arg0, e.arg1 = left, right
+			e.arg0, e.arg1 = f.s.ref(left), f.s.ref(right)
 			f.s.pushDeferred(e)
 			st := f.sourcePlan
 			switch control {
@@ -151,7 +151,7 @@ func TestNativeSourcePlanActualDAGControls(t *testing.T) {
 			case "wrong type":
 				e.setValueType(mtI64)
 			case "swapped children":
-				e.arg0, e.arg1 = right, left
+				e.arg0, e.arg1 = f.s.ref(right), f.s.ref(left)
 			case "missing child tag":
 				delete(st.associations, left)
 			case "stale child generation":
@@ -159,7 +159,7 @@ func TestNativeSourcePlanActualDAGControls(t *testing.T) {
 				n, _ := shared.SourceSlotNode(a.ref)
 				_, _ = shared.BindSourceSlot(st.owner.Token, a.slot, n)
 			case "prefix replaced":
-				e.arg0 = right
+				e.arg0 = f.s.ref(right)
 			}
 			end := 5
 			if control == "reader fusion" {
@@ -303,11 +303,11 @@ func TestNativeSourcePlanTraversalBoundsAndUnwind(t *testing.T) {
 			nativeSourceModelGet(t, f, 0, 0)
 			switch control {
 			case "bad link":
-				f.s.head.next.prev = nil
+				f.s.node(f.s.head.next).prev = 0
 			case "depth mismatch":
 				f.s.logicalDepth++
 			case "cycle":
-				f.s.head.next.next = f.s.head.next
+				f.s.node(f.s.head.next).next = f.s.head.next
 			case "quota":
 				shared.ChargeSourcePlanAdapter(owner.Token, 1<<30, 0)
 			case "slot bound":
@@ -381,15 +381,15 @@ func TestNativeSourcePlanPreservedPrefixControl(t *testing.T) {
 		e.setElemKind(ekDeferred)
 		e.setDeferredOp(opAdd)
 		e.setValueType(mtI32)
-		e.arg0, e.arg1 = left, right
+		e.arg0, e.arg1 = f.s.ref(left), f.s.ref(right)
 		f.s.pushDeferred(e)
 		st := f.sourcePlan
 		if replace {
 			fresh := f.s.alloc()
 			fresh.st = prefix.st
 			fresh.prev, fresh.next = prefix.prev, prefix.next
-			fresh.prev.next, fresh.next.prev = fresh, fresh
-			prefix.prev, prefix.next = nil, nil
+			f.s.node(fresh.prev).next, f.s.node(fresh.next).prev = f.s.ref(fresh), f.s.ref(fresh)
+			prefix.prev, prefix.next = 0, 0
 			// Even matching desired provenance cannot legitimize an unobserved rewrite
 			// of a lower live stack root during this source event.
 			if !st.bind(fresh, st.nodes[0]) {

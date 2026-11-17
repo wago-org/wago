@@ -30,8 +30,8 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
 	if count == nil || !count.isValue() {
 		return false, nil
 	}
-	src := count.prev
-	dst := src.prev
+	src := f.s.node(count.prev)
+	dst := f.s.node(src.prev)
 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst ||
 		src.st.typ != mtI32 || dst.st.typ != mtI32 {
 		return false, nil

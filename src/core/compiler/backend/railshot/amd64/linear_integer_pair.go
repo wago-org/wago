@@ -29,7 +29,7 @@ type linearPairTree struct {
 // Collect modulo2^32 over current-local reads only. A captured older value,
 // memory/global read, trapping operation or nonconstant product keeps its
 // existing evaluation; even a zero coefficient must prove its whole subtree.
-func (w *linearPairTree) collect(e *elem, scale uint32) bool {
+func (w *linearPairTree) collect(s *stack, e *elem, scale uint32) bool {
 	if e == nil || w.budget == 0 || e.valueType() != mtI32 {
 		return false
 	}
@@ -59,13 +59,13 @@ func (w *linearPairTree) collect(e *elem, scale uint32) bool {
 	if !e.isDeferred() {
 		return false
 	}
-	a, b := e.arg0, e.arg1
+	a, b := s.node(e.arg0), s.node(e.arg1)
 	w.operations++
 	switch e.deferredOp() {
 	case opAdd:
-		return w.collect(a, scale) && w.collect(b, scale)
+		return w.collect(s, a, scale) && w.collect(s, b, scale)
 	case opSub:
-		return w.collect(a, scale) && w.collect(b, -scale)
+		return w.collect(s, a, scale) && w.collect(s, b, -scale)
 	case opMul:
 		if a != nil && a.isValue() && a.st.kind == stConst {
 			a, b = b, a
@@ -73,12 +73,12 @@ func (w *linearPairTree) collect(e *elem, scale uint32) bool {
 		if b == nil || !b.isValue() || b.st.kind != stConst {
 			return false
 		}
-		return w.collect(a, scale*uint32(b.st.cval))
+		return w.collect(s, a, scale*uint32(b.st.cval))
 	case opShl:
 		if b == nil || !b.isValue() || b.st.kind != stConst {
 			return false
 		}
-		return w.collect(a, scale<<(uint32(b.st.cval)&31))
+		return w.collect(s, a, scale<<(uint32(b.st.cval)&31))
 	}
 	return false
 }
@@ -90,7 +90,7 @@ func (f *fn) tryLinearIntegerPair(node *elem, dest Reg) Reg {
 		return regNone
 	}
 	w := linearPairTree{budget: 64}
-	if !w.collect(node, 1) || w.operations < 3 {
+	if !w.collect(f.s, node, 1) || w.operations < 3 {
 		return regNone
 	}
 	var base, index *linearPairTerm

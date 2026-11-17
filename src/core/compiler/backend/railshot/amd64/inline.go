@@ -1089,9 +1089,9 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	start := f.a.Len()
 	if t.isI32AddParams() {
 		right := f.s.back()
-		left := baseOfValentBlock(right).prev
+		left := f.s.node(baseOfValentBlock(f.s, right).prev)
 		if right.isValue() && right.st.kind == stConst || left.isValue() && left.st.kind == stConst {
-			if !treeReorderSafe(left) || !treeReorderSafe(right) {
+			if !treeReorderSafe(f.s, left) || !treeReorderSafe(f.s, right) {
 				f.materializeTrapsBefore(f.s.head)
 			}
 			if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -1105,7 +1105,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		}
 	}
 	if t.isI32AddConst() {
-		if !treeReorderSafe(f.s.back()) {
+		if !treeReorderSafe(f.s, f.s.back()) {
 			f.materializeTrapsBefore(f.s.head)
 		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -1202,7 +1202,7 @@ func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
 			return false
 		}
 		sources[i] = e.st.idx
-		e = e.prev
+		e = f.s.node(e.prev)
 	}
 	for range params {
 		f.erase(f.s.back())
@@ -1471,14 +1471,14 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 		return
 	}
 	inRange := func(idx int) bool { return idx >= lo && idx < hi }
-	for e := f.s.head.next; e != f.s.head; {
-		next := e.next
+	for e := f.s.node(f.s.head.next); e != f.s.head; {
+		next := f.s.node(e.next)
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
 			f.materializeByType(e)
 		case e.isValue() && e.st.kind == stMemRef && inRange(e.st.memBorrow()):
 			f.materializeByType(e)
-		case e.isDeferred() && subtreeRefsLocalRange(e, lo, hi):
+		case e.isDeferred() && subtreeRefsLocalRange(f.s, e, lo, hi):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -1487,7 +1487,7 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 
 // subtreeRefsLocalRange reports whether the valent block rooted at e reads any
 // local in [lo, hi).
-func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
+func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 	if e == nil {
 		return false
 	}
@@ -1495,7 +1495,7 @@ func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.index() >= lo && e.st.index() < hi
 	}
 	if e.isDeferred() {
-		return subtreeRefsLocalRange(e.arg0, lo, hi) || subtreeRefsLocalRange(e.arg1, lo, hi)
+		return subtreeRefsLocalRange(s, s.node(e.arg0), lo, hi) || subtreeRefsLocalRange(s, s.node(e.arg1), lo, hi)
 	}
 	return false
 }

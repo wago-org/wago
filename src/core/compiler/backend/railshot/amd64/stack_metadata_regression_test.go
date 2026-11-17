@@ -28,7 +28,9 @@ func TestConstantFoldingPreservesLogicalRootAndPrefix(t *testing.T) {
 			left := f.pushValue(storage{kind: stConst, typ: tc.input, cval: tc.left})
 			f.pushValue(storage{kind: stConst, typ: tc.input, cval: tc.right})
 			f.pushBinOp(tc.op, tc.input)
-			if f.depth() != 2 || f.s.back() != left || left.prev != prefix || prefix.prev != f.s.head {
+			if f.depth() != 2 || f.s.back() != left ||
+				f.s.node(left.prev) != prefix ||
+				f.s.node(prefix.prev) != f.s.head {
 				t.Fatal("fold changed the logical prefix or failed to reuse its root")
 			}
 			if left.st.kind != stConst || left.st.typ != tc.output || left.st.cval != tc.want || !left.st.hasLogicalRoot() {
@@ -63,23 +65,24 @@ func TestIncrementalStackMetadataMatchesReconstruction(t *testing.T) {
 				node := f.s.alloc()
 				node.setElemKind(ekDeferred)
 				node.setValueType(mtI64)
-				node.arg0 = roots[len(roots)-arity]
+				node.arg0 = f.s.ref(roots[len(roots)-arity])
 				if arity == 2 {
-					node.arg1 = roots[len(roots)-1]
+					node.arg1 = f.s.ref(roots[len(roots)-1])
 				}
 				f.s.pushDeferred(node)
 				roots = append(roots[:len(roots)-arity], node)
 			} else {
 				top := roots[len(roots)-1]
-				if op == 3 && top.isDeferred() && top.arg1 == nil {
+				if op == 3 && top.isDeferred() &&
+					top.arg1 == 0 {
 					f.s.erase(top)
-					f.s.exposeLogicalRoot(top.arg0)
-					roots[len(roots)-1] = top.arg0
+					f.s.exposeLogicalRoot(f.s.node(top.arg0))
+					roots[len(roots)-1] = f.s.node(top.arg0)
 				} else {
 					// Remove the whole top expression, including its non-root nodes.
-					stop := baseOfValentBlock(top).prev
+					stop := f.s.node(baseOfValentBlock(f.s, top).prev)
 					for node := top; node != stop; {
-						previous := node.prev
+						previous := f.s.node(node.prev)
 						f.s.erase(node)
 						node = previous
 					}

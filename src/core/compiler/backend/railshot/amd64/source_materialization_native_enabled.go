@@ -149,11 +149,11 @@ func checkNativeSourceProducerBefore(f *fn, node *elem) {
 	if !ok {
 		return
 	}
-	left, ok := nativeSourceMaterializationNode(st, node.arg0)
+	left, ok := nativeSourceMaterializationNode(st, f.s.node(node.arg0))
 	if !ok {
 		return
 	}
-	right, ok := nativeSourceMaterializationNode(st, node.arg1)
+	right, ok := nativeSourceMaterializationNode(st, f.s.node(node.arg1))
 	if !ok {
 		return
 	}

@@ -23,7 +23,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
 	for pass := 0; pass < 2; pass++ {
 		rootIndex, canonicalSlot := 0, 0
 		overlaps := false
-		for e := f.s.head.next; e != f.s.head; e = e.next {
+		for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 			canonical := false
 			destination := -1
 			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {

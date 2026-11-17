@@ -177,14 +177,16 @@ func TestPureIntegerIfConditionMovePreservesTreesAndBarrierCursor(t *testing.T) 
 	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: R10, idx: 1})
 	f.pushBinOp(opEq, mtI32)
 	condition := f.s.back()
-	left, right, depth := condition.arg0, condition.arg1, f.s.logicalDepth
+	left, right, depth := f.s.node(condition.arg0), f.s.node(condition.arg1), f.s.logicalDepth
 	f.s.pendingPrefix, f.s.pendingPrefixLoads = condition, true
 	for i := range 4096 {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
 	}
 	f.s.moveValentBlockToTop(condition)
 	roots := f.rootsBottomToTop()
-	if len(roots) != 4098 || roots[0] != prefix || roots[len(roots)-1] != condition || condition.arg0 != left || condition.arg1 != right || f.s.logicalDepth != depth+4096 || f.s.pendingPrefix != nil || f.s.pendingPrefixLoads {
+	if len(roots) != 4098 || roots[0] != prefix || roots[len(roots)-1] != condition ||
+		f.s.node(condition.arg0) != left ||
+		f.s.node(condition.arg1) != right || f.s.logicalDepth != depth+4096 || f.s.pendingPrefix != nil || f.s.pendingPrefixLoads {
 		t.Fatal("moving condition lost its tree, prefix, depth, or barrier cursor")
 	}
 	for i := range 4096 {

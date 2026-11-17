@@ -32,12 +32,14 @@ func isFusableCompare(e *elem) bool {
 }
 
 // Small i32 mask conditions can use a short byte TEST for select's zero flag.
-func isMaskedI32Condition(node *elem) bool {
+func isMaskedI32Condition(s *stack, node *elem) bool {
 	if !swarMaskTestEnabled || node == nil || !node.isDeferred() || node.deferredOp() != opAnd ||
-		node.valueType() != mtI32 || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+		node.valueType() != mtI32 ||
+		node.arg1 == 0 || !s.node(node.arg1).isValue() ||
+		s.node(node.arg1).st.kind != stConst {
 		return false
 	}
-	mask := uint32(node.arg1.st.cval)
+	mask := uint32(s.node(node.arg1).st.cval)
 	return mask != 0 && mask <= 0xff
 }
 
@@ -48,21 +50,22 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
 	if !swarMaskTestEnabled || node == nil {
 		return 0, false
 	}
-	nonzero := isMaskedI32Condition(node)
+	nonzero := isMaskedI32Condition(f.s, node)
 	if !nonzero && node.deferredOp() != opEqz {
 		return 0, false
 	}
 	inner := node
 	if !nonzero {
-		inner = node.arg0
+		inner = f.s.node(node.arg0)
 	}
 	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd ||
-		inner.arg1 == nil || !inner.arg1.isValue() || inner.arg1.st.kind != stConst ||
-		inner.arg1.st.cval == 0 {
+		inner.arg1 == 0 || !f.s.node(inner.arg1).isValue() ||
+		f.s.node(inner.arg1).st.kind != stConst ||
+		f.s.node(inner.arg1).st.cval == 0 {
 		return 0, false
 	}
 
-	left := inner.arg0
+	left := f.s.node(inner.arg0)
 	var x Reg
 	owned := false
 	switch {
@@ -75,7 +78,7 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
 	}
 	f.pinned = f.pinned.add(x)
 	w := inner.valueType().is64()
-	c := inner.arg1.st.cval
+	c := f.s.node(inner.arg1).st.cval
 	mask := uint64(c)
 	if !w {
 		mask = uint64(uint32(c))
@@ -94,7 +97,7 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
 		f.a.TestImm(x, uint32(c), w)
 	} else {
 		t := f.allocReg(maskOf(x))
-		f.loadConst(t, inner.arg1.st)
+		f.loadConst(t, f.s.node(inner.arg1).st)
 		f.a.TestReg(x, t, true)
 		f.release(t)
 	}
@@ -119,10 +122,10 @@ func (f *fn) flushBelow(node *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
-	base := baseOfValentBlock(node)
+	base := baseOfValentBlock(f.s, node)
 	below := f.tmpBelow[:0]
 	belowSlots := 0
-	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.node(base.prev); cur != f.s.head; cur = f.s.node(baseOfValentBlock(f.s, cur).prev) {
 		below = append(below, cur)
 		belowSlots += rootMachineType(cur).stackSlots()
 	}
@@ -206,8 +209,8 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.deferredOp() == opEqz && isFusableCompare(node.arg0) {
-			inner := node.arg0
+		for node.deferredOp() == opEqz && isFusableCompare(f.s.node(node.arg0)) {
+			inner := f.s.node(node.arg0)
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.s.exposeLogicalRoot(inner)
 			f.stats.peep("eqz-fold")
@@ -242,7 +245,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		// TEST does not write its operand, so a register-resident value (a pinned
 		// local — e.g. a loop counter — or an owned temp) is tested in place with no
 		// copy, mirroring the relational path below.
-		a := node.arg0
+		a := f.s.node(node.arg0)
 		var L Reg
 		ownedL := false
 		switch {
@@ -264,7 +267,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		return applyInvert(condE)
 	}
 	cc := applyInvert(condOf(node.deferredOp()))
-	left, right := node.arg0, node.arg1
+	left, right := f.s.node(node.arg0), f.s.node(node.arg1)
 	// Specialization often exposes a constant on the source comparison's
 	// left. Commute two concrete operands so CMP can use its immediate form.
 	if f.inlineTailConstants != nil && left.isValue() && left.st.kind == stConst && fitsImm32(left.st.cval) && right.isValue() &&
@@ -375,7 +378,7 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && top.deferredOp() == opEqz &&
 		labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
 		loop := &f.ctrl[len(f.ctrl)-1]
-		counter, loopHeader = localAddressKey(top.arg0)
+		counter, loopHeader = localAddressKey(f.s.node(top.arg0))
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
 	}

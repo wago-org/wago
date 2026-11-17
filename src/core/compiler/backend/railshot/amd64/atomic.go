@@ -101,7 +101,7 @@ func (f *fn) prepareAtomicOperands(count int) {
 	for i := count - 1; i >= 0; i-- {
 		roots[i] = root
 		if i > 0 {
-			root = baseOfValentBlock(root).prev
+			root = f.s.node(baseOfValentBlock(f.s, root).prev)
 		}
 	}
 	for _, root := range roots[:count] {

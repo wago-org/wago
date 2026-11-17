@@ -26,7 +26,7 @@ func rhsRelocateFixture(f *fn) (root, right *elem) {
 		e.setElemKind(ekDeferred)
 		e.setDeferredOp(opSub)
 		e.setValueType(mtI64)
-		e.arg0, e.arg1 = left, right
+		e.arg0, e.arg1 = f.s.ref(left), f.s.ref(right)
 		return f.s.pushDeferred(e)
 	}
 
@@ -48,6 +48,8 @@ func resetRHSRelocateFixture(f *fn) (root, right *elem) {
 }
 
 func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
+	s := newStack()
+
 	requireCompilerDiagnostics(t)
 	stats := new(CodegenStats)
 	f := &fn{
@@ -69,7 +71,8 @@ func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
 	if !right.isValue() || right.st.kind != stReg || right.st.reg != R8 {
 		t.Fatalf("arena RHS after relocation = kind %v, storage %+v; want stReg R8", right.elemKind(), right.st)
 	}
-	if right.prev != nil || right.next != nil {
+	if right.prev != 0 ||
+		right.next != 0 {
 		t.Fatal("consumed arena RHS remains linked on the operand stack")
 	}
 	if f.regUser[R8] != nil {
@@ -184,7 +187,7 @@ func TestLocalSinkKeepsRegionalDestination(t *testing.T) {
 			e.setElemKind(ekDeferred)
 			e.setDeferredOp(opSub)
 			e.setValueType(mtI64)
-			e.arg0, e.arg1 = left, right
+			e.arg0, e.arg1 = f.s.ref(left), f.s.ref(right)
 			return f.s.pushDeferred(e)
 		}
 		left := sub(value(13), value(5))

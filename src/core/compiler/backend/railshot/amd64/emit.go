@@ -103,8 +103,9 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.deferredOp() == opZExt32 && node.arg0.st.valueFacts().has(factUpper32Zero)
-	src, srcOwned := f.materializeRead(node.arg0)
+	cleanZExt := node.deferredOp() == opZExt32 &&
+		f.s.node(node.arg0).st.valueFacts().has(factUpper32Zero)
+	src, srcOwned := f.materializeRead(f.s.node(node.arg0))
 	result := dest
 	if result == regNone {
 		if srcOwned {
@@ -143,8 +144,8 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // place (const→imm, memory→r/m, reg→reg).
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
-	left := node.arg0
-	right := node.arg1
+	left := f.s.node(node.arg0)
+	right := f.s.node(node.arg1)
 	// A target hint may also hold a pending RHS load's address. Compute through
 	// the ordinary allocator before writing that target, keeping both memory
 	// reads in their original order and the RHS address live until it is used.
@@ -159,7 +160,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	}
 	// Keep trapping children in bytecode order. The tracked left value stays
 	// spillable while the right subtree claims fixed registers.
-	if right.isDeferred() && !treeReorderSafe(right) && !treeReorderSafe(left) {
+	if right.isDeferred() && !treeReorderSafe(f.s, right) && !treeReorderSafe(f.s, left) {
 		f.materialize(left)
 	}
 	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
@@ -179,8 +180,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// can extend a local read across an interval eviction and observe a reused
 	// register. The ordinary allocator has no such position-based ownership.
 	if len(f.intervalReg) == 0 && node.deferredOp().commutative() && left.isDeferred() &&
-		treeRegisterNeed(left) > treeRegisterNeed(right) &&
-		treeReorderSafe(left) && treeReorderSafe(right) {
+		treeRegisterNeed(f.s, left) > treeRegisterNeed(f.s, right) &&
+		treeReorderSafe(f.s, left) && treeReorderSafe(f.s, right) {
 		f.stats.peep("tree-order-candidate")
 		if f.opt(optTreeOrder) {
 			left, right = right, left
@@ -240,7 +241,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Exclude x86's fixed-role registers: a div/rem/shift inside the other operand
 	// may claim one of those directly even while it is occupied.
 	fixedDest := dest == RAX || dest == RDX || dest == RCX
-	fixedDestSafe := fixedSelfUpdateAccumulatorSafe(dest, left, f.opt(optCommuteFixedSelfUpdate))
+	fixedDestSafe := fixedSelfUpdateAccumulatorSafe(f.s, dest, left, f.opt(optCommuteFixedSelfUpdate))
 	commuteSelfUpdate := node.deferredOp().commutative() && dest != regNone && fixedDestSafe &&
 		right.isValue() &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
@@ -406,11 +407,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	return dest
 }
 
-func fixedSelfUpdateAccumulatorSafe(dest Reg, other *elem, enabled bool) bool {
+func fixedSelfUpdateAccumulatorSafe(s *stack, dest Reg, other *elem, enabled bool) bool {
 	if dest != RAX && dest != RDX && dest != RCX {
 		return true
 	}
-	return enabled && treeAccumulatorSafe(other)
+	return enabled && treeAccumulatorSafe(s, other)
 }
 
 // tryXorByteMask lowers `(x ^ i32.load8_u(...)) & 255` with an 8-bit XOR.
@@ -433,7 +434,7 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
 	if xor == nil || !xor.isDeferred() || xor.deferredOp() != opXor || xor.valueType() != mtI32 {
 		return regNone
 	}
-	byteArg, other := xor.arg0, xor.arg1
+	byteArg, other := f.s.node(xor.arg0), f.s.node(xor.arg1)
 	isByteLoad := func(e *elem) bool {
 		return e != nil && e.isValue() && e.st.kind == stMemRef &&
 			e.st.typ == mtI32 && e.st.memSize() == 1 && !e.st.memSigned()
@@ -480,11 +481,11 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
 
 // shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
 // masked count in 1..3 (an LEA-encodable scale), returning the count.
-func shlByConst123(e *elem, t machineType) (int, bool) {
+func shlByConst123(s *stack, e *elem, t machineType) (int, bool) {
 	if e == nil || !e.isDeferred() || e.deferredOp() != opShl || e.valueType() != t {
 		return 0, false
 	}
-	c := e.arg1
+	c := s.node(e.arg1)
 	if c == nil || !c.isValue() || c.st.kind != stConst {
 		return 0, false
 	}
@@ -503,7 +504,7 @@ func shlByConst123(e *elem, t machineType) (int, bool) {
 // shifts honor the allocator's pinned set, while div/rem and variable shifts
 // reserve fixed RAX/RDX/RCX roles that can displace an already-materialized
 // input. Values (including deferred memory loads) are safe.
-func leaOperandSafe(e *elem) bool {
+func leaOperandSafe(s *stack, e *elem) bool {
 	if e == nil {
 		return false
 	}
@@ -514,10 +515,13 @@ func leaOperandSafe(e *elem) bool {
 		return false
 	}
 	if isBinALU(e.deferredOp()) {
-		return leaOperandSafe(e.arg0) && leaOperandSafe(e.arg1)
+		return leaOperandSafe(s, s.node(e.arg0)) && leaOperandSafe(s, s.node(e.arg1))
 	}
-	if isShift(e.deferredOp()) && e.arg1 != nil && e.arg1.isValue() && e.arg1.st.kind == stConst {
-		return leaOperandSafe(e.arg0)
+	if isShift(e.deferredOp()) &&
+		e.arg1 != 0 &&
+		s.node(e.arg1).isValue() &&
+		s.node(e.arg1).st.kind == stConst {
+		return leaOperandSafe(s, s.node(e.arg0))
 	}
 	return false
 }
@@ -528,10 +532,10 @@ func leaOperandSafe(e *elem) bool {
 func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	shl := right
-	k, ok := shlByConst123(shl, node.valueType())
+	k, ok := shlByConst123(f.s, shl, node.valueType())
 	if !ok {
 		shl = left
-		if k, ok = shlByConst123(shl, node.valueType()); !ok {
+		if k, ok = shlByConst123(f.s, shl, node.valueType()); !ok {
 			return regNone
 		}
 	}
@@ -539,7 +543,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	if shl == left {
 		other = right
 	}
-	if shl.arg0 == nil {
+	if shl.arg0 == 0 {
 		return regNone
 	}
 
@@ -547,12 +551,12 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	// can reserve fixed registers underneath the other live input. Materialize the
 	// base and the unshifted index in original Wasm operand order so deferred loads
 	// retain precise trap ordering.
-	if !leaOperandSafe(other) || !leaOperandSafe(shl.arg0) {
+	if !leaOperandSafe(f.s, other) || !leaOperandSafe(f.s, f.s.node(shl.arg0)) {
 		return regNone
 	}
-	firstElem, secondElem := other, shl.arg0
+	firstElem, secondElem := other, f.s.node(shl.arg0)
 	if shl == left {
-		firstElem, secondElem = shl.arg0, other
+		firstElem, secondElem = f.s.node(shl.arg0), other
 	}
 	first, firstOwned := f.materializeRead(firstElem)
 	f.pinned = f.pinned.add(first)
@@ -668,8 +672,8 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	}
 	w := node.valueType().is64()
 	digit := shiftDigit(node.deferredOp())
-	left := node.arg0
-	right := node.arg1
+	left := f.s.node(node.arg0)
+	right := f.s.node(node.arg1)
 
 	if right.isValue() && right.st.kind == stConst {
 		if f.bmi2Rorx && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
@@ -776,7 +780,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		return result
 	}
 	w := node.valueType().is64()
-	left := node.arg0
+	left := f.s.node(node.arg0)
 
 	// cmp/test read the left comparand read-only, so a borrowed pinned-local/global
 	// register can feed the compare in place — no copy — provided nothing between
@@ -788,7 +792,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	// borrowed register the trailing setcc must not clobber it, so the boolean lands
 	// in a separate register (dest or a fresh temp) instead of reusing L.
 	inPlaceOK := node.deferredOp() == opEqz ||
-		(node.arg1.isValue() && node.arg1.st.kind == stConst)
+		(f.s.node(node.arg1).isValue() &&
+			f.s.node(node.arg1).st.kind == stConst)
 	var L Reg
 	ownL := true
 	if inPlaceOK {
@@ -797,8 +802,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		L = f.materialize(left)
 		// Evaluate left first, but keep it spillable while the right subtree
 		// reserves fixed registers. Reload its current location afterwards.
-		if node.arg1.isDeferred() {
-			f.condense(node.arg1, regNone)
+		if f.s.node(node.arg1).isDeferred() {
+			f.condense(f.s.node(node.arg1), regNone)
 			L = f.materialize(left)
 		}
 	}
@@ -810,7 +815,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		f.a.TestSelf(L, w)
 	} else {
 		cc = condOf(node.deferredOp())
-		right := node.arg1
+		right := f.s.node(node.arg1)
 		if regallocCheckEnabled {
 			f.checkUse(right)
 		}
@@ -889,7 +894,7 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	// lzcnt/tzcnt/popcnt read their source read-only, so a register-resident source
 	// (a pinned local or owned temp) can feed the op directly — no copy.
-	arg := node.arg0
+	arg := f.s.node(node.arg0)
 	var src Reg
 	srcOwned := true
 	if arg.isValue() && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
@@ -1022,8 +1027,8 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	w := node.valueType().is64()
 	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
 	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
-	left := node.arg0
-	right := node.arg1
+	left := f.s.node(node.arg0)
+	right := f.s.node(node.arg1)
 
 	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding idiv.
 	if right.isValue() && right.st.kind == stConst {
@@ -1032,7 +1037,7 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 		}
 	}
 
-	if !treeReorderSafe(right) && !treeReorderSafe(left) {
+	if !treeReorderSafe(f.s, right) && !treeReorderSafe(f.s, left) {
 		f.materialize(left)
 	}
 
@@ -1349,10 +1354,10 @@ func (f *fn) cmpRR(x, y Reg, w bool) {
 // consumeBlockBelow unlinks every physical stack element of node's valent block
 // that sits below node (its operand sub-trees), leaving node as the top.
 func (f *fn) consumeBlockBelow(node *elem) {
-	base := baseOfValentBlock(node)
-	e := node.prev
+	base := baseOfValentBlock(f.s, node)
+	e := f.s.node(node.prev)
 	for {
-		prev := e.prev
+		prev := f.s.node(e.prev)
 		isBase := e == base
 		f.erase(e)
 		if isBase {

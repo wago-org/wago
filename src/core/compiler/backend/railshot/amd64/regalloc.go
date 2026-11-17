@@ -156,7 +156,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
@@ -165,7 +165,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
@@ -201,8 +201,8 @@ func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
 			continue
 		}
 		borrowed := false
-		for e := f.s.head.next; e != f.s.head; e = e.next {
-			if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+		for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
+			if subtreeRefsLocal(f.s, e, x) || subtreeBorrowsLocalAddress(f.s, e, x) {
 				borrowed = true
 				break
 			}
@@ -224,14 +224,14 @@ func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
 	return regNone
 }
 
-func subtreeBorrowsLocalAddress(e *elem, x int) bool {
+func subtreeBorrowsLocalAddress(s *stack, e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
 	if e.isValue() {
 		return e.st.kind == stMemRef && e.st.memBorrow() == x
 	}
-	return e.isDeferred() && (subtreeBorrowsLocalAddress(e.arg0, x) || subtreeBorrowsLocalAddress(e.arg1, x))
+	return e.isDeferred() && (subtreeBorrowsLocalAddress(s, s.node(e.arg0), x) || subtreeBorrowsLocalAddress(s, s.node(e.arg1), x))
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,
@@ -306,7 +306,7 @@ func (f *fn) curSpillSlot() int {
 	s := f.s
 	if !s.spillExtentValid {
 		used := 0
-		for e := s.head.next; e != s.head; e = e.next {
+		for e := f.s.node(s.head.next); e != s.head; e = f.s.node(e.next) {
 			if e.isValue() && e.st.kind == stSlot {
 				end := e.st.slotIndex() + e.st.typ.stackSlots()
 				if end > used {
@@ -494,14 +494,15 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
 	}
 	// The physical stack is in postfix/bytecode order. Visit individual trapping
 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
-	start := f.s.head.next
+	start := f.s.node(f.s.head.next)
 	// Only full barriers can skip a proved prefix. A partial limit may lie
 	// before the cursor, and a load barrier is stronger than a trap-only one.
 	if limit == f.s.head && f.s.pendingPrefix != nil && (!loads || f.s.pendingPrefixLoads) {
-		start = f.s.pendingPrefix.next
+		start = f.s.node(f.s.pendingPrefix.next)
 	}
-	allLoadsClear := loads || start == f.s.head.next || f.s.pendingPrefixLoads
-	for e := start; e != limit; e = e.next {
+	allLoadsClear := loads || start ==
+		f.s.node(f.s.head.next) || f.s.pendingPrefixLoads
+	for e := start; e != limit; e = f.s.node(e.next) {
 		if e.isDeferred() && isDivRem(e.deferredOp()) {
 			f.materialize(e)
 		} else if e.elemKind() == ekValue && e.st.kind == stMemRef {
@@ -516,7 +517,7 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
 	// A partial barrier can leave relevant effects above its limit.
 	if limit == f.s.head {
 		f.s.pendingEffects &^= mask
-		f.s.pendingPrefix, f.s.pendingPrefixLoads = f.s.head.prev, allLoadsClear
+		f.s.pendingPrefix, f.s.pendingPrefixLoads = f.s.node(f.s.head.prev), allLoadsClear
 	}
 
 }

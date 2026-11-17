@@ -72,16 +72,18 @@ func (f *fn) tryMemoryCompareToFlags(node *elem) (Cond, bool) {
 	if !f.opt(optMemoryCompareImmediate) || node == nil || !node.isDeferred() {
 		return 0, false
 	}
-	left := node.arg0
+	left := f.s.node(node.arg0)
 	if left == nil || !left.isValue() || left.st.kind != stMemRef {
 		return 0, false
 	}
 	constant, cc := int64(0), condE
 	if node.deferredOp() != opEqz {
-		if !isCompare(node.deferredOp()) || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+		if !isCompare(node.deferredOp()) ||
+			node.arg1 == 0 || !f.s.node(node.arg1).isValue() ||
+			f.s.node(node.arg1).st.kind != stConst {
 			return 0, false
 		}
-		constant, cc = node.arg1.st.cval, condOf(node.deferredOp())
+		constant, cc = f.s.node(node.arg1).st.cval, condOf(node.deferredOp())
 	}
 	imm, cc, ok := memoryCompareImmediate(left.st, constant, node.valueType().is64(), cc)
 	if !ok {

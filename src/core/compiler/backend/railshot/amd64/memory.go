@@ -25,13 +25,13 @@ var storeValueLoadFoldEnabled = os.Getenv("WAGO_AMD64_NO_STORE_VALUE_LOAD_FOLD")
 // storeValueLastFoldableLoad returns the last deferred load in a pure integer
 // value tree. Earlier loads are forced in source order before condensation, so
 // only the final load may move among nontrapping operations.
-func storeValueLastFoldableLoad(top *elem) *elem {
+func storeValueLastFoldableLoad(s *stack, top *elem) *elem {
 	if top == nil || !top.isDeferred() {
 		return nil
 	}
-	base := baseOfValentBlock(top)
+	base := baseOfValentBlock(s, top)
 	var last *elem
-	for e := base; ; e = e.next {
+	for e := base; ; e = s.node(e.next) {
 		if e.isValue() && e.st.kind == stMemRef {
 			last = e
 		}
@@ -1079,7 +1079,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	lastLoad := (*elem)(nil)
 	if storeValueLoadFoldEnabled &&
 		!(size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat()) {
-		lastLoad = storeValueLastFoldableLoad(top)
+		lastLoad = storeValueLastFoldableLoad(f.s, top)
 	}
 	if lastLoad != nil {
 		f.materializePendingLoadsBelow(lastLoad)

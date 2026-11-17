@@ -554,7 +554,7 @@ func (f *fn) noteResidencyActivation(load bool) {
 }
 
 func (f *fn) intervalLocalHasMemBorrow(x int) bool {
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x {
 			return true
 		}
@@ -563,8 +563,8 @@ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 }
 
 func (f *fn) intervalLocalBorrowed(x int) bool {
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
+		if subtreeRefsLocal(f.s, e, x) || subtreeBorrowsLocalAddress(f.s, e, x) {
 			return true
 		}
 	}
@@ -577,7 +577,7 @@ func (f *fn) intervalLocalBorrowed(x int) bool {
 // from each physical node would revisit leaves through every ancestor.
 func (f *fn) intervalBorrowedRegs() regMask {
 	var borrowed regMask
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if !e.isValue() {
 			continue
 		}
@@ -598,7 +598,7 @@ func (f *fn) intervalBorrowedRegs() regMask {
 }
 
 func (f *fn) demoteIntervalLocalRefs(x int) {
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
 			f.s.canonicalSlots = false
 			e.st.kind = stLocalRef

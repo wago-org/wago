@@ -27,14 +27,14 @@ func (f *fn) tailSelectFlagsCondition(node *elem) bool {
 	if !isFusableCompare(node) || isFloatCompare(node.deferredOp()) {
 		return false
 	}
-	left := node.arg0
+	left := f.s.node(node.arg0)
 	if left == nil || left.elemKind() != ekValue {
 		return false
 	}
 	if node.deferredOp() == opEqz {
 		return true
 	}
-	right := node.arg1
+	right := f.s.node(node.arg1)
 	return right != nil && right.elemKind() == ekValue
 }
 

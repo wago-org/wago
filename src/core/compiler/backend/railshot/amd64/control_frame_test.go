@@ -266,7 +266,7 @@ func TestLogicalOperandDepthCounterAMD64(t *testing.T) {
 	node := f.s.alloc()
 	node.setElemKind(ekDeferred)
 	node.setValueType(mtI64)
-	node.arg0, node.arg1 = left, right
+	node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
 	f.s.pushDeferred(node)
 	if got := f.depth(); got != 1 {
 		t.Fatalf("binary expression depth = %d, want 1", got)
@@ -465,7 +465,9 @@ func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 }
 
 func TestGCRootFlagsAvoidsAllFalseBacking(t *testing.T) {
-	roots := []*elem{testValueElem(storage{}), testDeferredElem(opNone, mtNone, nil, nil), testValueElem(storage{})}
+	s := newStack()
+
+	roots := []*elem{testValueElem(s, storage{}), testDeferredElem(s, opNone, mtNone, nil, nil), testValueElem(s, storage{})}
 	if got := gcRootFlags(roots); got != nil {
 		t.Fatalf("all-false roots = %v, want nil", got)
 	}

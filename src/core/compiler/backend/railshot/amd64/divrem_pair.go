@@ -20,7 +20,7 @@ func (f *fn) tryDivRemPair(r *wasm.Reader, opcode byte, op wOp, typ machineType)
 		return false
 	}
 	right := f.s.back()
-	left := baseOfValentBlock(right).prev
+	left := f.s.node(baseOfValentBlock(f.s, right).prev)
 	local := func(e *elem) bool {
 		return e != f.s.head && e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.typ == typ
 	}

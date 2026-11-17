@@ -106,7 +106,7 @@ func (f *fn) matchRepeatedAddress(r *wasm.Reader, e *elem, wide bool, budget *in
 	default:
 		return false
 	}
-	if !f.matchRepeatedAddress(r, e.arg0, wide, budget) || !f.matchRepeatedAddress(r, e.arg1, wide, budget) {
+	if !f.matchRepeatedAddress(r, f.s.node(e.arg0), wide, budget) || !f.matchRepeatedAddress(r, f.s.node(e.arg1), wide, budget) {
 		return false
 	}
 	op, err := r.Byte()

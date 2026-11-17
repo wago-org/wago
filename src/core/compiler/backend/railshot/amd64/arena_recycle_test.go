@@ -55,7 +55,9 @@ func TestRecycleEmptyOperandArenaClearsTransientHandles(t *testing.T) {
 	f.tmpDeferred = append(f.tmpDeferred, deferredArg{root: node})
 	f.tmpRootsWritten, f.tmpBelowWritten, f.tmpDeferredWritten = 2, 2, 2
 	f.recycleEmptyOperandArena()
-	if len(f.s.chunks[0]) != 1 || f.s.head.next != f.s.head || f.s.head.prev != f.s.head {
+	if len(f.s.chunks[0]) != 1 ||
+		f.s.node(f.s.head.next) != f.s.head ||
+		f.s.node(f.s.head.prev) != f.s.head {
 		t.Fatal("did not restore empty sentinel")
 	}
 	for i := range f.tmpRoots {

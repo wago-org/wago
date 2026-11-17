@@ -173,8 +173,8 @@ func TestFloatCompareBranchMaterializationOwnership(t *testing.T) {
 	node.setElemKind(ekDeferred)
 	node.setDeferredOp(opFLt)
 	node.setValueType(mtI32)
-	node.arg0, node.arg1 = left, right
-	labelDeferredNode(node)
+	node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
+	labelDeferredNode(f.s, node)
 	f.s.pushDeferred(node)
 	if got := f.condenseFloatCompare(node, R8); got != R8 {
 		t.Fatalf("result=%v", got)

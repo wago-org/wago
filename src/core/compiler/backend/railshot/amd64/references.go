@@ -56,7 +56,8 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	if regallocCheckEnabled {
 		f.checkTrackMemRef(e)
 	}
-	if e.prev != nil && e.next != nil {
+	if e.prev != 0 &&
+		e.next != 0 {
 		if st.kind == stMemRef {
 			// A replacement can introduce a guard-backed load inside the
 			// previously checked prefix. Appended values need no reset.

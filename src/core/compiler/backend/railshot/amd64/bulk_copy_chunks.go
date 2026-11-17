@@ -90,8 +90,8 @@ func (f *fn) emitFixedBulkCopy(n int, dstMemory, srcMemory uint32) bool {
 	if count == nil || !count.isValue() {
 		return false
 	}
-	src := count.prev
-	dst := src.prev
+	src := f.s.node(count.prev)
+	dst := f.s.node(src.prev)
 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst {
 		return false
 	}

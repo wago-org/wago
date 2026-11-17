@@ -109,12 +109,14 @@ func (st *nativeSourcePlanState) node(e *elem) (shared.SourceNodeRef, bool) {
 // malformed links/cycles and output storage without relying on a left-spine walk.
 func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shared.SourceNodeRef, tagged bool) (int, bool) {
 	s := f.s
-	if s == nil || s.head == nil || s.head.prev == nil || s.head.next == nil {
+	if s == nil || s.head == nil ||
+		s.head.prev == 0 ||
+		s.head.next == 0 {
 		return 0, st.fail(regalloccheck.InvalidGraph)
 	}
 	count, visited := 0, 0
 	previous := s.head
-	for e := s.head.next; e != s.head; e = e.next {
+	for e := f.s.node(s.head.next); e != s.head; e = f.s.node(e.next) {
 		if visited >= 8192 {
 			return 0, st.fail(regalloccheck.ResourceLimit)
 		}
@@ -122,7 +124,9 @@ func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shar
 			return 0, false
 		}
 		visited++
-		if e == nil || e.prev != previous || e.next == nil {
+		if e == nil ||
+			f.s.node(e.prev) != previous ||
+			e.next == 0 {
 			return 0, st.fail(regalloccheck.InvalidGraph)
 		}
 		if e.st.hasLogicalRoot() {
@@ -141,7 +145,8 @@ func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shar
 		}
 		previous = e
 	}
-	if previous != s.head.prev || count != int(s.logicalDepth) {
+	if previous !=
+		f.s.node(s.head.prev) || count != int(s.logicalDepth) {
 		return 0, st.fail(regalloccheck.InvalidGraph)
 	}
 	return count, true
@@ -380,11 +385,13 @@ func checkNativeSourceAfter(f *fn, endPC int) {
 				st.fail(regalloccheck.UnsupportedOperation)
 				return
 			}
-			if e.deferredOp() != nativeSourceBinary(c.Event.Kind) || e.arg0 != st.roots[st.count-2] || e.arg1 != st.roots[st.count-1] {
+			if e.deferredOp() != nativeSourceBinary(c.Event.Kind) ||
+				f.s.node(e.arg0) != st.roots[st.count-2] ||
+				f.s.node(e.arg1) != st.roots[st.count-1] {
 				st.fail(regalloccheck.InvalidGraph)
 				return
 			}
-			for i, child := range []*elem{e.arg0, e.arg1} {
+			for i, child := range []*elem{f.s.node(e.arg0), f.s.node(e.arg1)} {
 				n, ok := st.node(child)
 				if !ok {
 					return

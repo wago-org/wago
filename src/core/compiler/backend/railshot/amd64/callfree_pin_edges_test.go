@@ -206,7 +206,7 @@ func TestCallFreePinConditionSurvivesRelinquishment(t *testing.T) {
 				node.setElemKind(ekDeferred)
 				node.setDeferredOp(opEqz)
 				node.setValueType(mtI32)
-				node.arg0 = condition
+				node.arg0 = f.s.ref(condition)
 				f.s.pushDeferred(node)
 			}
 			var err error

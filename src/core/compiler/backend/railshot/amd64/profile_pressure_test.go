@@ -34,7 +34,7 @@ func TestProfileFPressurePreservesAllocationAndCode(t *testing.T) {
 						}
 						f.pushFReg(r, typ)
 					}
-					oldest := f.s.head.next
+					oldest := f.s.node(f.s.head.next)
 					if r := f.allocFReg(avoid); r != 0 || oldest.st.kind != stSlot {
 						t.Fatalf("allocation changed: r=%v st=%+v", r, oldest.st)
 					}

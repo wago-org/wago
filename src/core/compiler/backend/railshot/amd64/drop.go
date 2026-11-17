@@ -30,8 +30,8 @@ func (f *fn) treeDiscardable(e *elem) bool {
 		return false
 	}
 	if e.isDeferred() {
-		return deferredOpDiscardable(e.deferredOp()) && f.treeDiscardable(e.arg0) &&
-			(e.arg1 == nil || f.treeDiscardable(e.arg1))
+		return deferredOpDiscardable(e.deferredOp()) && f.treeDiscardable(f.s.node(e.arg0)) &&
+			(e.arg1 == 0 || f.treeDiscardable(f.s.node(e.arg1)))
 	}
 	if e.st.hasEHRoot() {
 		return false
@@ -50,10 +50,10 @@ func deferredOpDiscardable(op wOp) bool {
 
 func (f *fn) discardTree(e *elem) {
 	if e.isDeferred() {
-		if e.arg1 != nil {
-			f.discardTree(e.arg1)
+		if e.arg1 != 0 {
+			f.discardTree(f.s.node(e.arg1))
 		}
-		f.discardTree(e.arg0)
+		f.discardTree(f.s.node(e.arg0))
 		f.erase(e)
 		return
 	}

@@ -639,7 +639,7 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
 				panic("amd64: control base-type prefix ended before its height")
 			}
 			storage[start+i] = rootMachineType(top)
-			top = baseOfValentBlock(top).prev
+			top = f.s.node(baseOfValentBlock(f.s, top).prev)
 		}
 		fr.setBaseTypeRange(start, height)
 		f.controlBaseTypeN += uint8(height)
@@ -664,7 +664,7 @@ func (f *fn) logicalStackRootAtDepth(height int) *elem {
 		if cur == nil || cur == f.s.head {
 			panic("amd64: logical stack ended before requested depth")
 		}
-		cur = baseOfValentBlock(cur).prev
+		cur = f.s.node(baseOfValentBlock(f.s, cur).prev)
 	}
 	return cur
 }
@@ -687,7 +687,7 @@ func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
 				panic("amd64: cold control base prefix ended before its height")
 			}
 			out[i] = rootMachineType(top)
-			top = baseOfValentBlock(top).prev
+			top = f.s.node(baseOfValentBlock(f.s, top).prev)
 		}
 		f.tmpTypes = out
 		return out
@@ -841,7 +841,7 @@ func (f *fn) depth() int {
 // The returned scratch slice is valid only until the next helper using f.tmpRoots.
 func (f *fn) rootsBottomToTop() []*elem {
 	rs := f.tmpRoots[:0]
-	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.node(f.s.head.prev); cur != f.s.head; cur = f.s.node(baseOfValentBlock(f.s, cur).prev) {
 		rs = append(rs, cur)
 	}
 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
@@ -1181,7 +1181,7 @@ func (f *fn) flushSpillBefore(root *elem, destination int) bool {
 		return root.st.kind == stSlot && root.st.slotIndex() < destination
 	}
 	return root.isDeferred() &&
-		(f.flushSpillBefore(root.arg0, destination) || f.flushSpillBefore(root.arg1, destination))
+		(f.flushSpillBefore(f.s.node(root.arg0), destination) || f.flushSpillBefore(f.s.node(root.arg1), destination))
 }
 
 // setDepth consumes the top operands while preserving the exact machine types
@@ -1207,7 +1207,7 @@ func (f *fn) setDepthTypes(types []machineType) {
 }
 
 func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
-	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.s.head.prev, f.s.head.next = f.s.ref(f.s.head), f.s.ref(f.s.head)
 	f.s.pendingPrefix = nil
 	// The old list is detached; rebuild both live spill summaries from scratch.
 	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
@@ -1681,7 +1681,7 @@ func (f *fn) keepBlockOperands() bool {
 		return false
 	}
 	n := 0
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
 			return false
 		}
@@ -2352,7 +2352,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
 			e.st.setEHRoot(true)
 		}
-		e = e.prev
+		e = f.s.node(e.prev)
 	}
 }
 

@@ -37,7 +37,7 @@ func (f *fn) captureInlineTailConstants(t *inlineTarget, base int) *inlineTailCo
 			values[i] = node.st.cval
 			known |= 1 << i
 		}
-		node = baseOfValentBlock(node).prev
+		node = f.s.node(baseOfValentBlock(f.s, node).prev)
 	}
 	if known == 0 {
 		return nil

@@ -92,7 +92,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		return r
 	}
 	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
+	for e := f.s.firstUnspilled(); e != f.s.head; e = f.s.node(e.next) {
 		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			if profileEnabled {
@@ -125,8 +125,8 @@ func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {
 			continue
 		}
 		borrowed := false
-		for e := f.s.head.next; e != f.s.head; e = e.next {
-			if subtreeRefsLocal(e, x) {
+		for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
+			if subtreeRefsLocal(f.s, e, x) {
 				borrowed = true
 				break
 			}

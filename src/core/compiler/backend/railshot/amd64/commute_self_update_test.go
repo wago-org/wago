@@ -66,27 +66,29 @@ func TestCommuteSelfUpdate(t *testing.T) {
 }
 
 func TestFixedSelfUpdateAccumulatorSafety(t *testing.T) {
-	value := &elem{st: storage{kind: stConst, typ: mtI32, cval: 1}}
-	constant := &elem{st: storage{kind: stConst, typ: mtI32, cval: 2}}
-	add := &elem{arg0: value, arg1: constant}
+	s := newStack()
+
+	value := s.testElem(elem{st: storage{kind: stConst, typ: mtI32, cval: 1}})
+	constant := s.testElem(elem{st: storage{kind: stConst, typ: mtI32, cval: 2}})
+	add := &elem{arg0: s.ref(value), arg1: s.ref(constant)}
 	add.setElemKind(ekDeferred)
 	add.setDeferredOp(opAdd)
 	add.setValueType(mtI32)
-	div := &elem{arg0: value, arg1: constant}
+	div := &elem{arg0: s.ref(value), arg1: s.ref(constant)}
 	div.setElemKind(ekDeferred)
 	div.setDeferredOp(opDivU)
 	div.setValueType(mtI32)
 
-	if !fixedSelfUpdateAccumulatorSafe(RDX, add, true) {
+	if !fixedSelfUpdateAccumulatorSafe(s, RDX, add, true) {
 		t.Fatal("safe ALU tree rejected for fixed RDX accumulator")
 	}
-	if fixedSelfUpdateAccumulatorSafe(RDX, div, true) {
+	if fixedSelfUpdateAccumulatorSafe(s, RDX, div, true) {
 		t.Fatal("division tree admitted across fixed RDX accumulator")
 	}
-	if fixedSelfUpdateAccumulatorSafe(RDX, add, false) {
+	if fixedSelfUpdateAccumulatorSafe(s, RDX, add, false) {
 		t.Fatal("disabled fixed-register self update was admitted")
 	}
-	if !fixedSelfUpdateAccumulatorSafe(R12, div, false) {
+	if !fixedSelfUpdateAccumulatorSafe(s, R12, div, false) {
 		t.Fatal("ordinary accumulator unexpectedly depends on fixed-register option")
 	}
 }

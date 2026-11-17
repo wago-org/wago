@@ -84,7 +84,7 @@ func TestNativeSourceMaterializationModelRRInstruction(t *testing.T) {
 		node.setElemKind(ekDeferred)
 		node.setDeferredOp(opAdd)
 		node.setValueType(mtI32)
-		node.arg0, node.arg1 = left, right
+		node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
 		f.s.pushDeferred(node)
 		checkNativeSourceAfter(f, 5)
 		left.st.kind, left.st.reg = stLocalReg, RAX
@@ -126,7 +126,7 @@ func TestNativeSourceMaterializationSelectionControls(t *testing.T) {
 			node.setElemKind(ekDeferred)
 			node.setDeferredOp(opAdd)
 			node.setValueType(mtI32)
-			node.arg0, node.arg1 = left, right
+			node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
 			f.s.pushDeferred(node)
 			checkNativeSourceAfter(f, 5)
 			left.st.kind, left.st.reg = stLocalReg, RAX

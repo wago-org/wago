@@ -85,7 +85,7 @@ func (f *fn) tryForwardGCConstructorIf(reader *wasm.Reader, sourceType uint32, s
 			if !value.isValue() {
 				return fail()
 			}
-			value = value.prev
+			value = f.s.node(value.prev)
 		}
 		if !value.isValue() {
 			return fail()

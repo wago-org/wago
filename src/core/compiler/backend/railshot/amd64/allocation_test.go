@@ -219,7 +219,7 @@ func TestStackArenaOverflowKeepsExistingPointersStable(t *testing.T) {
 	if !first.isValue() || first.st.cval != 1 {
 		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.elemKind(), first.st.cval)
 	}
-	if s.head.next != first {
+	if s.node(s.head.next) != first {
 		t.Fatal("first elem is no longer linked after arena overflow")
 	}
 	// Growing past the first chunk must advance the arena, never reallocate an

@@ -916,7 +916,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	}
 	f.flush()
 	value := f.s.back()
-	object := value.prev
+	object := f.s.node(value.prev)
 	if value == f.s.head || object == f.s.head || !value.isValue() || !object.isValue() || value.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
 	}
@@ -963,8 +963,8 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	}
 	f.flush()
 	value := f.s.back()
-	index := value.prev
-	object := index.prev
+	index := f.s.node(value.prev)
+	object := f.s.node(index.prev)
 	if value == f.s.head || index == f.s.head || object == f.s.head || !value.isValue() || !index.isValue() || !object.isValue() || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
 	}
@@ -3024,7 +3024,7 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
 		return false
 	}
 	valueRoot := f.s.back()
-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(valueRoot).prev)
+	local, hasLocal := gcLocalProvenance(f.s.node(baseOfValentBlock(f.s, valueRoot).prev))
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
@@ -3082,7 +3082,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
 		return false
 	}
 	indexRoot := f.s.back()
-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
+	local, hasLocal := gcLocalProvenance(f.s.node(baseOfValentBlock(f.s, indexRoot).prev))
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
@@ -3192,8 +3192,8 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
 		return false
 	}
 	valueRoot := f.s.back()
-	indexRoot := baseOfValentBlock(valueRoot).prev
-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
+	indexRoot := f.s.node(baseOfValentBlock(f.s, valueRoot).prev)
+	local, hasLocal := gcLocalProvenance(f.s.node(baseOfValentBlock(f.s, indexRoot).prev))
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()

@@ -18,7 +18,8 @@ func TestSharedFallbackStackInitializedInPlace(t *testing.T) {
 	if f.s != sc.stack || f.s != &initial || f.s.head == nil {
 		t.Fatal("function lost initialized stack alias")
 	}
-	if f.s.head.prev != f.s.head || f.s.head.next != f.s.head {
+	if f.s.node(f.s.head.prev) != f.s.head ||
+		f.s.node(f.s.head.next) != f.s.head {
 		t.Fatal("invalid sentinel links")
 	}
 	_, reserved := f.s.nodeMemory()

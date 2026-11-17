@@ -59,7 +59,7 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
 	default:
 		return limit
 	}
-	left, right := e.arg0, e.arg1
+	left, right := f.s.node(e.arg0), f.s.node(e.arg1)
 	a := f.unsignedAddressMaximum(left, wide, budget)
 	b := f.unsignedAddressMaximum(right, wide, budget)
 	constant := uint64(0)

@@ -17,7 +17,7 @@ func TestFlatIntervalBorrowMaskMatchesPhysicalForest(t *testing.T) {
 			node.setElemKind(ekDeferred)
 			node.setDeferredOp(opAdd)
 			node.setValueType(mtI64)
-			node.arg0, node.arg1 = root, right
+			node.arg0, node.arg1 = f.s.ref(root), f.s.ref(right)
 			f.s.pushDeferred(node)
 			root = node
 		}
@@ -64,8 +64,8 @@ func (f *fn) intervalBorrowedRegsRecursive() regMask {
 			return
 		}
 		if e.isDeferred() {
-			visit(e.arg0)
-			visit(e.arg1)
+			visit(f.s.node(e.arg0))
+			visit(f.s.node(e.arg1))
 			return
 		}
 		if !e.isValue() {
@@ -84,7 +84,7 @@ func (f *fn) intervalBorrowedRegsRecursive() regMask {
 			}
 		}
 	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		visit(e)
 	}
 	return borrowed
@@ -102,7 +102,7 @@ func BenchmarkIntervalBorrowMask(b *testing.B) {
 					node.setElemKind(ekDeferred)
 					node.setDeferredOp(opAdd)
 					node.setValueType(mtI64)
-					node.arg0, node.arg1 = root, right
+					node.arg0, node.arg1 = f.s.ref(root), f.s.ref(right)
 					f.s.pushDeferred(node)
 					root = node
 				}

@@ -25,8 +25,8 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
 		len(f.intervalReg) != 0 || f.vectorRegion.enabled {
 		return regNone, false
 	}
-	local := node.arg0
-	constant := node.arg1
+	local := f.s.node(node.arg0)
+	constant := f.s.node(node.arg1)
 	if !local.isValue() || (local.st.kind != stLocalRef && local.st.kind != stLocalReg) ||
 		!constant.isValue() || constant.st.kind != stConst {
 		return regNone, false
@@ -35,7 +35,7 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
 	if !strengthReducibleWithMagic(int64(d), false, false, f.opt(optMagicDiv)) {
 		return regNone, false
 	}
-	otherLocal := node.next
+	otherLocal := f.s.node(node.next)
 	for skipped := 0; skipped < 8; skipped++ {
 		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
 			return regNone, false
@@ -51,20 +51,22 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
 		default:
 			return regNone, false
 		}
-		otherLocal = otherLocal.next
+		otherLocal = f.s.node(otherLocal.next)
 	}
 	if otherLocal == nil || !otherLocal.isValue() || otherLocal.valueType() != mtI32 ||
 		otherLocal.st.kind != local.st.kind || otherLocal.st.idx != local.st.idx {
 		return regNone, false
 	}
-	otherConstant := otherLocal.next
+	otherConstant := f.s.node(otherLocal.next)
 	if otherConstant == nil || !otherConstant.isValue() || otherConstant.valueType() != mtI32 ||
 		otherConstant.st.kind != stConst || uint32(otherConstant.st.cval) != d {
 		return regNone, false
 	}
-	remainder := otherConstant.next
+	remainder := f.s.node(otherConstant.next)
 	if remainder == nil || !remainder.isDeferred() || remainder.valueType() != mtI32 ||
-		remainder.deferredOp() != opRemU || remainder.arg0 != otherLocal || remainder.arg1 != otherConstant {
+		remainder.deferredOp() != opRemU ||
+		f.s.node(remainder.arg0) != otherLocal ||
+		f.s.node(remainder.arg1) != otherConstant {
 		return regNone, false
 	}
 	if regallocCheckEnabled {

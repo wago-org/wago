@@ -91,7 +91,7 @@ func TestControlEdgesRestorePinsAfterDeferredEvaluation(t *testing.T) {
 					f.pushValue(storage{kind: stConst, typ: mtI64})
 					f.pushBinOp(opNe, mtI64)
 				} else {
-					for e := f.s.head.next; e != f.s.head; e = e.next {
+					for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 						e.setValueType(mtI32)
 					}
 				}
@@ -115,7 +115,7 @@ func TestControlEdgesRestorePinsAfterDeferredEvaluation(t *testing.T) {
 				f.ctrl = append(f.ctrl, ctrlFrame{kind: cfLoop})
 				f.setFrameBranchState(&f.ctrl[0], []locState{lsReg})
 				f.setFrameBranchState(&f.ctrl[1], []locState{lsReg})
-				for e := f.s.head.next; e != f.s.head; e = e.next {
+				for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 					e.setValueType(mtI32)
 				}
 				r = wasm.ReaderFrom([]byte{1, 0, 1})

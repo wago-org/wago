@@ -40,7 +40,7 @@ func (f *fn) matchGCArrayNewFill(r *wasm.Reader, typeIndex uint32, field wasm.Fi
 	if count == 0 || count > 16 {
 		return gcArrayNewFillPlan{}, false
 	}
-	valueRoot := baseOfValentBlock(countRoot).prev
+	valueRoot := f.s.node(baseOfValentBlock(f.s, countRoot).prev)
 	if valueRoot == nil || !valueRoot.isValue() || valueRoot.st.kind != stConst || valueRoot.st.typ != mtI32 || valueRoot.st.cval != 0 {
 		return gcArrayNewFillPlan{}, false
 	}

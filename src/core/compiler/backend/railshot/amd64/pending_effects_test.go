@@ -98,7 +98,7 @@ func TestPendingEffectPrefixLifecycle(t *testing.T) {
 	if !f.s.pendingPrefixLoads {
 		t.Fatal("trap-only barrier lost a load-free prefix proof")
 	}
-	prev := last.prev
+	prev := f.s.node(last.prev)
 	f.erase(last)
 	if f.s.pendingPrefix != prev {
 		t.Fatal("erasing the prefix cursor did not rewind it")

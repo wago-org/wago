@@ -10,6 +10,8 @@ import (
 )
 
 func TestMachineWindowIdentityAndCapacityAMD64(t *testing.T) {
+	s := newStack()
+
 	moves := make([]regMove, 30)
 	for i := range moves {
 		moves[i] = regMove{dst: Reg(i), src: Reg(63)}
@@ -25,7 +27,7 @@ func TestMachineWindowIdentityAndCapacityAMD64(t *testing.T) {
 		}
 		return got
 	}
-	before, after := collect(false), collect(true)
+	before, after := collect(s, false), collect(s, true)
 	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("window changed resolved operations:\nbefore=%v\nafter=%v", before, after)
 	}

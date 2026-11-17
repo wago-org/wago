@@ -107,8 +107,8 @@ func (f *fn) checkSeed(e *elem) {
 		c.values[e] = c.state.Fresh(size)
 	}
 	if e.isDeferred() {
-		f.checkSeed(e.arg0)
-		f.checkSeed(e.arg1)
+		f.checkSeed(f.s.node(e.arg0))
+		f.checkSeed(f.s.node(e.arg1))
 	}
 }
 
@@ -125,7 +125,7 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 		f.checkSeed(e)
 	}
 	// Values above a flushed prefix can be evicted while its roots materialize.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		f.checkSeed(e)
 	}
 	slot := 0
@@ -135,11 +135,11 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	}
 	// A partial flush must also preserve the condition/argument suffix.
 	c.protected = make(map[*elem]bool)
-	first := f.s.head.next
+	first := f.s.node(f.s.head.next)
 	if len(roots) != 0 {
-		first = roots[len(roots)-1].next
+		first = f.s.node(roots[len(roots)-1].next)
 	}
-	for e := first; e != f.s.head; e = e.next {
+	for e := first; e != f.s.head; e = f.s.node(e.next) {
 		c.protected[e] = true
 	}
 	c.previous = f.a.ObserveRegalloc(c.observe)
@@ -163,7 +163,7 @@ func (f *fn) checkEndFlush() {
 		c.state.Expect("canonical stack at join/call", goal.loc, goal.value)
 	}
 
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if c.protected[e] {
 			if loc, ok := f.checkLocation(e); ok {
 				c.state.Expect("live suffix after partial flush", loc, c.values[e])
@@ -212,8 +212,8 @@ func (f *fn) checkInputs(e *elem) {
 		return
 	}
 	if e.isDeferred() {
-		f.checkInputs(e.arg0)
-		f.checkInputs(e.arg1)
+		f.checkInputs(f.s.node(e.arg0))
+		f.checkInputs(f.s.node(e.arg1))
 	} else {
 		f.checkUse(e)
 	}

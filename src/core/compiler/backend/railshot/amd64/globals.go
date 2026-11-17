@@ -130,15 +130,15 @@ func (f *fn) globalGetIndex(x uint32) error {
 // by condenseInto, so realizing them here would force a wasteful copy-out +
 // copy-back. Refs BELOW it still need x's pre-set value and are realized.
 func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
-	for e := f.s.head.next; e != f.s.head; {
+	for e := f.s.node(f.s.head.next); e != f.s.head; {
 		if e == skipFrom {
 			break
 		}
-		next := e.next
+		next := f.s.node(e.next)
 		switch {
 		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)
-		case e.isDeferred() && subtreeRefsGlobal(e, x):
+		case e.isDeferred() && subtreeRefsGlobal(f.s, e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -147,7 +147,7 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 
 // subtreeRefsGlobal reports whether the valent block rooted at e reads
 // value-pinned global x.
-func subtreeRefsGlobal(e *elem, x uint32) bool {
+func subtreeRefsGlobal(s *stack, e *elem, x uint32) bool {
 	if e == nil {
 		return false
 	}
@@ -155,7 +155,7 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
 		return e.st.kind == stGlobReg && e.st.idx == x
 	}
 	if e.isDeferred() {
-		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
+		return subtreeRefsGlobal(s, s.node(e.arg0), x) || subtreeRefsGlobal(s, s.node(e.arg1), x)
 	}
 	return false
 }
@@ -205,7 +205,7 @@ func (f *fn) globalSetIndex(x uint32) error {
 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
 		var skipFrom *elem
 		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
-			skipFrom = baseOfValentBlock(e)
+			skipFrom = baseOfValentBlock(f.s, e)
 		}
 		f.realizeGlobalRefs(x, skipFrom)
 		f.condenseInto(e, reg)

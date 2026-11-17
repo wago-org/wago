@@ -17,11 +17,11 @@ var boundedUnsignedDivEnabled = os.Getenv("WAGO_AMD64_BOUNDED_UNSIGNED_DIV") != 
 
 // No per-value range state: inspect only the immediate deferred mask producer.
 // Losing that producer simply retains the ordinary constant-division lowering.
-func boundedUnsignedDividend(e *elem) (uint32, bool) {
+func boundedUnsignedDividend(s *stack, e *elem) (uint32, bool) {
 	if e == nil || e.isValue() || e.valueType() != mtI32 || e.deferredOp() != opAnd {
 		return 0, false
 	}
-	for _, c := range [2]*elem{e.arg0, e.arg1} {
+	for _, c := range [2]*elem{s.node(e.arg0), s.node(e.arg1)} {
 		if c != nil && c.isValue() && c.st.kind == stConst {
 			mask := uint32(c.st.cval)
 			if mask > 0 && mask <= 65535 {

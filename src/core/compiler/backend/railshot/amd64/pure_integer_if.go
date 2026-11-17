@@ -100,7 +100,7 @@ func (f *fn) scanPureIntegerIf(r wasm.Reader, typ machineType) (pureIntegerIfPla
 func (f *fn) tryPureIntegerIfSelect(r *wasm.Reader, typ machineType) (bool, error) {
 	if !f.opt(optPureIntegerIfSelect) || profileEnabled || f.moduleEH || f.gcFrameRoots != nil || f.policy.CompactNative ||
 		len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.intervalControl || f.inlineDepth != 0 || f.inlineForwardN != 0 ||
-		f.stats != nil && f.stats.RecordSources || f.s.back() == f.s.head || !treeReorderSafe(f.s.back()) {
+		f.stats != nil && f.stats.RecordSources || f.s.back() == f.s.head || !treeReorderSafe(f.s, f.s.back()) {
 		return false, nil
 	}
 	plan, ok := f.scanPureIntegerIf(*r, typ)
@@ -140,11 +140,11 @@ func (s *stack) moveValentBlockToTop(root *elem) {
 	if root == s.back() {
 		return
 	}
-	first := baseOfValentBlock(root)
-	before, after, last := first.prev, root.next, s.head.prev
-	before.next, after.prev = after, before
-	first.prev, last.next = last, first
-	root.next, s.head.prev = s.head, root
+	first := baseOfValentBlock(s, root)
+	before, after, last := s.node(first.prev), s.node(root.next), s.node(s.head.prev)
+	before.next, after.prev = s.ref(after), s.ref(before)
+	first.prev, last.next = s.ref(last), s.ref(first)
+	root.next, s.head.prev = s.ref(s.head), s.ref(root)
 	s.canonicalSlots = false
 	s.pendingPrefix, s.pendingPrefixLoads = nil, false
 }

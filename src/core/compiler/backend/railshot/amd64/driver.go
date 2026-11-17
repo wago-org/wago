@@ -845,7 +845,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 	}
 	left := right
 	if arity == 2 {
-		left = baseOfValentBlock(right).prev
+		left = f.s.node(baseOfValentBlock(f.s, right).prev)
 	}
 	f.realizeLocalRefs(x, left)
 	f.evictRelinquishedFReg(pr)
@@ -871,7 +871,7 @@ func (f *fn) emitSelect() {
 	}
 	// Comparisons and constant masks can feed CMOV directly. Emit their CMP
 	// or TEST after both alternatives, keeping its flags live for the select.
-	if top := f.s.back(); (isFusableCompare(top) && !top.valueType().isFloat() || isMaskedI32Condition(top)) && f.trySelectOnFlags(top) {
+	if top := f.s.back(); (isFusableCompare(top) && !top.valueType().isFloat() || isMaskedI32Condition(f.s, top)) && f.trySelectOnFlags(top) {
 		return
 	}
 	// Keep all operands linked until their deferred work is complete. Div/rem
@@ -881,8 +881,8 @@ func (f *fn) emitSelect() {
 	// spills cannot overwrite it before the operand is reloaded.
 	cond := f.s.back()
 	f.materialize(cond) // Resolve the i32 condition, but recover its register later.
-	b := cond.prev
-	a := baseOfValentBlock(b).prev
+	b := f.s.node(cond.prev)
+	a := f.s.node(baseOfValentBlock(f.s, b).prev)
 	at, bt := rootMachineType(a), rootMachineType(b)
 	gcRoot := a.st.hasGCRoot() || b.st.hasGCRoot()
 
@@ -996,11 +996,11 @@ func mtI32OrWide(wide bool) machineType {
 // branches are not both integer (floats/v128 have no CMOV) or the block shape is
 // unexpected, so the caller falls back to the materialized-boolean path.
 func (f *fn) trySelectOnFlags(cond *elem) bool {
-	bRoot := baseOfValentBlock(cond).prev
+	bRoot := f.s.node(baseOfValentBlock(f.s, cond).prev)
 	if bRoot == f.s.head {
 		return false
 	}
-	aRoot := baseOfValentBlock(bRoot).prev
+	aRoot := f.s.node(baseOfValentBlock(f.s, bRoot).prev)
 	if aRoot == f.s.head {
 		return false
 	}
@@ -1023,7 +1023,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		f.reserved = f.reserved.add(bReg)
 	}
 	f.pinned = f.pinned.add(bReg)
-	masked := isMaskedI32Condition(cond)
+	masked := isMaskedI32Condition(f.s, cond)
 	cc := f.condenseToFlags(cond) // emits CMP/TEST last and consumes the condition
 	if masked {
 		f.stats.peep("select-mask-flags")
@@ -1093,11 +1093,11 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 	// inside that block are consumed directly into x's register by condenseInto, so
 	// realizing them here would force the wasteful copy-out + copy-back. Refs BELOW
 	// it still need x's pre-set value and are realized.
-	for e := f.s.head.next; e != f.s.head; {
+	for e := f.s.node(f.s.head.next); e != f.s.head; {
 		if e == skipFrom {
 			break
 		}
-		next := e.next
+		next := f.s.node(e.next)
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
@@ -1105,7 +1105,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
 			f.materializeByType(e)
-		case e.isDeferred() && subtreeRefsLocal(e, x):
+		case e.isDeferred() && subtreeRefsLocal(f.s, e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -1113,7 +1113,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 }
 
 // subtreeRefsLocal reports whether the valent block rooted at e reads local x.
-func subtreeRefsLocal(e *elem, x int) bool {
+func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
@@ -1121,7 +1121,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
 	if e.isDeferred() {
-		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
+		return subtreeRefsLocal(s, s.node(e.arg0), x) || subtreeRefsLocal(s, s.node(e.arg1), x)
 	}
 	return false
 }
@@ -1206,7 +1206,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// another child directly into x first would destroy that address. Materialize
 	// the complete value into ordinary allocator storage before considering the
 	// in-place local sink.
-	if e != nil && e.isDeferred() && subtreeBorrowsLocalAddress(e, x) {
+	if e != nil && e.isDeferred() && subtreeBorrowsLocalAddress(f.s, e, x) {
 		f.condense(e, regNone)
 	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
@@ -1219,7 +1219,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
 		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
-			skipFrom = baseOfValentBlock(e)
+			skipFrom = baseOfValentBlock(f.s, e)
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)

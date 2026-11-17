@@ -15,7 +15,7 @@ package amd64
 func (f *fn) detachControlIntervalAddresses() regMask {
 	var borrowed *elem
 	loads := 0
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.node(f.s.head.next); e != f.s.head; e = f.s.node(e.next) {
 		if !e.isValue() || e.st.kind != stMemRef {
 			continue
 		}

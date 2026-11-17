@@ -75,6 +75,8 @@ func TestIfPrefixRematExecution(t *testing.T) {
 }
 
 func TestIfPrefixRematProof(t *testing.T) {
+	s := newStack()
+
 	f := &fn{classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
 	for _, tc := range []struct {
 		name string
@@ -107,11 +109,11 @@ func TestIfPrefixRematProof(t *testing.T) {
 	local := &elem{st: storage{kind: stLocalRef, typ: mtI32, idx: 1}}
 	for _, kind := range []storageKind{stReg, stSlot, stMemRef, stGlobalRef} {
 		bad := &elem{st: storage{kind: kind, typ: mtI32}}
-		if ifPrefixLocal(bad) != nil {
+		if ifPrefixLocal(s, bad) != nil {
 			t.Fatal("non-rematerializable value", kind)
 		}
 	}
-	if ifPrefixLocal(local) != local {
+	if ifPrefixLocal(s, local) != local {
 		t.Fatal("local rejected")
 	}
 }

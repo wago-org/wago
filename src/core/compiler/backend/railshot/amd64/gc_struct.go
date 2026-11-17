@@ -484,7 +484,7 @@ func (f *fn) tryForwardGCConstructorGet(r *wasm.Reader, sourceType uint32, sourc
 	}
 	value := f.s.back()
 	for i := fieldN - 1; i > int(fieldIndex); i-- {
-		value = baseOfValentBlock(value).prev
+		value = f.s.node(baseOfValentBlock(f.s, value).prev)
 	}
 	if !value.isValue() {
 		return storage{}, wasm.Reader{}, false

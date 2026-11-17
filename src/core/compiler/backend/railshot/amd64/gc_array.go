@@ -451,7 +451,7 @@ func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uin
 	}
 	value := f.s.back()
 	if value != nil {
-		value = value.prev // trailing type-index constant was pushed before admission
+		value = f.s.node(value.prev) // trailing type-index constant was pushed before admission
 	}
 	if value == nil || !value.isValue() || value.st.kind != stConst || value.st.typ != mtI32 {
 		return 0, 0, false

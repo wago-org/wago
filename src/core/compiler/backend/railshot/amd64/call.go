@@ -1106,7 +1106,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for i := p - 1; i >= 0; i-- {
 		roots[i] = cur
 		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
+			cur = f.s.node(baseOfValentBlock(f.s, cur).prev)
 		}
 	}
 
@@ -1232,7 +1232,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	if p > 0 {
 		first := f.s.back()
 		for i := 1; i < p; i++ {
-			first = first.prev
+			first = f.s.node(first.prev)
 		}
 		f.a.Load32(RAX, RSP, f.spillOff(first.st.slotIndex()))
 	} else {
@@ -2388,7 +2388,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
 		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
+			cur = f.s.node(baseOfValentBlock(f.s, cur).prev)
 		}
 	}
 
@@ -2610,7 +2610,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
 		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
+			cur = f.s.node(baseOfValentBlock(f.s, cur).prev)
 		}
 	}
 

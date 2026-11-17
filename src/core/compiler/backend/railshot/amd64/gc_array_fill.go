@@ -29,9 +29,9 @@ func (f *fn) emitDirectGCArrayFill(typeIndex uint32) bool {
 	if !directGCArrayFillCount(count, scalar.size) {
 		return false
 	}
-	valueRoot := baseOfValentBlock(countRoot).prev
-	indexRoot := baseOfValentBlock(valueRoot).prev
-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
+	valueRoot := f.s.node(baseOfValentBlock(f.s, countRoot).prev)
+	indexRoot := f.s.node(baseOfValentBlock(f.s, valueRoot).prev)
+	local, hasLocal := gcLocalProvenance(f.s.node(baseOfValentBlock(f.s, indexRoot).prev))
 	f.flush()
 	oldFloor := f.spillFloor
 	f.spillFloor = f.curSpillSlot()
