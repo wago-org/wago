@@ -47,10 +47,9 @@ func (f *fn) terminalScalarIf(r *wasm.Reader, params, results int) bool {
 	}
 	copy := *r
 	depth := 0
-	var imm wasm.InstructionImmediate
 	for copy.HasNext() {
 		op, err := copy.Byte()
-		if err != nil || f.classifier.ClassifyInto(&copy, op, &imm) != nil {
+		if err != nil || f.classifier.SkipImmediate(&copy, op) != nil {
 			return false
 		}
 		switch op {
@@ -106,7 +105,6 @@ func (f *fn) discardDeadTerminalCallLocals() {
 		return
 	}
 	var reads uint64
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err = r.Byte()
 		if err != nil {
@@ -125,7 +123,7 @@ func (f *fn) discardDeadTerminalCallLocals() {
 		if !(op == 0x0b || op == 0x10 || op == 0x1a || op == 0x21 || op == 0x22 || op >= 0x41 && op <= 0xc4) {
 			return
 		}
-		if f.classifier.ClassifyInto(&r, op, &imm) != nil {
+		if f.classifier.SkipImmediate(&r, op) != nil {
 			return
 		}
 	}
