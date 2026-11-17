@@ -3406,7 +3406,40 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, conditionalBoundsSized: len(c.BodyBytes) >= 1024, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), loopMemory: hints.hasLoopMemory(), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), shiftedALUAddressLocals: reusedAddressLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	// Initialize worker-owned state in place. A populated fn literal retains
+	// a large Go stack temporary even though the destination already exists.
+	*f = fn{}
+	f.a, f.s, f.sc, f.m, f.ft = sc.asm, sc.stack, sc, m, ft
+	f.gcTypeLayouts, f.classifier, f.transient = gcTypeLayouts, sc.classifier, sc.transient
+	f.traceFuncIdx, f.tracePCBase = uint32(globalIdx), c.LocalDeclBytes
+	f.customInstructions = customInstructions
+	f.nParams, f.nLocals = len(ft.Params), nLocals
+	f.localType, f.localSlot, f.locals = localType, localSlot, locals
+	f.globalReg = globalReg[:0]
+	f.guardMode, f.boundsFacts = guardMode, boundsFacts
+	f.conditionalBoundsSized = len(c.BodyBytes) >= 1024
+	f.interruptible = interruptible
+	f.hasLoop = hints.flags.has(hintHasLoop)
+	f.loopMemory = hints.hasLoopMemory()
+	f.gcStructHelpers, f.gcArrayHelpers, f.gcFrameRoots = gcStructHelpers, gcArrayHelpers, gcFrameRoots
+	f.moduleEH = hints.flags.has(hintModuleEH)
+	f.regMerge = policy.EnabledOption(optRegMerge)
+	f.globalCellReg, f.memSizeReg, f.memLimitReg, f.trapCellReg = regNone, regNone, regNone, regNone
+	f.immutableLocalTable, f.immutableTableType, f.immutableTableTyped = immutableTable.local, immutableTable.typeKey, immutableTable.typed
+	f.monomorphicTarget = immutableTable.monomorphicTarget
+	f.importBindings = importBindings
+	f.stagedTailDescriptors = true
+	f.stats, f.policy = stats, policy
+	f.branchHints = m.BranchHintsForFunc(uint32(globalIdx))
+	f.branchHintLocalDecl = c.LocalDeclBytes
+	f.calleeHints = calleeHints
+	f.threadedMemory0 = mt0.Shared
+	f.localFactsEnabled = policy.EnabledOption(optValueFacts)
+	f.loadDefinedLocals = loadDefinedLocalMaskForHints(hints)
+	f.shiftedALUAddressLocals = reusedAddressLocalMaskForHints(hints)
+	f.memcopyTail4 = policy.EnabledOption(optMemcopyTail4) && boundedMemcopy
+	f.memcopyQPairs = policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy
+	f.floatLiteralPool = policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10
 	state = f
 	f.privateGlobalConsts, f.privateStableLocals = f.provePrivateConstants()
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
