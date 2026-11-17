@@ -158,6 +158,7 @@ func testAffineBoundsLoopMemory(t *testing.T, kind int) {
 	f.a = optimized
 	f.m = &wasm.Module{}
 	f.hasLoop = true
+	f.loopMemory = true
 	f.memSizeReg = X27
 	f.policy = currentCodegenPolicy()
 	before := optimized.Len()
@@ -239,6 +240,7 @@ func TestAffineBoundsLoopPerCompilationPolicy(t *testing.T) {
 		f.a = a
 		f.m = &wasm.Module{}
 		f.hasLoop = true
+		f.loopMemory = true
 		f.memSizeReg = X27
 		f.policy = shared.DefaultCodegenPolicy(selection)
 		f.finalizeAffineBoundsLoops()

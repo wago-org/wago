@@ -43,7 +43,6 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 	}
 	var previous, beforePrevious producer
 	r := wasm.NewReader(body)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -51,16 +50,16 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 		}
 		current := producer{op: op}
 		if op == 0x41 {
-			copy := *r
-			value, err := copy.I32()
+			value, err := r.I32()
 			if err != nil {
 				return
 			}
 			current.bound, current.known = uint32(value), true
 			current.aligned8 = uint32(value)&7 == 0
-		}
-		if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
-			return
+		} else if op != 0x21 && op != 0x22 {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
+				return
+			}
 		}
 		switch op {
 		case 0x71: // i32.and: the immediately preceding constant is the RHS.
@@ -83,17 +82,18 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 		case 0x6a, 0x6b, 0x72, 0x73: // a known aligned producer and an aligned constant
 			current.aligned8 = previous.op == 0x41 && previous.aligned8 && beforePrevious.aligned8
 		case 0x21, 0x22: // local.set, local.tee
-			if int(imm.Index) >= f.nLocals {
+			index, err := r.U32()
+			if err != nil || int(index) >= f.nLocals {
 				return
 			}
-			bit := uint64(1) << imm.Index
+			bit := uint64(1) << index
 			if !previous.aligned8 {
 				aligned8 &^= bit
 			}
 			if !previous.known {
 				invalid |= bit
-			} else if previous.bound > bounds[imm.Index] {
-				bounds[imm.Index] = previous.bound
+			} else if previous.bound > bounds[index] {
+				bounds[index] = previous.bound
 			}
 		}
 		beforePrevious, previous = previous, current
