@@ -672,3 +672,39 @@ func TestImmutableLocalTableMixedTypesKeepDynamicCheck(t *testing.T) {
 		t.Fatal("mixed-signature table was classified as uniform")
 	}
 }
+
+func TestShortMemoryHintsMatchExtendedMemargs(t *testing.T) {
+	for op := byte(0x28); op <= 0x3e; op++ {
+		for _, offset := range []byte{0, 1, 63, 64, 127} {
+			for _, loop := range []bool{false, true} {
+				scan := func(extended bool) (funcHintView, error) {
+					body := []byte{0x20, 0, op, 0}
+					if extended {
+						body = append(body, offset|0x80, 0)
+					} else {
+						body = append(body, offset)
+					}
+					body = append(body, 0x0b)
+					if loop {
+						body = append(append([]byte{0x03, 0x40}, body...), 0x0b)
+					}
+					return scanBodyBytes(body, 1, 0, 0)
+				}
+				short, err := scan(false)
+				extended, extendedErr := scan(true)
+				if err != nil || extendedErr != nil || !reflect.DeepEqual(short, extended) {
+					t.Fatalf("op=%x offset=%d loop=%t: hints differ: %v/%v", op, offset, loop, err, extendedErr)
+				}
+			}
+		}
+	}
+}
+
+func TestShortMemoryHintMissKeepsReader(t *testing.T) {
+	for _, data := range [][]byte{nil, {0}, {0, 0x80}, {0, 0x80, 1}, {0x40, 0}, {0x80, 0}} {
+		s := byteBodyScanner{r: byteScanReader{Reader: wasm.ReaderFrom(data)}}
+		if s.consumeShortMemoryHints(0x28, 0x20, 0, 0) || s.r.Offset() != 0 || s.h.flags != 0 || s.h.memOpCount() != 0 {
+			t.Fatalf("miss changed reader or hints for %x", data)
+		}
+	}
+}

@@ -1354,9 +1354,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if op == 0x13 {
 				s.h.immediateFreeOps |= tailTransferHintMask
 			}
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+			if err := s.skipHintImmediate(op); err != nil {
 				return true, 0, err
 			}
 			s.h.flags.set(hintHasCall)
@@ -1498,76 +1496,14 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.entryPrefix = false
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
-			if op == 0xfd {
-				s.h.flags.set(hintModuleSIMD)
+			if op <= 0x3e && s.consumeShortMemoryHints(op, prevOp, prevIndex, loopDepth) {
+				break
 			}
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+			calls, err := s.noteMemoryInstructionHints(op, prevOp, prevIndex, loopDepth, depth, pathWeight)
 			if err != nil {
 				return true, 0, err
 			}
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.flags.set(hintHasControlFlow)
-				s.entryPrefix = false
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.flags.set(hintModuleEH)
-				s.entryPrefix = false
-			}
-			if op == 0xfb {
-				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
-				// Collector-backed GC instructions may enter the synchronous Go
-				// helper bridge. Preserve LR and use call-safe local state for the
-				// whole family; direct-only subopcodes pay only the frame-record cost.
-				s.h.flags.set(hintHasCall)
-				s.h.flags.set(hintHasNonDirectCall)
-				s.h.markUnsupportedDynamicCall()
-				if loopDepth != 0 {
-					s.h.flags.set(hintHasLoopCall)
-				}
-				subHasCall = true
-			}
-			switch imm.Kind {
-			case wasm.InstrMemoryGrow:
-				if !shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
-					break
-				}
-				fallthrough
-			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
-				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
-				s.h.flags.set(hintHasCall)
-				s.h.flags.set(hintHasNonDirectCall)
-				s.h.markUnsupportedDynamicCall()
-				if loopDepth != 0 {
-					s.h.flags.set(hintHasLoopCall)
-				}
-				subHasCall = true
-			}
-			if op == 0x40 {
-				s.loopMemoryGrow = true
-			}
-			if s.collectLoopMemoryBases && s.collectLoopIntConsts && loopDepth != 0 &&
-				(op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e) &&
-				(!imm.HasMemIndex || imm.MemIndex == 0) && imm.MemOffset >= 0x1000 && imm.MemOffset <= 0x7fffffff {
-				s.noteLoopMemoryBase(int64(imm.MemOffset&^0xfff), loopDepth, pathWeight)
-			}
-			if imm.TouchesMemory {
-				s.h.flags.set(hintTouchesMemory)
-				s.h.addMemOp()
-				if loopDepth != 0 {
-					s.h.markLoopMemory()
-				}
-				if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
-					s.h.addBounds4Op()
-				}
-				if op >= 0x28 && op <= 0x35 && prevOp == 0x20 {
-					s.h.noteParamAddress(prevIndex)
-				}
-			}
-			if usesBulkScratch(imm.Kind) {
-				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
-				s.h.flags.set(hintUsesBulkMem)
-			}
+			subHasCall = subHasCall || calls
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
@@ -1598,30 +1534,148 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				break
 			}
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+			if err := s.noteOtherInstructionHints(op); err != nil {
 				return true, 0, err
-			}
-			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.flags.set(hintHasControlFlow)
-				s.entryPrefix = false
-			}
-			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.flags.set(hintModuleEH)
-				s.entryPrefix = false
-			}
-			if imm.TouchesMemory {
-				s.h.flags.set(hintTouchesMemory)
-				s.h.addMemOp()
-			}
-			if usesBulkScratch(imm.Kind) {
-				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
 		prevPrevOp, prevPrevIndex = prevOp, prevIndex
 		prevOp, prevIndex = op, curIndex
 	}
+}
+
+// The common implicit-memory memarg has two bytes and no large base offset.
+// Record only the hints it can contribute; all other encodings retain the full
+// module-aware classifier, including its malformed-input cursor behavior.
+func (s *byteBodyScanner) consumeShortMemoryHints(op, previous byte, local uint32, loopDepth int) bool {
+	scan := s.r.Reader
+	alignment, err := scan.Byte()
+	if err != nil || alignment >= 64 {
+		return false
+	}
+	offset, err := scan.Byte()
+	if err != nil || offset >= 128 {
+		return false
+	}
+	_ = s.r.Step(2)
+	s.h.flags.set(hintTouchesMemory)
+	s.h.addMemOp()
+	if loopDepth != 0 {
+		s.h.markLoopMemory()
+	}
+	if isExactBounds4Opcode(op) && offset == 0 {
+		s.h.addBounds4Op()
+	}
+	if op <= 0x35 && previous == 0x20 {
+		s.h.noteParamAddress(local)
+	}
+	return true
+}
+
+// Keep full instruction metadata outside the recursive scanner frame.
+func (s *byteBodyScanner) noteMemoryInstructionHints(op, previous byte, local uint32, loopDepth, depth int, pathWeight int64) (calls bool, err error) {
+	if op == 0xfd {
+		s.h.flags.set(hintModuleSIMD)
+	}
+	var imm wasm.InstructionImmediate
+	err = s.classifyInstructionInto(op, &imm)
+	if err != nil {
+		return false, err
+	}
+	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+		s.h.flags.set(hintHasControlFlow)
+		s.entryPrefix = false
+	}
+	if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+		s.h.flags.set(hintModuleEH)
+		s.entryPrefix = false
+	}
+	if op == 0xfb {
+		s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
+		// Collector-backed GC instructions may enter the synchronous Go
+		// helper bridge. Preserve LR and use call-safe local state for the
+		// whole family; direct-only subopcodes pay only the frame-record cost.
+		s.h.flags.set(hintHasCall)
+		s.h.flags.set(hintHasNonDirectCall)
+		s.h.markUnsupportedDynamicCall()
+		if loopDepth != 0 {
+			s.h.flags.set(hintHasLoopCall)
+		}
+		calls = true
+	}
+	switch imm.Kind {
+	case wasm.InstrMemoryGrow:
+		if !shared.SharedMemoryGrowMayCall(s.m, imm.Kind, imm.Index) {
+			break
+		}
+		fallthrough
+	case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
+		s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
+		s.h.flags.set(hintHasCall)
+		s.h.flags.set(hintHasNonDirectCall)
+		s.h.markUnsupportedDynamicCall()
+		if loopDepth != 0 {
+			s.h.flags.set(hintHasLoopCall)
+		}
+		calls = true
+	}
+	if op == 0x40 {
+		s.loopMemoryGrow = true
+	}
+	if s.collectLoopMemoryBases && s.collectLoopIntConsts && loopDepth != 0 &&
+		(op == 0x28 || op == 0x29 || op >= 0x2c && op <= 0x37 || op >= 0x3a && op <= 0x3e) &&
+		(!imm.HasMemIndex || imm.MemIndex == 0) && imm.MemOffset >= 0x1000 && imm.MemOffset <= 0x7fffffff {
+		s.noteLoopMemoryBase(int64(imm.MemOffset&^0xfff), loopDepth, pathWeight)
+	}
+	if imm.TouchesMemory {
+		s.h.flags.set(hintTouchesMemory)
+		s.h.addMemOp()
+		if loopDepth != 0 {
+			s.h.markLoopMemory()
+		}
+		if isExactBounds4Opcode(op) && imm.MemOffset == 0 && (!imm.HasMemIndex || imm.MemIndex == 0) {
+			s.h.addBounds4Op()
+		}
+		if op >= 0x28 && op <= 0x35 && previous == 0x20 {
+			s.h.noteParamAddress(local)
+		}
+	}
+	if usesBulkScratch(imm.Kind) {
+		s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
+		s.h.flags.set(hintUsesBulkMem)
+	}
+	return calls, nil
+}
+
+func (s *byteBodyScanner) skipHintImmediate(op byte) error {
+	if s.m != nil {
+		return s.classifier.SkipImmediate(&s.r.Reader, op)
+	}
+	var imm wasm.InstructionImmediate
+	return s.classifyInstructionInto(op, &imm)
+}
+
+func (s *byteBodyScanner) noteOtherInstructionHints(op byte) error {
+	var imm wasm.InstructionImmediate
+	err := s.classifyInstructionInto(op, &imm)
+	if err != nil {
+		return err
+	}
+	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
+		s.h.flags.set(hintHasControlFlow)
+		s.entryPrefix = false
+	}
+	if shared.InstructionNeedsEHFrame(op, imm.Kind) {
+		s.h.flags.set(hintModuleEH)
+		s.entryPrefix = false
+	}
+	if imm.TouchesMemory {
+		s.h.flags.set(hintTouchesMemory)
+		s.h.addMemOp()
+	}
+	if usesBulkScratch(imm.Kind) {
+		s.h.flags.set(hintUsesBulkMem)
+	}
+	return nil
 }
 
 func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
