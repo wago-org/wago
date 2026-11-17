@@ -184,3 +184,21 @@ func TestPrivateConstantProofSignedImmediateWidths(t *testing.T) {
 		}
 	}
 }
+
+func TestPrivateConstantProofSkipsMemoryAndCallImmediates(t *testing.T) {
+	for _, instruction := range [][]byte{
+		{0x28, 2, 0x80, 1}, // i32.load with a multibyte offset
+		{0x36, 2, 0x80, 1}, // i32.store with a multibyte offset
+		{0x10, 0x80, 1},    // call with a multibyte function index
+	} {
+		// The proof walks source bytes independently of stack validation. A
+		// write after an unrelated immediate must still invalidate the global.
+		m := modMem(t, 1, nil, nil, []byte{0, 0x0b})
+		m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}, Init: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Const, I32: 17}}}}}
+		m.Code[0].BodyBytes = append(append([]byte{}, instruction...), 0x41, 0, 0x24, 0, 0x0b)
+		f := fn{m: m, policy: currentCodegenPolicy(), classifier: wasm.NewModuleInstructionClassifier(m, true)}
+		if globals, _ := f.provePrivateConstants(); globals != 0 {
+			t.Fatalf("instruction=%x globals=%x", instruction, globals)
+		}
+	}
+}

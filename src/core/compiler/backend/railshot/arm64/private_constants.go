@@ -95,11 +95,12 @@ func (f *fn) provePrivateConstants() (globals, stableLocals uint64) {
 		case op >= 0x45 && op <= 0xc4:
 			// Numeric scalar operations have no immediates.
 		default:
-			var imm wasm.InstructionImmediate
-			if err := f.classifier.ClassifyInto(&r, op, &imm); err != nil {
+			// Only local/global instructions contribute an index to this
+			// proof; those are decoded above. Other instructions need only
+			// advance the reader, including module-width memory immediates.
+			if err := f.classifier.SkipImmediate(&r, op); err != nil {
 				return 0, 0
 			}
-			index = imm.Index
 		}
 		if (op == 0x21 || op == 0x22) && depth == 0 && int(f.privateInitializerN) < len(f.privateInitializers) && previous[0].op == 0x23 {
 			if global, ok := privateGlobalLiteralAt(m, previous[0].index, globals); ok {
