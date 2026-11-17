@@ -161,3 +161,33 @@ The public compact records retain all measured samples, artifact/contract and
 binary hashes without repeating machine-local artifact paths. Compilation
 probe native-image equality is established separately; official default
 function-worker settings differ from the probe's explicit single worker.
+
+### Official adapter compilation RSS
+
+Three trials across all 145 exact contracts, on both builds: 870/870 runs
+verify successfully. The official memory-profile phase protocol pauses at
+`compiled`, before oracle instantiation; Linux `/proc/PID/status` VmHWM is read
+externally before acknowledging the barrier. This measures absolute process
+peak through compilation, including adapter and memory instrumentation, not
+Go allocated bytes or post-execution guest memory.
+
+Mean workload-median peak RSS is 9.614 MiB for Go baseline versus 4.262 MiB for
+iterative TinyGo opt=2/default-stack. Averaging each workload's worst of three
+trials gives 4.264 MiB for TinyGo. This meets the requested arithmetic-average
+5 MiB threshold in the official adapter, not merely in the smaller probe.
+It is a configuration comparison, not an isolated source-change comparison.
+
+TinyGo harness compatibility marks two unsupported GC telemetry fields
+unavailable and explicitly rejects command fixtures because TinyGo lacks
+os.OpenRoot. Go retains scoped filesystem access. All 145 measured contracts
+are core contracts; none were substituted or dropped. No confinement fallback
+was introduced. The old adapter's AOT description metadata remained stale
+although its AOT methods rejected requests; no measured request used AOT.
+
+After these runs, an ephemeral workspace reset removed temporary harness
+sources and binaries. All raw results, artifact/contract hashes and measured
+binary hashes survived, as did every compiler source commit. The harness is
+being reconstructed from pinned upstream source and recorded compatibility
+decisions, with metadata corrected and source persisted before new builds.
+Do not claim the lost binaries have been reproduced bit-for-bit. A matched
+TinyGo control comparison will use newly built, newly fingerprinted binaries.
