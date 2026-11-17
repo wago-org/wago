@@ -20,6 +20,10 @@ import (
 func main() {
 	empty := flag.Bool("empty", false, "measure process floor without reading or compiling")
 	profile := flag.String("cpuprofile", "", "optional diagnostic CPU profile; never use for acceptance timing")
+	export := flag.String("export", "", "optional integer benchmark export")
+	arg := flag.Uint64("arg", 0, "integer benchmark argument")
+	want := flag.Uint64("want", 0, "expected single integer result")
+	calls := flag.Int("calls", 64, "execution calls after correctness and warmup")
 	flag.Parse()
 	if *empty {
 		rss := peakRSS()
@@ -52,7 +56,31 @@ func main() {
 		CompileNS  int64  `json:"compile_ns"`
 		CodeBytes  int    `json:"code_bytes"`
 	}{rss, hex.EncodeToString(hash[:]), runtime.Version(), len(data), elapsed.Nanoseconds(), compiled.CodeSize()}
-	check(json.NewEncoder(os.Stdout).Encode(result))
+	if *export != "" {
+		inst, e := wago.Instantiate(compiled, wago.InstantiateOptions{})
+		check(e)
+		fn, e := inst.WasmFunc(*export)
+		check(e)
+		out, e := fn.Invoke(*arg)
+		check(e)
+		if len(out) != 1 || out[0] != *want {
+			panic(fmt.Sprintf("oracle mismatch: %v want %d", out, *want))
+		}
+		for i := 0; i < 16; i++ {
+			_, e = fn.Invoke(*arg)
+			check(e)
+		}
+		begin := time.Now()
+		for i := 0; i < *calls; i++ {
+			_, e = fn.Invoke(*arg)
+			check(e)
+		}
+		ns := time.Since(begin).Nanoseconds()
+		check(json.NewEncoder(os.Stdout).Encode(map[string]any{"sha256": result.SHA256, "exec_ns": float64(ns) / float64(*calls), "calls": *calls, "result": out[0]}))
+		check(inst.Close())
+	} else {
+		check(json.NewEncoder(os.Stdout).Encode(result))
+	}
 	check(compiled.Close())
 	runtime.KeepAlive(data)
 }
