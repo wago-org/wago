@@ -2281,8 +2281,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 		}
 	}
-	for workerID := range states {
-		go runWorker(workerID)
+	if workers == 1 {
+		runWorker(0)
+	} else {
+		for workerID := range states {
+			go runWorker(workerID)
+		}
 	}
 	wg.Wait()
 	if i, err := work.failures.Result(); err != nil {
