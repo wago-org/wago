@@ -1,0 +1,9 @@
+{
+  "warning": "Installed TinyGo is modified, not stock. Pre-existing thread exit-symbol patch used identically by baseline/candidate.",
+  "patch": "Go linkname tinygo_task_exit maps to tinygo_task_exit_thread; C defines tinygo_task_exit_thread",
+  "files": {
+    "src/internal/task/task_threads.go": "b30042e2a95668106bf6f369a6f02bf69fe6d3868abede4fca9d1a3dc7ec88f9",
+    "src/internal/task/task_threads.c": "c49052975185e8fa0df1c5f4c0a992f50bc7d374fb11e6289a6be33d6d684a08",
+    "bin/tinygo": "cdd520d062bc2624584f6fc9046929dea9c800af63b791be6cc9d06402c72130"
+  }
+}

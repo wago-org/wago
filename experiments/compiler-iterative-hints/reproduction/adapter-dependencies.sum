@@ -1,0 +1,6 @@
+github.com/wago-org/component-model v0.1.6 h1:FmSYt+OBNmpQd7KLRlOezT4rcx3QV0K/5Pgjdqtc0s8=
+github.com/wago-org/component-model v0.1.6/go.mod h1:Yr7Hc78FLTwJsh1/fW85Tlm3zdqzj157tB6yRyXwGe8=
+github.com/wago-org/wasi v0.3.1 h1:hpbJaiy3/0RfFe6cIfJB8cSVTatNYeAHVbTeUuibzO0=
+github.com/wago-org/wasi v0.3.1/go.mod h1:wX4/mFwFG1iNSAkeES3WcGBpqY3y4XDjRQ6jLKXS8Ps=
+golang.org/x/sys v0.44.0 h1:ildZl3J4uzeKP07r2F++Op7E9B29JRUy+a27EibtBTQ=
+golang.org/x/sys v0.44.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
