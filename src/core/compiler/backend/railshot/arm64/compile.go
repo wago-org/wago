@@ -1912,8 +1912,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				h := allHints[i]
 				h.flags.assign(hintHasCall, false)
 				if preservesCallerPins(ft, int(h.localCount), h) {
-					proof := fn{m: m, ft: ft, traceFuncIdx: uint32(i + m.ImportedFuncCount()), policy: policy, classifier: classifier, interruptible: opts.Interruptible, moduleEH: h.flags.has(hintModuleEH), gcFrameRoots: opts.GCFrameRoots.Function(i), customInstructions: opts.CustomInstructions, immutableLocalTable: immutableTable.local, immutableTableTyped: immutableTable.typed, immutableTableType: immutableTable.typeKey, monomorphicTarget: immutableTable.monomorphicTarget}
-					allHints[i].flags.assign(hintPreservesCallerPins, proof.onlySelfTailTransfers(m.Code[i].BodyBytes))
+					allHints[i].flags.assign(hintPreservesCallerPins, proveSelfTailCallerPins(m, ft, i, &opts, h, policy, classifier, immutableTable))
 				}
 			}
 		}
@@ -2125,6 +2124,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
+}
+
+// Keep the full proof workspace out of the ordinary module compiler's stack.
+// Only prospective self-tail physical leaves need this state.
+func proveSelfTailCallerPins(m *wasm.Module, ft *wasm.CompType, i int, opts *CompileOptions, h funcHints, policy CodegenPolicy, classifier wasm.ModuleInstructionClassifier, immutableTable immutableTableHint) bool {
+	proof := fn{m: m, ft: ft, traceFuncIdx: uint32(i + m.ImportedFuncCount()), policy: policy, classifier: classifier, interruptible: opts.Interruptible, moduleEH: h.flags.has(hintModuleEH), gcFrameRoots: opts.GCFrameRoots.Function(i), customInstructions: opts.CustomInstructions, immutableLocalTable: immutableTable.local, immutableTableTyped: immutableTable.typed, immutableTableType: immutableTable.typeKey, monomorphicTarget: immutableTable.monomorphicTarget}
+	return proof.onlySelfTailTransfers(m.Code[i].BodyBytes)
 }
 
 // Parallel workers reserve only the small common local range. A rare large
