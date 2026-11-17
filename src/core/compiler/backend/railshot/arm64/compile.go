@@ -402,8 +402,9 @@ type fn struct {
 	// Straight-line bounds-check certificates (P6.1). Each entry records a stable
 	// local/global address source and its largest checked extent. The fixed set
 	// retains independent proofs for interleaved arrays without per-local state.
-	boundsCerts    [8]boundsCert
-	nextBoundsCert uint8
+	boundsCerts       [8]boundsCert
+	nextBoundsCert    uint8
+	boundsCertsActive bool // may remain true after source-specific invalidation
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is

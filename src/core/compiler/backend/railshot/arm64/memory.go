@@ -996,7 +996,7 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	if kind == 0 {
+	if kind == 0 || !f.boundsCertsActive {
 		return false
 	}
 	if !f.opt(optMultiBoundsCert) {
@@ -1015,6 +1015,9 @@ func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
 // boundsCertUpdate records the check about to be emitted. The bounded
 // round-robin set covers interleaved arrays with fixed compiler state.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
+	if kind != 0 {
+		f.boundsCertsActive = true
+	}
 	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
 		if kind == 0 {
@@ -1053,14 +1056,21 @@ func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
 
 // invalidateBoundsCert drops every straight-line bounds certificate.
 func (f *fn) invalidateBoundsCert() {
+	if !f.boundsCertsActive {
+		return
+	}
 	for i := range f.boundsCerts {
 		f.boundsCerts[i] = boundsCert{}
 	}
 	f.nextBoundsCert = 0
+	f.boundsCertsActive = false
 }
 
 // invalidateBoundsCertFor drops only the proof whose address source changed.
 func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	if !f.boundsCertsActive {
+		return
+	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
