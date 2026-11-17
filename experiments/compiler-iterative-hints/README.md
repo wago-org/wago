@@ -136,3 +136,28 @@ peak RSS is 3.675 versus 3.242 MiB. These are source-plus-stack-configuration
 comparisons, not evidence of a 40% source-only improvement. Both use the same
 performance-oriented TinyGo host flags. Do not compare a failed or opt=z
 baseline against opt=2 as though only source changed.
+
+### Official execution contracts
+
+Both Go builds pass all 43 remaining exact execution contracts using the
+upstream wasm-bench adapter at a017c56f, with pinned wasi v0.3.1 and
+component-model v0.1.6. A documented adapter-only compatibility patch rejects
+removed AOT APIs/scenarios; steady execution, inputs, fast HostCall imports,
+fresh-instance resets and oracle handling are unchanged. This covers the
+BLAKE3 35-vector contract, AssemblyScript initialization and memory oracles.
+Together with the 102 application kernels, all 145 execution oracles pass.
+
+Eleven paired trials, 15 measured fresh-instance samples and five warmups:
+946/946 adapter runs verified. Arithmetic mean of workload median execution
+times is 2.195 ms baseline versus 2.209 ms candidate (0.6% higher). Two initial
+outliers required retesting: monocypher and tiny/add. Seventeen additional
+paired trials with 51 samples and identical-binary controls show monocypher's
+apparent 52% regression was bimodal process noise also present in the control.
+Tiny/add remains borderline: pooled baseline median 180 ns versus candidate
+189 ns (+5%), with median paired ratios slightly above 5%. The per-workload
+execution regression gate is therefore unresolved, not declared passed.
+
+The public compact records retain all measured samples, artifact/contract and
+binary hashes without repeating machine-local artifact paths. Compilation
+probe native-image equality is established separately; official default
+function-worker settings differ from the probe's explicit single worker.
