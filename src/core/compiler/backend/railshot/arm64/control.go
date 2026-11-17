@@ -1654,6 +1654,21 @@ func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifi
 			}
 			continue
 		}
+		// These instructions cannot change a local, invoke a helper, or
+		// invalidate a scoped constant. Their decoded operands are unused.
+		switch op {
+		case 0x00, 0x01, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x1a, 0x1b, 0x1c, 0x23, 0x24:
+			if err := classifier.SkipImmediate(r, op); err != nil {
+				return nil, true
+			}
+			continue
+		case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x40:
+			if err := classifier.SkipImmediate(r, op); err != nil {
+				return nil, true
+			}
+			hasCall = true
+			continue
+		}
 		if uses != nil && (op == 0x41 || op == 0x42) {
 			imm = wasm.InstructionImmediate{}
 			imm.Kind, err = uses.consume(op, r)

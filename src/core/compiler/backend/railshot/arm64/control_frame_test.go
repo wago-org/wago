@@ -464,3 +464,38 @@ func TestLoopSetScanScalarMemoryImmediates(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopSetScanUnusedImmediateEffects(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	for _, instruction := range [][]byte{
+		{0x00}, {0x01}, {0x05}, {0x0c, 0x90, 0}, {0x0d, 0x8b, 0},
+		{0x0e, 1, 0x8b, 0, 0x90, 0}, {0x0f}, {0x1a}, {0x1b}, {0x1c, 1, 0x7f},
+		{0x23, 0x8b, 0}, {0x24, 0x90, 0},
+		{0x10, 0x8b, 0}, {0x11, 0x90, 0, 0}, {0x12, 0x90, 0},
+		{0x13, 0x8b, 0, 0}, {0x14, 0x90, 0}, {0x15, 0x8b, 0}, {0x40, 0},
+	} {
+		decoded := wasm.ReaderFrom(instruction[1:])
+		var immediate wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(&decoded, instruction[0], &immediate); err != nil {
+			t.Fatalf("classify %x: %v", instruction, err)
+		}
+		if usesBulkScratch(immediate.Kind) || scopedConstTableBarrier(immediate.Kind) {
+			t.Fatalf("instruction %x requires a scoped barrier", instruction)
+		}
+		body := append(append([]byte{}, instruction...), 0x21, 9, 0x0b, 0x21, 10, 0x0b)
+		for _, collect := range []bool{false, true} {
+			var uses *scopedLoopConstUses
+			if collect {
+				uses = &scopedLoopConstUses{mask: 1}
+			}
+			r := wasm.ReaderFrom(body)
+			sets, calls := scanLoopSetLocals(&r, classifier, nil, uses)
+			if len(sets) != 1 || sets[0] != 9 || calls != loopInstructionMayCall(immediate.Kind) || r.Offset() != 0 {
+				t.Fatalf("scan %x, collect=%v: sets=%v calls=%v offset=%d", instruction, collect, sets, calls, r.Offset())
+			}
+			if uses != nil && (uses.blocked || uses.mask != 1) {
+				t.Fatalf("instruction %x invalidated scoped constants", instruction)
+			}
+		}
+	}
+}
