@@ -90,6 +90,20 @@ func TestFloatMapCapturedIterationOverlap(t *testing.T) {
 					constant(256)
 					body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 2, 0x0b)
 					m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+					probe := fn{nLocals: int(3 + count), localType: make([]machineType, 3+count)}
+					for i := range probe.localType {
+						probe.localType[i] = mtI32
+						if i >= 3 {
+							probe.localType[i] = mapFloatType(wide)
+						}
+					}
+					at := bytes.LastIndex(m.Code[0].BodyBytes, []byte{0x03, 0x40})
+					reader := wasm.ReaderFrom(m.Code[0].BodyBytes[at+2:])
+					var plan floatMapPlan
+					if !probe.inspectFloatMapLoop(&reader, &plan) || plan.orderedStoreLoads {
+						t.Fatal("captured iteration lost conservative disambiguation")
+					}
+
 					initial := make([]byte, 65536)
 					for i := 0; i < len(initial)/4; i++ {
 						binary.LittleEndian.PutUint32(initial[4*i:], math.Float32bits(float32(i)))
@@ -103,6 +117,26 @@ func TestFloatMapCapturedIterationOverlap(t *testing.T) {
 						t.Fatal("map candidate was not emitted")
 					}
 				})
+			}
+		}
+	}
+}
+
+func TestFloatMapStoreLoadOrder(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, count := range []int{1, 2, 3, 4, 5, 6, 8} {
+			for _, neighbor := range []uint32{0, 4, 8, 16, 32} {
+				m := floatMapModule(t, wide, count, 4096, 8192, 0, 256, neighbor)
+				at := bytes.LastIndex(m.Code[0].BodyBytes, []byte{0x03, 0x40})
+				r := wasm.ReaderFrom(m.Code[0].BodyBytes[at+2:])
+				probe := fn{nLocals: 5, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32}}
+				var plan floatMapPlan
+				if !probe.inspectFloatMapLoop(&r, &plan) || !plan.orderedStoreLoads {
+					t.Fatalf("wide%v count%d neighbor%d: lost ordered stores", wide, count, neighbor)
+				}
+				if r.Offset() != 0 {
+					t.Fatal("probe consumed source reader")
+				}
 			}
 		}
 	}

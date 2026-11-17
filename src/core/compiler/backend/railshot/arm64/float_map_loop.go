@@ -65,6 +65,7 @@ type floatMapPlan struct {
 	destOffset                   uint64
 	wide                         bool
 	integer                      bool
+	orderedStoreLoads            bool
 	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
@@ -99,6 +100,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 	start := scan.Offset()
 	var stack [24]int
 	var initialRead [32]bool
+	var loadStage [128]uint8
 	var stores [8]shared.LoopStore[int]
 	depth, ns, n := 0, 0, 0
 	push := func(x int) bool {
@@ -202,6 +204,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			if x < 0 {
 				return false
 			}
+			loadStage[x] = uint8(ns)
 			stack[depth-1] = x
 		case 0x36, 0x38, 0x39:
 			mem, off, e := f.readMemArg(&scan)
@@ -268,16 +271,17 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 					return false
 				}
 			}
-			var used [128]bool
+			var used [128]uint8
+			var storeMask uint8
 			var mark func(int)
 			mark = func(x int) {
 				if !p.spend() {
 					return
 				}
-				if used[x] {
+				if used[x]&storeMask != 0 {
 					return
 				}
-				used[x] = true
+				used[x] |= storeMask
 				v := p.nodes[x]
 				if p.binary(v.op) {
 					mark(v.left())
@@ -285,10 +289,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 			}
 			for i := 0; i < ns; i++ {
+				storeMask = 1 << uint(i)
 				mark(stores[i].Value)
 			}
 			for i := 0; i < n; i++ {
-				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && !used[i] {
+				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && used[i] == 0 {
 					return false
 				}
 			}
@@ -303,6 +308,15 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			if floatMapInvariantsEnabled {
 				p.labelInvariants()
+			}
+			// A non-invariant load may belong only to the store whose source
+			// stage created it. Earlier captured values retain whole-range
+			// disambiguation; invariant loads already have separate guards.
+			p.orderedStoreLoads = true
+			for i := 0; i < n; i++ {
+				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != uint8(1<<loadStage[i]) {
+					p.orderedStoreLoads = false
+				}
 			}
 			return true
 		default:
@@ -953,15 +967,13 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.cmpRR(X16, X17, true)
 		guard(condB)
 	}
-	// A single-store source iteration preserves forward dependences between
-	// native Q groups. Multiple-store iterations can capture loads for later
-	// groups before their first store; without an effect-order proof, retain
-	// whole-loop disambiguation for those candidates.
+	// Packet-local dependence checks require source loads to follow the previous
+	// store. Captured multi-store values retain whole-range disambiguation.
 	scalarWidth := uint32(4)
 	if p.wide {
 		scalarWidth = 8
 	}
-	packetDependence := floatMapPacketDependenceEnabled && p.step == scalarWidth
+	packetDependence := floatMapPacketDependenceEnabled && (p.step == scalarWidth || p.orderedStoreLoads)
 	var checked [16]struct {
 		base   Reg
 		offset uint32
