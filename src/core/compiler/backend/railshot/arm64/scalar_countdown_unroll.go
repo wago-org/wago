@@ -110,6 +110,10 @@ func (f *fn) finalizeScalarLoopUnroll(entries ...int) {
 	if n > 64<<10 || !hasScalarUnrollLatch(f.a.B[:n]) {
 		return
 	}
+	f.emitScalarLoopUnroll(n, entries)
+}
+
+func (f *fn) emitScalarLoopUnroll(n int, entries []int) {
 	targets := make([]uint64, ((n/4)+63)/64)
 	for at := 0; at < n; at += 4 {
 		w := rdWord(f.a.B, at)

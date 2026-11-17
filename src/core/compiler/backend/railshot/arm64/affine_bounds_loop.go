@@ -294,6 +294,10 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 	if n > 64<<10 {
 		return
 	}
+	f.emitAffineBoundsLoops(n, entries)
+}
+
+func (f *fn) emitAffineBoundsLoops(n int, entries []int) {
 	var targetStorage [256]uint64
 	targets := targetStorage[:((n/4)+63)/64]
 	for pc := 0; pc < n; pc += 4 {

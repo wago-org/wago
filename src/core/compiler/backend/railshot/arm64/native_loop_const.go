@@ -231,6 +231,10 @@ func (f *fn) finalizeNativeLoopConsts(entries ...int) {
 	if n > 64<<10 || !hasNativeLoopConstCandidate(f.a.B[:n]) {
 		return
 	}
+	f.emitNativeLoopConsts(n, entries)
+}
+
+func (f *fn) emitNativeLoopConsts(n int, entries []int) {
 	targets := make([]uint64, ((n/4)+63)/64)
 	knownWrites := uint32(0)
 	for at := 0; at < n; at += 4 {
