@@ -780,7 +780,22 @@ type globalScoreByteScanner struct {
 	classifier wasm.ModuleInstructionClassifier
 }
 
+// Explicit expression frames bound native stack use independently of Wasm nesting.
+type hintScanFrame struct {
+	depth, loopDepth, curLoop    int
+	prevI32                      int32
+	prevOp, shiftDepth, op       byte
+	stopAtElse, calls, thenCalls bool
+}
+type globalScanFrame struct {
+	depth, loopDepth int
+	stopAtElse       bool
+}
+
 func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse bool) (byte, error) {
+	var inline [16]globalScanFrame
+	frames := inline[:0]
+enterExpression:
 	if depth > 20000 {
 		return 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
@@ -791,49 +806,33 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 			return 0, err
 		}
 		switch op {
-		case 0x0b: // end
-			return op, nil
-		case 0x05: // else
-			if stopAtElse {
+		case 0x0b, 0x05:
+			if op == 0x05 && !stopAtElse {
+				return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+			}
+			if len(frames) == 0 {
 				return op, nil
 			}
-			return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+			if op == 0x05 {
+				stopAtElse = false
+				continue
+			}
+			parent := frames[len(frames)-1]
+			depth, loopDepth, stopAtElse = parent.depth, parent.loopDepth, parent.stopAtElse
+			frames = frames[:len(frames)-1]
+
 		case 0x02, 0x03, 0x04: // block, loop, if
 			if err := s.classifyInstructionInto(op, &imm); err != nil {
 				return 0, err
 			}
-			switch op {
-			case 0x02: // block
-				term, err := s.scanExpr(depth+1, loopDepth, false)
-				if err != nil {
-					return 0, err
-				}
-				if term != 0x0b {
-					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-			case 0x03: // loop
-				term, err := s.scanExpr(depth+1, loopDepth+1, false)
-				if err != nil {
-					return 0, err
-				}
-				if term != 0x0b {
-					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-			case 0x04: // if
-				term, err := s.scanExpr(depth+1, loopDepth, true)
-				if err != nil {
-					return 0, err
-				}
-				if term == 0x05 {
-					term, err = s.scanExpr(depth+1, loopDepth, false)
-					if err != nil {
-						return 0, err
-					}
-				}
-				if term != 0x0b {
-					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
+			frames = append(frames, globalScanFrame{depth, loopDepth, stopAtElse})
+			depth++
+			if op == 0x03 {
+				loopDepth++
 			}
+			stopAtElse = op == 0x04
+			goto enterExpression
+
 		case 0x23, 0x24: // global.get/set
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -851,13 +850,11 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 			if err := s.classifyInstructionInto(op, &imm); err != nil {
 				return 0, err
 			}
-			term, err := s.scanExpr(depth+1, loopDepth, false)
-			if err != nil {
-				return 0, err
-			}
-			if term != 0x0b {
-				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-			}
+			frames = append(frames, globalScanFrame{depth, loopDepth, stopAtElse})
+			depth++
+			stopAtElse = false
+			goto enterExpression
+
 		default:
 			if err := s.classifyInstructionInto(op, &imm); err != nil {
 				return 0, err
@@ -1042,14 +1039,19 @@ func (s *byteBodyScanner) recordPhysicalEvent(op byte, kind shared.LocalEventKin
 }
 
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
-	if depth > 20000 {
-		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
-	}
-	subHasCall := false
-	weight := loopWeight(loopDepth)
+	var inline [16]hintScanFrame
+	frames := inline[:0]
+	var subHasCall bool
+	var weight int64
 	var prevOp byte
 	var prevI32 int32
 	var variableShiftDepth uint8
+enterExpression:
+	if depth > 20000 {
+		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
+	}
+	subHasCall, prevOp, prevI32, variableShiftDepth = false, 0, 0, 0
+	weight = loopWeight(loopDepth)
 	for {
 		op, err := s.r.byte()
 		if err != nil {
@@ -1057,13 +1059,35 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 		s.notePhysicalEvent(op, depth)
 		switch op {
-		case 0x0b: // end
-			return subHasCall, op, nil
-		case 0x05: // else
-			if stopAtElse {
+		case 0x0b, 0x05: // end or else
+			if op == 0x05 && !stopAtElse {
+				return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+			}
+			if len(frames) == 0 {
 				return subHasCall, op, nil
 			}
-			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+			parent := &frames[len(frames)-1]
+			if op == 0x05 {
+				parent.thenCalls = subHasCall
+				stopAtElse = false
+				goto enterExpression
+			}
+			calls := subHasCall || parent.thenCalls
+			if parent.op == 0x03 {
+				if !calls {
+					for _, g := range s.elig.globalsIn(curLoop) {
+						markGlobalEligible(s.globalHints, g)
+					}
+				}
+				s.elig.pop(curLoop)
+			}
+			depth, loopDepth, curLoop, stopAtElse = parent.depth, parent.loopDepth, parent.curLoop, parent.stopAtElse
+			subHasCall = parent.calls || calls
+			prevOp, prevI32, variableShiftDepth = parent.op, parent.prevI32, 0
+			weight = loopWeight(loopDepth)
+			frames = frames[:len(frames)-1]
+			continue
+
 		case 0x0e: // br_table: exact jump-table-data admission hint
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
@@ -1092,50 +1116,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
-			switch op {
-			case 0x02: // block
-				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
-				if err != nil {
-					return true, 0, err
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				subHasCall = subHasCall || calls
-			case 0x03: // loop
-				loop := s.elig.push()
-				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false)
-				if err != nil {
-					return true, 0, err
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				if calls {
-					subHasCall = true
-				} else {
-					for _, g := range s.elig.globalsIn(loop) {
-						markGlobalEligible(s.globalHints, g)
-					}
-				}
-				s.elig.pop(loop)
-			case 0x04: // if
-				callsThen, term, err := s.scanExpr(depth+1, loopDepth, curLoop, true)
-				if err != nil {
-					return true, 0, err
-				}
-				callsElse := false
-				if term == 0x05 {
-					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false)
-					if err != nil {
-						return true, 0, err
-					}
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				subHasCall = subHasCall || callsThen || callsElse
+			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevOp: prevOp, prevI32: prevI32, shiftDepth: variableShiftDepth, op: op})
+			depth++
+			if op == 0x03 {
+				loopDepth++
+				curLoop = s.elig.push()
 			}
+			stopAtElse = op == 0x04
+			goto enterExpression
+
 		case 0x10, 0x12: // call, return_call
 			idx, err := s.r.U32()
 			if err != nil {
@@ -1313,14 +1302,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
-			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
-			if err != nil {
-				return true, 0, err
-			}
-			if term != 0x0b {
-				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-			}
-			subHasCall = subHasCall || calls
+			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevOp: prevOp, prevI32: prevI32, shiftDepth: variableShiftDepth, op: op})
+			depth++
+			stopAtElse = false
+			goto enterExpression
+
 		case 0x08: // throw
 			s.h.flags.set(hintModuleEH)
 			if _, err := s.r.U32(); err != nil {
