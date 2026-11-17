@@ -153,7 +153,8 @@ func TestIntegerWordMapProbeBudgetsAndOwnedReads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := fn{nLocals: 6, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtI32}, classifier: wasm.NewModuleInstructionClassifier(m, true), integerWordMapWork: tc.work}
 			r := wasm.ReaderFrom(tc.body)
-			p, ok := f.inspectIntegerWordMap(&r)
+			var p integerWordMapPlan
+			ok := f.inspectIntegerWordMap(&r, &p)
 			if ok != tc.accept || r.Offset() != 0 || f.integerWordMapWork > integerWordMapWorkLimit {
 				t.Fatal("probe contract", ok, r.Offset(), f.integerWordMapWork)
 			}
@@ -177,7 +178,16 @@ func TestIntegerWordMapProbeBudgetsAndOwnedReads(t *testing.T) {
 					}
 				}
 			}
-			if allocations := testing.AllocsPerRun(100, func() { f.integerWordMapWork = tc.work; f.inspectIntegerWordMap(&r) }); allocations != 0 {
+			want := p
+			f.integerWordMapWork = tc.work
+			if reused := f.inspectIntegerWordMap(&r, &p); reused != ok || p != want {
+				t.Fatal("reused workspace changed the proof")
+			}
+			if allocations := testing.AllocsPerRun(100, func() {
+				f.integerWordMapWork = tc.work
+				var candidate integerWordMapPlan
+				f.inspectIntegerWordMap(&r, &candidate)
+			}); allocations != 0 {
 				t.Fatal("probe allocation", allocations)
 			}
 		})

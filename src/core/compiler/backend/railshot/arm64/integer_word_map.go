@@ -76,7 +76,8 @@ func (f *fn) hasIntegerWordMapPrefix(source *wasm.Reader) bool {
 	return false
 }
 
-func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, ok bool) {
+func (f *fn) inspectIntegerWordMap(source *wasm.Reader, p *integerWordMapPlan) bool {
+	*p = integerWordMapPlan{}
 	defer func() {
 		f.integerWordMapWork = uint16(min(integerWordMapWorkLimit, int(f.integerWordMapWork)+p.proofWork))
 	}()
@@ -113,22 +114,22 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 		pc := r.Offset()
 		op, err := r.Byte()
 		if err != nil {
-			return p, false
+			return false
 		}
 		switch op {
 		case 0x20, 0x21, 0x22:
 			x, err := r.U32()
 			if err != nil || x >= uint32(f.nLocals) || (f.localType[x] != mtI32 && f.localType[x] != mtF32 && f.localType[x] != mtF64) {
-				return p, false
+				return false
 			}
 			slot := shared.FindLoopLocal(p.locals[:p.localN], x)
 			if slot < 0 {
 				if p.localN == len(p.locals) {
-					return p, false
+					return false
 				}
 				id := add(0x20, int(x), 0, 0, pc)
 				if id < 0 {
-					return p, false
+					return false
 				}
 				if f.localType[x] == mtF32 {
 					p.nodes[id].Type = wasm.F32
@@ -145,11 +146,11 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 					entryRead[slot] = true
 				}
 				if !push(cell.Value) {
-					return p, false
+					return false
 				}
 			} else {
 				if depth == 0 {
-					return p, false
+					return false
 				}
 				cell.Assign(stack[depth-1], 0)
 				if op == 0x21 {
@@ -159,53 +160,53 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 		case 0x41:
 			x, err := r.I32()
 			if err != nil || !push(add(op, 0, 0, uint64(uint32(x)), pc)) {
-				return p, false
+				return false
 			}
 		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x76, 0x47, 0x49:
 			if depth < 2 {
-				return p, false
+				return false
 			}
 			depth -= 2
 			if !push(add(op, stack[depth], stack[depth+1], 0, pc)) {
-				return p, false
+				return false
 			}
 		case 0xb2, 0xb3, 0xb7, 0xb8:
 			if !integerFloatMapEnabled || depth == 0 || p.nodes[stack[depth-1]].Type != wasm.I32 {
-				return p, false
+				return false
 			}
 			x := add(op, stack[depth-1], 0, 0, pc)
 			if x < 0 {
-				return p, false
+				return false
 			}
 			stack[depth-1] = x
 		case 0x36, 0x38, 0x39:
 			if op != 0x36 && !integerFloatMapEnabled {
-				return p, false
+				return false
 			}
 			mem, offset, err := f.readMemArg(&r)
 			if err != nil || mem != 0 || offset > 1<<20 || depth < 2 || p.storeN == len(p.stores) {
-				return p, false
+				return false
 			}
 			depth -= 2
 			if p.storeN == 0 {
 				p.storeOp = op
 			} else if p.storeOp != op {
-				return p, false
+				return false
 			}
 			p.stores[p.storeN] = shared.LoopStore[int]{Address: stack[depth], Value: stack[depth+1], Offset: offset, PC: uint32(pc)}
 			p.storeN++
 		case 0x0d:
 			label, err := r.U32()
 			if err != nil || label != 0 || depth != 1 || p.storeN == 0 || p.storeN == 3 {
-				return p, false
+				return false
 			}
 			end, err := r.Byte()
 			if err != nil || end != 0x0b || r.Offset()-start > 512 {
-				return p, false
+				return false
 			}
 			condition := p.nodes[stack[0]]
 			if condition.Op != 0x47 && condition.Op != 0x49 {
-				return p, false
+				return false
 			}
 			p.proofLimit = integerWordMapWorkLimit - int(f.integerWordMapWork)
 			// Match the positive index update on either side of !=, but only
@@ -230,15 +231,15 @@ func (f *fn) inspectIntegerWordMap(source *wasm.Reader) (p integerWordMapPlan, o
 					continue
 				}
 				if p.finish(entryRead) {
-					return p, true
+					return true
 				}
 			}
-			return p, false
+			return false
 		default:
-			return p, false
+			return false
 		}
 	}
-	return p, false
+	return false
 }
 
 func (p *integerWordMapPlan) local(index int) *shared.LoopLocal[machineType, int] {
@@ -447,8 +448,8 @@ func (f *fn) emitIntegerWordMap(source *wasm.Reader) {
 }
 
 func (f *fn) emitIntegerWordMapBody(source *wasm.Reader) {
-	p, ok := f.inspectIntegerWordMap(source)
-	if !ok {
+	var p integerWordMapPlan
+	if !f.inspectIntegerWordMap(source, &p) {
 		return
 	}
 	f.stats.peep("integer-word-map-recognized")
