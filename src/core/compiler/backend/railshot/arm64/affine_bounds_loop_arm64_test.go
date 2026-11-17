@@ -281,3 +281,30 @@ func TestAffineBoundsDeadEndUses(t *testing.T) {
 		}
 	}
 }
+
+func TestAffineBoundsLoopAdmission(t *testing.T) {
+	a, _, back := affineBoundsFixture()
+	if !hasAffineBoundsLoopCandidate(a.B, X27) {
+		t.Fatal("rejected an accepted bounds plan")
+	}
+	for _, target := range []int{back, back + 4} {
+		b := append([]byte{}, a.B...)
+		wrWord(b, back, 0x54000001|uint32((target-back)/4)<<5)
+		if hasAffineBoundsLoopCandidate(b, X27) {
+			t.Fatal("admitted a non-backward latch")
+		}
+	}
+	b := append([]byte{}, a.B...)
+	checks := 0
+	for pc := 0; pc+4 <= len(b); pc += 4 {
+		if rdWord(b, pc)&0xfffffc1f == 0xeb00001f|uint32(X27)<<16 {
+			checks++
+			if checks > 3 {
+				wrWord(b, pc, nopWord)
+			}
+		}
+	}
+	if hasAffineBoundsLoopCandidate(b, X27) {
+		t.Fatal("admitted fewer than four bounds checks")
+	}
+}

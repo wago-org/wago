@@ -284,6 +284,32 @@ func (f *fn) emitAffineBoundsValue(v affineBoundsValue, a, z Reg) {
 	}
 }
 
+// Every accepted plan has a bounded backward CMP/B.NE latch and at least
+// four removable bounds checks. Screen those necessary conditions before
+// building branch targets or reserving the symbolic workspace.
+func hasAffineBoundsLoopCandidate(b []byte, memSize Reg) bool {
+	checks := 0
+	latch := false
+	for pc := 0; pc+4 <= len(b); pc += 4 {
+		w := rdWord(b, pc)
+		if checks < 4 && w&0xfffffc1f == 0xeb00001f|uint32(memSize)<<16 && pc+8 <= len(b) && rdWord(b, pc+4)&0xff00001f == 0x54000008 {
+			checks++
+		}
+		if !latch && pc >= 20 && w&0xff80001f == 0x54800001 {
+			cmp := rdWord(b, pc-4)
+			counter := Reg(cmp >> 5 & 31)
+			if cmp&0xffc0001f == 0x7100001f && cmp>>10&4095 >= 16 && counter != SP && counter != X16 && counter != X17 {
+				start, ok := branchTarget(pc, w)
+				latch = ok && start >= 0 && pc-start >= 36 && pc-start <= 512
+			}
+		}
+		if checks == 4 && latch {
+			return true
+		}
+	}
+	return false
+}
+
 // Guards choose an exact scalar clone. They never trap and never reorder memory
 // effects; failure enters the original checked body with its original registers.
 func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
@@ -291,7 +317,7 @@ func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
 		return
 	}
 	n := len(f.a.B) &^ 3
-	if n > 64<<10 {
+	if n > 64<<10 || !hasAffineBoundsLoopCandidate(f.a.B[:n], f.memSizeReg) {
 		return
 	}
 	f.emitAffineBoundsLoops(n, entries)
