@@ -953,10 +953,15 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.cmpRR(X16, X17, true)
 		guard(condB)
 	}
-	// Scalar stores and native Q stores both advance in source order. Only
-	// forward dependences within one Q group need scalar execution; longer
-	// dependences remain ordered between groups. Invariant memory above still
-	// requires whole-loop disjointness because its value is broadcast.
+	// A single-store source iteration preserves forward dependences between
+	// native Q groups. Multiple-store iterations can capture loads for later
+	// groups before their first store; without an effect-order proof, retain
+	// whole-loop disambiguation for those candidates.
+	scalarWidth := uint32(4)
+	if p.wide {
+		scalarWidth = 8
+	}
+	packetDependence := floatMapPacketDependenceEnabled && p.step == scalarWidth
 	var checked [16]struct {
 		base   Reg
 		offset uint32
@@ -1008,7 +1013,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// The range checks above exclude address wrap. Equal symbolic
 			// bases then differ by this exact widened byte distance.
 			if s == d {
-				if floatMapPacketDependenceEnabled {
+				if packetDependence {
 					continue
 				}
 				if off != dOff {
@@ -1024,7 +1029,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		f.floatMapOffset(X16, d, uint64(dOff), true, X16)
 		f.floatMapOffset(X17, s, uint64(off), true, X17)
-		if floatMapPacketDependenceEnabled {
+		if packetDependence {
 			if floatMapDirectionGuardEnabled {
 				// Equal or backward output addresses introduce no forward
 				// dependence. Keep their cheap branch around the subtraction.

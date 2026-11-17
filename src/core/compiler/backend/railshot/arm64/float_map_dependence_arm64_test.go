@@ -5,6 +5,9 @@ package arm64
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 	"math"
 	"testing"
 )
@@ -46,6 +49,60 @@ func TestFloatMapPacketDependenceDistances(t *testing.T) {
 						}
 					}
 				}
+			}
+		}
+	}
+}
+
+// Capture a complete source iteration before its first store. Native vector
+// groups must not overwrite values captured by a later group in that iteration.
+func TestFloatMapCapturedIterationOverlap(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		width, load, store, typ := uint32(4), byte(0x2a), byte(0x38), byte(0x7d)
+		if wide {
+			width, load, store, typ = 8, 0x2b, 0x39, 0x7c
+		}
+		for _, count := range []uint32{2, 4, 8} {
+			for _, distance := range []int32{-32, -16, -4, 0, 4, 16, 32, 64, 512} {
+				t.Run(fmt.Sprintf("wide%t/count%d/distance%d", wide, count, distance), func(t *testing.T) {
+					body := []byte{2, 3, 0x7f, byte(count), typ}
+					constant := func(v uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(v))...) }
+					constant(4096)
+					body = append(body, 0x21, 0)
+					constant(uint32(4096 + distance))
+					body = append(body, 0x21, 1, 0x03, 0x40)
+					address := func(base byte, off uint32) {
+						body = append(body, 0x20, base, 0x20, 2, 0x6a)
+						constant(off)
+						body = append(body, 0x6a)
+					}
+					for i := uint32(0); i < count; i++ {
+						address(0, i*width)
+						body = append(body, load, 0, 0, 0x21, byte(3+i))
+					}
+					for i := uint32(0); i < count; i++ {
+						address(1, i*width)
+						body = append(body, 0x20, byte(3+i), store, 0, 0)
+					}
+					body = append(body, 0x20, 2)
+					constant(count * width)
+					body = append(body, 0x6a, 0x22, 2)
+					constant(256)
+					body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 2, 0x0b)
+					m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+					initial := make([]byte, 65536)
+					for i := 0; i < len(initial)/4; i++ {
+						binary.LittleEndian.PutUint32(initial[4*i:], math.Float32bits(float32(i)))
+					}
+					want, wm, we, _ := runFloatMapMemory(t, m, false, initial)
+					got, gm, ge, hits := runFloatMapMemory(t, m, true, initial)
+					if we != nil || ge != nil || got != want || !bytes.Equal(wm, gm) {
+						t.Fatalf("got %x/%v want %x/%v memory equal %t", got, ge, want, we, bytes.Equal(wm, gm))
+					}
+					if diagnosticsEnabled && hits != 1 {
+						t.Fatal("map candidate was not emitted")
+					}
+				})
 			}
 		}
 	}
