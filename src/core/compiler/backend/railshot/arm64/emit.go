@@ -392,12 +392,14 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return dest
 	}
 
-	if r := f.tryOwnedResultSink(node, left, right, dest); r != regNone {
-		f.release(rightReleaseAfter)
-		if pinnedRight != regNone {
-			f.pinned = f.pinned.remove(pinnedRight)
+	if dest != regNone {
+		if r := f.tryOwnedResultSink(node, left, right, dest); r != regNone {
+			f.release(rightReleaseAfter)
+			if pinnedRight != regNone {
+				f.pinned = f.pinned.remove(pinnedRight)
+			}
+			return r
 		}
-		return r
 	}
 
 	if dest == regNone {

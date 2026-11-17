@@ -213,8 +213,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x1a: // drop
 		f.dropValue()
 	case 0x1b: // select
-		if done, err := f.trySelectSubtract(r); done || err != nil {
-			return err
+		if next, ok := r.Peek(); ok && (next == 0x6b || next == 0x7d) {
+			if done, err := f.trySelectSubtract(r); done || err != nil {
+				return err
+			}
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
@@ -224,8 +226,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return err
 		}
-		if done, err := f.trySelectSubtract(r); done || err != nil {
-			return err
+		if next, ok := r.Peek(); ok && (next == 0x6b || next == 0x7d) {
+			if done, err := f.trySelectSubtract(r); done || err != nil {
+				return err
+			}
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
@@ -298,11 +302,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
 			// match falls through and installs the exact source fact below.
 			f.setFactsForLocal(int(x)+f.localBase, 0)
-			if done, err := f.tryArithmeticTeeBranch(r, int(x)+f.localBase); done || err != nil {
-				return err
-			}
-			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
-				return err
+			if next, ok := r.Peek(); ok && next == 0x0d {
+				if done, err := f.tryArithmeticTeeBranch(r, int(x)+f.localBase); done || err != nil {
+					return err
+				}
+				if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
+					return err
+				}
 			}
 		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
