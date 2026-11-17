@@ -36,7 +36,9 @@ The probe compiles one module in a fresh process, using the public API and one
 function worker. Input reading and SHA-256 hashing are outside compilation time,
 but inside process RSS. It performs exactly one compilation; no warmup, forced
 GC, cache priming, or post-compilation RSS subtraction. Collect absolute Linux
-peak RSS using `/usr/bin/time -f '%M'` (KiB). An `-empty` process establishes the
+peak RSS from `/proc/self/status` VmHWM (KiB) before serialization.
+Do not use child RUSAGE_SELF Maxrss: it can retain the Python launcher's
+pre-exec high-water and falsely inflate small-process measurements. An `-empty` process establishes the
 probe/runtime floor but does not reduce the reported compiler RSS.
 
 Use identical toolchain, build flags, machine, CPU affinity and corpus bytes for

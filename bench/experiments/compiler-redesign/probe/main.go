@@ -10,6 +10,8 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"time"
 
 	wago "github.com/wago-org/wago"
@@ -20,7 +22,8 @@ func main() {
 	profile := flag.String("cpuprofile", "", "optional diagnostic CPU profile; never use for acceptance timing")
 	flag.Parse()
 	if *empty {
-		fmt.Println(`{"empty":true}`)
+		rss := peakRSS()
+		fmt.Printf("{\"empty\":true,\"rss_kib\":%d}\n", rss)
 		return
 	}
 	if flag.NArg() != 1 {
@@ -40,13 +43,15 @@ func main() {
 	compiled, err := wago.Compile(wago.NewRuntimeConfig().WithFunctionWorkers(1), data)
 	elapsed := time.Since(start)
 	check(err)
+	rss := peakRSS()
 	result := struct {
+		RSSKiB     int64  `json:"rss_kib"`
 		SHA256     string `json:"sha256"`
 		Go         string `json:"go"`
 		InputBytes int    `json:"input_bytes"`
 		CompileNS  int64  `json:"compile_ns"`
 		CodeBytes  int    `json:"code_bytes"`
-	}{hex.EncodeToString(hash[:]), runtime.Version(), len(data), elapsed.Nanoseconds(), compiled.CodeSize()}
+	}{rss, hex.EncodeToString(hash[:]), runtime.Version(), len(data), elapsed.Nanoseconds(), compiled.CodeSize()}
 	check(json.NewEncoder(os.Stdout).Encode(result))
 	check(compiled.Close())
 	runtime.KeepAlive(data)
@@ -56,4 +61,20 @@ func check(err error) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// VmHWM belongs to this exec image. RUSAGE_SELF Maxrss can include the
+// launching parent's pre-exec high-water and overstate a small compiler.
+func peakRSS() int64 {
+	b, err := os.ReadFile("/proc/self/status")
+	check(err)
+	for _, line := range strings.Split(string(b), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 3 && fields[0] == "VmHWM:" {
+			n, e := strconv.ParseInt(fields[1], 10, 64)
+			check(e)
+			return n
+		}
+	}
+	panic("missing Linux VmHWM")
 }
