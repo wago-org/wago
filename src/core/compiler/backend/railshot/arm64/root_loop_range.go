@@ -18,6 +18,12 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // returned range covers values observed by the body before the latch update.
 // No trapping check is hoisted.
 func (f *fn) proveRootLoopRange(body []byte, known uint64, entries *[64]uint32) (local uint8, minimum, maximum uint32) {
+	return f.scanRootLoopRange(body, known, entries, false)
+}
+
+// allowSuffix lets the source lookahead stop at the loop's end without first
+// decoding the body merely to find that end. Nested control still rejects.
+func (f *fn) scanRootLoopRange(body []byte, known uint64, entries *[64]uint32, allowSuffix bool) (local uint8, minimum, maximum uint32) {
 	if len(body) > 16<<10 {
 		return
 	}
@@ -59,11 +65,14 @@ func (f *fn) proveRootLoopRange(body []byte, known uint64, entries *[64]uint32) 
 		if op == 0x0d {
 			branches++
 		}
-		if op == 0x0b && r.HasNext() {
+		if op == 0x0b && r.HasNext() && !allowSuffix {
 			return
 		}
 		recent[count%len(recent)] = in
 		count++
+		if op == 0x0b {
+			break
+		}
 	}
 	if count < 6 || branches != 1 {
 		return
@@ -168,33 +177,39 @@ func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 		}
 	}
 	prefix := wasm.ReaderFrom(body)
-	var imm wasm.InstructionImmediate
 	depth := 0
 	previousConst := false
 	var previousValue uint32
 	for prefix.Offset() < start {
 		op, err := prefix.Byte()
+		if err != nil {
+			return
+		}
 		currentConst := false
 		var currentValue uint32
+		var localIndex uint32
 		if op == 0x41 {
-			copy := prefix
-			value, e := copy.I32()
+			value, e := prefix.I32()
 			if e != nil {
 				return
 			}
 			currentConst, currentValue = true, uint32(value)
+		} else if op == 0x21 || op == 0x22 {
+			localIndex, err = prefix.U32()
+		} else {
+			err = f.classifier.SkipImmediate(&prefix, op)
 		}
-		if err != nil || f.classifier.ClassifyInto(&prefix, op, &imm) != nil {
+		if err != nil {
 			return
 		}
 		if op == 0x21 || op == 0x22 {
-			if int(imm.Index) >= f.nLocals {
+			if int(localIndex) >= f.nLocals {
 				return
 			}
-			bit := uint64(1) << imm.Index
-			if depth == 0 && previousConst && f.localType[imm.Index] == mtI32 {
+			bit := uint64(1) << localIndex
+			if depth == 0 && previousConst && f.localType[localIndex] == mtI32 {
 				known |= bit
-				entries[imm.Index] = previousValue
+				entries[localIndex] = previousValue
 			} else {
 				known &^= bit
 			}
@@ -212,27 +227,9 @@ func (f *fn) prepareRootLoopRange(r *wasm.Reader) {
 	if prefix.Offset() != start {
 		return
 	}
-	scan := *r
-	depth = 0
-	for scan.HasNext() {
-		op, err := scan.Byte()
-		if err != nil || f.classifier.ClassifyInto(&scan, op, &imm) != nil {
-			return
-		}
-		switch op {
-		case 0x02, 0x03, 0x04, 0x1f:
-			depth++
-		case 0x0b:
-			if depth == 0 {
-				loopBody := body[begin:scan.Offset()]
-				f.rootLoopRangeLocal, f.rootLoopRangeMinimum, f.rootLoopRangeMaximum = f.proveRootLoopRange(loopBody, known, &entries)
-				if f.rootLoopRangeLocal != 0 {
-					f.stats.peep("root-loop-address-range")
-				}
-				return
-			}
-			depth--
-		}
+	f.rootLoopRangeLocal, f.rootLoopRangeMinimum, f.rootLoopRangeMaximum = f.scanRootLoopRange(body[begin:], known, &entries, true)
+	if f.rootLoopRangeLocal != 0 {
+		f.stats.peep("root-loop-address-range")
 	}
 	return
 }

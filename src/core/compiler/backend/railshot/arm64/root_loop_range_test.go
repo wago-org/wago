@@ -143,6 +143,11 @@ func TestRootLoopRangeLatchProofBoundaries(t *testing.T) {
 		body := append(append([]byte(nil), tc.prefix...), tail(tc.index, tc.stride, tc.limit)...)
 		var entries [64]uint32
 		local, minimum, maximum := f.proveRootLoopRange(body, tc.zero, &entries)
+		withSuffix := append(append([]byte(nil), body...), 0x41, 0x80, 0, 0x1a, 0x0b)
+		prefixLocal, prefixMin, prefixMax := f.scanRootLoopRange(withSuffix, tc.zero, &entries, true)
+		if prefixLocal != local || prefixMin != minimum || prefixMax != maximum {
+			t.Fatalf("%s: suffix changed proof from %d/%d..%d to %d/%d..%d", tc.name, local, minimum, maximum, prefixLocal, prefixMin, prefixMax)
+		}
 		if (local != 0) != tc.want || tc.want && (local != uint8(tc.index+1) || minimum != 0 || maximum != uint32(tc.limit)) {
 			t.Fatalf("%s: local=%d range=%d..%d want=%v", tc.name, local, minimum, maximum, tc.want)
 		}
