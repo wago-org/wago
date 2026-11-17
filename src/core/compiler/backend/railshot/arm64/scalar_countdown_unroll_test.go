@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 )
@@ -63,7 +64,7 @@ func TestScalarLoopUnrollSelection(t *testing.T) {
 		}
 		cm.CodeImage.Close()
 		hit := stats.Funcs[0].Peephole["scalar-loop-unroll"] + stats.Funcs[0].Peephole["scalar-loop-unroll-layout"]
-		if (hit != 0) != on {
+		if (hit != 0) != (on && !profileEnabled) {
 			t.Fatalf("on%v hits%d", on, hit)
 		}
 	}
@@ -122,5 +123,19 @@ func TestScalarLoopUnrollMatcherGuards(t *testing.T) {
 				t.Fatal("screen accepted a mismatched latch")
 			}
 		})
+	}
+}
+
+func TestScalarCountdownUnrollDeclinesSourceRecording(t *testing.T) {
+	var a enc.Asm
+	a.B = binary.LittleEndian.AppendUint32(a.B, 0x34000013|5<<5)
+	for _, w := range []uint32{0x0b1302c9, 0xca0902b5, 0x71000673, 0x54000001 | uint32(0x7ffff-2)<<5} {
+		a.B = binary.LittleEndian.AppendUint32(a.B, w)
+	}
+	before := append([]byte(nil), a.B...)
+	f := fn{a: &a, policy: currentCodegenPolicy(), stats: &CodegenStats{RecordSources: true}}
+	f.finalizeScalarLoopUnroll()
+	if !bytes.Equal(before, f.a.B) {
+		t.Fatal("countdown unroll changed code requiring source attribution")
 	}
 }
