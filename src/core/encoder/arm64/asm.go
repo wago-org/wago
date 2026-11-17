@@ -19,7 +19,10 @@
 // same way they drive the amd64 encoder.
 package arm64
 
-import "math/bits"
+import (
+	"encoding/binary"
+	"math/bits"
+)
 
 // Reg is a physical register number. GPRs are 0..30 (X0..X30 / W0..W30); 31 is
 // the zero register (XZR/WZR) in most encodings and the stack pointer (SP) in a
@@ -130,17 +133,17 @@ func (a *Asm) Len() int { return len(a.B) }
 
 // wordAt reads the 32-bit word at byte offset pos.
 func (a *Asm) wordAt(pos int) uint32 {
-	return uint32(a.B[pos]) | uint32(a.B[pos+1])<<8 | uint32(a.B[pos+2])<<16 | uint32(a.B[pos+3])<<24
+	b := a.B[:len(a.B):len(a.B)]
+	return binary.LittleEndian.Uint32(b[pos : pos+4])
 }
 
 // patchWord OR-s extra into the word at byte offset pos (used to fill a branch
 // displacement field left zero by a placeholder emitter).
 func (a *Asm) patchWord(pos int, extra uint32) {
-	w := a.wordAt(pos) | extra
-	a.B[pos] = byte(w)
-	a.B[pos+1] = byte(w >> 8)
-	a.B[pos+2] = byte(w >> 16)
-	a.B[pos+3] = byte(w >> 24)
+	code := a.B[:len(a.B):len(a.B)]
+	b := code[pos : pos+4]
+	w := binary.LittleEndian.Uint32(b) | extra
+	binary.LittleEndian.PutUint32(b, w)
 }
 
 func r(x Reg) uint32 { return uint32(x) & 31 }

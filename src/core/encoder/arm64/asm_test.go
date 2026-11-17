@@ -517,3 +517,24 @@ func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestWordAccessRejectsUnemittedCapacity(t *testing.T) {
+	for name, access := range map[string]func(*Asm, int){
+		"read":  func(a *Asm, pos int) { a.wordAt(pos) },
+		"patch": func(a *Asm, pos int) { a.patchWord(pos, 0xffffffff) },
+	} {
+		for _, tc := range []struct{ length, position int }{{0, 0}, {3, 0}, {4, 1}, {4, -1}, {3, 4}} {
+			backing := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+			before := bytes.Clone(backing)
+			a := &Asm{B: backing[:tc.length]}
+			panicked := false
+			func() {
+				defer func() { panicked = recover() != nil }()
+				access(a, tc.position)
+			}()
+			if !panicked || !bytes.Equal(backing, before) {
+				t.Fatalf("%s length=%d position=%d: panic=%t bytes=%x", name, tc.length, tc.position, panicked, backing)
+			}
+		}
+	}
+}
