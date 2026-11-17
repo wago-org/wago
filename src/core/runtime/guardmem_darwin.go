@@ -51,7 +51,6 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 		_ = syscall.Munmap(mem)
 		return nil, fmt.Errorf("guard mprotect commit: %w", err)
 	}
-	pretouchGuardedInitialMemory(mem[linOff:commit])
 	j := &JobMemory{
 		mem:         mem[:commit],
 		linOff:      linOff,
@@ -142,61 +141,27 @@ func (j *JobMemory) decommitGuarded() error {
 		return err
 	}
 	clear(lin)
-	reclaim := lin
-	if len(reclaim) <= wasmPageBytes {
-		reclaim = nil
-	} else {
-		reclaim = reclaim[wasmPageBytes:]
-	}
 	// Reclaim while the range is writable. On Intel macOS madviseDontNeed
 	// deliberately clears the range because Rosetta's MADV_ZERO does not discard
 	// translated pages; doing that after PROT_NONE would fault in host code.
-	// Keep one already-zeroed Wasm page resident in the single-entry cache so
-	// rearming ordinary small instances does not fault four Darwin pages back in.
-	if len(reclaim) != 0 {
-		if err := madviseDontNeed(reclaim); err != nil {
-			return err
-		}
-		return syscall.Mprotect(reclaim, syscall.PROT_NONE)
+	if err := madviseDontNeed(lin); err != nil {
+		return err
 	}
-	return nil
+	return syscall.Mprotect(lin, syscall.PROT_NONE)
 }
 
 func (j *JobMemory) rearmGuarded(linBytes, maxBytes int) error {
-	firstPageResident := j.curBytes() != 0
-	if linBytes == 0 && firstPageResident {
-		lin := j.mem[:j.linOff+wasmPageBytes][j.linOff:]
-		if err := syscall.Mprotect(lin, syscall.PROT_NONE); err != nil {
-			return err
-		}
-	}
 	if linBytes > 0 {
 		lin := j.mem[:j.linOff+linBytes][j.linOff:]
-		commit := lin
-		if firstPageResident {
-			commit = commit[min(len(commit), wasmPageBytes):]
+		if err := syscall.Mprotect(lin, syscall.PROT_READ|syscall.PROT_WRITE); err != nil {
+			return err
 		}
-		if len(commit) != 0 {
-			if err := syscall.Mprotect(commit, syscall.PROT_READ|syscall.PROT_WRITE); err != nil {
-				return err
-			}
-		}
-		pretouchGuardedInitialMemory(lin)
 	}
 	j.mem = j.mem[:j.linOff+linBytes]
 	j.linLen = linBytes
 	clear(j.mem[j.linOff-basedataSize : j.linOff])
 	j.putGuardedSizeCaches(linBytes, maxBytes)
 	return nil
-}
-
-func pretouchGuardedInitialMemory(lin []byte) {
-	// Fault in at most one Wasm page while instantiation owns the cost. The
-	// reservation remains demand-paged beyond it, while ordinary small guests
-	// do not inherit Darwin's anonymous-page faults in their first invocation.
-	for offset, limit := 0, min(len(lin), wasmPageBytes); offset < limit; offset += pageSize {
-		lin[offset] = 0
-	}
 }
 
 type guardRegion struct {
