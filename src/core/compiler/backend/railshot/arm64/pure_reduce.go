@@ -448,6 +448,10 @@ func (f *fn) emitPureReduce(r *wasm.Reader) {
 	if !wide {
 		return
 	}
+	f.emitPureReduceBody(r)
+}
+
+func (f *fn) emitPureReduceBody(r *wasm.Reader) {
 	p, ok := f.inspectPureReduce(r)
 	if !ok {
 		return
