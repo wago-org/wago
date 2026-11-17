@@ -27,7 +27,10 @@ func TestUnsignedMagicQuotientDirectDestination(t *testing.T) {
 func TestUnsignedMagicQuotientReusesDividend(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	for _, d := range []uint64{7, 19, 31, 97, 127} {
-		m := divConstMod(t, false, divOp{"i32.div_u", 0x6e, false, false}, d)
+		body := []byte{0, 0x20, 0, 0x41, 1, 0x6a, 0x41}
+		body = append(body, wasmtest.SLEB32(int32(d))...)
+		body = append(body, 0x6e, 0x0b)
+		m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
 		var stats ModuleStats
 		c, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
 		if err != nil {
@@ -35,7 +38,7 @@ func TestUnsignedMagicQuotientReusesDividend(t *testing.T) {
 		}
 		c.CodeImage.Close()
 		if got := stats.Funcs[0].Peephole["magic-u32-wide-in-place"]; got != 1 {
-			t.Fatalf("d=%d selections=%d want 1", d, got)
+			t.Fatalf("d=%d selections=%d want 1; peeps=%v", d, got, stats.Funcs[0].Peephole)
 		}
 	}
 }

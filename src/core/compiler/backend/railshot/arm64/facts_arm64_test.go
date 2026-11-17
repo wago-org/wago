@@ -234,17 +234,19 @@ func TestLocalFactsInsideControlFlowArm64(t *testing.T) {
 		0x01, 0x01, 0x7f, // one declared i32 local
 		0x02, 0x7e, // block (result i64)
 		0x20, 0x00, // local.get 0
+		0x41, 0x01, // i32.const 1
+		0x6a,       // i32.add: establish the producer fact
 		0x21, 0x01, // local.set 1
 		0x20, 0x01, // local.get 1
 		0xad, // i64.extend_i32_u
 		0x0b, // end block
 		0x0b,
 	})
-	if got := runArm64u(t, m, 0xffffffff); got != 0xffffffff {
+	if got := runArm64u(t, m, 0xfffffffe); got != 0xffffffff {
 		t.Fatalf("controlled local result = %#x, want %#x", got, uint32(0xffffffff))
 	}
 	var stats ModuleStats
-	compiled, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	compiled, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{"straight-line-block": false}})
 	if err != nil {
 		t.Fatal(err)
 	}

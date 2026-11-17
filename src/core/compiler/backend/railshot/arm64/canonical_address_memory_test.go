@@ -13,15 +13,16 @@ func TestMemoryLoadIndexUXTWFoldsNoncanonicalAddressArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x00,
-		0x20, 0x00, 0x41, 42, 0x36, 0x02, 0x00, // store 42 at param0
+		0x41, 4, 0x41, 42, 0x36, 0x02, 0x00, // store 42 at address 4
 		0x20, 0x00, 0x28, 0x02, 0x00, // reload param0
 		0x0b,
 	})
 	compile := func(enabled bool) (*CodegenStats, []byte) {
 		t.Helper()
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: map[string]bool{
+		cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true, Stats: &stats, Optimizations: map[string]bool{
 			"uxtw-add":       enabled,
+			"value-facts":    false,
 			"store-load-fwd": false,
 			"store-forward":  false,
 		}})
@@ -55,7 +56,7 @@ func TestMemoryLoadIndexUXTWFoldsNoncanonicalAddressArm64(t *testing.T) {
 		t.Fatalf("UXTW memory instructions = %d, want at least 1", indexed)
 	}
 	for _, enabled := range []bool{false, true} {
-		opts := CompileOptions{Optimizations: map[string]bool{
+		opts := CompileOptions{ElideBoundsChecks: true, Optimizations: map[string]bool{
 			"uxtw-add":       enabled,
 			"store-load-fwd": false,
 			"store-forward":  false,
