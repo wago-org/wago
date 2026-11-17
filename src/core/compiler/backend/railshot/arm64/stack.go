@@ -10,6 +10,7 @@
 package arm64
 
 import (
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -275,6 +276,12 @@ const (
 	maxStackChunkCap     = 8192
 )
 
+type initialStackChunk [defaultStackArenaCap]elem
+
+// One pointer-free chunk bounds idle retention independently of module size and
+// compiler concurrency. Every slot is cleared by alloc before its next use.
+var idleInitialStackChunk atomic.Pointer[initialStackChunk]
+
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
 
 func newStackWithCap(capHint int) *stack {
@@ -289,13 +296,34 @@ func (s *stack) initWithCap(capHint int) {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
+	var first []elem
+	if capHint == defaultStackArenaCap {
+		if cached := idleInitialStackChunk.Swap(nil); cached != nil {
+			first = cached[:0]
+		}
+	}
+	if first == nil {
+		first = make([]elem, 0, capHint)
+	}
 	next, geometric := stackArenaGrowthCaps(capHint)
 	*s = stack{
-		chunks:           [][]elem{make([]elem, 0, capHint)},
+		chunks:           [][]elem{first},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
 	s.initSentinel()
+}
+
+// cacheInitialChunk ends this stack's ownership before publishing its buffer.
+// Call only after the compiler has finished and severed pending node references.
+func (s *stack) cacheInitialChunk() {
+	if len(s.chunks) == 0 || cap(s.chunks[0]) != defaultStackArenaCap {
+		return
+	}
+	chunk := (*initialStackChunk)(s.chunks[0][:defaultStackArenaCap])
+	s.chunks[0] = nil
+	s.head = nil
+	idleInitialStackChunk.CompareAndSwap(nil, chunk)
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {

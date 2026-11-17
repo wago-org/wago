@@ -1179,9 +1179,19 @@ func (sc *scratch) finishStackFunction() {
 	sc.nodeScratchDiscarded += sc.stack.finishFunction()
 }
 
-// finishStackWorker releases every pointer-rich node chunk after a parallel
+func (sc *scratch) cacheInitialStackChunk() {
+	if len(sc.stack.chunks) == 0 || cap(sc.stack.chunks[0]) != defaultStackArenaCap {
+		return
+	}
+	sc.clearNodeReferences()
+	sc.stack.cacheInitialChunk()
+}
+
+// finishStackWorker releases each worker-owned node chunk after a parallel
 // worker's final function. The join needs only worker code arenas and scalar
 // metadata; operand nodes cannot be reused again.
+// A process may retain one pointer-free 8 KiB initial chunk; worker-retained
+// resource counters exclude that fixed cache.
 func (sc *scratch) finishStackWorker() {
 	sc.scalar.FinishWorker()
 
@@ -1190,6 +1200,7 @@ func (sc *scratch) finishStackWorker() {
 	sc.nodeScratchDiscarded += retained
 	clear(sc.stack.cold[:cap(sc.stack.cold)])
 	sc.stack.cold = nil
+	sc.stack.cacheInitialChunk()
 	sc.stack.chunks = nil
 	sc.stack.head = nil
 	sc.stack.cur = 0
@@ -1938,9 +1949,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		relocs := newCallRelocTable(n, relocCap)
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
-		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
+		// no goroutines, channels, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts)
 		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		if sc.stackCap == defaultStackArenaCap {
+			defer sc.cacheInitialStackChunk()
+		}
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
