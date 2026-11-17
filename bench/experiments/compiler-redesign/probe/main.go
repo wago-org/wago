@@ -23,6 +23,7 @@ func main() {
 	arg := flag.Uint64("arg", 0, "integer benchmark argument")
 	want := flag.Uint64("want", 0, "expected single integer result")
 	calls := flag.Int("calls", 64, "execution calls after correctness and warmup")
+	repeat := flag.Int("profile-repeats", 1, "diagnostic repeated compilation; not acceptance timing")
 	flag.Parse()
 	if *empty {
 		rss := peakRSS()
@@ -81,6 +82,11 @@ func main() {
 		check(json.NewEncoder(os.Stdout).Encode(result))
 	}
 	check(compiled.Close())
+	for i := 1; i < *repeat; i++ {
+		c, e := wago.Compile(wago.NewRuntimeConfig().WithFunctionWorkers(1), data)
+		check(e)
+		check(c.Close())
+	}
 	runtime.KeepAlive(data)
 }
 func check(err error) {
