@@ -78,9 +78,20 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	var scratchReloadSites [64]uint32
 	scratchReloadN := 0
 	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4
+	branchPairCandidate, storeLoadCandidate := false, false
+	exitCompareCandidate, testCompareCandidate := false, false
+	branchFold := f.opt(optBranchFold)
+	storeLoad := f.opt(optStoreLoadFwd)
+	exitCompare := f.opt(optCommonExitCompare) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	testCompare := f.opt(optGuardedTestCCMP) && !f.opaqueFragments
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		// Earlier branch folds never introduce frame loads/stores. An absent
+		// adjacent pair therefore needs no separate forwarding walk later.
+		if storeLoad && !storeLoadCandidate && w&0xbfc003e0 == 0xb90003e0 && pc+8 <= n {
+			storeLoadCandidate = rdWord(b, pc+4)&^uint32(31) == (w|1<<22)&^uint32(31)
+		}
 		if scratchReloadEligible && w&0x7f80001f == 0x52800011 {
 			if scratchReloadN < len(scratchReloadSites) && w == lastScratchMove && pc-lastScratchMoveAt <= maxScratchConstantReloadDistance {
 				scratchReloadSites[scratchReloadN] = uint32(pc)
@@ -113,6 +124,19 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		if t, ok := branchTarget(pc, w); ok {
 			sc.hasBranchTargets = true
 			branchTargetAdd(targets, t, n)
+			if w&0xff000010 == 0x54000000 {
+				if branchFold && !branchPairCandidate && pc+8 <= n {
+					_, skip := bcondSkipOne(w)
+					branchPairCandidate = skip && rdWord(b, pc+4)&0xfc000000 == 0x14000000
+				}
+				// These folds require two adjacent compare/branch pairs. Earlier
+				// passes can remove such roots, but cannot create new compares.
+				if pc >= 4 && pc+12 <= n && rdWord(b, pc+8)&0xff000010 == 0x54000000 {
+					first := rdWord(b, pc-4)
+					exitCompareCandidate = exitCompareCandidate || exitCompare && pureCompareWord(first)
+					testCompareCandidate = testCompareCandidate || testCompare && first&0x7fe0fc1f == 0x6a00001f
+				}
+			}
 			if threadEligible && !threadCandidate && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
 				next := rdWord(b, t)
 				threadCandidate = next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0
@@ -136,20 +160,22 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 			}
 		}
 	}
-	if f.opt(optBranchFold) {
+	if branchFold {
 		f.foldSingleBitBranches(b, n, targets)
-		f.foldBranchPairs(b, n, targets)
+		if branchPairCandidate {
+			f.foldBranchPairs(b, n, targets)
+		}
 	}
 	if threadCandidate {
 		f.threadTakenZeroBranches(b, n, targets)
 	}
-	if f.opt(optStoreLoadFwd) {
+	if storeLoadCandidate {
 		f.forwardStoreLoads(b, n, targets)
 	}
-	if f.opt(optCommonExitCompare) {
+	if exitCompareCandidate {
 		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
 	}
-	if f.opt(optGuardedTestCCMP) {
+	if testCompareCandidate {
 		f.foldGuardedTests(b, n, targets)
 	}
 	if guardedCandidate {
