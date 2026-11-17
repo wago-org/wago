@@ -479,3 +479,48 @@ func TestFloatMapInvariantExpressionAliasesAndLiveOuts(t *testing.T) {
 		}
 	}
 }
+
+func TestFloatMapPrefixKeepsAcceptedRecipes(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, count := range []int{1, 2, 4} {
+			for _, base := range []byte{0, 64} {
+				width := uint32(4)
+				if wide {
+					width = 8
+				}
+				m := floatMapModuleAt(t, wide, count, 4096, 8192, 0, uint32(count)*width*8, 0, base)
+				body := m.Code[0].BodyBytes
+				at := bytes.LastIndex(body, []byte{0x03, 0x40})
+				r := wasm.ReaderFrom(body[at+2:])
+				f := fn{nLocals: 5 + int(base), localType: make([]machineType, 5+int(base))}
+				for i := range f.localType {
+					f.localType[i] = mtI32
+				}
+				var plan floatMapPlan
+				if !f.inspectFloatMapLoop(&r, &plan) {
+					t.Fatalf("unqualified fixture: wide%v count%d base%d", wide, count, base)
+				}
+				if !f.hasFloatMapPrefix(&r) || r.Offset() != 0 {
+					t.Fatalf("screen rejected accepted recipe: wide%v count%d base%d", wide, count, base)
+				}
+			}
+		}
+	}
+}
+
+func TestFloatMapPrefixKeepsIntegerProbeContext(t *testing.T) {
+	m := integerLoadMapModule(t, 1, 4096, 8192, 0, 64, 0, 0, 0, 0)
+	body := m.Code[0].BodyBytes
+	at := bytes.LastIndex(body, []byte{0x03, 0x40})
+	// An independent floating local copy does not change the integer store recipe.
+	loop := append([]byte{0x20, 6, 0x21, 7}, body[at+2:]...)
+	r := wasm.ReaderFrom(loop)
+	f := fn{integerLoadMapProbe: true, nLocals: 8, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtI32, mtF64, mtF64}}
+	var plan floatMapPlan
+	if !f.inspectFloatMapLoop(&r, &plan) {
+		t.Fatal("unqualified integer fixture")
+	}
+	if !f.hasFloatMapPrefix(&r) || r.Offset() != 0 {
+		t.Fatal("screen rejected matching integer-probe store")
+	}
+}

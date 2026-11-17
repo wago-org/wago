@@ -495,30 +495,68 @@ func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
 	f.emitFloatMapBody(source)
 }
 
-// Every admitted map needs a typed float producer. Decode the prefix without
-// reserving the large symbolic frame for ordinary integer/control loops.
+// Maps need a typed producer and a matching output store. Screen that prefix
+// and unsupported carried locals before reserving the symbolic candidate frame.
 func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 	scan := *source
 	start := scan.Offset()
-	var imm wasm.InstructionImmediate
+	floating := false
+	// These masks only reject; high local indices retain the full planner path.
+	var initialReads, written uint64
 	for scan.Offset()-start < 512 {
 		op, e := scan.Byte()
 		if e != nil {
 			return false
 		}
 		switch op {
-		case 0x2a, 0x2b, 0x43, 0x44:
-			return true
-		case 0x20:
+		case 0x20, 0x21, 0x22:
 			local, e := scan.U32()
 			if e != nil || local >= uint32(f.nLocals) {
 				return false
 			}
-			if f.localType[local].isFloat() {
-				return true
+			typ := f.localType[local]
+			if op == 0x20 {
+				floating = floating || typ.isFloat()
+				if local < 64 && typ != mtI32 && written&(uint64(1)<<local) == 0 {
+					initialReads |= uint64(1) << local
+				}
+			} else if local < 64 && typ != mtI32 {
+				if initialReads&(uint64(1)<<local) != 0 {
+					return false
+				}
+				written |= uint64(1) << local
 			}
-		case 0x21, 0x22, 0x41, 0x6a, 0x47:
-			if f.classifier.ClassifyInto(&scan, op, &imm) != nil {
+		case 0x41:
+			if _, e := scan.I32(); e != nil {
+				return false
+			}
+		case 0x43, 0x44:
+			width := 4
+			if op == 0x44 {
+				width = 8
+			}
+			if _, e := scan.Bytes(width); e != nil {
+				return false
+			}
+			floating = true
+		case 0x2a, 0x2b:
+			floating = true
+			if e := f.classifier.SkipScalarMemoryImmediate(&scan); e != nil {
+				return false
+			}
+		case 0x28:
+			if !floating {
+				return false
+			}
+			if e := f.classifier.SkipScalarMemoryImmediate(&scan); e != nil {
+				return false
+			}
+		case 0x36, 0x38, 0x39:
+			return floating && f.integerLoadMapProbe == (op == 0x36)
+		case 0x6a, 0x47:
+			// These are also valid before the first floating producer.
+		case 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
+			if !floating {
 				return false
 			}
 		default:
