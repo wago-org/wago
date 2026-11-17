@@ -49,6 +49,7 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 		local uint16
 		refs  uint16
 	}
+	var lowSlots [64]uint8 // cell index plus one; zero is absent
 	count := 0
 	depth := 0
 	structured := false
@@ -178,15 +179,25 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			if uint64(x) >= uint64(len(f.localType)) || x > 65535 || (f.localType[x] != mtI32 && f.localType[x] != mtI64) {
 				return plan, false
 			}
-			i := 0
-			for i < count && cells[i].local != uint16(x) {
-				i++
+			i := count
+			if x < uint32(len(lowSlots)) {
+				if slot := lowSlots[x]; slot != 0 {
+					i = int(slot - 1)
+				}
+			} else {
+				i = 0
+				for i < count && cells[i].local != uint16(x) {
+					i++
+				}
 			}
 			if i == count {
 				if count == len(cells) {
 					return plan, false
 				}
 				cells[i].local = uint16(x)
+				if x < uint32(len(lowSlots)) {
+					lowSlots[x] = uint8(i + 1)
+				}
 				count++
 			}
 			cells[i].refs++

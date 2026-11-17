@@ -206,3 +206,36 @@ func TestLoopLocalLeaseAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopLocalLeaseMixedIndexRanking(t *testing.T) {
+	for _, indices := range [][]uint32{{0, 63, 64, 72}, {72, 64, 63, 0}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}} {
+		f := fn{nLocals: 73, localType: make([]machineType, 73)}
+		for i := range f.localType {
+			f.localType[i] = mtI32
+		}
+		var body []byte
+		for _, index := range indices {
+			for range 2 {
+				body = append(body, 0x20)
+				body = append(body, wasmtest.ULEB(index)...)
+				body = append(body, 0x1a)
+			}
+		}
+		body = append(body, 0x41, 1, 0x0d, 0, 0x0b)
+		r := wasm.ReaderFrom(body)
+		plan, ok := f.planLoopLocalLease(&r)
+		if ok != (len(indices) <= 16) || r.Offset() != 0 {
+			t.Fatalf("indices%v admitted%t reader%d", indices, ok, r.Offset())
+		}
+		if ok {
+			if plan.count != 4 {
+				t.Fatalf("indices%v count%d", indices, plan.count)
+			}
+			for i := 0; i < int(plan.count); i++ {
+				if plan.local[i] != uint16(indices[i]) {
+					t.Fatalf("ranking %v, want prefix of %v", plan.local, indices)
+				}
+			}
+		}
+	}
+}
