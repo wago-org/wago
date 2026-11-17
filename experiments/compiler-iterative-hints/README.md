@@ -125,3 +125,14 @@ oracle/timing checks currently cover the 102 application kernels described
 above; the other 43 contracts require their specified fresh-instance sampling,
 host profiles, input setup and oracle checks. Native-image equality does not
 replace that pending full execution-contract qualification.
+
+### Valid performance-optimized TinyGo control
+
+Increasing only the original opt=2 scanner's stack to 256 KiB yields a valid
+full-corpus control. Seven alternating paired trials all pass (2,030 total),
+with all 145 native-image hashes identical. Mean workload median compilation
+is 1.376 ms old-256 KiB versus 1.252 ms iterative-default (9.0% lower), and
+peak RSS is 3.675 versus 3.242 MiB. These are source-plus-stack-configuration
+comparisons, not evidence of a 40% source-only improvement. Both use the same
+performance-oriented TinyGo host flags. Do not compare a failed or opt=z
+baseline against opt=2 as though only source changed.
