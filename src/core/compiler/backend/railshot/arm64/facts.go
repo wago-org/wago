@@ -145,25 +145,57 @@ func (f *fn) applyFactsForLocal(e *elem, x int) {
 	}
 }
 
+const deferredFactI32Only valueFacts = 1 << 7
+
+// Unknown operations retain no facts. The extra table bit restricts ordinary
+// integer results to W-register lowering and never enters operand metadata.
+var deferredOpFacts = [256]valueFacts{
+	opAdd:    factUpper32Zero | deferredFactI32Only,
+	opSub:    factUpper32Zero | deferredFactI32Only,
+	opAnd:    factUpper32Zero | deferredFactI32Only,
+	opOr:     factUpper32Zero | deferredFactI32Only,
+	opXor:    factUpper32Zero | deferredFactI32Only,
+	opShl:    factUpper32Zero | deferredFactI32Only,
+	opShrU:   factUpper32Zero | deferredFactI32Only,
+	opShrS:   factUpper32Zero | deferredFactI32Only,
+	opRotl:   factUpper32Zero | deferredFactI32Only,
+	opRotr:   factUpper32Zero | deferredFactI32Only,
+	opMul:    factUpper32Zero | deferredFactI32Only,
+	opDivU:   factUpper32Zero | deferredFactI32Only,
+	opDivS:   factUpper32Zero | deferredFactI32Only,
+	opRemU:   factUpper32Zero | deferredFactI32Only,
+	opRemS:   factUpper32Zero | deferredFactI32Only,
+	opClz:    factUpper32Zero | deferredFactI32Only,
+	opCtz:    factUpper32Zero | deferredFactI32Only,
+	opPopcnt: factUpper32Zero | deferredFactI32Only,
+	opWrap:   factUpper32Zero,
+	opZExt32: factUpper32Zero,
+	opEq:     factUpper32Zero | factBoolean,
+	opNe:     factUpper32Zero | factBoolean,
+	opLtS:    factUpper32Zero | factBoolean,
+	opLtU:    factUpper32Zero | factBoolean,
+	opGtS:    factUpper32Zero | factBoolean,
+	opGtU:    factUpper32Zero | factBoolean,
+	opLeS:    factUpper32Zero | factBoolean,
+	opLeU:    factUpper32Zero | factBoolean,
+	opGeS:    factUpper32Zero | factBoolean,
+	opGeU:    factUpper32Zero | factBoolean,
+	opEqz:    factUpper32Zero | factBoolean,
+	opFEq:    factUpper32Zero | factBoolean,
+	opFNe:    factUpper32Zero | factBoolean,
+	opFLt:    factUpper32Zero | factBoolean,
+	opFGt:    factUpper32Zero | factBoolean,
+	opFLe:    factUpper32Zero | factBoolean,
+	opFGe:    factUpper32Zero | factBoolean,
+}
+
 // deferredResultFacts returns only properties guaranteed by the Wasm operation
 // and ARM64's W-register write semantics. Reads from locals, globals, memory, or
 // unknown calls begin with no facts and cannot enter through this function.
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
-	if isCompare(op) || isFloatCompare(op) || op == opEqz {
-		return factUpper32Zero | factBoolean
-	}
-	if op == opWrap || op == opZExt32 {
-		return factUpper32Zero
-	}
-	if typ != mtI32 {
+	facts := deferredOpFacts[op]
+	if typ != mtI32 && facts&deferredFactI32Only != 0 {
 		return 0
 	}
-	switch op {
-	case opAdd, opSub, opAnd, opOr, opXor,
-		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
-		opClz, opCtz, opPopcnt:
-		return factUpper32Zero
-	}
-	return 0
+	return facts &^ deferredFactI32Only
 }
