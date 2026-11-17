@@ -335,7 +335,7 @@ func TestStackArenaClearsReusedNodesAcrossChunks(t *testing.T) {
 			}
 			*e = elem{
 				st:   storage{cval: -1, slot: 9, cold: 2, idx: 3, kind: deferredStorageKind, typ: mtCustom, reg: RAX, meta: 0xff},
-				prev: s.head, next: s.head, arg0: s.head, arg1: s.head,
+				prev: s.ref(s.head), next: s.ref(s.head), arg0: s.ref(s.head), arg1: s.ref(s.head),
 			}
 		}
 		s.reset()
