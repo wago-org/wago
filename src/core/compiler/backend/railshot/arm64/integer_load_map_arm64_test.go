@@ -178,13 +178,18 @@ func TestIntegerLoadMapInvariantInputs(t *testing.T) {
 func TestIntegerLoadMapBudgetLeavesReaderUnchanged(t *testing.T) {
 	f := fn{nLocals: 1, localType: []machineType{mtI32}, integerLoadMapProbe: true, integerLoadMapWork: integerLoadMapWorkLimit - 1}
 	reader := wasm.NewReader([]byte{0x41, 0, 0x21, 0, 0x41, 1, 0x1a})
-	if p, ok := f.inspectFloatMapLoop(reader); ok || p.work <= p.workLimit {
+	var p floatMapPlan
+	if ok := f.inspectFloatMapLoop(reader, &p); ok || p.work <= p.workLimit {
 		t.Fatal("exhausted integer analysis budget was not rejected")
 	}
 	if reader.Offset() != 0 {
 		t.Fatal("rejected probe advanced source reader")
 	}
-	if allocations := testing.AllocsPerRun(100, func() { f.inspectFloatMapLoop(reader) }); allocations != 0 {
+	want := p
+	if f.inspectFloatMapLoop(reader, &p) || p != want {
+		t.Fatal("reused workspace changed the rejected proof")
+	}
+	if allocations := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(reader, &candidate) }); allocations != 0 {
 		t.Fatalf("rejected probe allocated %g objects", allocations)
 	}
 }

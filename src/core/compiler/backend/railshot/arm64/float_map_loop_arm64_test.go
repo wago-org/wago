@@ -255,13 +255,14 @@ func TestFloatMapLocalBudgetLeavesReaderUnchanged(t *testing.T) {
 		body = append(body, 0x41, 0, 0x21, byte(64+i))
 	}
 	r := wasm.NewReader(body)
-	if _, ok := f.inspectFloatMapLoop(r); ok {
+	var p floatMapPlan
+	if f.inspectFloatMapLoop(r, &p) {
 		t.Fatal("accepted exhausted relevant-local budget")
 	}
 	if r.Offset() != 0 {
 		t.Fatalf("probe advanced original reader to %d", r.Offset())
 	}
-	if allocs := testing.AllocsPerRun(100, func() { f.inspectFloatMapLoop(r) }); allocs != 0 {
+	if allocs := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(r, &candidate) }); allocs != 0 {
 		t.Fatalf("rejected probe allocated %.0f objects", allocs)
 	}
 }

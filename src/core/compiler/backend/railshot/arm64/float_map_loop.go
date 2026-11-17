@@ -86,7 +86,8 @@ func (p *floatMapPlan) localWritten(index int) bool {
 
 const floatMapScatterWorkLimit = 4096
 
-func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) {
+func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
+	*p = floatMapPlan{}
 	p.integer = f.integerLoadMapProbe
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
@@ -134,22 +135,22 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 	}
 	for scan.Offset()-start < 512 {
 		if !p.spend() {
-			return p, false
+			return false
 		}
 		pos := scan.Offset()
 		op, err := scan.Byte()
 		if err != nil {
-			return p, false
+			return false
 		}
 		switch op {
 		case 0x20, 0x21, 0x22:
 			x, e := scan.U32()
 			if e != nil || x >= uint32(f.nLocals) {
-				return p, false
+				return false
 			}
 			slot := local(x)
 			if slot < 0 {
-				return p, false
+				return false
 			}
 			cell := &p.locals[slot]
 			if op == 0x20 {
@@ -157,11 +158,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 					initialRead[slot] = true
 				}
 				if !push(cell.Value) {
-					return p, false
+					return false
 				}
 			} else {
 				if depth == 0 {
-					return p, false
+					return false
 				}
 				cell.Assign(stack[depth-1], 0)
 				if op == 0x21 {
@@ -182,62 +183,62 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 				bits, err = scan.LEU64()
 			}
 			if err != nil || !push(node(op, 0, 0, bits)) {
-				return p, false
+				return false
 			}
 		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x47, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
 			if depth < 2 {
-				return p, false
+				return false
 			}
 			depth -= 2
 			if !push(node(op, stack[depth], stack[depth+1], 0)) {
-				return p, false
+				return false
 			}
 		case 0x28, 0x2a, 0x2b:
 			mem, off, e := f.readMemArg(&scan)
 			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth == 0 {
-				return p, false
+				return false
 			}
 			x := node(op, stack[depth-1], 0, off)
 			if x < 0 {
-				return p, false
+				return false
 			}
 			stack[depth-1] = x
 		case 0x36, 0x38, 0x39:
 			mem, off, e := f.readMemArg(&scan)
 			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth < 2 || (ns == len(stores) || ns == 2 && !floatMapPacketsEnabled) {
-				return p, false
+				return false
 			}
 			depth -= 2
 			stores[ns] = shared.LoopStore[int]{Address: stack[depth], Value: stack[depth+1], Offset: off, PC: uint32(pos)}
 			ns++
 			if p.integer != (op == 0x36) {
-				return p, false
+				return false
 			}
 			if ns == 1 {
 				p.wide = op == 0x39
 			} else if p.wide != (op == 0x39) {
-				return p, false
+				return false
 			}
 		case 0x0d:
 			label, e := scan.U32()
 			if e != nil || label != 0 || depth != 1 || ns == 0 {
-				return p, false
+				return false
 			}
 			end, e := scan.Byte()
 			if e != nil || end != 0x0b {
-				return p, false
+				return false
 			}
 			if p.integer {
 				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
-					return p, false
+					return false
 				}
 			} else if !p.finishFloatInduction(stack[0], ns, initialRead[:]) {
 				if !floatMapInductionEnabled {
-					return p, false
+					return false
 				}
 				p.normalizedInduction = true
 				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
-					return p, false
+					return false
 				}
 			}
 			size := uint32(4)
@@ -247,13 +248,13 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
 			p.destOffset = stores[0].Offset
 			if !p.proveAddresses(f.localType) || p.addresses[p.dest].stride > 1 && p.counterScale <= 1 {
-				return p, false
+				return false
 			}
 			for i := 1; i < ns; i++ {
 				visits := 0
 				a, valid := p.affine(stores[i].Address, f.localType, &visits)
 				if !valid {
-					return p, false
+					return false
 				}
 				a.offset = stores[i].Offset
 				p.addresses[stores[i].Address] = a
@@ -264,7 +265,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 					strided = strided || p.load(p.nodes[i].op) && p.addresses[i].stride > 1
 				}
 				if !strided {
-					return p, false
+					return false
 				}
 			}
 			var used [128]bool
@@ -288,27 +289,27 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader) (p floatMapPlan, ok bool) 
 			}
 			for i := 0; i < n; i++ {
 				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && !used[i] {
-					return p, false
+					return false
 				}
 			}
 			for i := 1; i < ns; i++ {
 				distance := uint32(i) * size
 				if !p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
-					return p, false
+					return false
 				}
 			}
 			if !p.validExpression(p.result, 0) {
-				return p, false
+				return false
 			}
 			if floatMapInvariantsEnabled {
 				p.labelInvariants()
 			}
-			return p, true
+			return true
 		default:
-			return p, false
+			return false
 		}
 	}
-	return p, false
+	return false
 }
 
 func (p *floatMapPlan) affine(x int, types []machineType, visits *int) (floatMapAddress, bool) {
@@ -514,7 +515,8 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 }
 
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
-	p, ok := f.inspectFloatMapLoop(source)
+	var p floatMapPlan
+	ok := f.inspectFloatMapLoop(source, &p)
 	defer func() {
 		if p.scatterCandidate {
 			// Share the bounded integer-analysis budget without adding another
