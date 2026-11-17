@@ -500,6 +500,13 @@ func uncondBranchImm(w uint32) (int, bool) {
 // inside the function. Explicit fragment markers keep embedded data out of the
 // instruction walk; indirect branches require no target entry.
 func branchTarget(pc int, w uint32) (int, bool) {
+	if w&0x1c000000 != 0x14000000 {
+		return 0, false
+	}
+	return decodeBranchTarget(pc, w)
+}
+
+func decodeBranchTarget(pc int, w uint32) (int, bool) {
 	switch {
 	case w&0xFC000000 == 0x14000000, w&0xFC000000 == 0x94000000: // B / BL (imm26)
 		d := int(w & 0x03FFFFFF)
