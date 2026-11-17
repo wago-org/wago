@@ -79,8 +79,6 @@ func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
 }
 
 func TestStackArenaGrowthCaps(t *testing.T) {
-	s := newStack()
-
 	for _, tc := range []struct {
 		first, next, geometric int
 	}{
@@ -94,8 +92,8 @@ func TestStackArenaGrowthCaps(t *testing.T) {
 	} {
 		next, geometric := stackArenaGrowthCaps(tc.first)
 		if next !=
-			s.node(tc.next) || geometric != tc.geometric {
-			t.Fatalf("first %d: growth=(%d,%d), want (%d,%d)", tc.first, next, geometric, s.node(tc.next), tc.geometric)
+			tc.next || geometric != tc.geometric {
+			t.Fatalf("first %d: growth=(%d,%d), want (%d,%d)", tc.first, next, geometric, tc.next, tc.geometric)
 		}
 	}
 }

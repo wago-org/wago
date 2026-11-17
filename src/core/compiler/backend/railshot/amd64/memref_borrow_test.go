@@ -85,7 +85,7 @@ func TestApplyMulMemRefOwnership(t *testing.T) {
 			// regUser is a canary for release: borrowed address ownership must be
 			// untouched, while an allocator-owned address must become available.
 			owner := &elem{}
-			f := fn{a: &x86.Asm{}}
+			f := fn{a: &x86.Asm{}, s: s}
 			f.regUser[R12] = owner
 			if tc.borrow >= 0 {
 				f.pinnedLocalMask = maskOf(R12)

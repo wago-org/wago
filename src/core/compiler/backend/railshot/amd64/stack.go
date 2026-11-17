@@ -36,11 +36,12 @@ func (s *stack) nodeMemory() (used, reserved uint64) {
 // and deferred operations ("valent blocks"). It is a doubly-linked list of *elem
 // (Go's pointer-stable equivalent of WARP's intrusive list + iterators), so the
 // parent/sibling links that overlay a deferred-action tree onto the physical
-// stack stay valid across pushes and pops.
+// stack stay valid across pushes and pops. Links are compact chunk/node IDs;
+// short-lived pointers are resolved through the owning stack.
 //
 // A binary op like `i32.add` pushes a deferred-action node ON TOP of its two
 // operand sub-trees; the operands stay on the stack and become the node's
-// children (wired via parent/sibling). So a whole expression sits on the stack in
+// children (wired via compact child IDs). So a whole expression sits on the stack in
 // postfix order with its root (the action node) on top, emitting no machine code
 // until a "sink" forces it to condense.
 
@@ -170,7 +171,7 @@ type elem struct {
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next nodeID
 
-	// Deferred-action tree (valid when kind == ekDeferred): the two operand
+	// Deferred-action tree (valid when kind == ekDeferred): IDs of the two operand
 	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
 	// the right/second. This is the explicit-child form of WARP's implicit
 	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
@@ -238,7 +239,8 @@ const maxDeferDepth = 6
 func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
-// a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
+// a chunked bump arena of elems with fixed chunk/index handle fields.
+// Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
 // live range of each node even as the arena grows without bound. Growth fills to
 // a power-of-two total before doubling, then extends by capped chunks. reset()
@@ -322,7 +324,7 @@ func (s *stack) initSentinel() {
 	s.activeChunk = chunk
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
-	s.head.prev, s.head.next = s.ref(s.head), s.ref(s.head)
+	s.head.prev, s.head.next = 1, 1
 	s.logicalDepth = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
@@ -473,9 +475,10 @@ func (s *stack) allocNextChunk() *elem {
 
 // push appends e as the new top of the stack and returns it.
 func (s *stack) push(e *elem) *elem {
-	last := s.node(s.head.prev)
-	e.prev, e.next = s.ref(last), s.ref(s.head)
-	last.next, s.head.prev = s.ref(e), s.ref(e)
+	last := s.head.prev
+	id := s.ref(e)
+	e.prev, e.next = last, 1
+	s.node(last).next, s.head.prev = id, id
 	return e
 }
 
@@ -565,7 +568,7 @@ func (s *stack) pushDeferred(e *elem) *elem {
 
 // back returns the top element, or nil when empty.
 func (s *stack) back() *elem {
-	if s.node(s.head.prev) == s.head {
+	if s.head.prev == 1 {
 		return nil
 	}
 	return s.node(s.head.prev)
@@ -588,7 +591,7 @@ func (s *stack) erase(e *elem) {
 	}
 	s.node(e.prev).next, s.node(e.next).prev = e.next, e.prev
 	e.prev, e.next = 0, 0
-	if s.node(s.head.next) == s.head {
+	if s.head.next == 1 {
 		s.pendingEffects &^= pendingLocalRef
 	}
 }

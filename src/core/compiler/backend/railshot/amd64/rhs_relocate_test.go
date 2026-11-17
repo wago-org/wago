@@ -48,8 +48,6 @@ func resetRHSRelocateFixture(f *fn) (root, right *elem) {
 }
 
 func TestDeferredRHSRelocationRetainsArenaOwner(t *testing.T) {
-	s := newStack()
-
 	requireCompilerDiagnostics(t)
 	stats := new(CodegenStats)
 	f := &fn{

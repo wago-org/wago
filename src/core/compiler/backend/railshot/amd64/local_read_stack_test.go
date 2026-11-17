@@ -5,8 +5,6 @@ package amd64
 import "testing"
 
 func TestLocalReadStackMatchesGenericConstruction(t *testing.T) {
-	s := newStack()
-
 	direct, generic := newStackWithCap(minStackArenaCap), newStackWithCap(minStackArenaCap)
 	for pass := 0; pass < 2; pass++ {
 		for i := 0; i < 2048; i++ {

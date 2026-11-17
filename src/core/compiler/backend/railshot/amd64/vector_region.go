@@ -94,7 +94,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
 		}
 	}
 	if i < 0 {
-		i = int(f.s.node(f.vectorRegion.next))
+		i = int(f.vectorRegion.next)
 		f.homeVectorLocal(i)
 	}
 	reg := f.materializeV128(e)
@@ -109,7 +109,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
 	f.locals[x].state = lsReg
 	f.fpinnedLocalMask = f.fpinnedLocalMask.add(reg)
 	f.vectorRegion.locals[i] = uint16(x + 1)
-	f.vectorRegion.next = f.s.ref(uint8((i + 1) % len(f.vectorRegion.locals)))
+	f.vectorRegion.next = uint8((i + 1) % len(f.vectorRegion.locals))
 	if tee {
 		f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: reg, idx: uint32(x)})
 	} else {
