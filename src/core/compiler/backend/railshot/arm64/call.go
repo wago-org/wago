@@ -1554,7 +1554,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.spillLocalsForClobbers(hostGPClobbers, hostFPClobbers)
 	if regallocCheckEnabled {
-		f.checkHostSyncHomes()
+		f.checkHostSyncHomes(hostGPClobbers, hostFPClobbers)
 	}
 	f.storePinnedGlobals(false) // coherence/preservation for value-pinned caller-saved globals
 	if !internalGC {

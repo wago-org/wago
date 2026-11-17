@@ -96,24 +96,29 @@ func TestRegallocCheckProtectsSuffixAtWindowExit(t *testing.T) {
 func TestHostSyncHomesRejectsRegisterOperand(t *testing.T) {
 	f := fn{a: &encoder.Asm{}, s: newStack()}
 	f.pushReg(X19, mtI64)
-	requireAllocationFailure(t, "host sync operand", f.checkHostSyncHomes)
+	requireAllocationFailure(t, "host sync operand", func() { f.checkHostSyncHomes(^regMask(0), ^regMask(0)) })
 }
 
 func TestHostSyncHomesRejectsDirtyPin(t *testing.T) {
 	f := fn{a: &encoder.Asm{}, s: newStack(), usesCalls: true, locals: []localDef{{reg: X19, state: lsReg}}}
-	requireAllocationFailure(t, "host sync dirty pinned local", f.checkHostSyncHomes)
+	requireAllocationFailure(t, "host sync dirty pinned local", func() { f.checkHostSyncHomes(^regMask(0), ^regMask(0)) })
+}
+
+func TestHostSyncHomesAcceptsPreservedDirtyPin(t *testing.T) {
+	f := fn{a: &encoder.Asm{}, s: newStack(), usesCalls: true, locals: []localDef{{reg: X19, state: lsReg}}}
+	f.checkHostSyncHomes(maskOf(X20), ^regMask(0))
 }
 
 func TestHostSyncHomesRejectsPersistentConstant(t *testing.T) {
 	f := fn{a: &encoder.Asm{}, s: newStack(), fconsts: []floatConstReg{{reg: 8, typ: mtF64}}}
-	requireAllocationFailure(t, "host sync persistent constant cache", f.checkHostSyncHomes)
+	requireAllocationFailure(t, "host sync persistent constant cache", func() { f.checkHostSyncHomes(^regMask(0), ^regMask(0)) })
 }
 
 func TestHostSyncHomesAcceptsHomedWideOperands(t *testing.T) {
 	f := fn{a: &encoder.Asm{}, s: newStack(), usesCalls: true, locals: []localDef{{reg: X19, state: lsMem}, {reg: 9, isFloat: true, state: lsConstZero}}}
 	f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 0})
 	f.pushValue(storage{kind: stSlot, typ: mtI64, slot: 2})
-	f.checkHostSyncHomes()
+	f.checkHostSyncHomes(^regMask(0), ^regMask(0))
 }
 
 // An outer emission journal must see each effect exactly once inside a nested

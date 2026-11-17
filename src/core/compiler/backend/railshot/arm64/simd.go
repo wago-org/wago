@@ -102,7 +102,10 @@ type v128ConstReg struct {
 	reg    Reg
 }
 
-const maxV128Consts = 4
+const (
+	maxV128Consts                = 4
+	v128ConstTransientRegReserve = 7
+)
 
 func (f *fn) v128ConstMask() regMask {
 	var m regMask
@@ -163,6 +166,15 @@ func (f *fn) preloadV128Consts(code []byte) {
 	limit := maxV128Consts
 	if f.pinnedV128LocalCount() >= 2 {
 		limit = 2
+	}
+	// Generic widening sequences can require seven simultaneous vector
+	// temporaries. Persistent float constants and pinned locals occupy the same
+	// physical pool, so narrow the cache before it removes that scratch floor.
+	if available := len(fpAllocRegs) - f.fpinnedLocalMask.count() - len(f.fconsts) - v128ConstTransientRegReserve; limit > available {
+		limit = available
+	}
+	if limit <= 0 {
+		return
 	}
 	var cand [8]struct {
 		lo, hi uint64

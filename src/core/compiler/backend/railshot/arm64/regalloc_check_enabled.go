@@ -453,9 +453,10 @@ func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
 	}
 }
 
-// checkHostSyncHomes verifies the precondition for a future selective bridge.
-// It does not certify implicit context/global registers or narrow preservation.
-func (f *fn) checkHostSyncHomes() {
+// checkHostSyncHomes verifies that operands and every pin the selected bridge
+// clobbers have canonical homes. It does not certify implicit context/global
+// registers or the bridge's preservation contract itself.
+func (f *fn) checkHostSyncHomes(gpClobbers, fpClobbers regMask) {
 	slot := 0
 	for _, root := range f.rootsBottomToTop() {
 		if root.elemKind() != ekValue || root.st.kind != stSlot || root.st.slotIndex() != slot {
@@ -465,7 +466,12 @@ func (f *fn) checkHostSyncHomes() {
 	}
 	if f.usesCalls {
 		for i, local := range f.locals {
-			if local.reg != regNone && local.state == lsReg {
+			if local.reg == regNone || local.state != lsReg {
+				continue
+			}
+			clobbered := local.isFloat && fpClobbers.has(local.reg) ||
+				!local.isFloat && gpClobbers.has(local.reg)
+			if clobbered {
 				panic(fmt.Sprintf("regalloccheck: host sync dirty pinned local %d", i))
 			}
 		}
