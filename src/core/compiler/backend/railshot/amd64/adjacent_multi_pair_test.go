@@ -54,8 +54,8 @@ func TestAdjacentMultiPairPlan(t *testing.T) {
 		t.Fatal("wrong strided pair contract", p.storeN, p.loadN, p.exitHigh)
 	}
 	for i, l := range p.locals[:p.localN] {
-		if (p.exitHigh&(1<<i) != 0) != (l.index == 5 || l.index == 7) {
-			t.Fatal("wrong exit lane", l.index, p.exitHigh)
+		if (p.exitHigh&(1<<i) != 0) != (l.Index == 5 || l.Index == 7) {
+			t.Fatal("wrong exit lane", l.Index, p.exitHigh)
 		}
 	}
 }
