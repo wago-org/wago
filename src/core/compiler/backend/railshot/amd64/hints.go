@@ -784,7 +784,7 @@ type globalScoreByteScanner struct {
 type hintScanFrame struct {
 	depth, loopDepth, curLoop    int
 	prevI32                      int32
-	prevOp, shiftDepth, op       byte
+	op                           byte
 	stopAtElse, calls, thenCalls bool
 }
 type globalScanFrame struct {
@@ -1124,7 +1124,7 @@ enterExpression:
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
-			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevOp: prevOp, prevI32: prevI32, shiftDepth: variableShiftDepth, op: op})
+			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevI32: prevI32, op: op})
 			depth++
 			if op == 0x03 {
 				loopDepth++
@@ -1310,7 +1310,7 @@ enterExpression:
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
-			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevOp: prevOp, prevI32: prevI32, shiftDepth: variableShiftDepth, op: op})
+			frames = append(frames, hintScanFrame{depth: depth, loopDepth: loopDepth, curLoop: curLoop, stopAtElse: stopAtElse, calls: subHasCall, prevI32: prevI32, op: op})
 			depth++
 			stopAtElse = false
 			goto enterExpression
