@@ -11,8 +11,15 @@ package arm64
 
 // Control and helper opcodes end the proof even when they emit no native word.
 // Every admitted native word is independently checked before forwarding.
+var frameForwardOpcodes = [4]uint64{
+	1<<0x01 | 3<<0x1a | 31<<0x20 | ((1<<23)-1)<<0x28,
+	^uint64(1),
+	^uint64(0),
+	31,
+}
+
 func frameForwardOpcode(op byte) bool {
-	return op == 0x01 || op == 0x1a || op == 0x1b || op >= 0x20 && op <= 0x24 || op >= 0x28 && op <= 0x3e || op >= 0x41 && op <= 0xc4
+	return frameForwardOpcodes[op>>6]>>(op&63)&1 != 0
 }
 
 func (f *fn) rememberFrameStore(local int, reg Reg) {
