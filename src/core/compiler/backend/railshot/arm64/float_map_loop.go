@@ -1021,7 +1021,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 					if off < dOff {
 						distance = dOff - off
 					}
-					f.cmpImm(span, distance, false)
+					f.compareFloatMapSpan(span, distance)
 					guard(condA)
 				}
 				continue
@@ -1387,6 +1387,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.stats.peep("float-map-loop-vector")
 	}
 }
+
+// compareFloatMapSpan compares a guarded byte span with an exact stream
+// separation. X16 is available as scratch during map disambiguation.
+func (f *fn) compareFloatMapSpan(span Reg, distance uint32) {
+	if f.fitsAddSubImmediate(int64(distance)) {
+		f.cmpImmS(span, int64(distance), false)
+		return
+	}
+	f.a.MovImm64(X16, uint64(distance))
+	f.cmpRR(span, X16, false)
+}
+
 func mapFloatType(wide bool) machineType {
 	if wide {
 		return mtF64
