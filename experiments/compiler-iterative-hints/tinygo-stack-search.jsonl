@@ -1,0 +1,4 @@
+{"stack_kib": 64, "id": "wago/pcre2/compile-match", "status": -11, "error": ""}
+{"stack_kib": 64, "id": "wago/yyjson/parse-edit-write", "status": -11, "error": ""}
+{"stack_kib": 128, "id": "wago/pcre2/compile-match", "status": 0, "code_sha256": "e6f58e7df45e3fd48894180afaf4f87491ef233d6c08683b67e7555c7245c6de", "rss_kib": 6532, "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda", "go": "0.42.0", "input_bytes": 311039, "compile_ns": 53549115, "code_bytes": 505595}
+{"stack_kib": 128, "id": "wago/yyjson/parse-edit-write", "status": 0, "code_sha256": "3d43f32f3642a9bf166eae562c45faabd8b7ebd7b8390a26a7de3c4b73d34e76", "rss_kib": 5436, "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b", "go": "0.42.0", "input_bytes": 127009, "compile_ns": 34021013, "code_bytes": 301372}

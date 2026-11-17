@@ -79,3 +79,17 @@ pre-existing compile_test.go constant indexing of TinyGo's zero-sized scratch
 array (lines 111, 125, 130), even with a test-name filter. Therefore this is an
 isolated targeted test, not a full TinyGo backend-suite pass. All temporarily
 excluded test sources were restored; none were removed from this branch.
+
+### Fairer TinyGo stack baseline
+
+The original scanner still crashes on pcre2/yyjson with an explicit 64 KiB
+stack, but 128 KiB passes the full available corpus. Seven alternating paired
+trials compare old-scanner 128 KiB to iterative default-stack, with all other
+build flags identical: tasks scheduler, conservative GC, opt=z, no-debug.
+All 1,848 compilations pass, and all 132 native images match. Mean workload
+median compile time is 1.680 versus 1.583 ms (5.8% lower); mean workload median
+peak RSS is 2.841 versus 2.599 MiB. Both configurations meet the available-corpus
+memory target. This supersedes the oversized 2 MiB workaround as the useful
+TinyGo performance comparison. It changes source and stack configuration,
+so it is not a source-only comparison. The toolchain includes the same existing
+TinyGo tasks-exit runtime patch in both builds.
