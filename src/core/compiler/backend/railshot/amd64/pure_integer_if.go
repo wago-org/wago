@@ -141,10 +141,12 @@ func (s *stack) moveValentBlockToTop(root *elem) {
 		return
 	}
 	first := baseOfValentBlock(s, root)
-	before, after, last := s.node(first.prev), s.node(root.next), s.node(s.head.prev)
-	before.next, after.prev = s.ref(after), s.ref(before)
-	first.prev, last.next = s.ref(last), s.ref(first)
-	root.next, s.head.prev = s.ref(s.head), s.ref(root)
+	beforeID, afterID, lastID := first.prev, root.next, s.head.prev
+	before, after, last := s.node(beforeID), s.node(afterID), s.node(lastID)
+	firstID, rootID := before.next, after.prev
+	before.next, after.prev = afterID, beforeID
+	first.prev, last.next = lastID, firstID
+	root.next, s.head.prev = 1, rootID
 	s.canonicalSlots = false
 	s.pendingPrefix, s.pendingPrefixLoads = nil, false
 }

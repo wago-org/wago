@@ -30,6 +30,12 @@ func (s *stack) node(id nodeID) *elem {
 	return &s.chunks[uint32(id)>>nodeChunkBits][(uint32(id)&nodeChunkMask)-1]
 }
 
+// lastAllocatedID is consumed only while the most recently allocated node is
+// still current. Initializing storage and deferred labels allocate no nodes.
+func (s *stack) lastAllocatedID() nodeID {
+	return nodeID(s.cur<<nodeChunkBits | uint32(len(*s.activeChunk)))
+}
+
 // ref preserves the existing short-lived pointer API while compact links use
 // IDs. The common case is the active chunk; cross-chunk references use a cached
 // owner then a checked search. No integer is ever converted back to a pointer.

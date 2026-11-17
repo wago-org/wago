@@ -475,8 +475,16 @@ func (s *stack) allocNextChunk() *elem {
 
 // push appends e as the new top of the stack and returns it.
 func (s *stack) push(e *elem) *elem {
+	return s.pushID(e, s.ref(e))
+}
+
+// pushID publishes a node whose identity is already known from allocation or
+// an existing link. The pointer wrapper remains for rare reconstruction paths.
+func (s *stack) pushID(e *elem, id nodeID) *elem {
+	if regallocCheckEnabled && (id == 0 || s.node(id) != e) {
+		panic("amd64: mismatched operand identity")
+	}
 	last := s.head.prev
-	id := s.ref(e)
 	e.prev, e.next = last, 1
 	s.node(last).next, s.head.prev = id, id
 	return e
@@ -498,7 +506,7 @@ func (s *stack) pushValue(st storage) *elem {
 	s.noteSpill(st)
 	s.recordStorageEffects(st)
 	s.logicalDepth++
-	return s.push(e)
+	return s.pushID(e, s.lastAllocatedID())
 }
 
 // pushIntegerConstant initializes a scalar literal in its zeroed arena node.
@@ -515,7 +523,7 @@ func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
 	e.st.cval = value
 	e.st.meta = uint8(storageLogicalRoot)
 	s.logicalDepth++
-	return s.push(e)
+	return s.pushID(e, s.lastAllocatedID())
 }
 
 // pushLocalRead initializes a local.get directly in its zeroed arena node.
@@ -534,13 +542,17 @@ func (s *stack) pushLocalRead(kind storageKind, typ machineType, reg Reg, index 
 	e.st.meta = uint8(storageLogicalRoot)
 	s.pendingEffects |= pendingLocalRef
 	s.logicalDepth++
-	return s.push(e)
+	return s.pushID(e, s.lastAllocatedID())
 }
 
 // pushDeferred replaces one or two logical operands with their deferred
 // expression node. The physical operand nodes remain linked as the expression
 // tree, while the logical depth changes only by the arity reduction.
 func (s *stack) pushDeferred(e *elem) *elem {
+	return s.pushDeferredID(e, s.ref(e))
+}
+
+func (s *stack) pushDeferredID(e *elem, id nodeID) *elem {
 	if isDivRem(e.deferredOp()) {
 		s.pendingEffects |= pendingTrap
 	}
@@ -552,18 +564,19 @@ func (s *stack) pushDeferred(e *elem) *elem {
 	if e.arg0 == 0 || int(s.logicalDepth) < arity {
 		panic("amd64: deferred node has invalid logical operands")
 	}
-	if !s.node(e.arg0).st.hasLogicalRoot() || (arity == 2 && !s.node(e.arg1).st.hasLogicalRoot()) {
+	left, right := s.node(e.arg0), s.node(e.arg1)
+	if !left.st.hasLogicalRoot() || (arity == 2 && !right.st.hasLogicalRoot()) {
 		panic("amd64: deferred node operands are not stack roots")
 	}
-	s.node(e.arg0).st.setLogicalRoot(false)
+	left.st.setLogicalRoot(false)
 	if arity == 2 {
-		s.node(e.arg1).st.setLogicalRoot(false)
+		right.st.setLogicalRoot(false)
 	}
 	e.st.setLogicalRoot(true)
 	if arity == 2 {
 		s.logicalDepth--
 	}
-	return s.push(e)
+	return s.pushID(e, id)
 }
 
 // back returns the top element, or nil when empty.
@@ -624,8 +637,10 @@ func baseOfValentBlock(s *stack, root *elem) *elem {
 // the right operand is the current top block, the left is the block below it.
 // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
+	rightID := f.s.head.prev
 	right := f.s.back()
-	left := f.s.node(baseOfValentBlock(f.s, right).prev)
+	leftID := baseOfValentBlock(f.s, right).prev
+	left := f.s.node(leftID)
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
 	if right.isValue() && right.st.kind == stConst &&
 		left.isValue() && left.st.kind == stConst {
@@ -691,9 +706,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
+	node.arg0, node.arg1 = leftID, rightID
 	labelDeferredNode(f.s, node)
-	f.s.pushDeferred(node)
+	f.s.pushDeferredID(node, f.s.lastAllocatedID())
 	if f.guardMode && isDivRem(op) {
 		// A later guard-backed load can execute when its address is evicted.
 		// Emit this mandatory trap before such a load becomes a spill candidate.
@@ -846,6 +861,7 @@ func log2u(v uint64) int {
 // popcnt/eqz). typ carries the operand width; compare-style results become i32
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
+	operandID := f.s.head.prev
 	operand := f.s.back()
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
 	if operand.isValue() && operand.st.kind == stConst {
@@ -872,9 +888,9 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0 = f.s.ref(operand)
+	node.arg0 = operandID
 	labelDeferredNode(f.s, node)
-	f.s.pushDeferred(node)
+	f.s.pushDeferredID(node, f.s.lastAllocatedID())
 }
 
 // Slot extent excludes spillFloor, which belongs to the current flush only.

@@ -47,8 +47,9 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 				op = opFGe
 			}
 			if op != opNone {
+				rightID := f.s.head.prev
 				right := f.s.back()
-				left := f.s.node(baseOfValentBlock(f.s, right).prev)
+				leftID := baseOfValentBlock(f.s, right).prev
 				node := f.s.tryAlloc()
 				if node == nil {
 					node = f.s.allocNextChunk()
@@ -62,9 +63,9 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
 				if profileEnabled && f.stats != nil && f.stats.RecordSources {
 					f.rememberProfileNode(node)
 				}
-				node.arg0, node.arg1 = f.s.ref(left), f.s.ref(right)
+				node.arg0, node.arg1 = leftID, rightID
 				labelDeferredNode(f.s, node)
-				f.s.pushDeferred(node)
+				f.s.pushDeferredID(node, f.s.lastAllocatedID())
 				f.stats.peep("float-branch-defer")
 				return
 			}

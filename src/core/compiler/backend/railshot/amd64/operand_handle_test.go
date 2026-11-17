@@ -65,3 +65,22 @@ func TestOperandHandleRejectsUnusedOffset(t *testing.T) {
 	}()
 	_ = s.node(2)
 }
+
+func TestOperandHandleFreshPublication(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for i := 0; i < 25000; i++ {
+		var e *elem
+		switch i % 3 {
+		case 0:
+			e = s.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(i)})
+		case 1:
+			e = s.pushIntegerConstant(mtI32, int64(i))
+		case 2:
+			e = s.pushLocalRead(stLocalRef, mtI32, regNone, uint32(i))
+		}
+		id := s.lastAllocatedID()
+		if s.node(id) != e || s.head.prev != id || e.next != 1 || s.node(e.prev).next != id {
+			t.Fatalf("fresh publication mismatch at %d", i)
+		}
+	}
+}

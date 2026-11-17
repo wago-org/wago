@@ -139,22 +139,26 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
 	f.replaceStorage(local, st)
 	// The local was detached during replacement; restore its summary as well.
 	f.s.recordStorageEffects(st)
+	resultID := f.s.head.prev
 	result := f.s.back()
+	rootID := f.s.ref(root)
+	firstID := rootID
 	first := root
 	if root.isDeferred() {
-		first = f.s.node(root.arg0)
-		f.s.push(f.s.node(root.arg0))
-		f.s.push(f.s.node(root.arg1))
+		firstID = root.arg0
+		first = f.s.node(firstID)
+		f.s.pushID(first, firstID)
+		f.s.pushID(f.s.node(root.arg1), root.arg1)
 	}
-	f.s.push(root)
+	f.s.pushID(root, rootID)
 	f.s.exposeLogicalRoot(root)
 	// The new prefix precedes any previously cached slot-only prefix.
 	f.s.spilledPrefix = nil
 	// Rotate the reconstructed prefix below the existing result without moving
 	// the result's storage or changing its allocator ownership.
 	head := f.s.head
-	head.next, first.prev = f.s.ref(first), f.s.ref(head)
-	root.next, result.prev = f.s.ref(result), f.s.ref(root)
-	result.next, head.prev = f.s.ref(head), f.s.ref(result)
+	head.next, first.prev = firstID, 1
+	root.next, result.prev = resultID, rootID
+	result.next, head.prev = 1, resultID
 	f.s.pendingPrefix = nil
 }
