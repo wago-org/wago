@@ -4,7 +4,7 @@ Baseline 74ab035a. Both byteBodyScanner and globalScoreByteScanner now use
 explicit bounded control frames rather than native recursion. The allowed
 nesting depth and immediate/error consumption remain unchanged. An inline
 16-frame buffer serves shallow functions; deeper expressions grow a slice.
-No latency, RSS, or TinyGo crash fix is claimed from source changes alone.
+Measurements and qualification follow below.
 
 The original recursive scanner bodies are retained test-only under !tinygo.
 Differential tests compare full hint views including local-event tapes, sparse
@@ -22,7 +22,7 @@ the iterative path now preserves it. No test was weakened to accept this.
 Go 1.27.1 linux/amd64 full backend suite passes (8.965s), GOMAXPROCS=2,
 go test -p=1 ./src/core/compiler/backend/railshot/amd64 -count=1.
 Native-code corpus equivalence, TinyGo default-stack causality, RSS and paired
-performance remain to be measured independently.
+performance were measured independently as recorded below.
 
 ## Measured checkpoint
 
@@ -44,7 +44,7 @@ build flags. Increasing only the old build's stack to 2 MiB passes all 132,
 but uses 6.809 MiB mean peak RSS and 3.709 ms compilation. That oversized-stack
 workaround is not a fair baseline for claiming a latency improvement.
 All 132 iterative TinyGo native-image hashes match the old 2 MiB-stack build.
-Execution latency and additional tagged qualification remain pending.
+Execution latency and additional tagged qualification are recorded below.
 
 These measurements distinguish the stack-safety fix from the broader compiler
 performance goal. Go and TinyGo must not be compared as identical toolchains.
@@ -69,3 +69,13 @@ TinyGo arithmetic mean RSS across all 660 samples is 2.643 MiB; averaging
 worst-trial RSS per workload instead gives 2.646 MiB. The default Go embedding
 remains above the memory target. Full 145-workload acceptance is still blocked
 on 13 exact artifact bytes, and the 40% latency target remains unachieved.
+
+### TinyGo nesting-boundary test
+
+The default-stack TinyGo 20,000/20,001 nesting-boundary test passes (0.018 s)
+with unchanged production files and only the iterative depth test selected at
+source level. The normal package test build is independently blocked by
+pre-existing compile_test.go constant indexing of TinyGo's zero-sized scratch
+array (lines 111, 125, 130), even with a test-name filter. Therefore this is an
+isolated targeted test, not a full TinyGo backend-suite pass. All temporarily
+excluded test sources were restored; none were removed from this branch.
