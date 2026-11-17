@@ -808,7 +808,11 @@ enterExpression:
 		switch op {
 		case 0x0b, 0x05:
 			if op == 0x05 && !stopAtElse {
-				return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+				term := op
+				if len(frames) != 0 {
+					term = 0
+				}
+				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			if len(frames) == 0 {
 				return op, nil
@@ -1061,7 +1065,11 @@ enterExpression:
 		switch op {
 		case 0x0b, 0x05: // end or else
 			if op == 0x05 && !stopAtElse {
-				return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+				term := op
+				if len(frames) != 0 {
+					term = 0
+				}
+				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			if len(frames) == 0 {
 				return subHasCall, op, nil
