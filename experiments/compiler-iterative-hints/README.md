@@ -24,7 +24,7 @@ go test -p=1 ./src/core/compiler/backend/railshot/amd64 -count=1.
 Native-code corpus equivalence, TinyGo default-stack causality, RSS and paired
 performance were measured independently as recorded below.
 
-## Measured checkpoint
+## Historical 132-workload checkpoint (superseded below)
 
 Cloud Linux AMD64, Go 1.27.1 and TinyGo 0.42.0. Corpus: 132 exact
 artifact hashes recovered from the live wasm.fyi 145-contract Linux manifest;
@@ -93,3 +93,35 @@ memory target. This supersedes the oversized 2 MiB workaround as the useful
 TinyGo performance comparison. It changes source and stack configuration,
 so it is not a source-only comparison. The toolchain includes the same existing
 TinyGo tasks-exit runtime patch in both builds.
+
+## Full 145-workload qualification
+
+All 13 missing artifacts were recovered from wasm.fyi's canonical
+`https://wasm.fyi/api/artifacts/{sha256}.wasm` route and independently hash
+verified. No rebuilds or same-name substitutions. `contracts145.json` records
+all exact workload IDs and SHA256s. The missing-corpus blocker is resolved.
+
+Nine paired trials with Go 1.27.1: all 2,610 compilations pass; all 145 generated
+native images match. Arithmetic mean of workload median compile times is
+1.208 ms baseline versus 1.180 ms iterative (2.4% lower); peak VmHWM means are
+7.599 versus 7.618 MiB. This full-corpus result supersedes the earlier 132-case
+6.4% figure and does not meet the 40% source-redesign latency target.
+
+Seven paired TinyGo opt=z trials: original scanner with 128 KiB stack versus
+iterative scanner default stack, all 2,030 compilations pass and native images
+match. Mean workload median compile time is 3.139 versus 3.003 ms (4.3% lower),
+and mean peak RSS is 2.866 versus 2.619 MiB. Both pass the memory target in this
+embedding; the iterative scanner additionally removes native recursion.
+
+TinyGo opt=2 iterative also passes all 145 workloads (1,015 compilations), with
+mean compilation 1.378 ms and mean peak RSS 3.242 MiB. The original opt=2 scanner
+with 128 KiB stack crashes on pcre2 in every trial. Its successful-only aggregate
+must not be used as a full-corpus baseline. A larger-stack control is pending.
+Changing opt=z to opt=2 is host build-configuration tuning, not a source-only
+speedup, and trades resident code for speed.
+
+These compile/RSS measurements include all 145 exact artifacts. Execution
+oracle/timing checks currently cover the 102 application kernels described
+above; the other 43 contracts require their specified fresh-instance sampling,
+host profiles, input setup and oracle checks. Native-image equality does not
+replace that pending full execution-contract qualification.

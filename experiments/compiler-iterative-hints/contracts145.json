@@ -1,0 +1,582 @@
+[
+  {
+    "id": "applications/audio-adpcm",
+    "sha256": "4bfcd111e7fc92e2a06c09684626d20486a6c88b0abb1f463088598b3d645d05"
+  },
+  {
+    "id": "applications/audio-autocorrelation",
+    "sha256": "10970647e9003eb8ed1912a20b877f74e8a601f1b33774d61dc902c7816f3ce3"
+  },
+  {
+    "id": "applications/audio-biquad",
+    "sha256": "d0ef219c69b50bd4389448c80c9dfdfd79ddd466d4234d4768d8ab3f63ad6661"
+  },
+  {
+    "id": "applications/audio-fir",
+    "sha256": "47368c2174ec16ab7e49e298b5f5b60616196a854fd80450cdd07ac0c9e7399c"
+  },
+  {
+    "id": "applications/bezier-tessellation",
+    "sha256": "e5d4e2d30ba88f9f50f1e07b7587c5fdc03734bdfa5922000cb48631a397ea38"
+  },
+  {
+    "id": "applications/bio-global-alignment",
+    "sha256": "59a542d8d04134c86c6a5e1fc8a3079ba98562eec4dce3f6ed2fed1938325a63"
+  },
+  {
+    "id": "applications/bio-kmer-count",
+    "sha256": "fff4894661e750a00a1e4114334e757d897aea75bff5dbfa7e10a1e1d54b541f"
+  },
+  {
+    "id": "applications/bio-lcs",
+    "sha256": "c4e8a86bbcb8bced26b0fb94351197e21c62af26127756579a8b81b3c62e3274"
+  },
+  {
+    "id": "applications/bio-local-alignment",
+    "sha256": "26972b8ac8a5ce12324e3170f0be70d0df075dba7f7f4d6b498080b3f49a4380"
+  },
+  {
+    "id": "applications/bio-reverse-complement",
+    "sha256": "a113241d259f4b1aaa2042372f33a4af0ecadbeda3e38f320bf11cb73b0e9807"
+  },
+  {
+    "id": "applications/checksum-crc32",
+    "sha256": "362aec564e90e257c5dec6572dffb561ff13103937feb62db3238e8c36b1f7e3"
+  },
+  {
+    "id": "applications/columnar-query",
+    "sha256": "9734efa50e11b3f66c53bec750ad502383f235170001b673a97943284ef6e107"
+  },
+  {
+    "id": "applications/compiler-constant-fold",
+    "sha256": "cdc960b89db3385048b2b7505329b1f426653cd5c497ee5d1d7532d623b9ee60"
+  },
+  {
+    "id": "applications/compiler-dead-code",
+    "sha256": "215d4d63e6a20e2776566a2a7d3963235cf687da1a9ede05c8ef6b92237e7ee6"
+  },
+  {
+    "id": "applications/compiler-register-allocation",
+    "sha256": "9ed8041d42b0aea5ee7568ef9b7516f02d166da3d40860eaa394e2e048d6c436"
+  },
+  {
+    "id": "applications/compression-lzw",
+    "sha256": "cd1ae4acd649d3fb24675a4c8b08f902581929377ebd04da940c86de7eb38a40"
+  },
+  {
+    "id": "applications/compression-rle",
+    "sha256": "8c0d8de4176c48e8cd0fba697eb999319cbbababae99ccb50aa4094ae399f456"
+  },
+  {
+    "id": "applications/crypto-aes128",
+    "sha256": "e7792dd01b20458e01b9913d9fa0a3a67e85090dbe4df176a9e29408fb454c1c"
+  },
+  {
+    "id": "applications/db-bitmap-index",
+    "sha256": "f125d4c64851c54c0ff52c0fcac6b3b21135781bb073973550bf53515e1322ca"
+  },
+  {
+    "id": "applications/db-btree",
+    "sha256": "fe61de0b7736e4677b03078ddc1fe5c4e689ed8e3be21dac223ab909559a15fa"
+  },
+  {
+    "id": "applications/db-hash-join",
+    "sha256": "9ab2e976c8b7f55e689335e6d750c560d70f8a9b97ba5375b7465c10653cf3aa"
+  },
+  {
+    "id": "applications/db-sort-merge-join",
+    "sha256": "b526022711a662fa8ec7228b4da471c0b85a15d9743a67160aceb1165b59d5cd"
+  },
+  {
+    "id": "applications/document-bidi-reorder",
+    "sha256": "c07e3abe3f2d5e5d799814414feff023bc5ec2504047fd3467797313d7890688"
+  },
+  {
+    "id": "applications/document-edit-distance",
+    "sha256": "3d30bf23d42f8dd3e49837271aba9cc94ed58017ef1585b6aee653866e9dd35c"
+  },
+  {
+    "id": "applications/document-kerning",
+    "sha256": "861d7fa1c8fa009f5fda8f9e145309ecc2f83bd71e5a660745f85996b7317b8d"
+  },
+  {
+    "id": "applications/document-layout",
+    "sha256": "cc4b73297c2632bdd4d26654e31ff14af03bb776fc32eb0bb50d27fa4d178cb6"
+  },
+  {
+    "id": "applications/document-optimal-wrap",
+    "sha256": "2262004b9c7a9c554a6b7ad641ba21bca171894e0682ba81a7136def16827246"
+  },
+  {
+    "id": "applications/document-page-packing",
+    "sha256": "3880a6e0f0918f58b28075c818e2b1e3f4ccc33889b28b5bf1283359751ed736"
+  },
+  {
+    "id": "applications/files-content-chunking",
+    "sha256": "df23fd1b5cea821f5bf18f876bf820f463ce4041304e7a501e4070290ee56184"
+  },
+  {
+    "id": "applications/files-glob-match",
+    "sha256": "b3404832b1cf5274f85c6853ac39b4c85757b267b39f2ee19eb15951d0f6c80a"
+  },
+  {
+    "id": "applications/files-merkle-tree",
+    "sha256": "3f69a5b569fa0813e48132191e38c1f47e7f1c0213eac3b9627386548a2f5d1e"
+  },
+  {
+    "id": "applications/files-path-normalize",
+    "sha256": "6c6d9714fbec4059db782261998877460e9897d8838db80125d33b656ce3a796"
+  },
+  {
+    "id": "applications/files-path-trie",
+    "sha256": "ba36e43255e4c7d9e639ae87260050572356ec7976888bff9e3e5f94e8423999"
+  },
+  {
+    "id": "applications/frustum-culling",
+    "sha256": "4ba0ecc74ff833374af96927470dfa9ae8f2ddde7759ea5f3efd5de44c677920"
+  },
+  {
+    "id": "applications/game-cellular-automata",
+    "sha256": "20fb63b99473359f01fe955d258f4b80fa7d6280bf0c38ca234b12e619c9fbf7"
+  },
+  {
+    "id": "applications/game-collision-impulse",
+    "sha256": "1bcbdc8ec986f5f48304aae77e49136fa0a2c0a7a54181811be7e94a8b1ebf95"
+  },
+  {
+    "id": "applications/game-flocking",
+    "sha256": "f0dfd695cca11a44c93bb9daf442e1267534738c8038b1edde3ccb4f51dae2eb"
+  },
+  {
+    "id": "applications/game-spatial-hash",
+    "sha256": "664cda6d0d95b3919a94429461f4889f9ca2735b16c3041ba9153705c4478827"
+  },
+  {
+    "id": "applications/geo-convex-hull",
+    "sha256": "e3b2f7d69e16a4ebcc0372b842b34fd5942d6ad0cc01e563da024e658c22664f"
+  },
+  {
+    "id": "applications/geo-geohash",
+    "sha256": "8f321e384048a927119daba520fc7adf87a7137c88da8d8ee6a11696ac4be471"
+  },
+  {
+    "id": "applications/geo-point-in-polygon",
+    "sha256": "42f921c30d50f68ec38dbff834678159270ea4fb3b43879bddb1ff4938be3ee3"
+  },
+  {
+    "id": "applications/geo-polygon-clipping",
+    "sha256": "f292ed825065ff627546346a85a14b1549a85371c25220a1ccf02d2e5f286531"
+  },
+  {
+    "id": "applications/geo-polyline-simplify",
+    "sha256": "d0ca57d66474ce298aee724dfa3bd05e8ec29adf025659c3bca792790aa1882b"
+  },
+  {
+    "id": "applications/graph-dijkstra",
+    "sha256": "547562474be749ca740e9b3d6e1563257b8a02799021ed524dfeec91a53cdd9a"
+  },
+  {
+    "id": "applications/graph-kruskal",
+    "sha256": "5bc34905a55132e498734a05d45a42aaa330fcb71f31bc72bf5dc87400bbbe9f"
+  },
+  {
+    "id": "applications/graphics-bresenham",
+    "sha256": "3d1d6b60c5473318f51a48cbf250385eaf8252e3ea262c1b93a7303129e0df3c"
+  },
+  {
+    "id": "applications/graphics-png-paeth",
+    "sha256": "4386663df5b27c59a740c03045e5013b05548237f9ef50fe6acd743f40449a77"
+  },
+  {
+    "id": "applications/graphics-reed-solomon",
+    "sha256": "b4d0df500e757f94db64eba2e377a788b25249d26cf21de08bf53605ad7a5640"
+  },
+  {
+    "id": "applications/grid-pathfinding",
+    "sha256": "7ee5dc63a6992516ddb1bbdfbdb818a7e91d273b92b3567e235da3ff5e2f3c38"
+  },
+  {
+    "id": "applications/hardware-boolean-anf",
+    "sha256": "679434000300182dbc1f3000918c580605adc43f2b1c95b6b0c14c3dca68c7db"
+  },
+  {
+    "id": "applications/hardware-prime-implicants",
+    "sha256": "bd0689a8fab78b877a4831c8bbc8c30204b2a895153ceb1140fa98d10c96b067"
+  },
+  {
+    "id": "applications/image-blur",
+    "sha256": "1461cf2745707540a93a6e8a40462b12f4bed25cf929be35597ea43e53542dcd"
+  },
+  {
+    "id": "applications/image-composite",
+    "sha256": "c8984d778969c130a5bbc6dbf3cb921ab67adf91385f14f49b22c0657728a0fe"
+  },
+  {
+    "id": "applications/image-error-diffusion",
+    "sha256": "e667a612b6de34ba7449a6ec6fd72efa40cf4f7835328362a821f501ea3cfbbe"
+  },
+  {
+    "id": "applications/image-median",
+    "sha256": "84074468273e6ba4e31deb1f94bad9efa570d2b82726fcca063b69d6ae642424"
+  },
+  {
+    "id": "applications/image-resize",
+    "sha256": "7e59634a686a644f00fcac585ce7ade7aa4061c8d8349dbb3d96514c69182a59"
+  },
+  {
+    "id": "applications/image-ycocg",
+    "sha256": "f109423a938a979b9911f2b6da9126f0fd0f2180b197af2b0399f03679885637"
+  },
+  {
+    "id": "applications/language-brainfuck",
+    "sha256": "e69dc1460b499559b33f4845b18d5754b4b32225b40d2daf4d2dfdf217e0bea0"
+  },
+  {
+    "id": "applications/language-forth",
+    "sha256": "27299764e8c86d35854763ddbbf3b7e9eb30a7b3f578b3774d29015f133a7155"
+  },
+  {
+    "id": "applications/language-register-vm",
+    "sha256": "64ab43e352b270ed82c70e85c366a17d35bbbe43ffa97f5d74688e97b7cdb090"
+  },
+  {
+    "id": "applications/map-point-segment",
+    "sha256": "d45391871d44aa77f29a80925c67e4e6fafb95147e85022776e075eb1ed2a4ad"
+  },
+  {
+    "id": "applications/mesh-skinning",
+    "sha256": "1b59b36c3dc25d40aaf1d0ea54b5c96f6bac15ecf9feace7f33b0584804f36da"
+  },
+  {
+    "id": "applications/ml-convolution",
+    "sha256": "999a09eee593de504e5189c6d106629e71855c263703741aac5a49aacf5b4a4b"
+  },
+  {
+    "id": "applications/ml-decision-tree",
+    "sha256": "3cf9b94cb21e909ac580400b372e40aafc6b2b410ac2b246a0828e1acaa41e44"
+  },
+  {
+    "id": "applications/ml-inference",
+    "sha256": "71563da19336d6f7dcd0170bcf32b874abc99382965fd5856ea17f6406b96f3a"
+  },
+  {
+    "id": "applications/ml-kmeans",
+    "sha256": "5472e683c6cc3cc951a228488e035c1d53fd0b200deda8065d898400e03d02aa"
+  },
+  {
+    "id": "applications/ml-knn",
+    "sha256": "492f1150fc33d471bebcc676971278aa2f7e13bd4434b7e5a84b3f03a6ad13ad"
+  },
+  {
+    "id": "applications/ml-max-pooling",
+    "sha256": "c7e7a4f419e05f3360ff18d56ac043bf8c518f95bb39be2b21c8af053f7b580b"
+  },
+  {
+    "id": "applications/numeric-cordic",
+    "sha256": "85ada5cd6cf51d1501c13f7218bfe9e93d2f7744668485451dce75be2f4959e3"
+  },
+  {
+    "id": "applications/numeric-euclidean-gcd",
+    "sha256": "78be8f26a99dd92f9f593751fa12e2fb2d482c1ffe307572ac246a76e9cbbdfe"
+  },
+  {
+    "id": "applications/numeric-integer-sqrt",
+    "sha256": "1e0d4637bd7025f7dc6f2fd68635da847cac65f5ffc9985e4ba05304c4dccb8d"
+  },
+  {
+    "id": "applications/numeric-simpson",
+    "sha256": "dd688b98faece10fd2805482b576f1af758626d7d70f46227e3ee8d9c254f988"
+  },
+  {
+    "id": "applications/particle-physics",
+    "sha256": "03198bba53dc326b7fa69c4632d206291f04dfc63b72fe019250eba6704a2ad9"
+  },
+  {
+    "id": "applications/ray-box",
+    "sha256": "f4499558de77a0dc92c4f271ac693f16e1bd85fa2b89513515fee3582224c1f1"
+  },
+  {
+    "id": "applications/search-aho-corasick",
+    "sha256": "eb6b614066da259e9a74148b3fc93cf7b26d655d311ec27243a6abddc31f1123"
+  },
+  {
+    "id": "applications/search-bk-tree",
+    "sha256": "a21b9a1aa866958795a050ef06a34f7d7c0760104bfd3bad1e64c294a6405b7b"
+  },
+  {
+    "id": "applications/search-horspool",
+    "sha256": "7b16b4a26f0f3d75c65754081a97c4064a8bd4fdd98534e745bd85e455b9a940"
+  },
+  {
+    "id": "applications/search-kmp",
+    "sha256": "3f6cbe94ab0b73ebabc23efb73d55b04765e56d70ec033113a540809ecc83fab"
+  },
+  {
+    "id": "applications/search-rabin-karp",
+    "sha256": "ff963351505b990c8f11114fee687e2a4beb54eb9c20bfa51f92e186106c0d7a"
+  },
+  {
+    "id": "applications/serialization-msgpack",
+    "sha256": "6e0f59985ea2641495ba13915f8e544f52abf5355e3785ee7ae4a59dd96e377e"
+  },
+  {
+    "id": "applications/serialization-protobuf",
+    "sha256": "8777c90dfc70d4c0527c36fdf932c4aa7e7c76b75265e95950ab1d550bdcb979"
+  },
+  {
+    "id": "applications/stats-bootstrap",
+    "sha256": "33d68bef04af0f768443497384e78cba1dbc190f9551e026bf33ae5ecb3d3257"
+  },
+  {
+    "id": "applications/stats-gini",
+    "sha256": "edbd9963a0bf83e0cb6ec7fc755c0b0e4309b6b7431654a381289b0ea38b250b"
+  },
+  {
+    "id": "applications/stats-linear-regression",
+    "sha256": "f75b7e038eb5bf4efe2bf0cad87c8bbcdd69d82a65c6ddc844d4daf9d573d5b4"
+  },
+  {
+    "id": "applications/stats-quickselect",
+    "sha256": "a0de1d84dd57a6eb74a8c23a97083e59d2550933737a8188cbb8d86ba6ca5143"
+  },
+  {
+    "id": "applications/stats-welford",
+    "sha256": "fe990822dd87324bd9938f1cddc31def2a44bff45b85e4aa5f8c4ba2562fb166"
+  },
+  {
+    "id": "applications/stencil-lattice-boltzmann",
+    "sha256": "bb8ea72c9f79a5f0b66f8d1cfffcb8701bd0c6b037d2811121366b4eabaac5f8"
+  },
+  {
+    "id": "applications/stencil-wave-equation",
+    "sha256": "a003c20236a8efff8e20cea9d4cc862c5e71f71e47a0b3f31e4758cc7efd7a8a"
+  },
+  {
+    "id": "applications/text-substitution",
+    "sha256": "5d772351ffa8e186dd9c7321e0f4026d1ed5fb98ab843e28604c8a03cdabea93"
+  },
+  {
+    "id": "applications/triangle-raster",
+    "sha256": "45f21d1ffa1b4aa83a628186d22896c39707d24a3ad7690aba7fa119a926819f"
+  },
+  {
+    "id": "applications/video-dct",
+    "sha256": "fe023fc6f8848374ca92fa76797113ff448a84a53917cb5e45243c2c970c3f46"
+  },
+  {
+    "id": "applications/video-deblocking",
+    "sha256": "a0371f00889d71b431c361066cf69d88bfa504057417b6a341dffb7353061226"
+  },
+  {
+    "id": "applications/video-motion",
+    "sha256": "b84ad9a9ac36834611c1e4e6e8af58b7ca90165852b9bd9361ad7a728292eddf"
+  },
+  {
+    "id": "applications/video-optical-flow",
+    "sha256": "e109691f5858d9ed63bed5fb470a74c5a7b74b7490eb74f24d7b1ee0121d0cab"
+  },
+  {
+    "id": "applications/video-temporal-denoise",
+    "sha256": "422f1538bc33b28465571a4b420536597ecc233f7a00d71e48e15f20519e0522"
+  },
+  {
+    "id": "applications/video-yuv420",
+    "sha256": "57635170ff1c81c7ed43d91d1ec5a6c834eccdea903f6f228a0940ad6bbb5b98"
+  },
+  {
+    "id": "applications/vision-components",
+    "sha256": "e367028d368de67455a1823ce25c37f3b406a25bec79e66612d277651283f4e8"
+  },
+  {
+    "id": "applications/vision-dilation",
+    "sha256": "5e2a5dff50fb7f2c4cc15276e1e21852b30d7b412966036cf0c4c88b31db47a8"
+  },
+  {
+    "id": "applications/vision-distance-transform",
+    "sha256": "9ae8f9a8502ad5cb9de45d5ab20219f9b1012f64698d516f238e2e570b26a091"
+  },
+  {
+    "id": "applications/vision-fast-corners",
+    "sha256": "2f56aa82dccb82860dd3748251127f60e149c32a54acab7bc5222f83745c4916"
+  },
+  {
+    "id": "applications/vision-otsu",
+    "sha256": "d18358d45a8c0313d4e44db3a3e2a9f5ed2adbbd3f303d290f0b24828f1be142"
+  },
+  {
+    "id": "applications/vision-sobel",
+    "sha256": "7cfe928bc8cc1e5914d01d6c67d6affec46ff3c31f9c409201b609f0fc2532e7"
+  },
+  {
+    "id": "wago/blake3/hash",
+    "sha256": "04e92b34db9342b8eee97b05d3376c556a7ca6e2abbab29651650868c8997784"
+  },
+  {
+    "id": "wago/coremark/2k-performance",
+    "sha256": "164888a08095a9aeb1c97d428200518cc63ab51bd0c13860fcdcb9f2f1081f30"
+  },
+  {
+    "id": "wago/dispatch/apply",
+    "sha256": "29ac75e8a197b2564df8c92a59a17fb18f3474fa3d55d944ea12dea6cde88de9"
+  },
+  {
+    "id": "wago/drwav/pcm-decode-seek",
+    "sha256": "7f7625f9073f1f9de709b1682adc9c238989c39825e240570bc9870eb6630c56"
+  },
+  {
+    "id": "wago/fannkuch/run",
+    "sha256": "31925e0d86d0bb743e2b643b958d304d42ef23734ecf871885fc51845b543f08"
+  },
+  {
+    "id": "wago/fastfloat/decimal-parse",
+    "sha256": "6eb172b5da57c4d0a0ff194def7179f022847d09345fd975ba6dcdd827bd7265"
+  },
+  {
+    "id": "wago/fib_rec/fib",
+    "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14"
+  },
+  {
+    "id": "wago/json-as-simd/serializeN",
+    "sha256": "4e7f3b2c9d3a8664d0bd43fe82670978066a90dd71eb9f4ba84e29ca616d9305"
+  },
+  {
+    "id": "wago/kissfft/complex-roundtrip",
+    "sha256": "95b236874a6a1e8218545ce703abd36195dcad39eecd3e3b318bbc2a53fd3a1d"
+  },
+  {
+    "id": "wago/libtommath/modular-arithmetic",
+    "sha256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1"
+  },
+  {
+    "id": "wago/linked_list/sum",
+    "sha256": "d3dfc4028519becbadc69f6878c0b8b4e32f3ce4713ffe0edbb3a2ac63c4bba1"
+  },
+  {
+    "id": "wago/lz4/compress",
+    "sha256": "65580eb810ebcb38f8c7ffb07c6e999785c8571b86962b6c8e8081eb010cbfda"
+  },
+  {
+    "id": "wago/many_funcs/run",
+    "sha256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd"
+  },
+  {
+    "id": "wago/memory/sum",
+    "sha256": "61bc06924f4d51a179ebf19a1732002168b8899eb2cfa79886bdffdc9cbefabf"
+  },
+  {
+    "id": "wago/memory_tree/run",
+    "sha256": "4f95f9b259641f241d9361b7e0aeb2740275314d1d69debcddd723efbbc129d5"
+  },
+  {
+    "id": "wago/monocypher/aead-blake2b",
+    "sha256": "fa4356e1222b86387b5566f02c2ccd24404c5f9f044f697a14c164075dacf133"
+  },
+  {
+    "id": "wago/nanosvg/parse-structure",
+    "sha256": "78b2553b244d43441d4d92a71397be695bb4fd0d8ca9cda57614ef5f20945eb9"
+  },
+  {
+    "id": "wago/nbody/step",
+    "sha256": "dd42fb59fbd230e9b72a6a2ac08e616f4bf98c01f35b2581e5c2652889fca7a7"
+  },
+  {
+    "id": "wago/pcre2/compile-match",
+    "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda"
+  },
+  {
+    "id": "wago/polybench-adi/polybench_run",
+    "sha256": "c014667facaebc17da35d3fa04a959ed52be98c0cc0869d3e95bb523158c4519"
+  },
+  {
+    "id": "wago/polybench-cholesky/polybench_run",
+    "sha256": "32fa0520bc4ef20f36f5d9d374485ce8cd9dd505d57ce9cccc95c601a7f6557d"
+  },
+  {
+    "id": "wago/polybench-correlation/polybench_run",
+    "sha256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c"
+  },
+  {
+    "id": "wago/polybench-deriche/polybench_run",
+    "sha256": "fa1f06819b6a401427d034571199d6d4e055b466135b170f73fa83ec55736bef"
+  },
+  {
+    "id": "wago/polybench-durbin/polybench_run",
+    "sha256": "c7731633a680988fe4dba32d8b2248630340226dc18f50537b630e500d783b58"
+  },
+  {
+    "id": "wago/polybench-fdtd-2d/polybench_run",
+    "sha256": "330efa74054f9b909cd3f9bfa8a9f41fafaeea1854ab21537bdfc3d36ff6e04c"
+  },
+  {
+    "id": "wago/polybench-floyd-warshall/polybench_run",
+    "sha256": "20766bf0b5e219d64759fcbae37b68c3f1a3e2c08e7722e7a3ac04e966a879fe"
+  },
+  {
+    "id": "wago/polybench-gemm/polybench_run",
+    "sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79"
+  },
+  {
+    "id": "wago/polybench-gramschmidt/polybench_run",
+    "sha256": "7454650c22f10bf57dd330ab00e553a81e20891025751cae5b78e50d494eee15"
+  },
+  {
+    "id": "wago/polybench-jacobi-2d/polybench_run",
+    "sha256": "22bf77b0c5d1ef03d29d5a11aaffd704a6e3979c9e15ce3ae150ffcc0ca82bf1"
+  },
+  {
+    "id": "wago/polybench-lu/polybench_run",
+    "sha256": "dd09f51afbfa45e88efef5248248483f8e33df484dec94157f7e6226fba9e269"
+  },
+  {
+    "id": "wago/polybench-nussinov/polybench_run",
+    "sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44"
+  },
+  {
+    "id": "wago/polybench-seidel-2d/polybench_run",
+    "sha256": "0c9025ce4ec0116c713e11c69e5c354bb39cdaef9c0045d3a120fedb58cb89c1"
+  },
+  {
+    "id": "wago/polybench-trisolv/polybench_run",
+    "sha256": "9d9af505eb4c4accbd360a1805cf243fbb40e2519f3567d0ced756ebfad55578"
+  },
+  {
+    "id": "wago/qoi/encode",
+    "sha256": "8074c264926caf2567142214d54412c41ee1c5bd3129589e99d76c2a9e7177bb"
+  },
+  {
+    "id": "wago/raytrace/render",
+    "sha256": "cdc7200a9a4794b0d48459f2ceb4cfce1a2308d72026cec81b2c87daecb9d66f"
+  },
+  {
+    "id": "wago/sha256/hashN",
+    "sha256": "8978d6906ee899589170cca1d0c2d33d74a7296683fc9e7d48e4a6b78b449c98"
+  },
+  {
+    "id": "wago/tiny/add",
+    "sha256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a"
+  },
+  {
+    "id": "wago/utf-as-simd/validateN",
+    "sha256": "fd02c093eb7c88b00764d5f7060ebaf9cdc2f2d2b64edbb3bd650f1e49de5bfe"
+  },
+  {
+    "id": "wago/utf8proc/normalize-casefold",
+    "sha256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7"
+  },
+  {
+    "id": "wago/xxhash/xxh64-boundaries",
+    "sha256": "3c3b114bc7cf36c3888d0a7053e4349598408e8579b64f6e5dd9314dfdd011aa"
+  },
+  {
+    "id": "wago/yyjson/parse-edit-write",
+    "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b"
+  },
+  {
+    "id": "wago/zlib/inflate",
+    "sha256": "03977b0e32655c1460b29948a21e93363676a1da0905bfd733272cc721bfb795"
+  },
+  {
+    "id": "wago/zstd/decompress",
+    "sha256": "a6aeb509e796aa851487df7a1c5fe77bb4a175b126f6d4bbe1760429ed6bf958"
+  }
+]
