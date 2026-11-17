@@ -109,7 +109,7 @@ func TestPopcountLoopSummaryProbeBudgetAndRejections(t *testing.T) {
 	f := &fn{nLocals: 3, localType: []machineType{mtI32, mtI32, mtI32}}
 	body := popcountLoopBody(0)[3:]
 	if allocs := testing.AllocsPerRun(100, func() {
-		f.affineLoopWork = 0
+		f.popcountLoopWork = 0
 		r := wasm.ReaderFrom(body)
 		var p popcountLoopPlan
 		if !f.inspectPopcountLoop(&r, &p) || p.n != 3 || p.pop < 0 || r.Offset() != 0 {
@@ -124,17 +124,17 @@ func TestPopcountLoopSummaryProbeBudgetAndRejections(t *testing.T) {
 		func(b []byte) []byte { return append([]byte{0x28, 2, 0}, b...) },
 		func(b []byte) []byte { return append(bytes.Repeat([]byte{0x01}, 65), b...) },
 	} {
-		f.affineLoopWork = 0
+		f.popcountLoopWork = 0
 		r := wasm.ReaderFrom(mutate(append([]byte{}, body...)))
 		var p popcountLoopPlan
 		if f.inspectPopcountLoop(&r, &p) || r.Offset() != 0 {
 			t.Fatal("admitted unsupported popcount loop or changed reader")
 		}
 	}
-	f.affineLoopWork = affineLoopWorkLimit - 1
+	f.popcountLoopWork = popcountLoopWorkLimit - 1
 	r := wasm.ReaderFrom(body)
 	var p popcountLoopPlan
-	if f.inspectPopcountLoop(&r, &p) || f.affineLoopWork != affineLoopWorkLimit || r.Offset() != 0 {
+	if f.inspectPopcountLoop(&r, &p) || f.popcountLoopWork != popcountLoopWorkLimit || r.Offset() != 0 {
 		t.Fatal("probe work cap or reader contract")
 	}
 }

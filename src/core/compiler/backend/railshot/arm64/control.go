@@ -1960,28 +1960,23 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			f.settleByteBoundsPhase()
 			if pN == 0 && rN == 0 {
-				f.beginAffineLoopSummary(r)
-				if f.affineLoop == nil {
-					if f.emitPopcountLoopSummary(r) {
-						fr.controlSite = f.a.Len()
-						f.pushCtrl(&fr)
-						return nil
-					}
-					f.emitPureReduce(r)
-					if f.loopMemory {
-						f.emitByteReduceLoop(r)
-						f.emitDotLoop(r)
-						f.emitMinPlusLoop(r)
-						f.emitFloatMapLoop(r)
-						f.emitIntegerLoadMap(r)
-						f.emitIntegerWordMap(r)
-						f.emitAbsReduceLoop(r)
-					}
+				if f.emitPopcountLoopSummary(r) {
+					fr.controlSite = f.a.Len()
+					f.pushCtrl(&fr)
+					return nil
+				}
+				f.emitPureReduce(r)
+				if f.loopMemory {
+					f.emitByteReduceLoop(r)
+					f.emitDotLoop(r)
+					f.emitMinPlusLoop(r)
+					f.emitFloatMapLoop(r)
+					f.emitIntegerLoadMap(r)
+					f.emitIntegerWordMap(r)
+					f.emitAbsReduceLoop(r)
 				}
 			}
-			if f.affineLoop == nil {
-				f.beginLoopLocalLease(r, &fr)
-			}
+			f.beginLoopLocalLease(r, &fr)
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
 			if !f.alignCountedLoopBody(r, &fr) {
@@ -3038,7 +3033,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.finishByteReduceLoop(last + 1)
 	f.finishPureReduce(last + 1)
 	f.finishLoopLocalLease(last + 1)
-	f.finishAffineLoopSummary(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)

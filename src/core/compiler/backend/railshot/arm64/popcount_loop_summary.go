@@ -18,6 +18,17 @@ import (
 
 var popcountLoopSummaryEnabled = os.Getenv("WAGO_ARM64_NO_POPCOUNT_LOOP_SUMMARY") != "1"
 
+const popcountLoopWorkLimit = 16384
+
+func (f *fn) chargePopcountLoop(n int) bool {
+	if n > popcountLoopWorkLimit-int(f.popcountLoopWork) {
+		f.popcountLoopWork = popcountLoopWorkLimit
+		return false
+	}
+	f.popcountLoopWork += uint16(n)
+	return true
+}
+
 const (
 	popcountLoopCells = 8
 	popcountLoopStack = 4
@@ -83,7 +94,7 @@ func (f *fn) inspectPopcountLoop(source *wasm.Reader, p *popcountLoopPlan) bool 
 		return true
 	}
 	for ops := 0; ops < 64 && r.Offset()-start < 256; ops++ {
-		if !f.chargeAffineLoop(1) {
+		if !f.chargePopcountLoop(1) {
 			return false
 		}
 		op, err := r.Byte()
@@ -226,7 +237,7 @@ func (f *fn) readPopcountLoopLocal(index int, target Reg) {
 // local assignments.
 func (f *fn) emitPopcountLoopSummary(source *wasm.Reader) bool {
 	if !popcountLoopSummaryEnabled || profileEnabled || f.unreachable || f.interruptible || f.moduleEH || f.localBase != 0 || f.inlineDepth != 0 ||
-		f.nLocals > 64 || f.depth() != 0 || f.tracksGCFrameRoots() || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.affineLoopWork >= affineLoopWorkLimit {
+		f.nLocals > 64 || f.depth() != 0 || f.tracksGCFrameRoots() || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.popcountLoopWork >= popcountLoopWorkLimit {
 		return false
 	}
 	// A byte screen keeps the ordinary miss below the full symbolic parser.
