@@ -27,9 +27,11 @@ func csetLineagePair(cmp, sel uint32) bool {
 // SIMD, signed-load, writeback and control encodings deliberately decline.
 func csetLineageWord(w uint32) (guardedIntegerEffects, bool) {
 	if w&0x3b000000 == 0x39000000 && w&(1<<26) == 0 && w>>30 >= 2 && w>>22&3 <= 1 {
-		x := guardedIntegerEffects{}
+		x := guardedIntegerEffects{reads: uint32(1) << (w >> 5 & 31) & 0x7fffffff}
 		if w&(1<<22) != 0 {
 			x.writes = (uint32(1) << (w & 31)) & 0x7fffffff
+		} else {
+			x.reads |= uint32(1) << (w & 31) & 0x7fffffff
 		}
 		return x, true
 	}
@@ -43,9 +45,11 @@ func csetLineageWord(w uint32) (guardedIntegerEffects, bool) {
 		if opc == 2 && w>>30 == 3 {
 			return guardedIntegerEffects{}, false
 		}
-		x := guardedIntegerEffects{}
+		x := guardedIntegerEffects{reads: (uint32(1)<<(w>>5&31) | uint32(1)<<(w>>16&31)) & 0x7fffffff}
 		if opc != 0 {
 			x.writes = (uint32(1) << (w & 31)) & 0x7fffffff
+		} else {
+			x.reads |= uint32(1) << (w & 31) & 0x7fffffff
 		}
 		return x, true
 	}
