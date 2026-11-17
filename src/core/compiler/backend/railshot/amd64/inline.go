@@ -569,14 +569,15 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 	return t != nil && t.omitStandalone
 }
 
-// buildInlineTargets returns the straight-line leaf inline candidates keyed by
-// GLOBAL function index, or an empty table when inlining is disabled. Candidacy
-// here is a property of the callee alone (the call-site count only mattered for the report),
-// so a call to one of these can be spliced wherever it appears.
-// buildInlineTargets derives the splice set from the per-function hints already
-// gathered by computeModuleHints — no second body walk. inlineFacts is
-// reconstructed from the hints (any call ⇒ not a leaf ⇒ ineligible, so hasCall
-// stands in for both calleeCount>0 and hasControlCall), plus the signature.
+// inlineCandidate keeps only function identity and successful body proofs.
+type inlineCandidate struct {
+	function uint32
+	flags    uint32
+}
+
+// buildInlineTargets derives the splice set from per-function hints and bounded
+// body proofs. Retaining sparse proof bits avoids repeating candidate scans
+// while preserving exact target and type allocation sizes.
 func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
 	allowTail := len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
@@ -596,13 +597,17 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	if uint64(len(m.Code)) > uint64(^uint32(0)) {
 		return inlineTargetTable{}
 	}
-	candidateCount, typeCount := 0, 0
+	// Retain only admitted indices and proof bits, not pointer-rich facts for
+	// every function. Small modules need no additional heap allocation.
+	var initial [16]inlineCandidate
+	candidates := initial[:0]
+	typeCount := 0
 	for i := range m.Code {
-		ft, _, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
+		ft, _, flags, ok := classifyInlineTarget(m, allHints, i, policy, allowTail)
 		if !ok {
 			continue
 		}
-		candidateCount++
+		candidates = append(candidates, inlineCandidate{uint32(i), flags})
 		add := int(allHints[i].localCount) + len(ft.Results)
 		if add < 0 || typeCount > int(^uint32(0))-add {
 			// Inlining is optional. Fall back to direct calls instead of retaining a
@@ -611,21 +616,20 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		}
 		typeCount += add
 	}
-	if candidateCount == 0 || candidateCount >= int(inlineTargetInvalid) {
+	if len(candidates) == 0 || len(candidates) >= int(inlineTargetInvalid) {
 		return inlineTargetTable{}
 	}
 	data := &inlineTargetData{
 		slots:   make([]uint32, len(m.Code)),
-		targets: make([]inlineTarget, 0, candidateCount),
+		targets: make([]inlineTarget, 0, len(candidates)),
 		types:   make([]machineType, 0, typeCount),
 	}
 	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
-	for i := range m.Code {
-		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
-		if !ok {
-			continue
-		}
+	for _, candidate := range candidates {
+		i := int(candidate.function)
+		ft, _ := m.LocalFuncType(i)
 		h := allHints[i]
+		facts := inlineFactsFromHint(m.Code[i], ft, h)
 		localStart := len(data.types)
 		for _, p := range ft.Params {
 			data.types = append(data.types, mtOf(p))
@@ -646,16 +650,12 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		}
 		addConst, addImmediate := inlineI32AddConst(m.Code[i].BodyBytes, ft)
 		localDeclBytes := m.Code[i].LocalDeclBytes
-		params := uint32(facts.params)
-		if facts.inlineTupleLoop(policy) {
-			params |= inlineTupleLoopFlag
-		}
+		params := uint32(facts.params) | candidate.flags
 		if !policy.CompactNative && !profileEnabled && policy.EnabledOption(optTupleIfSelect) && facts.declaredLocals == 0 &&
 			facts.params <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
 			params |= inlineTupleSelectFlag
 		}
-		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
-			params |= inlineTailLoopFlag
+		if candidate.flags&inlineTailLoopFlag != 0 {
 			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)) << inlineTailZeroShift
 			facts.hasControlFlow = true
 		}
@@ -664,9 +664,6 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			localDeclBytes = uint32(addImmediate)
 		} else if facts.declaredLocals == 0 && inlineI32AddParams(m.Code[i].BodyBytes, ft) {
 			params |= inlineI32AddParamsFlag
-		}
-		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
-			params |= inlineRecursiveFlag
 		}
 		data.targets = append(data.targets, inlineTarget{
 			body:           m.Code[i].BodyBytes,
@@ -745,20 +742,36 @@ func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
 }
 
 func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, tailLoops ...bool) (*wasm.CompType, inlineFacts, bool) {
-	body := m.Code[i].BodyBytes
-	if len(body) == 0 {
-		return nil, inlineFacts{}, false
+	ft, facts, _, ok := classifyInlineTarget(m, allHints, i, policy, len(tailLoops) > 0 && tailLoops[0])
+	return ft, facts, ok
+}
+
+func classifyInlineTarget(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, allowTail bool) (*wasm.CompType, inlineFacts, uint32, bool) {
+	if len(m.Code[i].BodyBytes) == 0 {
+		return nil, inlineFacts{}, 0, false
 	}
 	ft, ok := m.LocalFuncType(i)
-	if !ok || ft == nil {
-		return nil, inlineFacts{}, false
+	if !ok || ft == nil || allHints[i].flags.has(hintModuleEH) {
+		return nil, inlineFacts{}, 0, false
 	}
-	h := allHints[i]
-	if h.flags.has(hintModuleEH) {
-		return nil, inlineFacts{}, false
+	facts := inlineFactsFromHint(m.Code[i], ft, allHints[i])
+	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
+	var flags uint32
+	if facts.inlineTupleLoop(policy) {
+		flags |= inlineTupleLoopFlag
 	}
+	if recursiveInlineCandidate(m, allHints, i, facts, policy) {
+		flags |= inlineRecursiveFlag
+	}
+	if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
+		flags |= inlineTailLoopFlag
+	}
+	return ft, facts, flags, inlineOK(facts, policy) || flags&(inlineRecursiveFlag|inlineTailLoopFlag) != 0
+}
+
+func inlineFactsFromHint(fn wasm.Func, ft *wasm.CompType, h funcHints) inlineFacts {
 	facts := inlineFacts{
-		bodyBytes:      len(body),
+		bodyBytes:      len(fn.BodyBytes),
 		hasLoop:        h.flags.has(hintHasLoop),
 		hasControlFlow: h.flags.has(hintHasControlFlow),
 		touchesMem:     h.flags.has(hintTouchesMemory | hintUsesBulkMem),
@@ -771,8 +784,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 	if h.flags.has(hintHasCall) {
 		facts.calleeCount = 1
 	}
-	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
+	return facts
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
