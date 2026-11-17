@@ -48,3 +48,24 @@ Execution latency and additional tagged qualification remain pending.
 
 These measurements distinguish the stack-safety fix from the broader compiler
 performance goal. Go and TinyGo must not be compared as identical toolchains.
+
+### Additional qualification
+
+Full AMD64 regalloc-checker and profile suites pass (13.320 s and 21.455 s).
+Public GC tests pass (8.247 s) with the clean pinned Release3 spec corpus
+9d36019973201a19f9c9ebb0f10828b2fe2374aa.
+
+All 102 exact application kernel result oracles pass seven paired trials,
+128 timed calls each. Aggregate mean of workload median execution times is
+204.412 us baseline versus 203.611 us iterative. Eighteen initial per-workload
+medians appeared over 5% slower. Retesting these with seven paired trials,
+2,048 calls and an additional identical-baseline control produced no candidate
+median regression above 3.2%; the identical-binary control itself reached 8.1%
+on one workload. This is reassuring, not proof that cloud timing is noiseless.
+The 30 other exact fixtures have compilation/native-image verification, not
+this application-export execution check.
+
+TinyGo arithmetic mean RSS across all 660 samples is 2.643 MiB; averaging
+worst-trial RSS per workload instead gives 2.646 MiB. The default Go embedding
+remains above the memory target. Full 145-workload acceptance is still blocked
+on 13 exact artifact bytes, and the 40% latency target remains unachieved.
