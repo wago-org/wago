@@ -35,6 +35,10 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 			aligned8 |= uint64(1) << uint(i) // declared locals start at zero
 		}
 	}
+	allLocals := uint64(1)<<uint(f.nLocals) - 1
+	if invalid == allLocals && aligned8 == 0 {
+		return
+	}
 	type producer struct {
 		op       byte
 		bound    uint32
@@ -56,7 +60,7 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 			}
 			current.bound, current.known = uint32(value), true
 			current.aligned8 = uint32(value)&7 == 0
-		} else if op != 0x21 && op != 0x22 {
+		} else if op != 0x21 && op != 0x22 && (op < 0x45 || op > 0xc4) {
 			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
@@ -94,6 +98,11 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 				invalid |= bit
 			} else if previous.bound > bounds[index] {
 				bounds[index] = previous.bound
+			}
+			// Both facts only weaken. Once every local is unknown and no
+			// alignment survives, the remaining source cannot restore a proof.
+			if invalid == allLocals && aligned8 == 0 {
+				return
 			}
 		}
 		beforePrevious, previous = previous, current
