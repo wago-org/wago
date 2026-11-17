@@ -404,23 +404,3 @@ func TestProfileOpcodeLowering(t *testing.T) {
 		}
 	}
 }
-
-func TestProfileCountdownLoopDeclinesNativeCloning(t *testing.T) {
-	for _, compact := range []bool{false, true} {
-		var stats ModuleStats
-		c, err := CompileModuleWith(scalarUnrollFixture(t), CompileOptions{Stats: &stats, Profile: true, SourceMaps: true, CompactNative: compact, Optimizations: map[string]bool{"scalar-loop-unroll": true}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		c.CodeImage.Close()
-		if stats.Funcs[0].Peephole["scalar-loop-unroll"]+stats.Funcs[0].Peephole["scalar-loop-unroll-layout"] != 0 {
-			t.Fatal("source-recorded countdown loop was cloned")
-		}
-		if len(stats.SourceRanges) == 0 {
-			t.Fatal("source directory is empty")
-		}
-		if err := jitprofile.ValidateSources(stats.SourceRanges, uint64(len(c.Code))); err != nil {
-			t.Fatal(err)
-		}
-	}
-}

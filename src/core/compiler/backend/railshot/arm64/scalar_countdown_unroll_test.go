@@ -5,6 +5,7 @@ package arm64
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/wago-org/wago/internal/jitprofile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -137,5 +138,28 @@ func TestScalarCountdownUnrollDeclinesSourceRecording(t *testing.T) {
 	f.finalizeScalarLoopUnroll()
 	if !bytes.Equal(before, f.a.B) {
 		t.Fatal("countdown unroll changed code requiring source attribution")
+	}
+}
+
+func TestProfileCountdownLoopDeclinesNativeCloning(t *testing.T) {
+	if !profileEnabled {
+		t.Skip("source recording requires profile support")
+	}
+	for _, compact := range []bool{false, true} {
+		var stats ModuleStats
+		c, err := CompileModuleWith(scalarUnrollFixture(t), CompileOptions{Stats: &stats, Profile: true, SourceMaps: true, CompactNative: compact, Optimizations: map[string]bool{"scalar-loop-unroll": true}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.CodeImage.Close()
+		if stats.Funcs[0].Peephole["scalar-loop-unroll"]+stats.Funcs[0].Peephole["scalar-loop-unroll-layout"] != 0 {
+			t.Fatal("source-recorded countdown loop was cloned")
+		}
+		if len(stats.SourceRanges) == 0 {
+			t.Fatal("source directory is empty")
+		}
+		if err := jitprofile.ValidateSources(stats.SourceRanges, uint64(len(c.Code))); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
