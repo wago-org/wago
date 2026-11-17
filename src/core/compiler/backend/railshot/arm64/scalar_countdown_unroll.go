@@ -45,7 +45,9 @@ type scalarUnrollLoop struct {
 // necessary latch before allocating the branch-target map for the function.
 func hasScalarUnrollLatch(b []byte) bool {
 	for back := 12; back+4 <= len(b); back += 4 {
-		if rdWord(b, back)&0xff00001f != 0x54000001 {
+		// The latch must be a backward B.NE. Forward conditional exits can
+		// share the decrement shape but cannot form an unroll candidate.
+		if rdWord(b, back)&0xff80001f != 0x54800001 {
 			continue
 		}
 		sub := rdWord(b, back-4)

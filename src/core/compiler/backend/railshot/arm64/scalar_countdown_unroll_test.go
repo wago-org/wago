@@ -105,6 +105,8 @@ func TestScalarLoopUnrollMatcherGuards(t *testing.T) {
 		{"wrong zero exit", 0, 0x34000013 | 4<<5, false},
 		{"wide counter", 12, 0xf1000673, false},
 		{"other decrement", 12, 0x71000a73, false},
+		{"forward branch", 16, 0x54000001 | 1<<5, false},
+		{"self branch", 16, 0x54000001, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := append([]byte(nil), b...)
@@ -116,7 +118,7 @@ func TestScalarLoopUnrollMatcherGuards(t *testing.T) {
 			if ok && !hasScalarUnrollLatch(c) {
 				t.Fatal("screen rejected an admitted loop")
 			}
-			if (tc.name == "wide counter" || tc.name == "other decrement") && hasScalarUnrollLatch(c) {
+			if (tc.name == "wide counter" || tc.name == "other decrement" || tc.name == "forward branch" || tc.name == "self branch") && hasScalarUnrollLatch(c) {
 				t.Fatal("screen accepted a mismatched latch")
 			}
 		})
