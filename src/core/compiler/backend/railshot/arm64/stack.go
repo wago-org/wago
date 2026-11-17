@@ -210,6 +210,16 @@ func (e *elem) setDeferredDepth(depth int16) {
 	e.st.slot = uint32(e.deferredOp()) | uint32(uint16(depth))<<8
 }
 
+// deferredStorage initializes a freshly allocated operand node in one value.
+func deferredStorage(op wOp, typ machineType, left, right nodeID, depth int16, facts valueFacts) storage {
+	return storage{
+		cval: int64(uint64(left) | uint64(right)<<32),
+		slot: uint32(op) | uint32(uint16(depth))<<8,
+		typ:  typ,
+		meta: uint8(ekDeferred)<<elemKindShift | uint8(facts&valueFactMask),
+	}
+}
+
 func (e *elem) child0ID() nodeID { return nodeID(uint32(uint64(e.st.cval))) }
 func (e *elem) child1ID() nodeID { return nodeID(uint32(uint64(e.st.cval) >> 32)) }
 func (e *elem) setChildren(arg0, arg1 nodeID) {
@@ -670,17 +680,14 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	f.boundPendingPacket()
 	id, node := f.s.alloc()
-	node.st.typ = typ
-	node.setElemKind(ekDeferred)
+	facts := valueFacts(0)
+	if f.opt(optValueFacts) {
+		facts = deferredResultFacts(op, typ)
+	}
+	node.st = deferredStorage(op, typ, leftID, rightID, 1+max16(deferDepthOf(left), deferDepthOf(right)), facts)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)
 	}
-	node.setDeferredOp(op)
-	if f.opt(optValueFacts) {
-		node.st.setValueFacts(deferredResultFacts(op, typ))
-	}
-	node.setChildren(leftID, rightID)
-	node.setDeferredDepth(1 + max16(deferDepthOf(left), deferDepthOf(right)))
 	f.s.push(id, node)
 	if f.guardMode && isDivRem(op) {
 		// A later guard-backed load can execute when its address is evicted.
@@ -850,16 +857,13 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	f.boundPendingPacket()
 	id, node := f.s.alloc()
-	node.st.typ = typ
-	node.setElemKind(ekDeferred)
+	facts := valueFacts(0)
+	if f.opt(optValueFacts) {
+		facts = deferredResultFacts(op, typ)
+	}
+	node.st = deferredStorage(op, typ, operandID, nilNodeID, 1+deferDepthOf(operand), facts)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)
 	}
-	node.setDeferredOp(op)
-	if f.opt(optValueFacts) {
-		node.st.setValueFacts(deferredResultFacts(op, typ))
-	}
-	node.setChildren(operandID, nilNodeID)
-	node.setDeferredDepth(1 + deferDepthOf(operand))
 	f.s.push(id, node)
 }
