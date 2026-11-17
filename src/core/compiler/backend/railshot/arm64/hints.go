@@ -120,6 +120,7 @@ type funcHints struct {
 
 const (
 	immediateFreeOpCountMask   = uint16(1<<9 - 1)
+	tailTransferHintMask       = uint16(1 << 12)
 	loopI32OneHintMask         = uint16(1 << 13)
 	loopI64OneHintMask         = uint16(1 << 14)
 	streamingReductionHintMask = uint16(1 << 15)
@@ -128,6 +129,10 @@ const (
 
 func (h funcHints) immediateFreeOpCount() uint16 {
 	return h.immediateFreeOps & immediateFreeOpCountMask
+}
+
+func (h funcHints) hasTailTransfer() bool {
+	return h.immediateFreeOps&tailTransferHintMask != 0
 }
 
 func (h funcHints) hasStreamingReduction() bool {
@@ -671,6 +676,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if in.Kind == wasm.InstrReturnCall || in.Kind == wasm.InstrReturnCallIndirect {
+				h.immediateFreeOps |= tailTransferHintMask
+			}
 			if i >= 2 && in.Kind == wasm.InstrI32Add && instrs[i-1].Kind == wasm.InstrI32Add && instrs[i-2].Kind == wasm.InstrI32Add {
 				h.immediateFreeOps |= streamingReductionHintMask
 			}
@@ -1323,6 +1331,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				subHasCall = subHasCall || callsThen || callsElse
 			}
 		case 0x10, 0x12: // call, return_call
+			if op == 0x12 {
+				s.h.immediateFreeOps |= tailTransferHintMask
+			}
 			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
@@ -1340,6 +1351,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteDirectCallRef(idx, op == 0x10, loopDepth != 0)
 		case 0x11, 0x13: // indirect calls
+			if op == 0x13 {
+				s.h.immediateFreeOps |= tailTransferHintMask
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {

@@ -1908,7 +1908,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			// A self-tail physical leaf uses the same pin-preserving ABI as an
 			// ordinary leaf. Publish that fact to callers without erasing its
 			// logical calls/loops from scheduling and work-bound analysis.
-			if !allHints[i].flags.has(hintPreservesCallerPins) {
+			if !allHints[i].flags.has(hintPreservesCallerPins) && allHints[i].hasTailTransfer() {
 				h := allHints[i]
 				h.flags.assign(hintHasCall, false)
 				if preservesCallerPins(ft, int(h.localCount), h) {
@@ -3559,7 +3559,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
-	localTailLeaf := hasCall && f.onlyLocalTailTransfers(c.BodyBytes)
+	localTailLeaf := hasCall && hints.hasTailTransfer() && f.onlyLocalTailTransfers(c.BodyBytes)
 	if localTailLeaf {
 		hasCall = false
 		if hints.flags.has(hintCallsSelf | hintHasNonDirectCall) {
