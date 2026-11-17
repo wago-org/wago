@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"runtime/pprof"
 	"strconv"
 	"strings"
 	"time"
@@ -36,26 +35,26 @@ func main() {
 	data, err := os.ReadFile(flag.Arg(0))
 	check(err)
 	hash := sha256.Sum256(data)
-	if *profile != "" {
-		f, e := os.Create(*profile)
-		check(e)
-		check(pprof.StartCPUProfile(f))
-		defer f.Close()
-		defer pprof.StopCPUProfile()
-	}
+	stopProfile := startProfile(*profile)
+	defer stopProfile()
+
 	start := time.Now()
 	compiled, err := wago.Compile(wago.NewRuntimeConfig().WithFunctionWorkers(1), data)
 	elapsed := time.Since(start)
 	check(err)
 	rss := peakRSS()
+	codeHash := sha256.New()
+	_, err = compiled.WriteCodeTo(codeHash)
+	check(err)
 	result := struct {
+		CodeSHA256 string `json:"code_sha256"`
 		RSSKiB     int64  `json:"rss_kib"`
 		SHA256     string `json:"sha256"`
 		Go         string `json:"go"`
 		InputBytes int    `json:"input_bytes"`
 		CompileNS  int64  `json:"compile_ns"`
 		CodeBytes  int    `json:"code_bytes"`
-	}{rss, hex.EncodeToString(hash[:]), runtime.Version(), len(data), elapsed.Nanoseconds(), compiled.CodeSize()}
+	}{hex.EncodeToString(codeHash.Sum(nil)), rss, hex.EncodeToString(hash[:]), runtime.Version(), len(data), elapsed.Nanoseconds(), compiled.CodeSize()}
 	if *export != "" {
 		inst, e := wago.Instantiate(compiled, wago.InstantiateOptions{})
 		check(e)
