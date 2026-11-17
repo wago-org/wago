@@ -1,0 +1,40 @@
+=== RUN   TestPreparedScalarArgumentsSmallWidths
+--- PASS: TestPreparedScalarArgumentsSmallWidths (0.00s)
+=== RUN   TestPreparedScalarArgumentsSmallDescendingBounds
+--- PASS: TestPreparedScalarArgumentsSmallDescendingBounds (0.00s)
+=== RUN   TestTinyGoCompiledFinalizerClosesMapping
+    mode=compile-only round=0 initialMappedBytes=0 sealed=false
+    mode=compile-only round=1 initialMappedBytes=0 sealed=false
+    mode=compile-only round=2 initialMappedBytes=0 sealed=false
+    mode=compile-only round=3 initialMappedBytes=0 sealed=false
+    mode=mapped round=0 initialMappedBytes=4096 sealed=false
+    mode=mapped round=1 initialMappedBytes=4096 sealed=false
+    mode=mapped round=2 initialMappedBytes=4096 sealed=false
+    mode=mapped round=3 initialMappedBytes=4096 sealed=false
+    mode=activated round=0 initialMappedBytes=4096 sealed=true
+    mode=activated round=1 initialMappedBytes=4096 sealed=true
+    mode=activated round=2 initialMappedBytes=4096 sealed=true
+    mode=activated round=3 initialMappedBytes=4096 sealed=true
+--- PASS: TestTinyGoCompiledFinalizerClosesMapping (0.00s)
+=== RUN   TestTinyGoOperationLeaseSurvivesCollection
+--- PASS: TestTinyGoOperationLeaseSurvivesCollection (0.01s)
+=== RUN   TestTinyGoRuntimeCloseTaskSurvivesCollection
+--- PASS: TestTinyGoRuntimeCloseTaskSurvivesCollection (0.02s)
+=== RUN   TestTinyGoRuntimeInstantiateCloseStability
+--- PASS: TestTinyGoRuntimeInstantiateCloseStability (0.02s)
+=== RUN   TestTinyGoDecodeStability
+--- PASS: TestTinyGoDecodeStability (0.01s)
+=== RUN   TestTinyGoPackageCompileCloseStability
+--- PASS: TestTinyGoPackageCompileCloseStability (0.03s)
+=== RUN   TestTinyGoRuntimeCloseOverlapStability
+--- PASS: TestTinyGoRuntimeCloseOverlapStability (0.42s)
+=== RUN   TestTinyGoRuntimeCloseOverlapCompileOnly
+--- PASS: TestTinyGoRuntimeCloseOverlapCompileOnly (0.01s)
+=== RUN   TestTinyGoRuntimeCloseOverlapSingleInstance
+--- PASS: TestTinyGoRuntimeCloseOverlapSingleInstance (0.02s)
+=== RUN   TestTinyGoRuntimeCloseOwnsInstanceStability
+--- PASS: TestTinyGoRuntimeCloseOwnsInstanceStability (0.02s)
+=== RUN   TestTinyGoRuntimeSynchronousCloseStability
+--- PASS: TestTinyGoRuntimeSynchronousCloseStability (0.24s)
+PASS
+ok  	github.com/wago-org/wago/src/wago	0.809s

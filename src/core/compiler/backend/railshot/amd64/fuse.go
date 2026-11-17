@@ -372,12 +372,33 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	fr := &f.ctrl[fi]
 	loopHeader := false
 	counter := -1
-	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && top.deferredOp() == opEqz &&
+	if cooperativeLinearSumEnabled && f.interruptible && diagnosticsEnabled {
+		if !f.opt(optCountedLoopLatch) {
+			f.stats.peep("coop-debug-policy-off")
+		}
+		if f.usesCalls {
+			f.stats.peep("coop-debug-uses-calls")
+		}
+		if top.deferredOp() != opEqz {
+			f.stats.peep("coop-debug-not-eqz")
+		}
+		if len(f.ctrl) >= 2 {
+			loop := &f.ctrl[len(f.ctrl)-1]
+			if f.a.Len() != f.countedHeaderEnd(loop) {
+				f.stats.peep("coop-debug-not-header")
+			}
+		}
+	}
+
+	if f.opt(optCountedLoopLatch) && (!f.interruptible || cooperativeLinearSumEnabled) && !f.usesCalls && top.deferredOp() == opEqz &&
 		labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		counter, loopHeader = localAddressKey(top.arg0)
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
-			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == f.countedHeaderEnd(loop)
+	}
+	if cooperativeLinearSumEnabled && f.interruptible && loopHeader {
+		f.stats.peep("coop-debug-header-recognized")
 	}
 	k := f.flushBelow(top)
 	coldExit := f.callFreeLoopExit(fi)
@@ -388,8 +409,11 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	if !coldExit {
 		f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	}
-	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
+	if loopHeader && f.a.Len() != f.countedHeaderEnd(&f.ctrl[len(f.ctrl)-1]) {
 		loopHeader = false
+		if cooperativeLinearSumEnabled && f.interruptible {
+			f.stats.peep("coop-debug-header-flush")
+		}
 	}
 	cc := f.condenseToFlags(top)
 	directExit := false
@@ -440,9 +464,18 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	if loopHeader {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		_, isFloat, pinned := f.pinReg(counter)
+		if cooperativeLinearSumEnabled && f.interruptible {
+			if !pinned {
+				f.stats.peep("coop-debug-counter-unpinned")
+			} else {
+				f.stats.peep("coop-debug-counter-pinned")
+			}
+		}
 		if pinned && !isFloat {
 			f.tryHoistLinearSumBounds(r, counter, loop)
-			f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
+			if !f.interruptible || f.linearSumLoop != 0 && f.linearSumLoopDepth == uint16(len(f.ctrl)) {
+				f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
+			}
 		}
 	}
 	return nil

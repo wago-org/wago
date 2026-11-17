@@ -1,0 +1,13 @@
+{
+  "stored_file_sha256": "62b8afd9fed2d64242abac84a1f88dee2c29930bad21caee03737c8602669db1",
+  "compressed": true,
+  "expected_records": 10,
+  "failed_records": 0,
+  "complete_loop": true,
+  "contracts_file_sha256": "b62b81de991950742cb984ecb3bcda333a4b66d9a134d79421c5f597dc7f2099",
+  "binary_sha256": {
+    "baseline": "6c39f4d3eee81adcaa361e2bb3fe37bf4f167d375915aab38fa9c7e541484249",
+    "candidate": "6c39f4d3eee81adcaa361e2bb3fe37bf4f167d375915aab38fa9c7e541484249"
+  },
+  "scope": "first compile after preparation, no ReadMemStats or RSS collection"
+}

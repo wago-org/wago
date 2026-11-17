@@ -1,0 +1,56 @@
+{
+  "built_source": "26026e06603556380a5316fa9ba1269e2b18a9a9",
+  "binary_sha256": "a4fbe1f464900ead5f3d4337c3ab95c95e2873c750c842850c44c8e99d229a32",
+  "smokes": [
+    {
+      "path": "cold-selective-layout-off-smoke4.jsonl.gz",
+      "sha256": "cfe82da00514ea31e90fbf89c9afea4c105ab5a303bb84ff20159a55f5853fcc",
+      "records": 8,
+      "failed": 0,
+      "WAGO_AMD64_SCALAR_LOOP_ENTRY": "off",
+      "WAGO_AMD64_SUM_POLL_OUTLINE": "0",
+      "WAGO_AMD64_POLL_PADDING": "0",
+      "WAGO_MAPPED_OPERAND_ARENA": "unset"
+    },
+    {
+      "path": "cold-selective-layout-0-smoke4.jsonl.gz",
+      "sha256": "93b00d386512f18637edab7c9a899368accdf89855c244becd49429f94fd53a0",
+      "records": 8,
+      "failed": 0,
+      "WAGO_AMD64_SCALAR_LOOP_ENTRY": "0",
+      "WAGO_AMD64_SUM_POLL_OUTLINE": "1",
+      "WAGO_AMD64_POLL_PADDING": "0",
+      "WAGO_MAPPED_OPERAND_ARENA": "unset"
+    },
+    {
+      "path": "cold-selective-layout-8-smoke4.jsonl.gz",
+      "sha256": "0dfbf46ecda4e012b70934913ed7bf2036fe5bb536a3d3591d10aeca01a9c18c",
+      "records": 8,
+      "failed": 0,
+      "WAGO_AMD64_SCALAR_LOOP_ENTRY": "8",
+      "WAGO_AMD64_SUM_POLL_OUTLINE": "1",
+      "WAGO_AMD64_POLL_PADDING": "0",
+      "WAGO_MAPPED_OPERAND_ARENA": "unset"
+    },
+    {
+      "path": "cold-selective-layout-16-smoke4.jsonl.gz",
+      "sha256": "b67ab4e5298b5f494deffcc7294c3b82852de0f3aa06769004c91f9a6ec1b3c8",
+      "records": 8,
+      "failed": 0,
+      "WAGO_AMD64_SCALAR_LOOP_ENTRY": "16",
+      "WAGO_AMD64_SUM_POLL_OUTLINE": "1",
+      "WAGO_AMD64_POLL_PADDING": "0",
+      "WAGO_MAPPED_OPERAND_ARENA": "unset"
+    },
+    {
+      "path": "cold-selective-layout-24-smoke4.jsonl.gz",
+      "sha256": "af788b23c6ea1d2f032180fd405a224df1113456f69141e9d1caf3ecbb61e8e0",
+      "records": 8,
+      "failed": 0,
+      "WAGO_AMD64_SCALAR_LOOP_ENTRY": "24",
+      "WAGO_AMD64_SUM_POLL_OUTLINE": "1",
+      "WAGO_AMD64_POLL_PADDING": "0",
+      "WAGO_MAPPED_OPERAND_ARENA": "unset"
+    }
+  ]
+}

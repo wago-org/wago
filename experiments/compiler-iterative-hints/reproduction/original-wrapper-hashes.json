@@ -1,7 +1,0 @@
-{
-  "paired.py": "febc578510a19d0160a35b6b766c2c23154b324cf91d5d51f8242425d6cc90d1",
-  "run_phases.py": "4b29a490a6f969b613867cfee70ea7ab214b500d101f836a5a597503d5baa97b",
-  "build-tinygo.sh": "cfe43441c522a16a25f47293dd518e3cd5e14b3cc7ad7c0eb5dab075067dcdee",
-  "prepare.py": "0362c671d8480829f1d62c592b1e4adcdd770a3bddbf33258bd2470f705eded5",
-  "compatibility.patch": "826d66f8a95fa7c0c0f41d4d873354436d0ddb2924d7ac5bb5fe7a32c4cf9ce5"
-}

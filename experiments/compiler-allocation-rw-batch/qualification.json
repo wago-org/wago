@@ -1,0 +1,61 @@
+{
+  "built_source": "3e18e031",
+  "binary": "compiler-cold-allocation-rw-tinygo",
+  "binary_sha256": "d847d61946cee66d0dbad9620fcdbf166f6735d5a574e2ac8059cdd725c1e787",
+  "smokes": [
+    {
+      "path": "cold-allocation-rw-0-verified-smoke4.jsonl.gz",
+      "records": 8,
+      "failed": 0,
+      "sha256": "f1e06a0a7bdb3d83215a6731c359a26a772ca9c2173a14aa0a20c2c91171d7aa",
+      "rw_mode": "0",
+      "scalar_entry": "selective",
+      "outline": "1",
+      "poll_padding": "0",
+      "mapped_operand_override": "unset",
+      "same_binary_both_labels": true
+    },
+    {
+      "path": "cold-allocation-rw-1-verified-smoke4.jsonl.gz",
+      "records": 8,
+      "failed": 0,
+      "sha256": "a50206372336e0836e4c7049880b271175d1da5c328de8a8b056dd1026d04b3e",
+      "rw_mode": "1",
+      "scalar_entry": "selective",
+      "outline": "1",
+      "poll_padding": "0",
+      "mapped_operand_override": "unset",
+      "same_binary_both_labels": true
+    }
+  ],
+  "images": [
+    {
+      "name": "bitmap",
+      "size": 1357,
+      "sha256": "9e8e283ea45970a9d83b0531190958babba3b63ce420650e71490189f9ae2596",
+      "rw_modes_equal": true,
+      "path": "compiler-allocation-rw-native/bitmap-1.bin"
+    },
+    {
+      "name": "gemm",
+      "size": 5790,
+      "sha256": "aa436b8ff081e8abacef6b1e12a3187375f2282e957d7d8e1d1313943f507957",
+      "rw_modes_equal": true,
+      "path": "compiler-allocation-rw-native/gemm-1.bin"
+    },
+    {
+      "name": "sum",
+      "size": 719,
+      "sha256": "f067a5455fe28a07f932a79cfb5efd513bf40189c0dc5da723d3c4d5c2497e0c",
+      "rw_modes_equal": true,
+      "path": "compiler-allocation-rw-native/sum-1.bin"
+    },
+    {
+      "name": "yyjson",
+      "size": 301708,
+      "sha256": "7262523a45be1c47e6d1a35a1ae80d64fdb3ed63bc63872a25b373557f032b73",
+      "rw_modes_equal": true,
+      "path": "compiler-allocation-rw-native/yyjson-1.bin"
+    }
+  ]
+}

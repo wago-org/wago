@@ -192,10 +192,12 @@ func (f *fn) emitInterruptCheck(scratch Reg) {
 	if !f.interruptible {
 		return
 	}
+	start := f.a.Len()
 	f.a.Load64(scratch, RBX, -offTrapCellPtr) // scratch = &trapCell
 	f.a.Load32(scratch, scratch, 0)           // scratch = *trapCell (reuse: pointer no longer needed)
 	f.a.TestSelf(scratch, false)              // ZF = (*trapCell == 0)
 	f.trapIf(condNE, trapInterrupted)         // nonzero → cold stub writes the code and unwinds
+	f.padInterruptPoll(start)
 }
 
 // trapIf records a conditional jump to this function's shared trap stub for
@@ -546,6 +548,11 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 }
 
 func (f *fn) hoistedLoopBoundsCover(kind uint8, idx uint32) bool {
+	// Cooperative metadata is a shape candidate, not a range proof. Its first
+	// scalar load and failed-guard fallback MUST retain ordinary bounds checks.
+	if cooperativeLinearSumEnabled && f.interruptible {
+		return false
+	}
 	// Only the recorded induction local can consume this proof. Most memory
 	// accesses have no hoisted proof, so reject them before walking control
 	// frames; nesting depth otherwise makes each ordinary access more costly.

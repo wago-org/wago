@@ -19,7 +19,7 @@ func TestArenaImmediateFreeDensityHint(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := min(2*count, defaultStackArenaCap)
-		if int(h.immediateFreeOps) != want {
+		if int(h.immediateFreeOpCount()) != want {
 			t.Fatalf("count %d: density %d, want %d", count, h.immediateFreeOps, want)
 		}
 	}

@@ -25,6 +25,9 @@ func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, 
 		uint64(cap(sidecar.loopIntConsts))*uint64(unsafe.Sizeof(loopIntConstHintEntry{}))
 	if sidecar.inlineCaller != nil {
 		sidecars += uint64(cap(sidecar.inlineCaller.calls))*4 + uint64(cap(sidecar.inlineCaller.ranges))*8 + uint64(unsafe.Sizeof(inlineCallerHints{}))
+		if sidecar.inlineCaller.small != nil {
+			sidecars += uint64(unsafe.Sizeof(smallInlineCallerHints{})) + uint64(cap(sidecar.inlineCaller.small.ranges))*uint64(unsafe.Sizeof(smallInlineCallerRange{}))
+		}
 	}
 	return
 }
@@ -163,8 +166,9 @@ func (h *funcHints) markUnsupportedDynamicCall() {
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
-	inlineCaller      *inlineCallerHints
-	inlineCallerIndex int
+	smallInlineCallerPending bool // scan-only lazy allocation, no retained header change
+	inlineCaller             *inlineCallerHints
+	inlineCallerIndex        int
 	funcHints
 	entryInitialized uint64 // scan-local view; compilation decodes bits during pin planning
 	nLocals          int
@@ -254,6 +258,19 @@ func (h funcHints) hasDeepVariableShift() bool { return h.flags.has(hintDeepVari
 
 const fixedScratchLeaseMask = uint16(1 << 15)
 
+// Negative proof only: clear means unknown or contains F64Store. Counts saturate
+// at 256; bit 14 is not part of the sizing counter.
+const noF64StoreMask = uint16(1 << 14)
+const immediateFreeFlagsMask = fixedScratchLeaseMask | noF64StoreMask
+
+func (h funcHints) provenNoF64Store() bool { return h.immediateFreeOps&noF64StoreMask != 0 }
+func (h *funcHints) setNoF64StoreProof(absent bool) {
+	h.immediateFreeOps &^= noF64StoreMask
+	if absent {
+		h.immediateFreeOps |= noF64StoreMask
+	}
+}
+
 func (h *funcHints) noteFixedScratchLease() { h.immediateFreeOps |= fixedScratchLeaseMask }
 
 func (h funcHints) hasFixedScratchLease() bool {
@@ -261,7 +278,7 @@ func (h funcHints) hasFixedScratchLease() bool {
 }
 
 func (h funcHints) immediateFreeOpCount() uint16 {
-	return h.immediateFreeOps &^ fixedScratchLeaseMask
+	return h.immediateFreeOps &^ immediateFreeFlagsMask
 }
 
 func (h *funcHints) noteControlDepth(depth int) {
@@ -592,6 +609,10 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStr
 
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
+	var sawF64Store bool
+	if boundedVectorPolls {
+		h.setNoF64StoreProof(false)
+	}
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
 	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
@@ -600,6 +621,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if boundedVectorPolls && in.Kind == wasm.InstrF64Store {
+				sawF64Store = true
+			}
 			noteASTPhysicalEvent(&h, in.Kind, depth, gcStructHelpers)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
@@ -714,6 +738,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		return sub
 	}
 	walk(body.Instrs, 0, -1)
+	if boundedVectorPolls {
+		h.setNoF64StoreProof(!sawF64Store)
+	}
 	return h
 }
 
@@ -897,6 +924,9 @@ func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals
 
 func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
 	elig.reset()
+	if boundedVectorPolls {
+		h.setNoF64StoreProof(false)
+	}
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
 	if classifier != nil {
@@ -917,6 +947,9 @@ func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, self
 	}
 	if s.loopIntConstN != 0 {
 		s.finishLoopIntConsts()
+	}
+	if boundedVectorPolls {
+		s.h.setNoF64StoreProof(!s.sawF64Store)
 	}
 	return s.h, s.selectedLoopIntConsts, s.selectedLoopIntConstN, nil
 }
@@ -980,6 +1013,7 @@ func (s *byteBodyScanner) finishLoopIntConsts() {
 }
 
 type byteBodyScanner struct {
+	sawF64Store bool
 	r           byteScanReader
 	h           funcHintView
 	nLocals     int
@@ -1146,7 +1180,7 @@ enterExpression:
 			if op == 0x10 && idx == s.selfIdx {
 				s.h.flags.set(hintCallsSelf)
 			}
-			if tape := s.h.inlineCaller; tape != nil {
+			if tape := s.h.inlineCallerForCall(); tape != nil {
 				if op == 0x10 {
 					tape.record(idx)
 				} else {
@@ -1155,7 +1189,7 @@ enterExpression:
 			}
 			s.noteDirectCallRef(idx, op == 0x10)
 		case 0x11, 0x13: // indirect calls
-			if tape := s.h.inlineCaller; tape != nil {
+			if tape := s.h.inlineCallerForCall(); tape != nil {
 				tape.blocked = true
 			}
 			var imm wasm.InstructionImmediate
@@ -1173,7 +1207,7 @@ enterExpression:
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
-			if tape := s.h.inlineCaller; tape != nil {
+			if tape := s.h.inlineCallerForCall(); tape != nil {
 				tape.blocked = true
 			}
 			if _, err := s.r.U32(); err != nil {
@@ -1283,6 +1317,9 @@ enterExpression:
 				s.entryPrefix = false
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
+			if boundedVectorPolls && op == 0x39 {
+				s.sawF64Store = true
+			}
 			// Ordinary scalar accesses cannot call, collect, mutate tables or create
 			// GC resolver sites. Consume just their memarg instead of constructing
 			// the full proposal classifier payload and rechecking those properties.
@@ -1325,7 +1362,7 @@ enterExpression:
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
 				if count := s.h.immediateFreeOpCount(); count < defaultStackArenaCap {
-					s.h.immediateFreeOps = s.h.immediateFreeOps&fixedScratchLeaseMask | count + 1
+					s.h.immediateFreeOps = s.h.immediateFreeOps&immediateFreeFlagsMask | count + 1
 				}
 				break
 			}

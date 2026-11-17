@@ -108,7 +108,13 @@ func TestFunctionResultTypesUseBoundedScratch(t *testing.T) {
 	if len(got) != 2 || got[0] != mtI32 || got[1] != mtF64 {
 		t.Fatalf("lowered result types = %v, want [i32 f64]", got)
 	}
-	if &got[0] != &sc.functionResultTypeArena[0] {
+	// TinyGo intentionally disables this cache. Keep lowering correctness above,
+	// but do not impose standard-Go allocation/backing contracts on that target.
+	arena := sc.functionResultTypeArena[:]
+	if len(arena) == 0 {
+		return
+	}
+	if &got[0] != &arena[0] {
 		t.Fatal("common function results did not use scratch backing")
 	}
 	one := []wasm.ValType{wasm.I32}
@@ -122,12 +128,12 @@ func TestFunctionResultTypesUseBoundedScratch(t *testing.T) {
 
 	wide := make([]wasm.ValType, maxScratchFunctionResults+1)
 	overflow := lowerFunctionResultTypes(&sc, wide)
-	if &overflow[0] == &sc.functionResultTypeArena[0] {
+	if &overflow[0] == &arena[0] {
 		t.Fatal("oversized function results unexpectedly used bounded scratch")
 	}
 
 	again := lowerFunctionResultTypes(&sc, []wasm.ValType{wasm.I64})
-	if &again[0] != &sc.functionResultTypeArena[0] || again[0] != mtI64 {
+	if &again[0] != &arena[0] || again[0] != mtI64 {
 		t.Fatalf("reused result scratch = %v, want [i64]", again)
 	}
 }

@@ -282,7 +282,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			f.stats.peep("inline-tail-constant-get")
 			break
 		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if !forwarded && f.opt(optCountedLoopLatch) && (!f.interruptible || cooperativeLinearSumEnabled) && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}

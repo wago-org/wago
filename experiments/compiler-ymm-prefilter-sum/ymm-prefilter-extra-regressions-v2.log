@@ -1,0 +1,26 @@
+=== RUN   TestRegionF64ProofNestedRegression
+=== RUN   TestRegionF64ProofNestedRegression/block
+=== RUN   TestRegionF64ProofNestedRegression/loop
+=== RUN   TestRegionF64ProofNestedRegression/if-then
+=== RUN   TestRegionF64ProofNestedRegression/if-else
+=== RUN   TestRegionF64ProofNestedRegression/try-table
+=== RUN   TestRegionF64ProofNestedRegression/block-if-try
+--- PASS: TestRegionF64ProofNestedRegression (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/block (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/loop (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/if-then (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/if-else (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/try-table (0.00s)
+    --- PASS: TestRegionF64ProofNestedRegression/block-if-try (0.00s)
+=== RUN   TestRegionF64ProofReusedMalformedRegression
+--- PASS: TestRegionF64ProofReusedMalformedRegression (0.00s)
+=== RUN   TestRegionF64ProofActualInlineStoreRegression
+--- PASS: TestRegionF64ProofActualInlineStoreRegression (0.00s)
+=== RUN   TestRegionF64ProofPackedCount
+--- PASS: TestRegionF64ProofPackedCount (0.00s)
+=== RUN   TestRegionF64ProofByteAndAST
+--- PASS: TestRegionF64ProofByteAndAST (0.00s)
+=== RUN   TestRegionF64PrefilterGate
+--- PASS: TestRegionF64PrefilterGate (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.008s

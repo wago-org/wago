@@ -171,14 +171,26 @@ func TestInlineCallerHintModuleIntegration(t *testing.T) {
 	if gotBytes-baseBytes != wantBytes || wantBytes > maxInlineCallerHintBytes {
 		t.Fatalf("cache accounting=%d want=%d", gotBytes-baseBytes, wantBytes)
 	}
-	// A small module retains the original planner without cache allocations.
+	// Small serial modules now retain sparse caller-only ranges.
 	m.Code[0].BodyBytes = []byte{0x10, 1, 0x0b}
 	_, small, _, err := computeModuleHintsWithPolicy(m, 0, 0, nil, false, policy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if small.inlineCaller != nil {
-		t.Fatal("small module retained a cache")
+	if small.inlineCaller == nil || small.inlineCaller.small == nil || len(small.inlineCaller.ranges) != 0 {
+		t.Fatal("small module did not use sparse caller ranges")
+	}
+	got, known := small.inlineCaller.plan(0, targets)
+	want := buildInlineCallerPlan(&m.Code[0], targets)
+	if !known || !reflect.DeepEqual(got, want) {
+		t.Fatal("small module caller plan changed")
+	}
+	_, smallBytes := funcHintStorageBytes(hints, small)
+	noSmall := small
+	noSmall.inlineCaller = nil
+	_, smallBase := funcHintStorageBytes(hints, noSmall)
+	if smallBytes-smallBase != uint64(small.inlineCaller.smallBytes()) {
+		t.Fatal("sparse cache accounting omitted storage")
 	}
 }
 

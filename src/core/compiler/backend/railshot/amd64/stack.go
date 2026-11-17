@@ -271,7 +271,6 @@ type stack struct {
 const (
 	defaultStackArenaCap = 256  // first chunk capacity
 	minStackArenaCap     = 16   // floor for an explicitly-sized first chunk
-	maxStackChunkCap     = 8192 // ceiling on geometric chunk growth
 )
 
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }

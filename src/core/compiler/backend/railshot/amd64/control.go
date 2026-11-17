@@ -122,6 +122,7 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots, patch branches, or analyze loops. Keeping it in
 // compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
+	cooperativeHeaderState
 	ends          []uint32 // overflow after two inline forward-end sites
 	branchState   []locState
 	entryState    []locState
@@ -228,11 +229,25 @@ func (f *fn) inspectLinearSumLoop(r *wasm.Reader, counter int) (addr, acc int, l
 }
 
 func (f *fn) tryHoistLinearSumBounds(r *wasm.Reader, counter int, loop *ctrlFrame) {
+	if cooperativeLinearSumEnabled && f.interruptible {
+		f.stats.peep("coop-debug-hoist-entry")
+	}
 	if !f.opt(optLinearSumLoop) || f.guardMode && !linearSumSignalsEnabled || f.threadedMemory0 || f.memoryAddr64(0) || !f.guardMode && f.memSizeReg == regNone {
 		return
 	}
 	addr, acc, loadPC, ok := f.inspectLinearSumLoop(r, counter)
+	if cooperativeLinearSumEnabled && f.interruptible && !ok {
+		f.stats.peep("coop-debug-shape-failed")
+	}
 	if !ok {
+		return
+	}
+	if f.interruptible {
+		if !cooperativeLinearSumEnabled || f.inlineDepth != 0 || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 {
+			return
+		}
+		f.linearSumLoop = uint32(addr+1) | uint32(acc+1)<<16
+		f.linearSumLoopDepth = uint16(len(f.ctrl))
 		return
 	}
 	counterReg, counterFloat, counterPinned := f.pinReg(counter)
@@ -300,11 +315,29 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.pinned = f.pinned.add(p2)
 	p3 := f.allocReg(0)
 	f.pinned = f.pinned.add(p3)
+	pollSlot, pollPC, rangeFallback := -1, uint32(0), -1
+	if cooperativeLinearSumEnabled && f.interruptible {
+		pollSlot = f.allocSpillSlots(1)
+		pollPC = f.ctrlMerge(loop).cooperativeHeaderPC()
+		// The scalar first load already ran. Check all remaining accesses without
+		// trapping early; failed/wrapping ranges go to the original scalar header.
+		f.a.MovRegReg32(p1, counterReg)
+		f.a.AluRI(aluTable[opSub].digit, p1, 1, false)
+		f.a.ShiftImm(4, p1, 3, true)
+		f.a.MovRegReg32(addrReg, addrReg)
+		f.a.Add64(p1, addrReg)
+		f.compareLinearSumSize(p1)
+		rangeFallback = f.a.JccPlaceholder(condA)
+	}
 	f.a.Xor32(p1, p1)
 	f.a.Xor32(p2, p2)
 	f.a.Xor32(p3, p3)
 	// The scalar body already consumed the first element and advanced addr.
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+	if pollSlot >= 0 {
+		f.emitLinearSumPoll(p1, pollSlot, pollPC)
+		f.a.TestSelf(counterReg, false)
+	}
 	firstDone := f.a.JccPlaceholder(condE)
 	f.a.AluRI(cmpDigit, counterReg, 4, false)
 	toRemainder := f.a.JccPlaceholder(condB)
@@ -322,6 +355,7 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 		toWrapping = f.a.JccPlaceholder(condNE)
 	}
 
+	groupPollBranch := -1
 	group := f.a.Len()
 	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
 	f.a.AluIdx(aluTable[opAdd].rm, p1, RBX, addrReg, 8, true)
@@ -329,6 +363,27 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.AluIdx(aluTable[opAdd].rm, p3, RBX, addrReg, 24, true)
 	f.a.AluRI(aluTable[opAdd].digit, addrReg, 32, false)
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 4, false)
+	if pollSlot >= 0 {
+		skipPoll := -1
+		if linearSumPollLoads > 4 {
+			// Ignore the low two tail bits: remaining < 4 must always poll,
+			// including when one to three scalar tail loads remain. There is
+			// at most one period (64 loads) between admitted group polls.
+			f.a.TestImm(counterReg, linearSumPollLoads-4, false)
+			if linearSumPollOutline {
+				groupPollBranch = f.a.JccPlaceholder(condE)
+			} else {
+				skipPoll = f.a.JccPlaceholder(condNE)
+			}
+		}
+		if groupPollBranch < 0 {
+			f.emitLinearSumPoll(p1, pollSlot, pollPC)
+		}
+		if skipPoll >= 0 {
+			f.a.PatchRel32(skipPoll, f.a.Len())
+		}
+	}
+	groupCompare := f.a.Len()
 	f.a.AluRI(cmpDigit, counterReg, 4, false)
 	moreGroups := f.a.JccPlaceholder(condAE)
 	f.a.PatchRel32(moreGroups, group)
@@ -343,6 +398,10 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
 	f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
+	if pollSlot >= 0 {
+		f.emitLinearSumPoll(p1, pollSlot, pollPC)
+		f.a.TestSelf(counterReg, false)
+	}
 	moreRemainder := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(moreRemainder, remainder)
 
@@ -352,6 +411,26 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.Add64(accReg, p1)
 	f.a.Add64(accReg, p2)
 	f.a.Add64(accReg, p3)
+	if rangeFallback >= 0 {
+		done := f.a.JmpPlaceholder()
+		f.a.PatchRel32(rangeFallback, f.a.Len())
+		f.unitAdjust(counterReg, false, false)
+		retry := f.a.JmpPlaceholder()
+		f.a.PatchRel32(retry, loop.controlSite)
+		f.a.PatchRel32(done, f.a.Len())
+		f.stats.peep("cooperative-linear-sum-unroll4")
+	}
+	if groupPollBranch >= 0 {
+		// Keep the rare spill/check/reload outside both grouped and tail loops.
+		// Normal success skips it; only the mask's zero edge enters. Rejoin
+		// before CMP so the poll's flags never control the group backedge.
+		done := f.a.JmpPlaceholder()
+		f.a.PatchRel32(groupPollBranch, f.a.Len())
+		f.emitLinearSumPoll(p1, pollSlot, pollPC)
+		rejoin := f.a.JmpPlaceholder()
+		f.a.PatchRel32(rejoin, groupCompare)
+		f.a.PatchRel32(done, f.a.Len())
+	}
 	f.pinned = f.pinned.remove(p3).remove(p2).remove(p1)
 	f.release(p3)
 	f.release(p2)
@@ -363,9 +442,10 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 
 // tryCountedLoopLatch recognizes the exact tail of a top-tested i32 countdown
 // and branches from the decrement flags directly to the loop body. Interruptible
-// loops retain their header poll and are deliberately excluded.
+// loops are excluded unless the explicit cooperative exact-sum experiment
+// has recorded a candidate; generic interruptible countdowns remain unchanged.
 func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+	if !f.opt(optCountedLoopLatch) || f.interruptible && !cooperativeLinearSumEnabled || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
@@ -422,6 +502,15 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	if f.tryUnrolledLinearSumLatch(loop, x) {
 		f.stats.peep("counted-loop-latch")
+		return true, nil
+	}
+	if f.interruptible {
+		// No successful unroller: retain the original header poll, including the
+		// terminal zero-count visit. Never branch directly to the body.
+		f.unitAdjust(reg, false, false)
+		f.markLocalDirty(x)
+		jump := f.a.JmpPlaceholder()
+		f.a.PatchRel32(jump, loop.controlSite)
 		return true, nil
 	}
 	f.unitAdjust(reg, false, false)
@@ -1507,18 +1596,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 	var candidates [16]candidate
 	n, steps := 0, 0
 	floatSafe := true
-	finish := func(writes uint64) (bool, uint64, storage, bool) {
-		if !wantFloat || !floatSafe || n == 0 {
-			return true, writes, storage{}, false
-		}
-		best := 0
-		for i := 1; i < n; i++ {
-			if candidates[i].score > candidates[best].score {
-				best = i
-			}
-		}
-		return true, writes, candidates[best].st, true
-	}
+
 	var imm wasm.InstructionImmediate
 	for {
 		before := r2.Offset()
@@ -1647,9 +1725,18 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 				// ifs likewise create merge edges where the weaker register-only
 				// state adds reconciliation outside the loop latch.
 				if brTable || nestedLoop || hasInnerControl {
-					return finish(0)
+					writes = 0
 				}
-				return finish(writes)
+				if !wantFloat || !floatSafe || n == 0 {
+					return true, writes, storage{}, false
+				}
+				best := 0
+				for i := 1; i < n; i++ {
+					if candidates[i].score > candidates[best].score {
+						best = i
+					}
+				}
+				return true, writes, candidates[best].st, true
 			}
 			depth--
 		}
@@ -1897,7 +1984,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			if pN == 0 && rN == 0 {
 				f.emitByteReduceLoop(r)
 			}
-			if f.compactLoopAlign32 {
+			if f.alignExperimentalScalarLoop(pN, rN) {
+				f.stats.peep("experimental-scalar-loop-entry")
+			} else if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
 			} else {
@@ -1905,6 +1994,10 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			}
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
+			if cooperativeLinearSumEnabled && f.interruptible {
+				merge := f.ensureCtrlMerge(&fr)
+				merge.setCooperativeHeader(f.a.Len(), f.wasmPC)
+			}
 		}
 	}
 	f.pushCtrl(&fr)

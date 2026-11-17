@@ -1,0 +1,11 @@
+{
+  "returncode": -15,
+  "stopped_for_space": true,
+  "minimum_tmp_free_bytes": 508334080,
+  "env": {
+    "WAGO_AMD64_POLL_PADDING": "0",
+    "WAGO_AMD64_SCALAR_LOOP_ENTRY": "off",
+    "WAGO_AMD64_SUM_POLL_OUTLINE": "0",
+    "WAGO_MAPPED_OPERAND_ARENA": "unset"
+  }
+}

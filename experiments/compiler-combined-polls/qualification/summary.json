@@ -1,0 +1,116 @@
+{
+  "built_source": "49cbd085",
+  "mapped_operand_environment": {
+    "WAGO_MAPPED_OPERAND_ARENA": null
+  },
+  "variants": {
+    "b4": {
+      "correctness_receipt": {
+        "stored_file_sha256": "184c1df57d6114fbc42e61fc4366583c5ba21e070e0ac4190d0809363274ce76",
+        "compressed": true,
+        "expected_records": 290,
+        "failed_records": 0,
+        "complete_loop": true,
+        "contracts_file_sha256": "b62b81de991950742cb984ecb3bcda333a4b66d9a134d79421c5f597dc7f2099",
+        "binary_sha256": {
+          "baseline": "26789d3219fd0395980d7dbeac929ac5a605d48464531e028db34b3143aa7b32",
+          "candidate": "5066b005dfedf5e78aab29984d3acfcf415ba1a2b2db6e59ae46813d9f485214"
+        },
+        "scope": "first compile after preparation, no ReadMemStats or RSS collection"
+      },
+      "images_file_sha256": "fd66da8ba3887ff1bedf7517f9839b8d7532c3027b91d52abcc710934c34d9ad",
+      "images_verified": 145,
+      "changed_images": [
+        {
+          "id": "wago/polybench-adi/polybench_run",
+          "baseline": "ffe0a558f4be5b929929a6e80ddf665105a568dc113223be457ad827bf5d29e7",
+          "candidate": "a0b15dab546e0cbd2d1c6e0902e820378d8f40990699d571e74c9ccaef30803b",
+          "baseline_bytes": 7457,
+          "candidate_bytes": 9897
+        },
+        {
+          "id": "wago/polybench-correlation/polybench_run",
+          "baseline": "e447f0957efb92a7453fc5029a536a740cc7b7b8891d04ffacbdce36e33e6811",
+          "candidate": "fac8c00b805a1961a53d845e88f5251dd6a31fee3c9f71e3145c2dd390b5aaae",
+          "baseline_bytes": 5790,
+          "candidate_bytes": 6878
+        },
+        {
+          "id": "wago/polybench-fdtd-2d/polybench_run",
+          "baseline": "bdb0491ba3b5d13767504d9656053a2fd2fb407fa383ba9352f82a16a233b64f",
+          "candidate": "286adee3f97f27c5911790c4778dc89f80b07e7c7d6f88924fa47e248b54adc4",
+          "baseline_bytes": 7952,
+          "candidate_bytes": 10160
+        },
+        {
+          "id": "wago/polybench-gemm/polybench_run",
+          "baseline": "b8cb1d28b539d9a12576dda461d70b820428867cc15a94126d75358975ad161c",
+          "candidate": "77db5c31620268e6e184098c09e79d392d0ddd6a585a7a6c795c88c029e511f3",
+          "baseline_bytes": 4862,
+          "candidate_bytes": 5662
+        },
+        {
+          "id": "wago/polybench-jacobi-2d/polybench_run",
+          "baseline": "b2650b220c9bd4fa17982bd92027caf7bef2fe7593af3f6e84fca738a272495d",
+          "candidate": "9114d02e54e0c3da557b74a91494e2de22fa485bd33c845758fe8db72e68f06f",
+          "baseline_bytes": 3977,
+          "candidate_bytes": 6961
+        }
+      ]
+    },
+    "b8": {
+      "correctness_receipt": {
+        "stored_file_sha256": "7f22b281d2232b38e38dbc743974a26e65ac6fe0fa84461b2d775da23a97ee33",
+        "compressed": true,
+        "expected_records": 290,
+        "failed_records": 0,
+        "complete_loop": true,
+        "contracts_file_sha256": "b62b81de991950742cb984ecb3bcda333a4b66d9a134d79421c5f597dc7f2099",
+        "binary_sha256": {
+          "baseline": "26789d3219fd0395980d7dbeac929ac5a605d48464531e028db34b3143aa7b32",
+          "candidate": "4bfe26c0e053810c5253a6445085919d2495f95192919e99721e028eba6a6231"
+        },
+        "scope": "first compile after preparation, no ReadMemStats or RSS collection"
+      },
+      "images_file_sha256": "f10ed8198b08146a732be3f36b8e95a4c7e85ac4bd950d54ae68bcc67cf8402f",
+      "images_verified": 145,
+      "changed_images": [
+        {
+          "id": "wago/polybench-adi/polybench_run",
+          "baseline": "ffe0a558f4be5b929929a6e80ddf665105a568dc113223be457ad827bf5d29e7",
+          "candidate": "dfd1b550b0897c733644384ccd32c65eabdfe0cb159e565270bbab2d83aacabb",
+          "baseline_bytes": 7457,
+          "candidate_bytes": 9897
+        },
+        {
+          "id": "wago/polybench-correlation/polybench_run",
+          "baseline": "e447f0957efb92a7453fc5029a536a740cc7b7b8891d04ffacbdce36e33e6811",
+          "candidate": "e372198fd358eadbbbc1a50dbe6100d59000a365eac90ef641cee6778d50db0f",
+          "baseline_bytes": 5790,
+          "candidate_bytes": 6878
+        },
+        {
+          "id": "wago/polybench-fdtd-2d/polybench_run",
+          "baseline": "bdb0491ba3b5d13767504d9656053a2fd2fb407fa383ba9352f82a16a233b64f",
+          "candidate": "77db5ebd5324ab06add6a0ae2cc7f8a59e4b385ecdb4b400da0cf0cd556448b1",
+          "baseline_bytes": 7952,
+          "candidate_bytes": 10160
+        },
+        {
+          "id": "wago/polybench-gemm/polybench_run",
+          "baseline": "b8cb1d28b539d9a12576dda461d70b820428867cc15a94126d75358975ad161c",
+          "candidate": "9018ff08644af9f090cc202197a78aa358a038e9c3064d8492b16b46b7236b3e",
+          "baseline_bytes": 4862,
+          "candidate_bytes": 5662
+        },
+        {
+          "id": "wago/polybench-jacobi-2d/polybench_run",
+          "baseline": "b2650b220c9bd4fa17982bd92027caf7bef2fe7593af3f6e84fca738a272495d",
+          "candidate": "05f657ac2bf744ea70496ac7d4b55aa1bbadfa1741cd10cbf71845a50bc4ee59",
+          "baseline_bytes": 3977,
+          "candidate_bytes": 6961
+        }
+      ]
+    }
+  }
+}

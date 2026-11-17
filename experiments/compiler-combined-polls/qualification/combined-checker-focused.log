@@ -1,0 +1,214 @@
+=== RUN   TestAdjacentPairPollsDeterministicInterruption
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/entry
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/initial-header
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/alias-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/oob-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/wrap-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-1
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-7
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-8
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-9
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-15
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-16
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-17
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-35
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/entry
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/initial-header
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/alias-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/oob-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/wrap-fallback
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-1
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-7
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-8
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-9
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-15
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-16
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-17
+=== RUN   TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-35
+--- PASS: TestAdjacentPairPollsDeterministicInterruption (0.01s)
+    --- PASS: TestAdjacentPairPollsDeterministicInterruption/0 (0.01s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/entry (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/initial-header (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/alias-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/oob-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/wrap-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-1 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-7 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-8 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-9 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-15 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-16 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-17 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/0/pair-batch-35 (0.00s)
+    --- PASS: TestAdjacentPairPollsDeterministicInterruption/15 (0.01s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/entry (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/initial-header (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/alias-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/oob-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/wrap-fallback (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-1 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-7 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-8 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-9 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-15 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-16 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-17 (0.00s)
+        --- PASS: TestAdjacentPairPollsDeterministicInterruption/15/pair-batch-35 (0.00s)
+=== RUN   TestGemmAdjacentPollAdmission
+--- PASS: TestGemmAdjacentPollAdmission (0.00s)
+=== RUN   TestGemmAdjacentPollExactResultsAndFallback
+--- PASS: TestGemmAdjacentPollExactResultsAndFallback (0.04s)
+=== RUN   TestGemmPairPollsDeterministicInterruption
+=== RUN   TestGemmPairPollsDeterministicInterruption/0
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/entry
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/initial-header
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/alias-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/oob-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/wrap-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-1
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-7
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-8
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-9
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-15
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-16
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-17
+=== RUN   TestGemmPairPollsDeterministicInterruption/0/pair-batch-35
+=== RUN   TestGemmPairPollsDeterministicInterruption/15
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/entry
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/initial-header
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/alias-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/oob-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/wrap-fallback
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-1
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-7
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-8
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-9
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-15
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-16
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-17
+=== RUN   TestGemmPairPollsDeterministicInterruption/15/pair-batch-35
+--- PASS: TestGemmPairPollsDeterministicInterruption (0.00s)
+    --- PASS: TestGemmPairPollsDeterministicInterruption/0 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/entry (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/initial-header (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/alias-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/oob-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/wrap-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-1 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-7 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-8 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-9 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-15 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-16 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-17 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/0/pair-batch-35 (0.00s)
+    --- PASS: TestGemmPairPollsDeterministicInterruption/15 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/entry (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/initial-header (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/alias-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/oob-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/wrap-fallback (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-1 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-7 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-8 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-9 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-15 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-16 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-17 (0.00s)
+        --- PASS: TestGemmPairPollsDeterministicInterruption/15/pair-batch-35 (0.00s)
+=== RUN   TestGemmPairEmittedPackingAndFloatEdges
+--- PASS: TestGemmPairEmittedPackingAndFloatEdges (0.02s)
+=== RUN   TestBoundedVectorPollsMemoryOracle
+--- PASS: TestBoundedVectorPollsMemoryOracle (0.04s)
+=== RUN   TestBoundedVectorPollsDeterministicInterruption
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/entry
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/initial-header
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/alias-fallback
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-1-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-7-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-8-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-9-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-15-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-16-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/batch-17-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/0/odd-fallback
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/entry
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/initial-header
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/alias-fallback
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-1-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-7-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-8-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-9-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-15-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-16-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/batch-17-groups
+=== RUN   TestBoundedVectorPollsDeterministicInterruption/15/tail
+--- PASS: TestBoundedVectorPollsDeterministicInterruption (0.00s)
+    --- PASS: TestBoundedVectorPollsDeterministicInterruption/0 (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/entry (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/initial-header (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/alias-fallback (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-1-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-7-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-8-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-9-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-15-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-16-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/batch-17-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/0/odd-fallback (0.00s)
+    --- PASS: TestBoundedVectorPollsDeterministicInterruption/15 (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/entry (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/initial-header (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/alias-fallback (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-1-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-7-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-8-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-9-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-15-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-16-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/batch-17-groups (0.00s)
+        --- PASS: TestBoundedVectorPollsDeterministicInterruption/15/tail (0.00s)
+=== RUN   TestGemmPairDelayedPollInterruption
+=== RUN   TestGemmPairDelayedPollInterruption/0
+=== RUN   TestGemmPairDelayedPollInterruption/0/n16-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/0/n16-visit2#01
+=== RUN   TestGemmPairDelayedPollInterruption/0/n17-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/0/n17-visit3
+=== RUN   TestGemmPairDelayedPollInterruption/0/n24-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/0/n24-visit3
+=== RUN   TestGemmPairDelayedPollInterruption/0/n35-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/0/n35-visit5
+=== RUN   TestGemmPairDelayedPollInterruption/15
+=== RUN   TestGemmPairDelayedPollInterruption/15/n16-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/15/n16-visit2#01
+=== RUN   TestGemmPairDelayedPollInterruption/15/n17-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/15/n17-visit3
+=== RUN   TestGemmPairDelayedPollInterruption/15/n24-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/15/n24-visit3
+=== RUN   TestGemmPairDelayedPollInterruption/15/n35-visit2
+=== RUN   TestGemmPairDelayedPollInterruption/15/n35-visit5
+--- PASS: TestGemmPairDelayedPollInterruption (0.00s)
+    --- PASS: TestGemmPairDelayedPollInterruption/0 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n16-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n16-visit2#01 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n17-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n17-visit3 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n24-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n24-visit3 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n35-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/0/n35-visit5 (0.00s)
+    --- PASS: TestGemmPairDelayedPollInterruption/15 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n16-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n16-visit2#01 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n17-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n17-visit3 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n24-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n24-visit3 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n35-visit2 (0.00s)
+        --- PASS: TestGemmPairDelayedPollInterruption/15/n35-visit5 (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.129s

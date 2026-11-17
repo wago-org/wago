@@ -26,7 +26,16 @@ const (
 
 type inlineCallerRange struct{ start, end uint32 }
 
+type smallInlineCallerRange struct {
+	function uint32
+	span     inlineCallerRange
+}
+type smallInlineCallerHints struct{ ranges []smallInlineCallerRange }
+
+const maxSmallInlineCallerHintBytes = 64 << 10
+
 type inlineCallerHints struct {
+	small    *smallInlineCallerHints
 	calls    []uint32
 	ranges   []inlineCallerRange
 	limit    int
@@ -43,6 +52,21 @@ func newInlineCallerHints(n int) *inlineCallerHints {
 		ranges: make([]inlineCallerRange, n),
 		limit:  (maxInlineCallerHintBytes - inlineCallerHintHeaderBytes - n*8) / 4,
 	}
+}
+
+// Small serial modules retain sparse ranges only for actual callers. No-call
+// bodies stay unknown; compileFunc never requests their inline plans.
+func newSmallInlineCallerHints(n int) *inlineCallerHints {
+	if n <= 0 {
+		return nil
+	}
+	return &inlineCallerHints{small: &smallInlineCallerHints{}, limit: maxSmallInlineCallerHintBytes / 4}
+}
+func (h *inlineCallerHints) drop() {
+	h.calls, h.ranges, h.small, h.disabled = nil, nil, nil, true
+}
+func (h *inlineCallerHints) smallBytes() int {
+	return inlineCallerHintHeaderBytes + int(unsafe.Sizeof(smallInlineCallerHints{})) + cap(h.calls)*4 + cap(h.small.ranges)*int(unsafe.Sizeof(smallInlineCallerRange{}))
 }
 
 func (h *inlineCallerHints) begin() bool {
@@ -63,7 +87,16 @@ func (h *inlineCallerHints) record(index uint32) {
 			h.calls, h.ranges, h.disabled = nil, nil, true
 			return
 		}
-		capacity := min(h.limit, max(1024, 2*cap(h.calls)))
+		initial := 1024
+		if h.small != nil {
+			initial = 16
+		}
+		capacity := min(h.limit, max(initial, 2*cap(h.calls)))
+		// Charge old and new backing arrays during a growth copy as well.
+		if h.small != nil && h.smallBytes()+capacity*4 > maxSmallInlineCallerHintBytes {
+			h.drop()
+			return
+		}
 		calls := make([]uint32, len(h.calls), capacity)
 		copy(calls, h.calls)
 		h.calls = calls
@@ -79,14 +112,54 @@ func (h *inlineCallerHints) finish(function int) {
 	if h.blocked {
 		end |= inlineCallerBlocked
 	}
-	h.ranges[function] = inlineCallerRange{uint32(h.start), end}
+	span := inlineCallerRange{uint32(h.start), end}
+	if h.small != nil {
+		if len(h.calls) == h.start && !h.blocked {
+			return
+		}
+		rows := h.small.ranges
+		if len(rows) == cap(rows) {
+			capacity := max(8, 2*cap(rows))
+			if h.smallBytes()+capacity*int(unsafe.Sizeof(smallInlineCallerRange{})) > maxSmallInlineCallerHintBytes {
+				h.drop()
+				return
+			}
+			next := make([]smallInlineCallerRange, len(rows), capacity)
+			copy(next, rows)
+			rows = next
+		}
+		h.small.ranges = append(rows, smallInlineCallerRange{uint32(function), span})
+		return
+	}
+	h.ranges[function] = span
 }
 
 func (h *inlineCallerHints) plan(function int, targets inlineTargetTable) (inlineCallerPlan, bool) {
-	if h == nil || h.disabled || function < 0 || function >= len(h.ranges) {
+	if h == nil || h.disabled || function < 0 {
 		return inlineCallerPlan{}, false
 	}
-	span := h.ranges[function]
+	var span inlineCallerRange
+	if h.small != nil {
+		rows := h.small.ranges
+		lo, hi := 0, len(rows)
+		for lo < hi {
+			mid := lo + (hi-lo)/2
+			if uint64(rows[mid].function) < uint64(function) {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo == len(rows) || uint64(rows[lo].function) != uint64(function) {
+			return inlineCallerPlan{}, false
+		}
+		span = rows[lo].span
+	} else {
+		if function >= len(h.ranges) {
+			return inlineCallerPlan{}, false
+		}
+		span = h.ranges[function]
+	}
 	if span.end&inlineCallerKnown == 0 {
 		return inlineCallerPlan{}, false
 	}
@@ -102,4 +175,15 @@ func (h *inlineCallerHints) plan(function int, targets inlineTargetTable) (inlin
 		}
 	}
 	return plan, true
+}
+
+// Called only when the existing decoder encounters a call opcode. An entirely
+// call-free small module never creates either optional summary object.
+func (h *funcHintView) inlineCallerForCall() *inlineCallerHints {
+	if h.inlineCaller == nil && h.smallInlineCallerPending {
+		h.inlineCaller = newSmallInlineCallerHints(1)
+		h.smallInlineCallerPending = false
+		h.inlineCaller.begin()
+	}
+	return h.inlineCaller
 }

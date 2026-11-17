@@ -1,0 +1,16 @@
+=== RUN   TestMappedOperandArenaLinksSurviveGCAndHeapOverflow
+--- PASS: TestMappedOperandArenaLinksSurviveGCAndHeapOverflow (0.00s)
+=== RUN   TestMappedOperandArenaColdRootsAcrossOverflow
+--- PASS: TestMappedOperandArenaColdRootsAcrossOverflow (0.01s)
+=== RUN   TestMappedOperandArenaClosedOwnerFallsBack
+--- PASS: TestMappedOperandArenaClosedOwnerFallsBack (0.00s)
+=== RUN   TestMappedOperandArenaIndependentDeferredOwner
+=== RUN   TestMappedOperandArenaIndependentDeferredOwner/success
+    --- PASS: TestMappedOperandArenaIndependentDeferredOwner/success (0.00s)
+=== RUN   TestMappedOperandArenaIndependentDeferredOwner/error
+    --- PASS: TestMappedOperandArenaIndependentDeferredOwner/error (0.00s)
+=== RUN   TestMappedOperandArenaIndependentDeferredOwner/panic
+    --- PASS: TestMappedOperandArenaIndependentDeferredOwner/panic (0.00s)
+--- PASS: TestMappedOperandArenaIndependentDeferredOwner (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.013s

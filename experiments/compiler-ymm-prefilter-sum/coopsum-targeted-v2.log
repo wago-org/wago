@@ -1,0 +1,15 @@
+=== RUN   TestCooperativeLinearSumDelayedCheckpoints
+--- PASS: TestCooperativeLinearSumDelayedCheckpoints (0.00s)
+=== RUN   TestCooperativeLinearSumSparse4GiBQualification
+    cooperative_linear_sum_sparse_test.go:26: before VmHWM:	    9156 kB
+    cooperative_linear_sum_sparse_test.go:26: mapped-boundary-touched VmHWM:	    9508 kB
+    cooperative_linear_sum_sparse_test.go:26: after VmHWM:	    9560 kB
+--- PASS: TestCooperativeLinearSumSparse4GiBQualification (0.00s)
+=== RUN   TestCooperativeLinearSumValuesAndFallback
+--- PASS: TestCooperativeLinearSumValuesAndFallback (0.01s)
+=== RUN   TestCooperativeLinearSumSelection
+--- PASS: TestCooperativeLinearSumSelection (0.00s)
+=== RUN   TestCooperativeLinearSumShapeIsNotHoistedProof
+--- PASS: TestCooperativeLinearSumShapeIsNotHoistedProof (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.015s

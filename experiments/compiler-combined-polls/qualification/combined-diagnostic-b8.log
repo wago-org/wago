@@ -1,0 +1,5 @@
+=== RUN   TestCombinedActualGemmDiagnostic
+    combined_gemm_diagnostic_test.go:71: {"Artifact":"8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79","Bounded":true,"Groups":8,"NativeSHA":"9018ff08644af9f090cc202197a78aa358a038e9c3064d8492b16b46b7236b3e","NativeBytes":5662,"Functions":{"0":{"region-attempt":2,"region-reject-plan":2},"1":{"bounded-vector-poll":1,"region-attempt":12,"region-emitted-interruptible-adjacent":1,"region-loop-all-addresses-cached":1,"region-loop-constant-hoist":1,"region-loop-fast":1,"region-loop-fold-load":2,"region-loop-invariant-prefix":1,"region-plan-candidate":1,"region-reject-plan":11}}}
+--- PASS: TestCombinedActualGemmDiagnostic (0.00s)
+PASS
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.007s

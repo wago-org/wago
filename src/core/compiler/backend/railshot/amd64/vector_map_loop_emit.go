@@ -59,6 +59,8 @@ type regionLoopEmitter struct {
 	gp              [4]Reg
 	fp              [10]Reg
 	slot            int
+	pollSlot        int
+	pollPC          uint32
 	fails           [64]int
 	failN           int
 	streams         [10]regionMemoryStream
@@ -652,7 +654,20 @@ func (e *regionLoopEmitter) body() {
 	if !e.allCached {
 		f.a.AluRI(aluTable[opAdd].digit, e.gp[0], int32(p.iterationsPerVector()), true)
 	}
-	f.a.AluRI(aluTable[opSub].digit, e.gp[1], 1, false)
+	if boundedVectorPolls && f.interruptible {
+		// Poll at multiples of the remaining-group count, including zero.
+		// The first batch may be short; no batch exceeds the fixed work bound.
+		// Stores and stream advances above are complete before every check.
+		f.a.AluRI(aluTable[opSub].digit, e.gp[1], 1, false)
+		f.a.TestImm(e.gp[1], boundedVectorPollGroups-1, false)
+		skipPoll := f.a.JccPlaceholder(condNE)
+		f.a.PatchRel32(skipPoll, top)
+		e.emitBoundedInterruptPoll()
+		// The poll destroys flags. Recreate the final-zero decision explicitly.
+		f.a.TestSelf(e.gp[1], false)
+	} else {
+		f.a.AluRI(aluTable[opSub].digit, e.gp[1], 1, false)
+	}
 	again := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(again, top)
 	// Publish the final invariant cells before exit-register reconciliation.
@@ -753,29 +768,67 @@ func (e *regionLoopEmitter) body() {
 	f.wasmPC = oldPC
 }
 
+func (f *fn) skipRegionWithoutF64Store() bool {
+	return boundedVectorPolls && f.interruptible && f.inlineDepth == 0 && f.regionNoF64Store
+}
+
 func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
-	if f.unreachable || f.depth() > 4 || f.moduleEH || f.localBase != 0 || f.interruptible || f.threadedMemory0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) {
+	f.stats.peep("region-attempt")
+	// Every accepted planner latch requires storeN>0; only F64Store increments
+	// storeN. This negative proof is unavailable for unknown/inline source facts.
+	if f.skipRegionWithoutF64Store() {
+		f.stats.peep("region-skip-no-f64-store")
+		return false, nil
+	}
+	if f.unreachable || f.depth() > 4 || f.moduleEH || f.localBase != 0 || f.interruptible && !boundedVectorPolls || profileEnabled && f.interruptible || f.threadedMemory0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) {
+		if diagnosticsEnabled {
+			// Gate facts only: no diagnostic bytecode rescan or shadow matcher.
+			if f.interruptible && !boundedVectorPolls {
+				f.stats.peep("region-reject-interruptible-disabled")
+			} else {
+				f.stats.peep("region-reject-context")
+			}
+		}
 		return false, nil
 	}
 	look := *r
 	bt, err := look.Byte()
 	if err != nil || bt != 0x40 {
+		f.stats.peep("region-reject-blocktype")
 		return false, nil
 	}
 	var p regionLoopPlan
 	if !inspectRegionLoop(look, f.localType, f.classifier, &p) {
+		f.stats.peep("region-reject-plan")
 		return false, nil
 	}
+	f.stats.peep("region-plan-candidate")
 	return f.emitRegionLoop(r, &p)
 }
 
 func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
+	// Classify with the existing planner before checking the experimental
+	// completed-store admission. Scalar reductions remain forbidden below.
+	if f.interruptible && !boundedVectorPolls {
+		return false, nil
+	}
+	loopPC := f.wasmPC
 	if p.storeN <= 2 && p.independentLanes() {
 		if !regionLoopEnabled && !(regionWideIndependentEnabled && f.cpuHas(shared.AMD64AVX)) && !(regionZeroCounterEnabled && p.zeroTerminated) {
 			return false, nil
 		}
 	} else if !regionAdjacentEnabled || !p.packAdjacentOutputs() {
 		if !scalarMemoryRecurrenceEnabled || !p.scalarMemoryRecurrence() {
+			f.stats.peep("region-reject-output-class")
+			return false, nil
+		}
+	}
+	if f.interruptible {
+		// One contiguous source pair only. Packing preserves each lane's FP
+		// tree; the entire pair store precedes every bounded poll. Do not admit
+		// deferred scalar stores or multi-pair/interleaved output plans.
+		if p.scalar || (p.adjacent && (p.storeN != 1 || !p.contiguousAdjacentIterations())) || (!p.adjacent && !p.independentLanes()) {
+			f.stats.peep("region-reject-interrupt-checkpoint")
 			return false, nil
 		}
 	}
@@ -787,6 +840,11 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 		}
 	}
 	p.wide = f.cpuHas(shared.AMD64AVX) && ((regionWideAdjacentEnabled && p.adjacent) || (regionWideIndependentEnabled && !p.adjacent && !p.scalar))
+	if f.interruptible && p.adjacent && !boundedAdjacentYMM {
+		// One XMM group equals one original source iteration, including odd
+		// trip counts. YMM pairing needs a separate interruptible tail proof.
+		p.wide = false
+	}
 	if p.adjacent && regionAdjacentMultiEnabled && !p.contiguousAdjacentIterations() {
 		p.wide = false
 	}
@@ -815,7 +873,7 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	if err := f.opBlock(r, 0x03); err != nil {
 		return true, err
 	}
-	e := regionLoopEmitter{f: f, p: p, folded: folded, memoryOperand: memory, invariantPrefix: prefix, permanent: permanent}
+	e := regionLoopEmitter{f: f, p: p, folded: folded, memoryOperand: memory, invariantPrefix: prefix, permanent: permanent, pollPC: loopPC}
 	block := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
 	n := 0
 	for _, reg := range gpAlloc {
@@ -842,7 +900,11 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	if p.wide {
 		slots += 3
 	}
+	if f.interruptible && boundedVectorPolls {
+		slots++
+	}
 	e.slot = f.allocSpillSlots(slots)
+	e.pollSlot = e.slot + slots - 1
 	e.guards()
 	e.aliasGuards()
 	e.coalesceStreams()
@@ -863,6 +925,12 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	// A checked remainder may take multiple iterations. Its backedge skips
 	// the diagnostic guard-failure trap, just like its initial tail entry.
 	f.ctrl[len(f.ctrl)-1].controlSite = checkedBody
+	if f.interruptible && boundedVectorPolls {
+		oldPC := f.wasmPC
+		f.wasmPC = loopPC
+		f.emitInterruptCheck(RSI)
+		f.wasmPC = oldPC
+	}
 	if err := f.bodyLoop(r, depth); err != nil {
 		return true, err
 	}
@@ -895,6 +963,13 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 		if !written[x] && entry[x].reg != regNone && entry[x].reg != f.locals[x].reg {
 			valid = false
 		}
+	}
+	// Experimental adjacent YMM requires the existing checked body's exact
+	// entry homes. Do not create an interruptible separately emitted pair tail.
+	// XMM remains valid for every odd count when this proof is unavailable.
+	if f.interruptible && p.adjacent && p.wide && (!regionWideCheckedTailEnabled || !f.regionCheckedTailHomes(&entry)) {
+		p.wide = false
+		f.stats.peep("region-loop-interruptible-ymm-retain-xmm")
 	}
 	// A quad may have up to three scalar remainder iterations. Reuse the
 	// original body only when its register/home assumptions still hold. If the
@@ -966,6 +1041,9 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 			}
 		}
 		f.stats.peep("region-loop-fast")
+		if f.interruptible && p.adjacent {
+			f.stats.peep("region-emitted-interruptible-adjacent")
+		}
 		if p.adjacent && p.storeN == 2 {
 			f.stats.peep("region-loop-multi-pair")
 		}

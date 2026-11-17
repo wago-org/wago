@@ -926,32 +926,40 @@ func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr erro
 	return result, resultErr
 }
 
+// copyPreparedScalarArgumentsSmall handles the admitted zero-to-four argument
+// path without a capturing closure. Descending slot order preserves the old
+// bounds-failure/write order as well as the exact scalar truncation policy.
+func copyPreparedScalarArgumentsSmall(dst []byte, args []uint64, wideMask uint8) {
+	switch len(args) {
+	case 4:
+		putPreparedScalarArgument(dst, args, wideMask, 3)
+		fallthrough
+	case 3:
+		putPreparedScalarArgument(dst, args, wideMask, 2)
+		fallthrough
+	case 2:
+		putPreparedScalarArgument(dst, args, wideMask, 1)
+		fallthrough
+	case 1:
+		putPreparedScalarArgument(dst, args, wideMask, 0)
+	}
+}
+
+func putPreparedScalarArgument(dst []byte, args []uint64, wideMask uint8, slot int) {
+	bits := args[slot]
+	if wideMask&(1<<slot) == 0 {
+		bits = uint64(uint32(bits))
+	}
+	binary.LittleEndian.PutUint64(dst[slot*8:], bits)
+}
+
 func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.gcMaintenance || !in.preparedFastStateValid() {
 		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {
-		put := func(slot int) {
-			bits := args[slot]
-			if fn.scalarWideMask&(1<<slot) == 0 {
-				bits = uint64(uint32(bits))
-			}
-			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
-		}
-		switch len(args) {
-		case 4:
-			put(3)
-			fallthrough
-		case 3:
-			put(2)
-			fallthrough
-		case 2:
-			put(1)
-			fallthrough
-		case 1:
-			put(0)
-		}
+		copyPreparedScalarArgumentsSmall(in.serArgs, args, fn.scalarWideMask)
 	} else {
 		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
 	}

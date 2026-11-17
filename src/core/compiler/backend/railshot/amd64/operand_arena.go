@@ -16,7 +16,7 @@ import (
 )
 
 // operandArena owns stable RW storage for operand nodes. Nodes contain only
-// scalar storage and links to other nodes in the same worker-owned arena;
+// scalar storage and links to nodes in worker-owned mapped or heap chunks;
 // plugin-owned Go values remain in stack.cold, which is scanned normally.
 type operandArena = coreruntime.CodeBuffer
 
@@ -32,4 +32,12 @@ func operandArenaChunk(a *operandArena, capacity int) []elem {
 		}
 	}
 	return make([]elem, 0, capacity)
+}
+
+// closeOperandArenaOwner captures the stable stack owner before worker cleanup.
+// An independent defer guarantees an attempted close even if other cleanup fails.
+func closeOperandArenaOwner(owner *stack) {
+	if owner != nil {
+		_ = owner.arena.Close()
+	}
 }

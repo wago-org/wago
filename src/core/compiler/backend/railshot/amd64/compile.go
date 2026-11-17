@@ -315,6 +315,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	scalarLoopAlignmentBudget
+	regionNoF64Store  bool // exact source hint; never applied to inline lowering
 	byteReduceLoop    *byteReduceState
 	filledCopyEnd     uint32
 	filledCopyByte    byte
@@ -2320,6 +2322,10 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	runWorker := func(workerID int) {
 		defer wg.Done()
 		ws := &states[workerID]
+		// Capture the lazy arena owner, not the nil arena before first use or
+		// ws.scratch after teardown. This separate defer still runs if control
+		// or stack cleanup panics. Close remains retryable and finalizer-backed.
+		defer closeOperandArenaOwner(ws.scratch.stack)
 		defer func() {
 			ws.scratch.finishControlWorker()
 			ws.scratch.finishStackWorker()
@@ -2882,6 +2888,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	var sparseGlobals []shared.GlobalHint
 	var loopIntConsts []loopIntConstHintEntry
 	var inlineCaller *inlineCallerHints
+	smallInlineCallerPending := false
 	collectLoopIntConsts := policy.EnabledOption(optWideLoopIntConst)
 	var agg []int64
 	if nGlobals > 0 && n > 0 {
@@ -2904,8 +2911,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			agg[gh.Index] += int64(gh.Score)
 		}
 	} else {
-		if collectInlineCalls && policy.EnabledOption(optInline) && inlineHintBodyBytes >= 64<<10 {
-			inlineCaller = newInlineCallerHints(n)
+		if collectInlineCalls && policy.EnabledOption(optInline) {
+			if inlineHintBodyBytes >= 64<<10 {
+				inlineCaller = newInlineCallerHints(n)
+			} else {
+				smallInlineCallerPending = n > 0
+			}
 		}
 		var sparseAccum shared.GlobalHintAccumulator
 		eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -2935,8 +2946,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 				localEvents.Reset(shared.LocalEventLimit)
 				h.localEvents = &localEvents
 			}
-			if len(m.Code[i].BodyBytes) != 0 && inlineCaller.begin() {
-				h.inlineCaller = inlineCaller
+			if len(m.Code[i].BodyBytes) != 0 {
+				if inlineCaller.begin() {
+					h.inlineCaller = inlineCaller
+				} else if inlineCaller == nil && smallInlineCallerPending {
+					h.smallInlineCallerPending = true
+				}
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
 			var err error
@@ -2947,6 +2962,8 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 			}
 			if h.inlineCaller != nil {
+				inlineCaller = h.inlineCaller
+				smallInlineCallerPending = false
 				inlineCaller.finish(i)
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
@@ -3699,6 +3716,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.stats, f.policy, f.gcFrameRoots = stats, policy, gcFrameRoots
 	f.moduleEH, f.threadedMemory0 = moduleEH, mt0.Shared
 	f.hasLoop, f.moduleHasSIMD = hints.flags.has(hintHasLoop), moduleHasSIMD
+	f.regionNoF64Store = hints.provenNoF64Store()
 	f.compactLoopAlign32 = policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64
 	f.bmi2Rorx = bmi2Rorx
 	f.gcSharedResolver, f.gcDeferResolver = hints.flags.has(hintGCSharedResolver), hints.flags.has(hintGCDeferredResolver)

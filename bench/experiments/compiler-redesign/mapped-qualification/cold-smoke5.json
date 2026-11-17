@@ -1,0 +1,26 @@
+{
+  "tested_source": "ca3b10fe2bd9682197ed11df5476c03b8371ae0c",
+  "binary_sha256": "004caab07f934b188389027440f74c8697f0b252c508cd41bc2f8d1f0fcd291d",
+  "build_configuration": "TinyGo tasks/conservative opt2 stack256KB",
+  "experimental_tags": "wago_tinygo_mapped_operands",
+  "WAGO_MAPPED_OPERAND_ARENA": null,
+  "verified_records": 10,
+  "unique_contracts": [
+    "wago/blake3/hash",
+    "wago/json-as-simd/serializeN",
+    "wago/memory_tree/run",
+    "wago/pcre2/compile-match",
+    "wago/tiny/add"
+  ],
+  "protocol": "cold timing-profile compile with before_compile/compiled/released barriers; original checkModule oracle",
+  "comparison": "same binary in both controller slots, correctness/protocol smoke only",
+  "raw_evidence_filename": "cold-mapped-smoke5.jsonl.gz",
+  "raw_evidence_sha256": "06d0a17a5cdb219a031dabf0169b00c476eb8c9d7793db552ff8476638b914bf",
+  "cold_patch_sha256": "88331688f64308ddec78b2cb40cab7fb1380a7908dd88f884afc5fa117eabaea",
+  "frozen_harness_sha256": "8604ed7bb4799c48fa9b9b62be0d4d8f0952079c3660d72f82843f60e52416d5",
+  "limitations": [
+    "No performance or RSS acceptance measurement",
+    "No full145 mapped-candidate corpus qualification",
+    "No claim of full TinyGo test-suite execution"
+  ]
+}

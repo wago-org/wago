@@ -16,7 +16,7 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(80); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(104); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(104)+unsafe.Sizeof(cooperativeHeaderState{}); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {

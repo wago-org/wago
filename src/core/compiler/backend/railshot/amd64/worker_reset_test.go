@@ -12,8 +12,6 @@ import (
 	"reflect"
 	"testing"
 
-	"golang.org/x/sys/cpu"
-
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -229,7 +227,7 @@ func TestWorkerScratchMatchesFresh(t *testing.T) {
 							}
 							// Run only after the exact comparison has passed. Check each history,
 							// including the call relocation, against an independent Go result.
-							if features == 0 || (cpu.X86.HasSSSE3 && cpu.X86.HasSSE41 && cpu.X86.HasSSE42 && cpu.X86.HasAVX) {
+							if features == 0 || workerResetModernCPU() {
 								workerResetExecute(t, got, fresh[0], target)
 							}
 							if target == 0 && seqIndex == 0 {

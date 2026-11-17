@@ -104,7 +104,7 @@ func TestLinearSumSignalsRejectsSharedAndInterruptible(t *testing.T) {
 			t.Fatal(err)
 		}
 		cm.CodeImage.Close()
-		if stats.Funcs[0].Peephole["linear-sum-signals"] != 0 || stats.Funcs[0].Peephole["linear-sum-unroll4"] != 0 {
+		if stats.Funcs[0].Peephole["linear-sum-signals"] != 0 || (shared || !cooperativeLinearSumEnabled) && stats.Funcs[0].Peephole["linear-sum-unroll4"] != 0 {
 			t.Fatal("unsafe signal admission", shared, stats.Funcs[0].Peephole)
 		}
 	}
