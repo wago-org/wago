@@ -2597,6 +2597,14 @@ func bulkChunks(n int, buf *[8][2]int) [][2]int {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
+	if memoryIndex == 0 {
+		if !f.memory0TypeKnown {
+			mt, ok := f.memoryType(0)
+			f.memory0Is64 = ok && mt.Limits.Addr64
+			f.memory0TypeKnown = true
+		}
+		return f.memory0Is64
+	}
 	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }

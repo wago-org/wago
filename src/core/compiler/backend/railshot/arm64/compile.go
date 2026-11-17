@@ -546,6 +546,9 @@ type fn struct {
 	// its depth limits the state to the loop whose top test established it.
 	linearSumLoop      uint32
 	linearSumLoopDepth uint16
+	// Module types are immutable throughout this function compilation.
+	memory0TypeKnown bool
+	memory0Is64      bool
 }
 
 func (f *fn) opt(option optimization.Option) bool {
