@@ -8,8 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
-- Improve ARM64 code generation for guarded loops, vector operations, bounds
-  checks, register use, and integer arithmetic.
+- Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
+  bounds checks, register use, local-state preservation, and integer arithmetic.
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
