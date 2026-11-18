@@ -246,7 +246,7 @@ const (
 	streamBorrow   shared.ScalarLocation = 3
 	streamDeferred shared.ScalarLocation = 4
 )
-const streamValueChecks = regallocCheckEnabled
+const streamValueChecks = streamOwnershipChecks || regallocCheckEnabled
 
 type streamID uint32
 
@@ -265,7 +265,8 @@ type streamNode struct {
 	kind              shared.ScalarLocation
 	reg, depth        uint8
 	wide, operandWide bool
-	// home is a still-valid local-memory copy, encoded as local index + 1.
+	// home is a still-valid canonical copy. The high bit explicitly marks
+	// a register home; untagged values retain the local-memory contract.
 	// Zero means no copy; it is independent of the authoritative location.
 	home uint16
 }
@@ -292,6 +293,8 @@ type streamState struct {
 	nextSlot, tempBase, maxSlot int
 	regs                        []uint8
 	reserved                    uint64
+	homeLocals                  [2]uint16
+	homeRegs                    [2]uint8
 	target                      *fn
 	flow                        []streamFlow
 	flowTypes                   []bool
@@ -388,8 +391,12 @@ func (s *streamState) operand(id streamID) shared.ScalarOperand {
 	n := s.node(id)
 	o := shared.ScalarOperand{Kind: n.kind, Reg: n.reg, Constant: n.constant}
 	if n.kind == streamBorrow {
-		o.Kind = shared.ScalarFrame
-		o.Offset = s.target.LocalOffset(int(n.slot))
+		if r, ok := s.localHomeReg(int(n.slot)); ok {
+			o.Kind, o.Reg = shared.ScalarRegister, r
+		} else {
+			o.Kind = shared.ScalarFrame
+			o.Offset = s.target.LocalOffset(int(n.slot))
+		}
 	} else if n.kind == shared.ScalarFrame {
 		o.Offset = s.target.SpillOffset(int(n.slot))
 	}
@@ -413,7 +420,7 @@ func (s *streamState) slot() int {
 func (s *streamState) spill(id streamID) {
 
 	n := s.node(id)
-	if n.home != 0 {
+	if n.home != 0 && n.home&streamRegisterHome == 0 {
 		// The unchanged local home is already a valid backing copy. Eviction
 		// needs no store or temporary slot; identity and references stay intact.
 		s.owners[n.reg] = 0
@@ -421,6 +428,7 @@ func (s *streamState) spill(id streamID) {
 		n.slot = int32(n.home - 1)
 		return
 	}
+	n.home = 0 // A register-backed copy must never become a stale borrowed home.
 	slot := s.slot()
 	s.target.Store(s.target.SpillOffset(slot), n.reg, n.wide)
 	s.owners[n.reg] = 0
@@ -486,8 +494,13 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 		s.target.Move(r, n.reg, n.wide)
 		s.owners[n.reg] = 0
 	case shared.ScalarFrame, streamBorrow:
-		s.target.Load(r, s.operand(id).Offset, n.wide)
-		s.Reloads++
+		o := s.operand(id)
+		if o.Kind == shared.ScalarRegister {
+			s.target.Move(r, o.Reg, n.wide)
+		} else {
+			s.target.Load(r, o.Offset, n.wide)
+			s.Reloads++
+		}
 		if n.kind == shared.ScalarFrame && int(n.slot) >= s.tempBase {
 			s.freeSlots = append(s.freeSlots, int(n.slot))
 		}
@@ -680,7 +693,10 @@ func (s *streamState) canonicalize(registerResult bool) {
 		}
 	}
 	for i, id := range s.locals {
-		if s.node(id).home == uint16(i+1) {
+		if s.node(id).home == s.localHomeTag(i) {
+			continue
+		}
+		if _, selected := s.localHomeReg(i); selected {
 			continue
 		}
 		r := s.materialize(id, 0)
@@ -698,7 +714,7 @@ func (s *streamState) canonicalize(registerResult bool) {
 		if registerResult && i == len(s.stack)-1 {
 			// Both exits select the same physical register. All remaining owners
 			// are released by restore; no live logical state needs this register.
-			s.target.Move(resultReg, r, s.node(id).wide)
+			// Stage the result only after home commits, which may allocate.
 			continue
 		}
 		s.target.Store(s.target.SpillOffset(i+1), r, s.node(id).wide)
@@ -707,6 +723,12 @@ func (s *streamState) canonicalize(registerResult bool) {
 		}
 	}
 
+	s.commitRegisterHomes()
+	if registerResult {
+		id := s.stack[len(s.stack)-1]
+		r := s.materialize(id, 0)
+		s.target.Move(resultReg, r, s.node(id).wide)
+	}
 	s.restore(len(s.stack))
 	if registerResult {
 		id := s.stack[len(s.stack)-1]
@@ -734,7 +756,7 @@ func (s *streamState) restoreResultLocal(local uint16) {
 	s.retain(id)
 	s.locals[local-1] = id
 	// canonicalize wrote this home on each incoming edge.
-	s.node(id).home = local
+	s.node(id).home = s.localHomeTag(int(local) - 1)
 }
 
 func (s *streamState) restore(depth int) {
@@ -753,7 +775,7 @@ func (s *streamState) restore(depth int) {
 	}
 	s.stack = s.stack[:depth]
 	for i, wide := range s.widths {
-		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: uint16(i + 1), wide: wide, refs: 1})
+		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: wide, refs: 1})
 	}
 
 }
@@ -829,6 +851,8 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 	s.Reloads = 0
 	s.target = target
 	s.regs, s.reserved = target.Registers()
+	s.homeLocals = [2]uint16{}
+	s.homeRegs = [2]uint8{}
 	var zeros [2]streamID
 	for i, wide := range localWide {
 		if i < nParams {
@@ -864,6 +888,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		}
 		s.locals = append(s.locals, id)
 	}
+	s.initializeRegisterHomes(summary.HomeLocals, nParams)
 	return s.runStreamCode(code, summary)
 }
 

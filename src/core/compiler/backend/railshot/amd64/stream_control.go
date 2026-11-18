@@ -35,7 +35,7 @@ func (s *streamState) streamRestore(fr streamFlow, result bool) {
 		s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarFrame, slot: int32(fr.base + 1), wide: fr.wide, refs: 1}))
 	}
 	for i, w := range s.widths {
-		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: uint16(i + 1), wide: w, refs: 1})
+		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: w, refs: 1})
 	}
 }
 func (s *streamState) streamLink(fr *streamFlow) {
@@ -148,7 +148,7 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 			} else {
 				id := s.pop()
 				old := s.locals[x]
-				if old != id && s.node(old).home == uint16(x+1) {
+				if old != id && s.node(old).home == s.localHomeTag(int(x)) {
 					s.node(old).home = 0
 				}
 				s.release(old)

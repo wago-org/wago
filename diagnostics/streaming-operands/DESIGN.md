@@ -50,3 +50,24 @@ The expanded numeric scope has not yet completed full-corpus runtime or executio
 latency qualification. First-compilation latency and absolute RSS are not
 qualified for this checkpoint. No performance improvement is claimed. This is an
 incremental experimental source checkpoint, not a merge recommendation.
+
+## Register-home checkpoint
+
+An independent optional stream-value checker now verifies ownership/refcounts.
+The separate `WAGO_EXPERIMENTAL_STREAM_HOMES=1` experiment preserves at most two
+hot local homes in reserved registers for loop-bearing functions. Ordinary value
+owners remain outside those home registers. Tagged register-backed values spill
+to real temporary storage; changed home inputs are captured before either home
+is overwritten. Parameters are loaded and declared locals explicitly zeroed.
+
+The combined checker/statistics gate passed 27 top-level tests without skips
+(0.093 seconds), with positive home-selection assertions, detached conditions,
+local snapshots, two-home swaps, bulk/poll boundaries, real spill/backing checks
+and result-register ordering. The earlier numeric checkpoint completed all 145
+production runtime oracles. The new register-home checkpoint has not yet
+completed those runtime oracles or performance qualification.
+
+A single loop's static frame traffic changed from four reads/two writes to zero;
+this is not a runtime speed measurement. The existing compiler's four-way loop
+unrolling is not reproduced. No measured compilation, execution or RSS
+improvement is claimed, and the performance targets remain unmet.

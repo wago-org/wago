@@ -3947,6 +3947,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	if !f.localTailLeaf && !hasInlineTailLoop {
 		f.streamSummary = f.admitStreaming(c)
+		if f.streamSummary.Eligible && streamingRegisterHomesEnabled && hints.flags.has(hintHasLoop) {
+			f.streamSummary.selectHomes(hints.localScore)
+		}
 		if !f.streamSummary.Eligible {
 			f.scalarSummary = f.admitScalar(c)
 		}

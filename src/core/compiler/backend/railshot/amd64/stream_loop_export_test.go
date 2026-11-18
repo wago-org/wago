@@ -49,19 +49,19 @@ func TestStreamLoopNativeExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	type row struct {
-		Mode, InputSHA256, NativeSHA256                                  string
-		Bytes, Entry, InternalEntry, FrameBytes, MaxSpillSlots, Selected int
-		Result                                                           uint64
+		Mode, InputSHA256, NativeSHA256                                         string
+		Bytes, Entry, InternalEntry, FrameBytes, MaxSpillSlots, Selected, Homes int
+		Result                                                                  uint64
 	}
 	var rows []row
-	old := streamingOperandsEnabled
-	defer func() { streamingOperandsEnabled = old }()
-	for _, on := range []bool{false, true} {
-		streamingOperandsEnabled = on
-		name := "off"
-		if on {
-			name = "on"
-		}
+	old, oldHomes := streamingOperandsEnabled, streamingRegisterHomesEnabled
+	defer func() { streamingOperandsEnabled, streamingRegisterHomesEnabled = old, oldHomes }()
+	for _, arm := range []struct {
+		name      string
+		on, homes bool
+	}{{"off", false, false}, {"frame", true, false}, {"home", true, true}} {
+		on, name := arm.on, arm.name
+		streamingOperandsEnabled, streamingRegisterHomesEnabled = on, arm.homes
 		stats := &ModuleStats{}
 		cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, DeferCodeMapping: true, Stats: stats})
 		if err != nil {
@@ -79,11 +79,15 @@ func TestStreamLoopNativeExport(t *testing.T) {
 		if selected != want {
 			t.Fatalf("selection%s=%d", name, selected)
 		}
+		homes := stats.Funcs[0].Peephole["stream-local-home"]
+		if arm.homes && homes == 0 || !arm.homes && homes != 0 {
+			t.Fatalf("home selection%s=%d", name, homes)
+		}
 		h := sha256.Sum256(cm.Code)
 		if err = os.WriteFile(filepath.Join(dir, name+".bin"), cm.Code, 0644); err != nil {
 			t.Fatal(err)
 		}
-		rows = append(rows, row{name, hex.EncodeToString(ah[:]), hex.EncodeToString(h[:]), len(cm.Code), cm.Entry[0], cm.InternalEntry[0], stats.Funcs[0].FrameBytes, stats.Funcs[0].MaxSpillSlots, selected, got})
+		rows = append(rows, row{name, hex.EncodeToString(ah[:]), hex.EncodeToString(h[:]), len(cm.Code), cm.Entry[0], cm.InternalEntry[0], stats.Funcs[0].FrameBytes, stats.Funcs[0].MaxSpillSlots, selected, homes, got})
 	}
 	data, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
