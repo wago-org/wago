@@ -208,7 +208,7 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 					s.target.stats.peep("stream-local-dead-set")
 					continue
 				}
-				if !(op == 0x21 && s.commitRotateIntoLocal(int(x), id, old)) && !s.tryHomeSet(int(x), id, old) {
+				if !s.commitRotateIntoLocal(int(x), id, old) && !s.tryHomeSet(int(x), id, old) {
 					if old != 0 && old != id && s.node(old).home == s.localHomeTag(int(x)) {
 						s.node(old).home = 0
 					}

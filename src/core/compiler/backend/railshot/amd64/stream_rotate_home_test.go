@@ -70,14 +70,14 @@ func TestStreamRotateHomeCommitEncoding(t *testing.T) {
 }
 func TestStreamRotateHomePreflightPurity(t *testing.T) {
 	streamRotateHomeEnable(t)
-	for _, why := range []string{"tee", "variable", "old-alias", "cell-alias", "copied-proof-alias", "same-old-source", "nonhome", "stale-map"} {
+	for _, why := range []string{"local-get", "variable", "old-alias", "cell-alias", "copied-proof-alias", "same-old-source", "nonhome", "stale-map"} {
 		t.Run(why, func(t *testing.T) {
 			s := streamRotateHomeState()
 			code := []byte{0x21, 0}
 			old := s.locals[0]
 			switch why {
-			case "tee":
-				code[0] = 0x22
+			case "local-get":
+				code[0] = 0x20
 			case "variable":
 				s.node(s.stack[1]).kind = shared.ScalarFrame
 				s.node(s.stack[1]).slot = 9

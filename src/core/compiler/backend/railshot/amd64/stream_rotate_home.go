@@ -12,14 +12,14 @@ var streamingRotateHomeEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_ROTATE_HOME
 
 // A backing node owns its cell reference, so the cell cannot recycle while this
 // token is live. Its fresh node order distinguishes reused arena identities.
-// Only the immediately following local.set may consume this tagged payload.
+// Only the immediately following local.set/tee may consume this tagged payload.
 func streamRotateSetToken(order uint16, local int, cell uint32) int64 {
 	return int64(uint64(order)<<48 | uint64(local+1)<<32 | uint64(cell))
 }
 
-// tryRotateIntoLocal only peeks: the driver still processes the local.set and
-// its source PC. Callers exclude lifetime tapes; tee and all other successors
-// retain ordinary lowering. No additional native operation may enter the gap.
+// tryRotateIntoLocal only peeks: the driver still processes the local.set/tee and
+// its source PC. Callers exclude lifetime tapes; all other successors retain
+// ordinary lowering. No additional native operation may enter the gap.
 func (s *streamState) tryRotateIntoLocal(r *wasm.Reader, op byte) bool {
 	if !streamingRotateHomeEnabled || !streamingRorxEnabled || !streamingPreserveDenseEnabled || !streamingCopyProofEnabled || s.residency == nil || s.target == nil || !s.target.bmi2Rorx || r == nil || len(s.stack) < 2 {
 		return false
@@ -30,7 +30,7 @@ func (s *streamState) tryRotateIntoLocal(r *wasm.Reader, op byte) bool {
 	}
 	look := *r
 	next, err := look.Byte()
-	if err != nil || next != 0x21 {
+	if err != nil || (next != 0x21 && next != 0x22) {
 		return false
 	}
 	x, err := look.U32()
@@ -123,7 +123,9 @@ func (s *streamState) tryRotateIntoLocal(r *wasm.Reader, op byte) bool {
 }
 
 // commitRotateIntoLocal consumes only a producer's exact one-instruction
-// handoff, not arbitrary canonical backing values. Ordinary materialization
+// handoff, not arbitrary canonical backing values. For tee, the driver retains
+// the freshly bound local once after this transfer, creating its stack alias.
+// Ordinary materialization
 // overwrites this payload with a register proof, so it cannot revive a token.
 func (s *streamState) commitRotateIntoLocal(local int, id, old streamID) bool {
 	if !streamingRotateHomeEnabled || s.residency == nil || old != 0 || id == 0 || local < 0 || local >= len(s.locals) {

@@ -545,3 +545,21 @@ The activation observer did not attribute rejection reasons. Adjacent tee,
 aliases or another guard must not be asserted as the cause without separate
 tracing. The prior 68cea43b failed timing and memory qualification remains
 unaltered; no target improvement or promotion is claimed.
+
+### Rotate tee handoff checkpoint (00eeeeae)
+
+The adjacent rotate-home handoff now also accepts local.tee. All existing
+source, generation, cell-uniqueness, resident-home and token checks remain
+unchanged. The setter consumes the fresh token and binds the result before
+the existing tee retain creates the local-plus-stack alias. Later overwrite
+must preserve that retained generation. Lifetime tapes remain excluded;
+there is no new opcode admission, source-PC change or alias relaxation.
+
+The exact clean checkpoint passed 115 focused ownership/statistics tests in
+0.877 seconds and eleven untagged rotate tests in 0.018 seconds, with zero
+failures or skips. Independent tests exercise retained tee snapshots across
+later local changes. Public/native activation, production runtime and
+performance qualification for this revision are pending. The preceding
+zero-activation result and adverse performance evidence remain historical
+facts, not evidence that this extension succeeds. No PR or promotion is
+proposed.
