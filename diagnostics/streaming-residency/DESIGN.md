@@ -563,3 +563,44 @@ performance qualification for this revision are pending. The preceding
 zero-activation result and adverse performance evidence remain historical
 facts, not evidence that this extension succeeds. No PR or promotion is
 proposed.
+
+### Rotate tee outcome (00eeeeae, source unchanged)
+
+All 145 production runtime oracles passed. Public/native diagnostics retain
+572 selected functions; only Monocypher changes, with 20 rotate-home
+preparations and 20 commits. Its hot loop shrinks from 246 to 229 instruction
+sites, MOVs from 147 to 130 and stack references from 106 to 83. These are
+static mechanism observations, not performance qualification.
+
+The fixed 15-case, nine-trial long-only screen verified all 540 records.
+Candidate OFF and ON use the same binary and prior features; only the
+rotate-home toggle differs. Both include the compact-rotate correction.
+Previously frozen operation counts were reused without recalibration or
+adaptive extensions. Monocypher ON/OFF is 0.904896 (paired 95% CI
+[0.681816, 0.958023]); ON/mean-main is 1.013858 [0.829263, 1.017263].
+However, its main A/A interval [0.989184, 1.432825] fails the preregistered
+control gate, so the <=5% execution guard is not qualified. Only pcre2 and
+drwav pass both strict per-case gates. The overlapping original-eight and
+new-admission-eight groups have mean workload ON/main ratios 1.024492 and
+1.149966 respectively; neither establishes broad execution qualification.
+
+The separate fixed-145 cold compilation screen verified 2,900 records
+(five trials, four arms). Its estimand is the arithmetic mean of per-workload
+median times, with 5,000 paired within-workload trial resamples and no
+workload resampling. ON/OFF is 0.989827 [0.899339, 1.177023]; ON/mean-main
+is 1.029369 [0.973658, 1.215401]. Main A/A is 1.017000
+[0.940280, 1.082527], failing the control gate. There is no qualified
+compilation gain and no 40% reduction.
+
+The independent one-trial memory run verified 435 fresh-process records.
+Arithmetic-mean absolute compiled-barrier VmHWM is 12.000135 MiB for main,
+12.085695 MiB for candidate OFF and 12.083351 MiB for ON, using the same
+fixed executable slot. This is not latency evidence and does not meet the
+absolute 5 MiB target. The measurement audit confirms matching arm flags
+and binary identities across all three runs.
+
+Administrative PLAN status wording was corrected around launch from binary
+pending to verified. Source, arms, operations, controllers, trial counts,
+seeds, estimands and acceptance criteria did not change; there was no
+rerun. Prior negative outcomes remain applicable. No broad gain, promotion
+or PR is claimed.
