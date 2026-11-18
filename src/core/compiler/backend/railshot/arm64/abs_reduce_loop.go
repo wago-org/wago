@@ -445,6 +445,10 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	} else {
 		f.a.MovImm64(X16, uint64(p.stride.v))
 	}
+	// Reserve the original scalar tail. The source index is live only at
+	// that tail, so compute its wrapping advance for the entire prefix.
+	f.a.SubImm32(counter, counter, 1)
+	f.a.Madd32(index, counter, X16, index)
 	// Addition modulo 2^32 allows each lane to accumulate independently.
 	// Reduce once before resuming the checked scalar tail.
 	f.a.NeonEor16b(sum, sum, sum)
@@ -465,13 +469,12 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.a.NeonAddS(sum, sum, va)
 	f.a.Add64(a, a, X16)
 	f.a.Add64(b, b, X16)
-	f.a.Add32(index, index, X16)
-	f.a.SubImm32(counter, counter, 1)
-	f.cmpImm(counter, 1, false)
+	f.a.SubsImm32(counter, counter, 1)
 	f.patchBranch19(f.a.Bcond(condNE), loop)
 	f.a.NeonAddvS(sum, sum)
 	f.a.FmovToGpr(X16, sum, false)
 	f.a.Add32(acc, acc, X16)
+	f.a.MovImm32(counter, 1)
 	for _, site := range fallback[:nFallback] {
 		f.patchBranch19(site, f.a.Len())
 	}
