@@ -779,25 +779,7 @@ func (s *streamState) restore(depth int) {
 	}
 
 }
-func (s *streamState) condition(id streamID) int {
 
-	n := *s.node(id)
-	if n.kind == streamDeferred && streamCompare(n.op) {
-		left, right := s.operands(n, 0)
-
-		site := s.target.BranchCompare(n.op, n.operandWide, left, right)
-		s.release(id)
-		return site
-	}
-	reg := s.materialize(id, 0)
-
-	site := s.target.BranchZero(reg)
-	s.release(id)
-	return site
-}
-
-// CompileStream consumes bytecode directly with bounded deferred expression
-// trees. It assumes the caller validated and admitted the same immutable bytes.
 func (s *streamState) CompileStream(code []byte, summary streamSummary, localWide []bool, nParams int, target *fn) (int, error) {
 	return s.compileStream(code, summary, localWide, nParams, target)
 }

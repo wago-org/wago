@@ -72,7 +72,7 @@ this is not a runtime speed measurement. The existing compiler's four-way loop
 unrolling is not reproduced. No measured compilation, execution or RSS
 improvement is claimed, and the performance targets remain unmet.
 
-### Subsequent register-home diagnostic
+### Prior register-home diagnostic (eca4488a)
 
 All 145 production runtime oracles passed with register homes enabled. A
 100,000-iteration loop first-call diagnostic measured legacy controls at
@@ -85,3 +85,18 @@ is not qualified for performance conclusions. These limited measurements are
 not full-corpus execution qualification. Preserving established loop
 specializations remains necessary before broader promotion. This branch remains
 experimental; no performance improvement or merge recommendation is claimed.
+
+## Direct home-update checkpoint (5a1869fd)
+
+The additional `WAGO_EXPERIMENTAL_STREAM_HOME_SINK=1` batch emits guarded
+home-local ALU updates, short-lived current-home branch proofs, direct
+conditional loop/resultless-block edges and live root fallthrough returns.
+Old aliases and unsupported forms retain the established streaming paths.
+
+The checker/statistics focused gate passed 33 top-level tests without skips
+(0.098 seconds), including independent alias, branch and return regressions.
+One loop's static image is 99 bytes with a 24-byte frame, zero spills, five hot
+instructions and zero stack traffic. These are code-shape observations, not
+measured speedups. Full production runtime oracles and timing for this new
+checkpoint remain pending. The earlier eca4488a execution regression above is
+not evidence of this batch's performance in either direction.

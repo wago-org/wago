@@ -39,7 +39,9 @@ func (s *streamState) streamRestore(fr streamFlow, result bool) {
 	}
 }
 func (s *streamState) streamLink(fr *streamFlow) {
-	site := s.target.Jump()
+	s.streamLinkSite(fr, s.target.Jump())
+}
+func (s *streamState) streamLinkSite(fr *streamFlow, site int) {
 	if site < 0 || uint64(site) >= uint64(^uint32(0)) || site+4 > len(s.target.a.B) {
 		s.target.setRepresentationLimit(functionRepresentationFrameEnd)
 		return
@@ -54,31 +56,34 @@ func (s *streamState) streamPatch(fr streamFlow) {
 		s.target.a.PatchRel32(site, s.target.a.Len())
 	}
 }
-func (s *streamState) streamCaptureCondition(id streamID) {
-	n := *s.node(id)
-	if n.kind == streamDeferred && streamCompare(n.op) {
-		s.materialize(n.left, 0)
-		s.materialize(n.right, 0)
-	} else {
-		s.materialize(id, 0)
-	}
-}
 
 // Transfer executes only on the taken edge. Conditional fallthrough restores
 // the pre-edge canonical image without emitting stores from the taken path.
 func (s *streamState) streamEdge(depth int, conditional bool) {
 	target := len(s.flow) - 1 - depth
 	var condition streamID
+	var homes streamBranchHome
 	if conditional {
 		condition = s.pop()
-		s.streamCaptureCondition(condition)
+		homes = s.streamCaptureCondition(condition)
 	}
 	s.canonicalize(false)
+	fr := &s.flow[target]
+	if conditional && (fr.kind == 0x03 || fr.result == 0) && streamingHomeSinkEnabled {
+		site := s.condition(condition, homes, true)
+		if fr.kind == 0x03 {
+			s.target.a.PatchRel32(site, fr.head)
+		} else {
+			s.streamLinkSite(fr, site)
+			fr.ends = true
+		}
+		s.restore(len(s.stack))
+		return
+	}
 	falseSite := -1
 	if conditional {
-		falseSite = s.condition(condition)
+		falseSite = s.condition(condition, homes, false)
 	}
-	fr := &s.flow[target]
 	if fr.kind != 0x03 && fr.result != 0 {
 		id := s.stack[len(s.stack)-1]
 		r := s.materialize(id, 0)
@@ -148,14 +153,16 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 			} else {
 				id := s.pop()
 				old := s.locals[x]
-				if old != id && s.node(old).home == s.localHomeTag(int(x)) {
-					s.node(old).home = 0
+				if !s.tryHomeSet(int(x), id, old) {
+					if old != id && s.node(old).home == s.localHomeTag(int(x)) {
+						s.node(old).home = 0
+					}
+					s.release(old)
+					if s.node(id).kind != shared.ScalarConstant {
+						s.materialize(id, 0)
+					}
+					s.locals[x] = id
 				}
-				s.release(old)
-				if s.node(id).kind != shared.ScalarConstant {
-					s.materialize(id, 0)
-				}
-				s.locals[x] = id
 				if op == 0x22 {
 					s.retain(id)
 					s.stack = append(s.stack, id)
@@ -173,14 +180,15 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 				fr.result = 1
 			}
 			var cond streamID
+			var homes streamBranchHome
 			if !s.dead {
 				if op == 0x04 {
 					cond = s.pop()
-					s.streamCaptureCondition(cond)
+					homes = s.streamCaptureCondition(cond)
 				}
 				s.canonicalize(false)
 				if op == 0x04 {
-					fr.falseSite = s.condition(cond)
+					fr.falseSite = s.condition(cond, homes, false)
 				}
 			}
 			fr.base = len(s.stack)
@@ -221,7 +229,8 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 			fr := s.flow[i]
 			fallthroughLive := !s.dead
 			live := fallthroughLive || fr.ends || (fr.kind == 0x04 && !fr.hasElse && !fr.entryDead)
-			if fallthroughLive {
+			directReturn := streamingHomeSinkEnabled && i == 0 && fallthroughLive && !fr.ends
+			if fallthroughLive && !directReturn {
 				s.canonicalize(false)
 			}
 			if fr.kind == 0x04 && !fr.hasElse && fr.falseSite >= 0 {

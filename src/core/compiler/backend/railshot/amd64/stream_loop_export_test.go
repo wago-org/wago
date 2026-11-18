@@ -54,14 +54,16 @@ func TestStreamLoopNativeExport(t *testing.T) {
 		Result                                                                  uint64
 	}
 	var rows []row
-	old, oldHomes := streamingOperandsEnabled, streamingRegisterHomesEnabled
-	defer func() { streamingOperandsEnabled, streamingRegisterHomesEnabled = old, oldHomes }()
+	old, oldHomes, oldSink := streamingOperandsEnabled, streamingRegisterHomesEnabled, streamingHomeSinkEnabled
+	defer func() {
+		streamingOperandsEnabled, streamingRegisterHomesEnabled, streamingHomeSinkEnabled = old, oldHomes, oldSink
+	}()
 	for _, arm := range []struct {
-		name      string
-		on, homes bool
-	}{{"off", false, false}, {"frame", true, false}, {"home", true, true}} {
+		name            string
+		on, homes, sink bool
+	}{{"off", false, false, false}, {"frame", true, false, false}, {"home", true, true, false}, {"sink", true, true, true}} {
 		on, name := arm.on, arm.name
-		streamingOperandsEnabled, streamingRegisterHomesEnabled = on, arm.homes
+		streamingOperandsEnabled, streamingRegisterHomesEnabled, streamingHomeSinkEnabled = on, arm.homes, arm.sink
 		stats := &ModuleStats{}
 		cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, DeferCodeMapping: true, Stats: stats})
 		if err != nil {
