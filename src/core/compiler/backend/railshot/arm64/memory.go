@@ -875,7 +875,10 @@ func boundsSource(s storage) (kind uint8, idx uint32) {
 	}
 }
 
-const maxStraightLineRangeOps = 4096
+const (
+	maxStraightLineRangeOps = 4096
+	maxFunctionRangeOps     = 32768
+)
 
 // straightLineLoadExtent finds later scalar loads from the same stable source
 // across only non-trapping local integer work. Any effect, control edge, store,
@@ -887,10 +890,11 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 	crossedSelect := false
 	prevBias := uint32(0)
 	prevKind, prevIdx := uint8(0), uint32(0)
-	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+	for n := 0; n < maxStraightLineRangeOps && f.boundsScanWork < maxFunctionRangeOps && scan.HasNext(); n++ {
 		if extended && (n >= 128 || scan.Offset()-start >= 512) {
 			return extent
 		}
+		f.boundsScanWork++
 		op, err := scan.Byte()
 		if err != nil {
 			break
@@ -904,11 +908,12 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			nextKind, nextIdx = 1, x
-			if floatLoadSpanEnabled && !crossedSelect && kind == 1 && x == idx {
+			if floatLoadSpanEnabled && !crossedSelect && kind == 1 && x == idx && f.boundsScanWork+2 <= maxFunctionRangeOps {
 				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
 					nextBias = d
 					extended = true
 					n += 2
+					f.boundsScanWork += 2
 				}
 			}
 		case op == 0x23:
@@ -917,11 +922,12 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 				return extent
 			}
 			nextKind, nextIdx = 2, x
-			if floatLoadSpanEnabled && !crossedSelect && kind == 2 && x == idx {
+			if floatLoadSpanEnabled && !crossedSelect && kind == 2 && x == idx && f.boundsScanWork+2 <= maxFunctionRangeOps {
 				if d, ok := f.peekPositiveLoadOffset(&scan); ok {
 					nextBias = d
 					extended = true
 					n += 2
+					f.boundsScanWork += 2
 				}
 			}
 		case op == 0x21 || op == 0x22:

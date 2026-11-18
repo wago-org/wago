@@ -403,6 +403,7 @@ type fn struct {
 	// local/global address source and its largest checked extent. The fixed set
 	// retains independent proofs for interleaved arrays without per-local state.
 	boundsCerts       [8]boundsCert
+	boundsScanWork    uint32 // decoded straight-line bounds lookahead in this function
 	nextBoundsCert    uint8
 	boundsCertsActive bool // may remain true after source-specific invalidation
 
