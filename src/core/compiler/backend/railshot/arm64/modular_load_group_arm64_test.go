@@ -170,3 +170,25 @@ func TestModularLoadGroupSparseProbeBudget(t *testing.T) {
 		t.Fatalf("group=%+v work=%d reader offset=%d", group, f.boundsScanWork, r.Offset())
 	}
 }
+
+func TestModularLoadGroupSpillDominatesFastPath(t *testing.T) {
+	f := gpClassEmitter()
+	f.memSizeReg = X4
+	f.reserved = allAllocatableGP().remove(X0).remove(X1).remove(X2)
+	victim := f.pushReg(X2, mtI64)
+	f.checkModularLoadGroup(X3, modularLoadGroup{first: 16, low: 0, high: 16})
+	if victim.st.kind != stSlot {
+		t.Fatal("expected check to spill the occupied scratch register")
+	}
+	// Before the first branch, the check copies the address, spills X2,
+	// calculates the high bound, and compares it with memory size.
+	for at := 0; at < f.a.Len(); at += 4 {
+		if rdWord(f.a.B, at)&0xff000010 == 0x54000000 {
+			if at != 16 {
+				t.Fatalf("first conditional branch at %d, want 16 after the spill", at)
+			}
+			return
+		}
+	}
+	t.Fatal("conditional branch absent")
+}

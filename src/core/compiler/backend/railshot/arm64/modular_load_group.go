@@ -89,10 +89,12 @@ func (f *fn) checkModularLoadGroup(ea Reg, g modularLoadGroup) {
 		f.a.MovReg32(low, ea)
 	}
 	high := f.allocReg(maskOf(low))
+	// Allocation may spill a live value. Keep that spill before the split,
+	// where both paths execute it and agree with the allocator at the join.
+	limit := f.allocReg(maskOf(low, high))
 	f.a.AddImm64(high, low, uint32(g.high-g.low)+4)
 	f.cmpRR(high, f.memSizeReg, true)
 	done := f.a.Bcond(condBE)
-	limit := f.allocReg(maskOf(low, high))
 	f.a.MovImm64(limit, 1<<32)
 	f.cmpRR(f.memSizeReg, limit, true)
 	f.trapIf(condNE, trapMemOOB)
