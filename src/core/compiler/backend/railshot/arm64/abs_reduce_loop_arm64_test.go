@@ -122,3 +122,37 @@ func TestAbsReduceAdmission(t *testing.T) {
 		}
 	}
 }
+
+func TestAbsReduceDeclinesWhenAccumulatorDoesNotFit(t *testing.T) {
+	m := absReduceModule(t, 8, true, true, 0, 4096, 8, 0, 192)
+	body := m.Code[0].BodyBytes
+	header := bytes.Index(body, []byte{0x03, 0x40})
+	if header < 0 {
+		t.Fatal("fixture loop header missing")
+	}
+	source := wasm.ReaderFrom(body[header+2:])
+	f := gpClassEmitter()
+	f.m = m
+	f.classifier = wasm.NewModuleInstructionClassifier(m, true)
+	f.policy = currentCodegenPolicy()
+	f.nLocals = 9
+	f.locals = make([]localDef, f.nLocals)
+	f.localType = make([]machineType, f.nLocals)
+	for i := range f.locals {
+		f.locals[i].reg = regNone
+		f.locals[i].state = lsConstZero
+		f.localType[i] = mtI32
+	}
+	f.memSizeReg = X27
+	if plan, ok := f.inspectAbsReduceLoop(&source); !ok || plan.lanes != 8 {
+		t.Fatalf("fixture did not produce an eight-word reduction: %+v", plan)
+	}
+	// The packet and second input fit. The vector accumulator does not.
+	for _, r := range fpAllocRegs[3:] {
+		f.fpinned = f.fpinned.add(r)
+	}
+	f.emitAbsReduceLoop(&source)
+	if f.a.Len() != 0 || source.Offset() != 0 {
+		t.Fatalf("ineligible prefix emitted %d bytes and advanced source by %d", f.a.Len(), source.Offset())
+	}
+}
