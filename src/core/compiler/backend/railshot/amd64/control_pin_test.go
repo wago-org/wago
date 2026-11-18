@@ -68,6 +68,11 @@ func TestBranchEmissionRestoresPinsAfterDeferredEvaluation(t *testing.T) {
 }
 
 func TestControlEdgesRestorePinsAfterDeferredEvaluation(t *testing.T) {
+	// This fixture deliberately requires its arithmetic result to be
+	// materialized so that a pin is reclaimed under pressure.
+	previousZeroCompare := zeroCompareEnabled
+	zeroCompareEnabled = false
+	defer func() { zeroCompareEnabled = previousZeroCompare }()
 	for _, edge := range []string{"loop", "if", "if-fused", "else", "end", "table"} {
 		t.Run(edge, func(t *testing.T) {
 			stats := new(CodegenStats)

@@ -31,13 +31,16 @@ var regionLoopMemForms = os.Getenv("WAGO_AMD64_VECTOR_MAP_MEMFORMS") != "0"
 // Modular zero-counter loops use guarded trip counting and the original checked fallback.
 var regionZeroCounterEnabled = os.Getenv("WAGO_AMD64_ZERO_COUNTER_LOOP") != "0"
 
-// Pairing other whole scalar iterations remains an opt-in experiment.
-var regionLoopEnabled = os.Getenv("WAGO_AMD64_VECTOR_MAP_LOOP") == "1"
+// Pair independent scalar iterations when setup can amortize; zero disables it.
+var regionLoopEnabled = os.Getenv("WAGO_AMD64_VECTOR_MAP_LOOP") != "0"
 
 // Diagnostic assertion for qualification only; ordinary timings leave it off.
 var regionLoopTestFast = os.Getenv("WAGO_AMD64_VECTOR_MAP_ASSERT_FAST") == "1"
 
-const regionLoopSlots = 28
+const (
+	regionLoopSlots         = 28
+	regionMinPairIterations = 16
+)
 
 type regionEntryLocal struct {
 	reg   Reg
@@ -131,6 +134,55 @@ func (e *regionLoopEmitter) rangeCheck(s *regionMemoryStream) {
 	f.a.AluRM(cmpRMcode, c, RBX, -bdCurBytes, true)
 	e.fail(condA)
 }
+
+// skipShortPair avoids the general two-lane path when setup is unlikely to
+// amortize. Only simple limits are screened; the complete existing guards
+// remain responsible for legality and every other termination form.
+func (e *regionLoopEmitter) skipShortPair() {
+	f, p := e.f, e.p
+	if !regionLoopEnabled || regionLoopTestFast || p.wide || p.adjacent || p.scalar || p.zeroTerminated {
+		return
+	}
+	limit := p.nodes[p.limit]
+	limitLocal := -1
+	for i, c := range limit.coeff {
+		if c == 0 {
+			continue
+		}
+		if c != 1 || limitLocal >= 0 || limit.bits != 0 {
+			return
+		}
+		limitLocal = i
+	}
+	step := p.locals[p.counter].Step
+	if step == 0 || step > ^uint32(0)/regionMinPairIterations {
+		return
+	}
+	a, b := e.gp[0], e.gp[1]
+	load := func(index uint8, dst Reg) {
+		l := p.locals[index]
+		d := f.locals[l.Index]
+		if d.state == lsConstZero {
+			f.a.Xor32(dst, dst)
+		} else if d.reg != regNone && d.state != lsMem {
+			f.a.MovRegReg32(dst, d.reg)
+		} else {
+			f.a.Load32(dst, RSP, f.localAddr(int(l.Index)))
+		}
+	}
+	if limitLocal < 0 {
+		f.a.MovImm32(a, int32(uint32(limit.bits)))
+	} else {
+		load(uint8(limitLocal), a)
+	}
+	load(p.counter, b)
+	f.a.Cmp32(a, b)
+	e.fail(condBE)
+	f.a.Sub32(a, b)
+	f.a.AluRI(7, a, int32(step*regionMinPairIterations), false)
+	e.fail(condB)
+}
+
 func (e *regionLoopEmitter) guards() {
 	f, p := e.f, e.p
 	a, b := e.gp[0], e.gp[1]
@@ -843,6 +895,7 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 		slots += 3
 	}
 	e.slot = f.allocSpillSlots(slots)
+	e.skipShortPair()
 	e.guards()
 	e.aliasGuards()
 	e.coalesceStreams()

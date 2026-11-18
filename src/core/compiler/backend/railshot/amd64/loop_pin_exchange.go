@@ -21,6 +21,7 @@ import (
 // default on the platform with native correctness and performance qualification.
 // WAGO_AMD64_NO_LOOP_PIN_EXCHANGE=1 is the rollback switch.
 var loopPinExchangeEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_LOOP_PIN_EXCHANGE") != "1"
+var loopFreePinEnabled = os.Getenv("WAGO_AMD64_NO_LOOP_FREE_PIN") != "1"
 
 const loopPinBits = 17
 
@@ -81,6 +82,7 @@ func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
 	}
 	var plan uint64
 	var selected uint64
+	var selectedRegs regMask
 	for count := 0; count < 2; count++ {
 		bestNew, bestScore := -1, 0
 		for x := 0; x < f.nLocals; x++ {
@@ -92,22 +94,51 @@ func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
 				bestNew, bestScore = x, score
 			}
 		}
-		if bestScore < 6 {
+		if bestScore < 4 {
 			break
 		}
 		bestOld := -1
-		for _, x := range f.pinnedLocals {
-			if selected&(uint64(1)<<x) != 0 || f.localType[x] != mtI32 || reads[x] != 0 || writes[x] != 0 || f.locals[x].state == lsConstZero {
-				continue
+		if bestScore >= 6 {
+			for _, x := range f.pinnedLocals {
+				if selected&(uint64(1)<<x) != 0 || f.localType[x] != mtI32 || reads[x] != 0 || writes[x] != 0 || f.locals[x].state == lsConstZero {
+					continue
+				}
+				bestOld = x
+				break
 			}
-			bestOld = x
+		}
+		reg := regNone
+		if bestOld >= 0 {
+			reg = f.locals[bestOld].reg
+		} else if loopFreePinEnabled {
+			// Leave the fixed-role registers and a working set of ordinary
+			// temporaries available to the existing allocator.
+			blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved).union(selectedRegs)
+			free := 0
+			for _, r := range gpAlloc {
+				if !blocked.has(r) && f.regUser[r] == nil {
+					free++
+				}
+			}
+			if free > numScratchGP+3 {
+				for _, r := range gpAlloc[:len(gpAlloc)-numScratchGP] {
+					if !blocked.has(r) && f.regUser[r] == nil {
+						reg = r
+						break
+					}
+				}
+			}
+		}
+		if reg == regNone {
 			break
 		}
-		if bestOld == -1 {
-			break
+		plan |= loopPinEntry(bestOld, bestNew, reg) << (count * loopPinBits)
+		selected |= uint64(1) << bestNew
+		if bestOld >= 0 {
+			selected |= uint64(1) << bestOld
+		} else {
+			selectedRegs = selectedRegs.add(reg)
 		}
-		plan |= loopPinEntry(bestOld, bestNew, f.locals[bestOld].reg) << (count * loopPinBits)
-		selected |= uint64(1)<<bestOld | uint64(1)<<bestNew
 	}
 	return plan, written
 }
@@ -140,18 +171,29 @@ func (f *fn) applyLoopPinExchange(plan uint64) {
 		old := int(entry&0x7f) - 1
 		newLocal := int((entry >> 7) & 0x3f)
 		reg := Reg((entry >> 13) & 0xf)
-		if !f.usesCalls || f.locals[old].state == lsReg {
-			f.storeLocalReg(old, reg, false)
+		if old < 0 {
+			f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
+			f.pinnedLocals = append(f.pinnedLocals, newLocal)
+			f.stats.peep("loop-free-pin")
+			if f.sc != nil {
+				f.sc.pinnedLocals = f.pinnedLocals
+			}
+		} else {
+			if !f.usesCalls || f.locals[old].state == lsReg {
+				f.storeLocalReg(old, reg, false)
+			}
+			f.locals[old].reg = regNone
+			f.locals[old].state = lsMem
 		}
-		f.locals[old].reg = regNone
-		f.locals[old].state = lsMem
 		f.locals[newLocal].reg = reg
 		f.loadLocalReg(newLocal, reg, false)
 		f.locals[newLocal].state = lsStackReg
-		for i, x := range f.pinnedLocals {
-			if x == old {
-				f.pinnedLocals[i] = newLocal
-				break
+		if old >= 0 {
+			for i, x := range f.pinnedLocals {
+				if x == old {
+					f.pinnedLocals[i] = newLocal
+					break
+				}
 			}
 		}
 		plan >>= loopPinBits
@@ -168,15 +210,29 @@ func (f *fn) restoreLoopPinExchange(plan uint64, reachable bool) {
 			if !f.usesCalls || f.locals[newLocal].state == lsReg {
 				f.storeLocalReg(newLocal, reg, false)
 			}
-			f.loadLocalReg(old, reg, false)
+			if old >= 0 {
+				f.loadLocalReg(old, reg, false)
+			}
 		}
 		f.locals[newLocal].reg = regNone
 		f.locals[newLocal].state = lsMem
-		f.locals[old].reg = reg
-		f.locals[old].state = lsStackReg
+		if old < 0 {
+			f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
+		} else {
+			f.locals[old].reg = reg
+			f.locals[old].state = lsStackReg
+		}
 		for i, x := range f.pinnedLocals {
 			if x == newLocal {
-				f.pinnedLocals[i] = old
+				if old < 0 {
+					copy(f.pinnedLocals[i:], f.pinnedLocals[i+1:])
+					f.pinnedLocals = f.pinnedLocals[:len(f.pinnedLocals)-1]
+					if f.sc != nil {
+						f.sc.pinnedLocals = f.pinnedLocals
+					}
+				} else {
+					f.pinnedLocals[i] = old
+				}
 				break
 			}
 		}

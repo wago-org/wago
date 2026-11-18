@@ -16,7 +16,7 @@ import (
 
 // The alias loop keeps three live local carriers across its single backedge.
 // Decode all final transfers, bounded canonical NOP padding, the condition
-// spill/reload and adjacent TEST32/JNE, then the owned frame's return path.
+// optional spill/reload and adjacent TEST32/JNE, then the frame return path.
 func decodeSourceLoopAMD64(code []byte) (sourceBranchRecipe, bool) {
 	r := sourceBranchRecipe{}
 	if len(code) < 45 || len(code) > 128 {
@@ -27,7 +27,7 @@ func decodeSourceLoopAMD64(code []byte) (sourceBranchRecipe, bool) {
 		return r, false
 	}
 	frame := uint64(binary.LittleEndian.Uint32(code[3:7]))
-	if frame == 0 || frame > 128 {
+	if frame > 128 {
 		return r, false
 	}
 	if frame != uint64(binary.LittleEndian.Uint32(code[end+3:end+7])) {
@@ -96,16 +96,24 @@ func decodeSourceLoopAMD64(code []byte) (sourceBranchRecipe, bool) {
 			r.instructions = append(r.instructions, sourceBranchInstruction{section: 1, writes: 1 << dst})
 		}
 	}
-	store, ok := transfer(1)
-	if !ok || store.effect.Dst.Bank != regalloccheck.Frame || store.effect.Src.Bank != regalloccheck.GP {
-		return r, false
+	// A direct borrowed-local predicate needs no stack home. Otherwise decode
+	// and verify the same spill/reload transfers as the original scalar path.
+	at := pc
+	if at < end && code[at] >= 0x40 && code[at] <= 0x4f {
+		at++
 	}
-	r.instructions = append(r.instructions, store)
-	load, ok := transfer(1)
-	if !ok || load.effect.Src.Bank != regalloccheck.Frame || load.effect.Dst.Bank != regalloccheck.GP || load.effect.Size != 4 {
-		return r, false
+	if at >= end || code[at] != 0x85 {
+		store, ok := transfer(1)
+		if !ok || store.effect.Dst.Bank != regalloccheck.Frame || store.effect.Src.Bank != regalloccheck.GP {
+			return r, false
+		}
+		r.instructions = append(r.instructions, store)
+		load, ok := transfer(1)
+		if !ok || load.effect.Src.Bank != regalloccheck.Frame || load.effect.Dst.Bank != regalloccheck.GP || load.effect.Size != 4 {
+			return r, false
+		}
+		r.instructions = append(r.instructions, load)
 	}
-	r.instructions = append(r.instructions, load)
 	rex := byte(0)
 	if pc < end && code[pc] >= 0x40 && code[pc] <= 0x4f {
 		rex = code[pc]

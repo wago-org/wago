@@ -378,3 +378,31 @@ func TestVectorMapMemoryBoundsFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestVectorMapPairTripThresholdPreservesResults(t *testing.T) {
+	saved, force := regionLoopEnabled, regionLoopTestFast
+	defer func() { regionLoopEnabled, regionLoopTestFast = saved, force }()
+	m := vectorMapFixture(t)
+	for _, tc := range []struct{ n, start uint64 }{{2, 0}, {8, 0}, {14, 0}, {16, 0}, {18, 0}, {32, 0}, {2, 0xfffffffe}} {
+		n := tc.n
+		var want uint64
+		var expected []byte
+		for _, on := range []bool{false, true} {
+			regionLoopEnabled, regionLoopTestFast = on, false
+			init := func(mem []byte) {
+				for i := uint64(0); i < n; i++ {
+					binary.LittleEndian.PutUint64(mem[1024+8*i:], math.Float64bits(float64(i+1)))
+				}
+			}
+			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true}, init, 128, 1024, tc.start, uint64(uint32(tc.start+n)), math.Float64bits(2), math.Float64bits(1.5))
+			if err != nil {
+				t.Fatal(n, on, err)
+			}
+			if !on {
+				want, expected = got, mem
+			} else if got != want || !bytes.Equal(mem, expected) {
+				t.Fatalf("n=%d start=%d: result or memory changed", n, tc.start)
+			}
+		}
+	}
+}

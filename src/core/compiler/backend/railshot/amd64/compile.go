@@ -196,10 +196,9 @@ var treeOrderEnabled = os.Getenv("WAGO_AMD64_NO_TREE_ORDER") != "1"
 // accumulator instead of materializing their internal binary nodes.
 var associativeTreeEnabled = os.Getenv("WAGO_AMD64_NO_ASSOC_TREE") != "1"
 
-// General addition flattening lost execution time on measured applications;
-// the affine LEA cover and bitwise covers remain on. This opt-in restores the
-// older addition selection for target-specific comparisons.
-var associativeAddTreeEnabled = os.Getenv("WAGO_AMD64_ASSOC_ADD") == "1"
+// Addition trees flatten only at higher estimated register pressure; zero
+// retains balanced lowering for paired measurements.
+var associativeAddTreeEnabled = os.Getenv("WAGO_AMD64_ASSOC_ADD") != "0"
 
 // intervalRegionPinsEnabled reuses GP registers across integer local lifetimes
 // in bounded, call-free straight-line functions. Unlike whole-function hot-local
@@ -269,6 +268,9 @@ var canonicalI32CarriersEnabled = os.Getenv("WAGO_AMD64_NO_CANONICAL_I32") != "1
 // valueFactsEnabled carries bounded upper-zero and boolean provenance on Valent
 // nodes. WAGO_AMD64_NOPROVENANCE=1 retains the pre-facts path for A/B checks.
 var valueFactsEnabled = os.Getenv("WAGO_AMD64_NOPROVENANCE") != "1"
+
+// Captured address proofs are enabled by default; zero provides an A/B control.
+var capturedBoundsEnabled = os.Getenv("WAGO_AMD64_CAPTURED_BOUNDS") != "0"
 
 // bmi2RorxEnabled uses BMI2's non-destructive immediate rotate. It is off in
 // the low-level backend default and selected by the public runtime only after
@@ -375,6 +377,8 @@ type fn struct {
 	makesCalls                 bool // physical calls, independent of the local spill policy
 	usesCalls                  bool
 	usesWide                   bool
+	integerMapWork             uint16 // bounded screens and candidate analysis per function
+	integerMapActive           bool   // scalar fallback owns the current candidate
 	callFreeLoopLookaheadBytes int
 	callFreeLoopDepth          int
 	// controlBaseTypeN partitions the fixed function-result scratch: function
@@ -507,6 +511,7 @@ type fn struct {
 	// set instead of one entry lets interleaved accesses to a few arrays reuse
 	// their independent proofs without growing state with the function's locals.
 	boundsCerts       [8]boundsCert
+	boundsScanWork    uint32 // total decoded straight-line bounds lookahead
 	nextBoundsCert    uint8
 	boundsCertSources uint64 // conservative source filter; zero proves the set is empty
 

@@ -15,7 +15,7 @@ func enableAssociativeAddTree(t *testing.T) {
 	t.Cleanup(func() { associativeAddTreeEnabled = saved })
 }
 
-func TestAssociativeTreeCover(t *testing.T) {
+func TestAssociativeTreeKeepsLowPressureSumBalanced(t *testing.T) {
 	enableAssociativeAddTree(t)
 	// (a + b) + (c + d): the balanced tree needs three registers normally.
 	body := []byte{
@@ -38,8 +38,8 @@ func TestAssociativeTreeCover(t *testing.T) {
 	if got := runAmd64(t, m, 7, 11, 13, 17); got != 1 {
 		t.Fatalf("enabled result = %d, want 1", got)
 	}
-	if hits := on.Peephole["assoc-tree"]; hits != 1 {
-		t.Fatalf("assoc-tree = %d, want 1 (all: %v)", hits, on.Peephole)
+	if hits := on.Peephole["assoc-tree"]; hits != 0 {
+		t.Fatalf("low-pressure sum was flattened: %d (all: %v)", hits, on.Peephole)
 	}
 
 	associativeTreeEnabled = false
@@ -47,8 +47,8 @@ func TestAssociativeTreeCover(t *testing.T) {
 	if got := runAmd64(t, m, 7, 11, 13, 17); got != 1 {
 		t.Fatalf("disabled result = %d, want 1", got)
 	}
-	if hits := off.Peephole["assoc-tree-candidate"]; hits != 1 {
-		t.Fatalf("assoc-tree-candidate = %d, want 1 (all: %v)", hits, off.Peephole)
+	if hits := off.Peephole["assoc-tree-candidate"]; hits != 0 {
+		t.Fatalf("low-pressure sum became a candidate: %d (all: %v)", hits, off.Peephole)
 	}
 	if hits := off.Peephole["assoc-tree"]; hits != 0 {
 		t.Fatalf("disabled assoc-tree = %d, want 0", hits)
@@ -290,5 +290,23 @@ func TestTreeRegReplaceable(t *testing.T) {
 	}
 	if !treeRegReplaceable(other, RAX) {
 		t.Fatal("unrelated owned register should not block replacement")
+	}
+}
+
+func TestAssociativeSumPressureAdmission(t *testing.T) {
+	enableAssociativeAddTree(t)
+	leaf := func(r Reg) *elem { return testValueElem(storage{kind: stReg, typ: mtI32, reg: r}) }
+	node := func(a, b *elem) *elem {
+		e := testDeferredElem(opAdd, mtI32, a, b)
+		labelDeferredNode(e)
+		return e
+	}
+	root := node(node(leaf(R8), leaf(R9)), node(leaf(R10), leaf(R11)))
+	if got := treeRegisterNeed(root); got != 3 {
+		t.Fatalf("register need=%d, want 3", got)
+	}
+	f := &fn{policy: currentCodegenPolicy()}
+	if got := f.tryAssociativeTree(root, regNone); got != regNone {
+		t.Fatalf("low-pressure sum was flattened into register %v", got)
 	}
 }

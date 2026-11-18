@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve AMD64 execution of integer maps, branches, and register-resident
+  expressions while preserving checked scalar fallback for unsupported loops.
+
 - Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
   bounds checks, register use, local-state preservation, and integer arithmetic.
 

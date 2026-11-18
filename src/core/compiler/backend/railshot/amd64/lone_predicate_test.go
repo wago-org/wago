@@ -25,7 +25,7 @@ func TestLonePredicateAdmissionAndFallback(t *testing.T) {
 					f.pinnedLocalMask = maskOf(R12)
 				}
 				pred := f.pushReg(reg, mtI32)
-				f.flushBranchPredicate(pred)
+				f.flushBranchPredicate(pred, true)
 				want := enabled && !prefix && !pin
 				// Full canonicalization may recycle the original arena node.
 				// Inspect the live root; the admitted path retains its identity.
