@@ -1954,8 +1954,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 					f.a.AddImm32(X16, counter, uint32(block)/p.spanScale)
 					source = X16
 				}
-				f.a.FmovFromGpr(counterValue, source, false)
-				f.a.NeonDupS(counterValue, counterValue)
+				f.a.NeonDupGprS(counterValue, source)
 				f.a.NeonAddS(counterValue, counterValue, laneCounters)
 			}
 			for index, output := range outputs[:outputCount] {
