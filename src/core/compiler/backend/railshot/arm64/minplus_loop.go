@@ -303,16 +303,13 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	guard(condA)
 	f.a.TstImm32(counter, 7)
 	guard(condNE)
-	// Check complete ranges in 64 bits, including the memory32 wrap boundary.
-	for _, base := range []Reg{d, s} {
-		f.a.MovImm64(X16, uint64(p.limit))
-		f.a.Add64(X16, base, X16)
-		f.cmpRR(X16, size, true)
-		guard(condA)
-		f.a.MovImm64(X17, 1<<32)
-		f.cmpRR(X16, X17, true)
-		guard(condA)
-	}
+	// A widened end within the live memory32 byte length cannot wrap.
+	// Both rows have the same extent, so check their larger start.
+	f.cmpRR(d, s, true)
+	f.a.Csel64(X17, d, s, condAE)
+	f.leaDisp(X16, X17, int32(p.limit), true)
+	f.cmpRR(X16, size, true)
+	guard(condA)
 	f.a.AddImm64(X16, pivot, 4)
 	f.cmpRR(X16, size, true)
 	guard(condA)
