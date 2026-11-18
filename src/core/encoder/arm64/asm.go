@@ -120,6 +120,8 @@ type Asm struct {
 	LogicalMoveImmediates         int
 	CompactMoveImmediates32       int
 	IndexedBaseReuses             int
+	indexedReuseFence             int
+	indexedReuseWindows           []indexedReuseWindow
 	DominatedIndexedCandidates    uint16
 }
 
@@ -794,6 +796,7 @@ func (a *Asm) PatchBranch26(at, target int) bool {
 		return false
 	}
 	a.patchWord(at, uint32(d)&0x03FFFFFF)
+	a.NoteBranchTarget(target)
 	return true
 }
 
@@ -818,6 +821,7 @@ func (a *Asm) PatchBranch19(at, target int) bool {
 					return false
 				}
 				a.putWord(at, 0x14000000|uint32(delta)&0x03FFFFFF)
+				a.NoteBranchTarget(target)
 				return true
 			}
 			inverse = word ^ 1
@@ -832,9 +836,11 @@ func (a *Asm) PatchBranch19(at, target int) bool {
 		}
 		a.putWord(at, inverse&^(0x7FFFF<<5)|2<<5)
 		a.putWord(at+4, 0x14000000|uint32(delta)&0x03FFFFFF)
+		a.NoteBranchTarget(target)
 		return true
 	}
 	a.patchWord(at, (uint32(d)&0x7FFFF)<<5)
+	a.NoteBranchTarget(target)
 	return true
 }
 

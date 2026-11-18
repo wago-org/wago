@@ -134,6 +134,7 @@ func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
 }
 
 func (f *fn) recordJumpTableData(start, end int) {
+	f.noteReuseData(start, end, true)
 	f.opaqueFragments = true
 	f.recordFinalizerFragment(start, end, fragmentJumpData)
 	f.recordFinalizerMarker(start, markerJumpDataStart)
@@ -141,6 +142,7 @@ func (f *fn) recordJumpTableData(start, end int) {
 }
 
 func (f *fn) recordOpaqueData(start, end int) {
+	f.noteReuseData(start, end, false)
 	if end > start {
 		f.opaqueFragments = true
 		f.recordFinalizerFragment(start, end, fragmentOpaqueData)
@@ -150,6 +152,7 @@ func (f *fn) recordOpaqueData(start, end int) {
 }
 
 func (f *fn) recordOpaquePlugin(start, end int) {
+	f.noteReuseData(start, end, false)
 	if end > start {
 		f.opaqueFragments = true
 		f.recordFinalizerFragment(start, end, fragmentPlugin)
