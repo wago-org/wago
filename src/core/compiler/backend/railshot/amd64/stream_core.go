@@ -256,6 +256,7 @@ type streamID uint32
 type streamNode struct {
 	// Tagged payload: the integer for shared.ScalarConstant; for shared.ScalarRegister,
 	// 1 marks an incoming i32 carrier whose upper bits are not yet zeroed.
+	// A streamBacking may temporarily carry the exact adjacent rotate/set token.
 	// Other locations do not consult it. Reusing this word keeps nodes 32B.
 	constant          int64
 	left, right       streamID

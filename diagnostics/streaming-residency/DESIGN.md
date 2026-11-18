@@ -500,3 +500,27 @@ compiled-barrier mean VmHWM was 11.988631 / 12.113093 / 12.115113 MiB for
 main / OFF / ON. There is no RSS gain and the 5 MiB target remains unmet.
 The measured source stayed unchanged throughout; no targets are met and no
 PR or promotion is proposed.
+
+### Rotate destination checkpoint (b404381d)
+
+Immediate RORX selection now avoids a larger encoding when source and output
+are the same register. A separate default-off
+`WAGO_EXPERIMENTAL_STREAM_ROTATE_HOME` experiment can target a resident local
+home for a rotate immediately followed by local.set. It requires the existing
+RORX, dense-preservation and retained-copy policies. It does not consume the
+setter, change source PCs, admit new functions, or handle tee/lifetime tapes.
+
+The producer reserves the destination before materializing the source and
+rechecks unique local/cell ownership afterward. Only then does it retire the
+old generation and emit directly into the home. A fresh backing node carries
+an explicit order/local/cell token; the ordinary next setter accepts it only
+with exact current-map and unique-reference proofs, clears it, and binds the
+result without copying it back out. All other shapes retain ordinary lowering.
+
+The clean, frozen checkpoint passed 113 focused ownership/statistics tests
+in 0.756 seconds and nine untagged rotate tests in 0.018 seconds, with zero
+failures or skips. An initial test-only type-conversion compilation error was
+corrected and its receipt retained. Production 145-input runtime, native
+mechanism and performance qualification remain pending. This is not evidence
+that the adverse 68cea43b results above have been repaired; no promotion or
+PR is proposed.

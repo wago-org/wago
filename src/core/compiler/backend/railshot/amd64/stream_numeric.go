@@ -201,7 +201,9 @@ func (s *streamState) integerRotate(op byte) error {
 		if s.node(value).refs != 1 {
 			dst = s.alloc(uint64(1) << vr)
 		}
-		if streamingRorxEnabled && streamingPreserveDenseEnabled && s.target.bmi2Rorx {
+		if dst != vr && streamingRorxEnabled && streamingPreserveDenseEnabled && s.target.bmi2Rorx {
+			// RORX pays for its longer encoding only when it avoids a source
+			// copy. In-place rotates retain the compact immediate encoding.
 			// Honor the compiler's CPU/optimization policy. Admission preserves
 			// the legacy dense regional cohort before reaching this path.
 			rorAmount := amount

@@ -42,8 +42,20 @@ func TestStreamRorxEncoding(t *testing.T) {
 					amount = (-amount) & mask
 				}
 				var want encoder.Asm
-				want.Rorx(dst, R8, byte(amount), wide)
-				if !bytes.Equal(f.a.B, want.B) || !f.a.UsesBMI2 {
+				if refs == 2 {
+					want.Rorx(dst, R8, byte(amount), wide)
+				} else {
+					compactAmount := byte(uint64(count) & mask)
+					if !wide && compactAmount == 0 {
+						want.MovRegReg32(R8, R8)
+					}
+					digit := byte(0)
+					if op == 0x78 || op == 0x8a {
+						digit = 1
+					}
+					want.ShiftImm(digit, R8, compactAmount, wide)
+				}
+				if !bytes.Equal(f.a.B, want.B) || f.a.UsesBMI2 != (refs == 2) {
 					t.Fatalf("op=%x count=%d refs=%d got=%x want=%x", op, count, refs, f.a.B, want.B)
 				}
 				if refs == 2 && (s.owners[R8] != value || s.node(value).refs != 1) {
