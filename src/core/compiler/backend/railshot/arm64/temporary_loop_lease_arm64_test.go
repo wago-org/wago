@@ -214,3 +214,83 @@ func TestTemporaryLoopLeaseBoundedProbe(t *testing.T) {
 		t.Fatal("admitted value-carrying exit")
 	}
 }
+
+func TestFreeLoopLeaseLeafResultAndEarlyExit(t *testing.T) {
+	old := freeLoopLeaseEnabled
+	defer func() { freeLoopLeaseEnabled = old }()
+	// Give the permanent allocator more hot locals than it can pin. In the
+	// second loop only its accumulator and counter are live on the backedge.
+	body := []byte{1, 27, 0x7f, 0x41, 1, 0x21, 27, 0x03, 0x40}
+	for x := byte(1); x <= 24; x++ {
+		for i := 0; i < 6; i++ {
+			body = append(body, 0x20, x, 0x41, x, 0x6a, 0x21, x)
+		}
+	}
+	body = append(body, 0x20, 27, 0x41, 1, 0x6b, 0x22, 27, 0x0d, 0, 0x0b,
+		0x20, 0, 0x21, 25, 0x20, 0, 0x21, 26,
+		0x02, 0x40, 0x20, 0, 0x45, 0x0d, 0, 0x03, 0x40,
+		0x20, 25, 0x20, 25, 0x6a, 0x20, 26, 0x6a, 0x21, 25)
+	for _, early := range []bool{false, true} {
+		code := bytes.Clone(body)
+		if early {
+			code = append(code, 0x20, 26, 0x41, 3, 0x46, 0x0d, 1)
+		}
+		code = append(code, 0x20, 26, 0x41, 1, 0x6b, 0x22, 26, 0x0d, 0, 0x0b, 0x0b,
+			0x20, 25, 0x20, 26, 0x6a, 0x20, 1, 0x6a, 0x20, 24, 0x6a, 0x0b)
+		m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, code)
+		for _, enabled := range []bool{false, true} {
+			freeLoopLeaseEnabled = enabled
+			for _, count := range []uint32{0, 1, 2, 3, 7, 25, 47} {
+				acc, counter := count, count
+				for counter != 0 {
+					acc = acc*2 + counter
+					if early && counter == 3 {
+						break
+					}
+					counter--
+				}
+				var stats ModuleStats
+				var opts CompileOptions
+				if diagnosticsEnabled {
+					opts.Stats = &stats
+				}
+				got, err := runArm64WrapperWithOptions(t, m, opts, uint64(count))
+				if want := uint64(acc + counter + 150); err != nil || got != want {
+					t.Fatalf("enabled=%v count=%d: got=%d want=%d err=%v", enabled, count, got, want, err)
+				}
+				if diagnosticsEnabled && (stats.Funcs[0].Peephole["loop-local-pin-exchange"] != 0) != (enabled && !early) {
+					t.Fatalf("enabled=%v early=%v: counters=%v", enabled, early, stats.Funcs[0].Peephole)
+				}
+			}
+		}
+	}
+}
+
+func TestFreeLoopLeaseAllocationAndIdlePinRestore(t *testing.T) {
+	for _, exchange := range []bool{false, true} {
+		f := gpClassEmitter()
+		f.nLocals = 3
+		f.localSlot = []uint32{0, 1, 2}
+		f.localType = []machineType{mtI32, mtI32, mtI32}
+		f.locals = []localDef{{reg: X19, state: lsReg}, {reg: regNone, state: lsMem}, {reg: X20, state: lsReg}}
+		f.pinnedLocalMask = maskOf(X19, X20)
+		if exchange {
+			f.reserved = allAllocatableGP().remove(X19).remove(X20)
+		}
+		// Local 1 is the only useful new pin; local 0 is idle in the loop.
+		body := []byte{0x20, 1, 0x20, 2, 0x6a, 0x22, 1, 0x20, 1, 0x6a, 0x0d, 0, 0x0b}
+		r := wasm.ReaderFrom(body)
+		fr := ctrlFrame{kind: cfLoop}
+		f.beginLoopLocalLease(&r, &fr)
+		if plan := f.loopLocalLease; plan.count != 1 || plan.local[0] != 1 || (plan.parked[0] != 0) != exchange || r.Offset() != 0 {
+			t.Fatalf("exchange=%v lease=%+v offset=%d", exchange, plan, r.Offset())
+		}
+		if exchange && (f.locals[0].reg != regNone || f.locals[1].reg != X19) {
+			t.Fatalf("idle pin not exchanged: %+v", f.locals)
+		}
+		f.finishLoopLocalLease(1)
+		if f.locals[0].reg != X19 || f.locals[1].reg != regNone || f.locals[2].reg != X20 || f.pinnedLocalMask != maskOf(X19, X20) {
+			t.Fatalf("exchange=%v local homes=%+v mask=%x", exchange, f.locals, f.pinnedLocalMask)
+		}
+	}
+}
