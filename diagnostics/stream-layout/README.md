@@ -91,3 +91,29 @@ Reject this bounded eight-function layout experiment as an improvement.
 Geometric clustering worked; measured compile and RSS targets did not.
 This does not rule out every possible layout strategy. No promotion or PR
 is proposed, and no variant has become the active source.
+
+## Additive phase-origin diagnostic
+
+A bounded follow-up used the exact baseline binary with all experimental flags
+OFF, without rebuilding or changing runtime, kernel, cache, or advice settings.
+Nine fresh children (three selected workloads, three trials each) passed their
+runtime oracles; 45 phase observations were collected. This is an attribution
+diagnostic, not a new timing or RSS qualification run.
+
+All 341 backend pages were already resident after `describe`, before workload
+preparation, in every child. Both executable and read-only file VMAs reported
+`FilePmdMapped: 4096 kB` after describe in all nine children; their
+`AnonHugePages` and `ShmemPmdMapped` fields were zero. The concurrently reported
+4 KiB `KernelPageSize` and `MMUPageSize` fields do not negate the PMD-specific
+observation. The backend page union fits within one aligned 2 MiB window, which
+is consistent with coarse file-mapping amplification, but `smaps` reports only
+aggregate PMD bytes per VMA and does not identify the exact mapped subranges.
+
+The first observation includes startup, initialization, protocol decoding,
+describe processing, and response serialization. It is not pristine startup.
+Residency neither proves execution of every backend function nor establishes
+ordinary fault-around as the cause. These observations exclude workload
+preparation as the origin of this already-present backend residency in the
+sampled children, but do not identify the exact earlier trigger. They do not
+establish a universal RSS floor, a 5 MiB result, or authorize mapping/settings
+changes. The prior negative layout qualification remains unchanged.
