@@ -435,3 +435,29 @@ rather than approaching 5 MiB. These one-trial memory observations have no
 confidence interval. No default PGO profile, source promotion, or target
 success is proposed; failed controls preclude treating point changes as
 qualified gains or precise causal regressions.
+
+### Existing-quality preservation checkpoint (68cea43b)
+
+Three separate default-off controls preserve existing lowering policies:
+`WAGO_EXPERIMENTAL_STREAM_PRESERVE_DENSE` retains the legacy dense-rotate
+regional cohort before streaming admission and reuses the predicate result
+at the original policy check, avoiding duplicate decoding.
+`WAGO_EXPERIMENTAL_STREAM_RORX` additionally requires that preservation flag
+and the existing CPU/optimization policy before emitting immediate BMI2
+rotates. `WAGO_EXPERIMENTAL_STREAM_MIN_BOUNDS` queries at most 32 existing
+expression-node occurrences and uses the immutable memory declaration minimum
+to omit only proven bounds checks. Address evaluation, eager child traps and
+nonwrapping address formation remain intact; this proof does not populate
+same-value bounds facts. No new feature admission or benchmark-specific
+exclusion is introduced.
+
+The exact checkpoint passed 108 focused ownership/statistics tests with zero
+failures or skips in 1.029 seconds. An independent retained-alias RORX execution
+matrix also passed untagged in 0.011 seconds. An earlier pressure fixture
+incorrectly required identical physical operand locations for equivalent
+aliases; its failure was retained and the test strengthened with generation
+and execution checks, rather than changing production behavior to fit it.
+Production 145-input runtime and performance qualification for this revision
+are pending. Earlier PGO measurements apply only to db4f2dc7 with streaming
+flags OFF, not this source checkpoint. All prior target failures remain;
+no speedup, RSS improvement, promotion or PR is claimed.

@@ -12,7 +12,10 @@ package amd64
 import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"os"
 )
+
+var streamingRorxEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_RORX") == "1"
 
 func streamUnaryShape(op byte) (inputWide, resultWide, ok bool) {
 	switch op {
@@ -197,6 +200,20 @@ func (s *streamState) integerRotate(op byte) error {
 		dst := vr
 		if s.node(value).refs != 1 {
 			dst = s.alloc(uint64(1) << vr)
+		}
+		if streamingRorxEnabled && streamingPreserveDenseEnabled && s.target.bmi2Rorx {
+			// Honor the compiler's CPU/optimization policy. Admission preserves
+			// the legacy dense regional cohort before reaching this path.
+			rorAmount := amount
+			if op == 0x77 || op == 0x89 {
+				rorAmount = byte((-uint64(amount)) & mask)
+			}
+			s.forgetRegisterBacking(dst)
+			s.target.a.Rorx(Reg(dst), Reg(vr), rorAmount, wide)
+			s.target.stats.peep("streaming-rotate-rorx")
+			s.target.stats.peep("bmi2-rorx")
+			s.integerResult(dst, wide, countID, value)
+			return nil
 		}
 		// A same-register zero i64 rotate emits no write. Preserve its proof.
 		if !wide || dst != vr || amount != 0 {

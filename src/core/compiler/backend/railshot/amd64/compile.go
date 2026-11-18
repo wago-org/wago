@@ -3945,13 +3945,34 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			f.hasLoop = true
 		}
 	}
+	// Preserve the existing dense rotate regional policy before choosing an
+	// engine that disables local pinning. Model the later wide-local pin gate,
+	// rather than treating a loop hint as proof of regional eligibility.
+	densePolicyChecked, densePolicyBody := false, false
+	if streamingOperandsEnabled && streamingPreserveDenseEnabled && f.bmi2Rorx {
+		prospectivePins := pinLocals
+		if nLocals > 64 {
+			prospectivePins = prospectivePins && f.opt(optWideLocalPins) && hints.hasWideLocalScores() &&
+				hints.flags.has(hintHasLoop) && !moduleHasSIMD && len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil
+		}
+		prospectiveControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
+			(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
+		prospectiveInterval := prospectivePins && regABI && !f.localTailLeaf && len(inlinedCallees) == 0 &&
+			((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || prospectiveControl)
+		if prospectiveInterval && intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(c.BodyBytes), nLocals, moduleEH) {
+			densePolicyChecked = true
+			densePolicyBody = denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier)
+		}
+	}
 	if !f.localTailLeaf && !hasInlineTailLoop {
 		// The caller plan is final here, but selectedInlineTarget's frame tables
 		// are installed only by reserveInlineLocals below. Preserve those actual
 		// selected splices before choosing a body engine; probing the not-yet-
 		// installed tables would admit a call that emission must later reject.
 		if len(inlinedCallees) == 0 {
-			if streamingOperandsEnabled && streamHintsReject(hints) {
+			if densePolicyBody {
+				f.stats.peep("stream-preserve-dense-regional")
+			} else if streamingOperandsEnabled && streamHintsReject(hints) {
 				// This avoids an admission attempt, not necessarily a byte scan:
 				// the ordinary preflight also has cheap contextual rejection gates.
 				f.stats.peep("stream-hint-funnel-reject")
@@ -4106,9 +4127,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	intervalEligible := pinLocals && regABI && !f.localTailLeaf && len(inlinedCallees) == 0 &&
 		((!hasCall && !hints.flags.has(hintHasControlFlow|hintUsesBulkMem)) || intervalControl)
 	f.intervalControl = intervalControl
-	if f.bmi2Rorx && intervalEligible && denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier) {
-		f.bmi2Rorx = false
-		f.stats.peep("dense-rotate-legacy")
+	if f.bmi2Rorx && intervalEligible {
+		if !densePolicyChecked {
+			densePolicyBody = denseRotateRegionalBody(c.BodyBytes, hints, f.localType, sc.classifier)
+		}
+		if densePolicyBody {
+			f.bmi2Rorx = false
+			f.stats.peep("dense-rotate-legacy")
+		}
 	}
 	intervalRegion := intervalEligible && f.prepareIntervalRegion(c.BodyBytes, hints)
 	f.intervalControl = intervalControl && intervalRegion

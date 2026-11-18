@@ -108,6 +108,7 @@ func (s *streamState) memory(r *wasm.Reader, op byte) error {
 	addressOrder := s.node(address).order
 	extent := uint64(off) + uint64(size)
 	covered := s.boundsCover(address, extent)
+	minimum := !covered && s.streamMinimumMemoryAccess(address, uint64(off), size)
 	if store {
 		// A deferred address shift can evict RCX even when reserved: fixed
 		// machine clobbers preserve IDs, not cached physical registers. Resolve
@@ -123,9 +124,11 @@ func (s *streamState) memory(r *wasm.Reader, op byte) error {
 	s.reserved |= uint64(1) << ea
 	s.release(address)
 	end := s.alloc(0)
-	disp := f.streamMemoryAddress(Reg(ea), Reg(end), uint32(off), size, !covered)
+	disp := f.streamMemoryAddress(Reg(ea), Reg(end), uint32(off), size, !covered && !minimum)
 	if covered {
 		f.stats.peep("stream-bounds-fact")
+	} else if minimum {
+		f.stats.peep("stream-min-bounds")
 	} else {
 		s.rememberBounds(address, addressOrder, extent)
 	}
