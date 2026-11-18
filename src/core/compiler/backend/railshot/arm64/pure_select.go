@@ -146,7 +146,14 @@ func (f *fn) tryPureExpensiveSelect() bool {
 	} else {
 		skip = f.a.Cbz32(c)
 	}
-	f.readPureSelectLeaf(result, chain.leaf)
+	leaf := chain.leaf
+	sameRegister := (leaf.st.kind == stReg || leaf.st.kind == stLocalReg) &&
+		(cheap.st.kind == stReg || cheap.st.kind == stLocalReg) && leaf.st.reg == cheap.st.reg
+	if !sameRegister {
+		f.readPureSelectLeaf(result, leaf)
+	} else if regallocCheckEnabled {
+		f.checkUse(leaf)
+	}
 	wide := typ == mtI64
 	for i := chain.n - 1; i >= 0; i-- {
 		node := chain.nodes[i]
@@ -159,6 +166,12 @@ func (f *fn) tryPureExpensiveSelect() bool {
 			continue
 		}
 		r := right.st.reg
+		if right.st.kind == stConst {
+			if cached, ok := f.cachedIntConst(right.st); ok {
+				f.aluRR(op, result, cached, wide)
+				continue
+			}
+		}
 		if right.st.kind != stReg && right.st.kind != stLocalReg {
 			f.readPureSelectLeaf(X16, right)
 			r = X16
