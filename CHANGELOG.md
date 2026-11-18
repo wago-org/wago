@@ -8,6 +8,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Use guard-page (signals-based) memory bounds checks by default on Darwin
+  ARM64 (except TinyGo), without the `wago_guardpage` build tag.
+  `WAGO_BOUNDS=explicit` or `WithBoundsChecks(BoundsChecksExplicit)` restores
+  explicit checks.
+
 - Improve AMD64 execution of integer maps, branches, and register-resident
   expressions while preserving checked scalar fallback for unsupported loops.
 
@@ -15,6 +20,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   bounds checks, register use, local-state preservation, and integer arithmetic.
 
 ### Fixed
+
+- Never reuse an ARM64 indexed X16 address across a branch target. A `br_table`
+  case or loop entry could previously reach the access with X16 holding the
+  jump-table address, crashing guarded builds with SIGBUS.
 
 - Release and reacquire the invocation's actual execution lease when a retained
   host callback uses a foreign control frame, including under profiling.
