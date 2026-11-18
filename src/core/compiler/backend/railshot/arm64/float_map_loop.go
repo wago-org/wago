@@ -615,6 +615,16 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 		return false
 	}
 	if p.load(a.op) {
+		if p.integer && integerMapAdjacentSLPEnabled {
+			left, right := p.addresses[x], p.addresses[y]
+			if left.invariant || right.invariant {
+				return left.invariant && left == right
+			}
+			if left.base == right.base && left.index == right.index && left.stride == right.stride &&
+				left.bias == right.bias && left.offset+uint64(step)*uint64(max(left.stride, 1)) == right.offset {
+				return true
+			}
+		}
 		return p.nextAddress(x, y, step)
 	}
 	if a.op == 0x20 {
@@ -629,7 +639,16 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if a.op == 0x1b && !p.sameMap(a.condition(), b.condition(), step, depth+1) {
 		return false
 	}
-	return p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1)
+	if p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1) {
+		return true
+	}
+	if p.integer && integerMapAdjacentSLPEnabled {
+		switch a.op {
+		case 0x46, 0x47, 0x6a, 0x6c, 0x71, 0x72, 0x73, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
+			return p.sameMap(a.left(), b.right(), step, depth+1) && p.sameMap(a.right(), b.left(), step, depth+1)
+		}
+	}
+	return false
 }
 
 func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
@@ -2016,6 +2035,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if p.integer {
 		if clipInvariantPrefix {
 			f.stats.peep("integer-load-map-invariant-prefix")
+		}
+		if p.step > 4 && p.extraStoreN == 0 {
+			f.stats.peep("integer-load-map-packed-adjacent")
 		}
 		f.stats.peep("integer-load-map-vector")
 	} else {
