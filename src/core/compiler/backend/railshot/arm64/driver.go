@@ -1379,6 +1379,10 @@ func (f *fn) realizeLocalRefsWithBounds(x int, skipFrom *elem, extent int32) {
 		}
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+			if captured := f.snapshotLocalBitfield(e); captured != nil {
+				e = f.s.next(captured)
+				continue
+			}
 			f.materializeByType(e)
 			if extent > 0 && e.st.typ == mtI32 {
 				e.st.slot = capturedBoundsExtentBit | uint32(extent)
