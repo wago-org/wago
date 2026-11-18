@@ -372,8 +372,9 @@ type fn struct {
 	// memLimitReg caches memBytes-memLimitExtent in call-free explicit-bounds
 	// functions. Exact matching accesses compare their canonical memory32 address
 	// directly with this inclusive limit, removing the per-access end-address ADD.
-	memLimitReg    Reg
-	memLimitExtent int32
+	memLimitReg       Reg
+	memLimitExtent    int32
+	memLimitLoopDepth int
 	// trapCellReg caches [linMemReg-offTrapCellPtr] in call-free interruptible
 	// loops. The pointer is fixed for an activation; calls are excluded because
 	// cross-instance entry can replace the active trap cell.

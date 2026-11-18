@@ -2345,6 +2345,93 @@ func (f *fn) cachedSharedMemoryBase() Reg {
 	return regNone
 }
 
+// beginLoopMemoryLimit reserves an adjusted memory bound across a verified
+// call-free loop. Every incoming backedge targets the header after this setup.
+func (f *fn) beginLoopMemoryLimit(r *wasm.Reader, fr *ctrlFrame) {
+	if !fr.has(ctrlLoopCallFree) || fr.paramN != 0 || fr.resultN != 0 || !f.loopMemory ||
+		f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.localBase != 0 ||
+		f.memLimitReg != regNone || f.memSizeReg == regNone || f.memSizeReg == X17 ||
+		len(f.intervalLast) != 0 || len(f.customInstructions) != 0 {
+		return
+	}
+	memory, ok := f.memoryType(0)
+	if !ok || memory.Limits.Min == 0 {
+		return
+	}
+	blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved)
+	// Branch payload moves use X0 directly. X1 is free in a call-free
+	// loop unless the allocator assigned it to an existing value.
+	reg := X1
+	if blocked.has(reg) || f.regUser[reg] != nil {
+		return
+	}
+	var hits4, hits8 int
+	scan := *r
+	for i := 0; i < 64 && scan.HasNext(); i++ {
+		op, err := scan.Byte()
+		if err != nil || op == 0x0b || op == 0x03 || op == 0x40 {
+			break
+		}
+		if op >= 0x45 && op <= 0xc4 {
+			continue
+		}
+		if op >= 0x28 && op <= 0x35 {
+			index, offset, err := f.readMemArg(&scan)
+			if err != nil {
+				return
+			}
+			if index == 0 {
+				switch offset + uint64(memAccessSize(op)) {
+				case 4:
+					hits4++
+				case 8:
+					hits8++
+				}
+			}
+		} else if err := f.classifier.SkipImmediate(&scan, op); err != nil {
+			return
+		}
+	}
+	extent := int32(4)
+	if hits8 > hits4 {
+		extent = 8
+	}
+	if max(hits4, hits8) < 2 {
+		return
+	}
+	free := 0
+	for _, candidate := range gpAlloc {
+		if !blocked.has(candidate) && f.regUser[candidate] == nil {
+			free++
+			if free == 7 {
+				break
+			}
+		}
+	}
+	if free < 7 {
+		return
+	}
+	f.memLimitReg, f.memLimitExtent = reg, extent
+	f.memLimitLoopDepth = len(f.ctrl) + 1
+	f.reserved = f.reserved.add(reg)
+	f.a.SubImm64(reg, f.memSizeReg, uint32(extent))
+	if regallocCheckEnabled {
+		f.checkImmutable(reg, false, 8)
+	}
+	f.stats.peep("scoped-memory-limit")
+}
+
+func (f *fn) endLoopMemoryLimit(depth int) {
+	if f.memLimitLoopDepth != depth {
+		return
+	}
+	f.reserved = f.reserved.remove(f.memLimitReg)
+	if regallocCheckEnabled {
+		f.checkReleaseImmutableGP(f.memLimitReg)
+	}
+	f.memLimitReg, f.memLimitExtent, f.memLimitLoopDepth = regNone, 0, 0
+}
+
 func (f *fn) loadMemoryCache() {
 	if f.cachedSharedMemoryBase() != regNone {
 		f.ld64(f.memSizeReg, linMemReg, -int32(offMemoryDirPtr))
