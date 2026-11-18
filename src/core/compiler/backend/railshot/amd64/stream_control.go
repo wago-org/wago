@@ -152,6 +152,14 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 				return 0, e
 			}
 			s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarConstant, constant: v, wide: true, refs: 1}))
+		case 0x10:
+			if err := s.integerCall(&r); err != nil {
+				return 0, err
+			}
+		case 0x23, 0x24:
+			if err := s.integerGlobal(&r, op); err != nil {
+				return 0, err
+			}
 		case 0x20, 0x21, 0x22:
 			x, e := r.U32()
 			if e != nil {

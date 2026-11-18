@@ -8,6 +8,10 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // frontend has already checked types and indexes; unsupported syntax falls back
 // before any native instruction from this engine is emitted.
 func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
+	return admitStreamBodyContext(c, ft, nil)
+}
+
+func admitStreamBodyContext(c *wasm.Func, ft *wasm.CompType, context *fn) streamSummary {
 	s := streamSummary{HasIf: true, ResultN: len(ft.Results)}
 	if len(ft.Results) > 1 || len(c.BodyBytes) == 0 || len(c.BodyBytes) > 64<<10 {
 		return streamSummary{}
@@ -87,6 +91,39 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 			if op == 0x20 {
 				push = 1
 			} else if op == 0x21 {
+				pop = 1
+			}
+		case 0x10:
+			if !streamingCallGlobalsEnabled || context == nil {
+				return fail()
+			}
+			index, e := r.U32()
+			if e != nil {
+				return fail()
+			}
+			callee, _, ok := context.streamCallTarget(index)
+			if !ok {
+				return fail()
+			}
+			pop, push = len(callee.Params), len(callee.Results)
+			s.Calls = true
+			// One canonical agreement restores the live local/operand roots.
+			budget += n + s.MaxStack
+		case 0x23, 0x24:
+			if !streamingCallGlobalsEnabled || context == nil {
+				return fail()
+			}
+			index, e := r.U32()
+			if e != nil {
+				return fail()
+			}
+			if _, ok := streamIntegerGlobalType(context.m, index, op == 0x24); !ok {
+				return fail()
+			}
+			s.Globals = true
+			if op == 0x23 {
+				push = 1
+			} else {
 				pop = 1
 			}
 		case 0x1a:

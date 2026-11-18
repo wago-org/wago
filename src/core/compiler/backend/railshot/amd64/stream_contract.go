@@ -6,6 +6,8 @@ import "os"
 
 const streamMaxHomes = 8
 
+var streamingCallGlobalsEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_CALL_GLOBALS") == "1"
+
 var streamingCopyProofEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_COPY_PROOF") == "1"
 
 var streamingResidencyEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_RESIDENCY") == "1"
@@ -16,6 +18,11 @@ var streamingLocalLifetimesEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_LIFETIM
 var streamingRegisterHomesEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_HOMES") == "1"
 
 func (s *streamSummary) selectHomes(scores []uint32) {
+	// Call barriers evacuate shared backing homes; the older fixed-home path
+	// has no such protocol, so new call-bearing bodies use frame homes there.
+	if s.Calls && !streamingResidencyEnabled {
+		return
+	}
 	limit := 2
 	if streamingResidencyEnabled && streamingWideHomesEnabled {
 		limit = streamMaxHomes
@@ -64,6 +71,7 @@ type streamSummary struct {
 	Eligible, HasIf          bool
 	ResultN                  int
 	ResultWide, Memory, Bulk bool
+	Calls, Globals           bool
 	MaxControlDepth          uint8
 	MaxStack, Nodes          int
 }

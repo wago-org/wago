@@ -3946,7 +3946,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	if !f.localTailLeaf && !hasInlineTailLoop {
-		f.streamSummary = f.admitStreaming(c)
+		// The caller plan is final here, but selectedInlineTarget's frame tables
+		// are installed only by reserveInlineLocals below. Preserve those actual
+		// selected splices before choosing a body engine; probing the not-yet-
+		// installed tables would admit a call that emission must later reject.
+		if len(inlinedCallees) == 0 {
+			f.streamSummary = f.admitStreaming(c)
+		}
 		if f.streamSummary.Eligible && streamingRegisterHomesEnabled && hints.flags.has(hintHasLoop) {
 			f.streamSummary.selectHomes(hints.localScore)
 		}

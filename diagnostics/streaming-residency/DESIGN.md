@@ -146,3 +146,20 @@ compilation improvement is established. Mean absolute compiled-barrier VmHWM
 was 11.986773 / 11.966676 / 11.966433 MiB for main / pure-select OFF / ON,
 essentially unchanged. The absolute memory target remains unmet. Source is
 unchanged; no PR or promotion is proposed.
+
+### Direct integer calls and globals checkpoint (f320c628)
+
+Adds opt-in local direct calls with the existing integer register ABI (up to
+eight arguments and one result), plus integer global reads and writes. Calls
+canonicalize live values, evacuate register-backed generations, stage arguments
+from frame slots, and capture results before global reloads. Global reads retain
+snapshot semantics. Planned inline calls retain legacy lowering. Imports,
+indirect calls, custom instructions and unsupported GC/EH paths remain excluded
+from the new call path.
+
+The exact frozen checkpoint passed 76 focused ownership/statistics top-level
+tests with zero failures or skips (0.169 s), including call/global integration
+and memory-growth coherence. The production adapter also passed all 145 frozen corpus runtime oracles.
+Performance/memory qualification for this revision remains pending. Earlier
+negative results above remain applicable to their stated revisions; this
+checkpoint makes no improvement claim and is not proposed for promotion.
