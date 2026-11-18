@@ -177,3 +177,19 @@ func TestSignedNarrowI32ExtensionsCarryUpperZeroFactAMD64(t *testing.T) {
 		}
 	}
 }
+
+func TestCapturedBoundsAndVectorFactsIndependentAMD64(t *testing.T) {
+	var st storage
+	st.meta = uint8(storageCapturedBounds | storageLogicalRoot)
+	st.setValueFacts(factBytesBelow16 | factUpper32Zero)
+	if st.meta&uint8(storageCapturedBounds|storageLogicalRoot) != uint8(storageCapturedBounds|storageLogicalRoot) {
+		t.Fatal("setting vector facts cleared storage metadata")
+	}
+	if st.valueFacts() != factBytesBelow16|factUpper32Zero {
+		t.Fatal("storage metadata leaked into value facts")
+	}
+	st.setValueFacts(0)
+	if st.meta != uint8(storageCapturedBounds|storageLogicalRoot) {
+		t.Fatal("clearing facts changed storage metadata")
+	}
+}

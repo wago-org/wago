@@ -9,7 +9,7 @@
 
 package amd64
 
-const minAssociativeDestNeed = 4
+const minAssociativeNeed = 4
 
 // tryAssociativeTree covers a bounded, trap-free tree of one associative integer
 // operation as a single accumulator. The existing Valent height bound is its
@@ -30,11 +30,10 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	if !associativeOp(node.deferredOp()) || need < 3 {
 		return regNone
 	}
-	// A destination hint already removes the ordinary path's result copy. Spend
-	// whole-tree selection only where the unflattened expression has materially
-	// higher register pressure; need-three destination trees change layout without
-	// reducing spills and can regress execution.
-	if requestedDest && need < minAssociativeDestNeed {
+	// A linear accumulator extends the dependency chain for addition; keep
+	// lower-pressure sums balanced. A destination hint already removes the
+	// ordinary path's result copy, so require the same pressure for any op.
+	if need < minAssociativeNeed && (requestedDest || node.deferredOp() == opAdd) {
 		return regNone
 	}
 	n, first, _, ok := inspectAssociativeTree(node, node.deferredOp(), node.valueType())
