@@ -400,6 +400,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"dup v0.2d,v1.d[0]", func(a *Asm) { a.NeonDupD(X0, X1) }, 0x4e080420},
 		{"dup v0.16b,w1", func(a *Asm) { a.NeonDupGprB(X0, X1) }, 0x4e010c20},
 		{"dup v2.8h,w3", func(a *Asm) { a.NeonDupGprH(X2, X3) }, 0x4e020c62},
+		{"movi v31.4s,#255", func(a *Asm) { a.NeonMoviS(Reg(31), 255) }, 0x4f0707ff},
 		{"dup v4.4s,w5", func(a *Asm) { a.NeonDupGprS(X4, X5) }, 0x4e040ca4},
 		{"dup v6.2d,x7", func(a *Asm) { a.NeonDupGprD(X6, X7) }, 0x4e080ce6},
 		{"dup v0.4s,v1.s[3]", func(a *Asm) { a.NeonDupLaneS(X0, X1, 3) }, 0x4e1c0420},

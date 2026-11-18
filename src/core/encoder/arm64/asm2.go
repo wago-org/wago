@@ -2187,6 +2187,15 @@ func (a *Asm) NeonDupGprH(dst, src Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 }
+
+// NeonMoviS broadcasts an unsigned eight-bit immediate to four 32-bit lanes.
+func (a *Asm) NeonMoviS(dst Reg, imm uint8) {
+	a.word(0x4F000400 | uint32(imm&0xe0)<<11 | uint32(imm&0x1f)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
 func (a *Asm) NeonDupGprS(dst, src Reg) {
 	a.word(0x4E040C00 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {

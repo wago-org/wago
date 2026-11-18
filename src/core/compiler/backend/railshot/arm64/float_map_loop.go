@@ -888,6 +888,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	reusedLoad := -1
 	var coefficients uint32
 	usesCounterValue := false
+	variableShift := false
 	var invariant [2]int
 	nInvariant := 0
 	var collect func(int) bool
@@ -940,6 +941,9 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		}
 		if v.unary() {
 			return collect(v.left())
+		}
+		if v.op >= 0x74 && v.op <= 0x76 {
+			variableShift = true
 		}
 		return collect(v.left()) && collect(v.right()) && (v.op != 0x1b || collect(v.condition()))
 	}
@@ -1058,6 +1062,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	if available < constantCount+peakPressure+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
 	}
+	cacheShiftMask := variableShift && available > constantCount+peakPressure+1
 	read := func(local int, dst Reg) {
 		if local < 0 {
 			f.a.MovImm64(dst, 0)
@@ -1639,6 +1644,15 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		}
 	}
 
+	shiftMask := regNone
+	if cacheShiftMask {
+		shiftMask = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(shiftMask)
+		vectors[nv] = shiftMask
+		nv++
+		f.a.NeonMoviS(shiftMask, 31)
+	}
+
 	emitOp := func(op byte, out, a, b Reg) {
 		switch op {
 		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
@@ -1659,8 +1673,12 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			// Wasm masks lane counts to five bits. NEON uses negative
 			// counts for right shifts.
 			count := f.allocFReg(0)
-			f.a.NeonShlS(count, b, 27)
-			f.a.NeonUshrS(count, count, 27)
+			if shiftMask != regNone {
+				f.a.NeonAnd16b(count, b, shiftMask)
+			} else {
+				f.a.NeonShlS(count, b, 27)
+				f.a.NeonUshrS(count, count, 27)
+			}
 			if op != 0x74 {
 				f.a.NeonNegS(count, count)
 			}
