@@ -1717,7 +1717,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if p.interleaved {
 		blockBytes *= 2
 	}
-	packet := func(width uint32) {
+	packet := func(width uint32, final bool) {
 		for block = 0; block < int32(width); block += blockBytes {
 			if p.interleaved {
 				a, ownA := emit(outputs[0].value)
@@ -1781,6 +1781,23 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				} else {
 					f.a.StrQ(output.reg, int32(output.offset)+block, value)
 				}
+				if final && block+floatMapVectorBytes == int32(width) {
+					f.a.NeonUmovS(X16, value, 3)
+					for i, cell := range p.locals[:p.localN] {
+						if exit.fromStore&(uint32(1)<<i) == 0 {
+							continue
+						}
+						x := int(cell.Index)
+						if reg, _, pinned := f.pinReg(x); pinned {
+							f.a.MovReg32(reg, X16)
+							f.markLocalDirty(x)
+						} else {
+							f.st64(SP, f.localOff(x), X16)
+							f.locals[x].state = lsMem
+						}
+						f.setFactsForLocal(x, 0)
+					}
+				}
 				if owned {
 					f.fpinned = f.fpinned.remove(value)
 					f.releaseF(value)
@@ -1805,7 +1822,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.a.SubImm32(span, span, width)
 	}
 	scalarReserve := p.step
-	if exit.written != 0 {
+	if exit.fromStore != 0 {
+		scalarReserve = p.packet
+	} else if exit.written != 0 {
 		scalarReserve = 0
 	}
 	// Choose a small native packet menu independently of the source unroll.
@@ -1818,14 +1837,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	short := f.a.Bcond(condB)
 	if floatMapLatchEnabled {
 		wideLoop := f.a.Len()
-		packet(wideWidth)
+		packet(wideWidth, false)
 		f.cmpImm(span, wideWidth+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), wideLoop)
 		f.patchBranch19(short, f.a.Len())
 		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
 		compactLoop := f.a.Len()
-		packet(p.packet)
+		packet(p.packet, false)
 		f.cmpImm(span, p.packet+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), compactLoop)
 		f.patchBranch19(done, f.a.Len())
@@ -1833,16 +1852,25 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		wideLoop := f.a.Len()
 		f.cmpImm(span, wideWidth+scalarReserve, false)
 		tail := f.a.Bcond(condB)
-		packet(wideWidth)
+		packet(wideWidth, false)
 		f.patchBranch26(f.a.Branch(), wideLoop)
 		f.patchBranch19(short, f.a.Len())
 		f.patchBranch19(tail, f.a.Len())
 		loop := f.a.Len()
 		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
-		packet(p.packet)
+		packet(p.packet, false)
 		f.patchBranch26(f.a.Branch(), loop)
 		f.patchBranch19(done, f.a.Len())
+	}
+	if exit.fromStore != 0 {
+		// Capture load-derived live-outs only in the final vector packet.
+		// The normal packet body and the scalar remainder are unchanged.
+		f.cmpImm(span, p.packet, false)
+		remainder := f.a.Bcond(condNE)
+		packet(p.packet, true)
+		f.patchBranch19(remainder, f.a.Len())
+		f.stats.peep("integer-load-map-vector-live-out")
 	}
 	f.stats.peep("float-map-loop-unroll")
 	if p.normalizedInduction {
@@ -1891,7 +1919,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if exit.written != 0 {
 		for i := 0; i < p.localN; i++ {
 			cell := p.locals[i]
-			if exit.extra&(uint32(1)<<i) == 0 {
+			if (exit.extra&^exit.fromStore)&(uint32(1)<<i) == 0 {
 				continue
 			}
 			x := int(cell.Index)

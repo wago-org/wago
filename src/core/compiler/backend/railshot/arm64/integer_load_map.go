@@ -18,6 +18,8 @@ import (
 
 var integerMapInvariantPrefixEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_INVARIANT_PREFIX") != "1"
 
+var integerMapVectorLiveOutEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_VECTOR_LIVE_OUT") != "1"
+
 var integerMapAffineExitEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_AFFINE_EXIT") != "1"
 
 var integerLoadMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_LOAD_MAP") != "1"
