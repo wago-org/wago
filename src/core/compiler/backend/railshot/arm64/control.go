@@ -3558,6 +3558,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return nil
 	}
 	for i, lbl := range labels {
+		if lbl == def {
+			continue
+		}
 		fi := len(f.ctrl) - 1 - int(lbl)
 		fr := &f.ctrl[fi]
 		if f.opt(optBranchFold) && !f.moduleEH && f.gcFrameRoots == nil && len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&
