@@ -204,7 +204,7 @@ type fn struct {
 	integerWordMapWork      uint16
 	integerLoadMapWork      uint16
 	integerLoadMapProbe     bool
-	pureReduce              *pureReduceJoin
+	vectorLoopExit          *vectorLoopJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
 

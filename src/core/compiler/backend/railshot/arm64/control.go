@@ -3029,7 +3029,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 	f.finishDotLoop(last + 1)
 	f.finishByteReduceLoop(last + 1)
-	f.finishPureReduce(last + 1)
+	f.finishVectorLoopExit(last + 1)
 	f.finishLoopLocalLease(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)

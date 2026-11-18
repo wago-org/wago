@@ -920,6 +920,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 
+	exit := f.planIntegerMapExit(&p)
 	if p.normalizedInduction {
 		// Admission must not evict an original stack value merely to execute a
 		// scalar fallback. These are leases from the existing allocator's free
@@ -937,6 +938,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		// Recover all borrowed pins on both paths before a check can skip setup.
 		f.recoverLocal(p.counter)
+		for i := 0; i < p.localN; i++ {
+			if exit.extra&(uint32(1)<<i) != 0 {
+				f.recoverLocal(int(p.locals[i].Index))
+			}
+		}
 		if p.limitLocal >= 0 {
 			f.recoverLocal(p.limitLocal)
 		}
@@ -1688,37 +1694,41 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.a.AddImm32(counter, counter, width/p.spanScale)
 		f.a.SubImm32(span, span, width)
 	}
+	scalarReserve := p.step
+	if exit.written != 0 {
+		scalarReserve = 0
+	}
 	// Choose a small native packet menu independently of the source unroll.
 	// Larger source packets already have a bounded replicated body.
 	wideWidth := 2 * p.packet
 	if floatMapFourPacketsEnabled && p.packet == floatMapVectorBytes {
 		wideWidth = 4 * p.packet
 	}
-	f.cmpImm(span, 4*wideWidth+p.step, false)
+	f.cmpImm(span, 4*wideWidth+scalarReserve, false)
 	short := f.a.Bcond(condB)
 	if floatMapLatchEnabled {
 		wideLoop := f.a.Len()
 		packet(wideWidth)
-		f.cmpImm(span, wideWidth+p.step, false)
+		f.cmpImm(span, wideWidth+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), wideLoop)
 		f.patchBranch19(short, f.a.Len())
-		f.cmpImm(span, p.packet+p.step, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
 		compactLoop := f.a.Len()
 		packet(p.packet)
-		f.cmpImm(span, p.packet+p.step, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), compactLoop)
 		f.patchBranch19(done, f.a.Len())
 	} else {
 		wideLoop := f.a.Len()
-		f.cmpImm(span, wideWidth+p.step, false)
+		f.cmpImm(span, wideWidth+scalarReserve, false)
 		tail := f.a.Bcond(condB)
 		packet(wideWidth)
 		f.patchBranch26(f.a.Branch(), wideLoop)
 		f.patchBranch19(short, f.a.Len())
 		f.patchBranch19(tail, f.a.Len())
 		loop := f.a.Len()
-		f.cmpImm(span, p.packet+p.step, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
 		packet(p.packet)
 		f.patchBranch26(f.a.Branch(), loop)
@@ -1767,6 +1777,32 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	} else {
 		f.st64(SP, f.localOff(p.counter), counter)
 		f.locals[p.counter].state = lsMem
+	}
+	if exit.written != 0 {
+		for i := 0; i < p.localN; i++ {
+			cell := p.locals[i]
+			if exit.extra&(uint32(1)<<i) == 0 {
+				continue
+			}
+			x := int(cell.Index)
+			bias := exit.bias[i]
+			if exit.counter&(uint32(1)<<i) == 0 {
+				f.a.MovImm32(X16, int32(bias))
+			} else {
+				f.a.MovImm32(X16, int32(bias-p.counterStep))
+				f.a.Add32(X16, counter, X16)
+			}
+			if reg, _, pinned := f.pinReg(x); pinned {
+				f.a.MovReg32(reg, X16)
+				f.markLocalDirty(x)
+			} else {
+				f.st64(SP, f.localOff(x), X16)
+				f.locals[x].state = lsMem
+			}
+			f.setFactsForLocal(x, 0)
+		}
+		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: f.a.Cbz32(span), written: exit.written}
+		f.stats.peep("integer-load-map-affine-exit")
 	}
 	for i := 0; i < nGuards; i++ {
 		f.patchBranch19(guards[i], f.a.Len())

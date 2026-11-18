@@ -503,3 +503,48 @@ func TestIntegerLoadMapTypedAfterLoadScreen(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapAffineExit(t *testing.T) {
+	old := integerMapAffineExitEnabled
+	defer func() { integerMapAffineExitEnabled = old }()
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	for _, tc := range []struct {
+		src, dst, start, trips, bias int32
+	}{
+		{64, 8192, 0, 64, 0}, {64, 8192, 20, 67, -17}, {64, 8192, 20, 64, -27},
+		{64, 68, 0, 64, 3}, {64, 65532, 0, 64, 3}, {65532, 8192, 0, 64, 3},
+	} {
+		body := []byte{1, 4, 0x7f}
+		constant := func(v int32) {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(v)...)
+		}
+		for i, v := range []int32{tc.src, tc.dst, tc.start} {
+			constant(v)
+			body = append(body, 0x21, byte(i))
+		}
+		body = append(body, 0x03, 0x40, 0x20, 2)
+		constant(tc.bias)
+		body = append(body, 0x6a, 0x21, 3,
+			0x20, 1, 0x20, 2, 0x6a,
+			0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0, 0x36, 2, 0,
+			0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
+		constant(tc.start + tc.trips*4)
+		body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		for _, enabled := range []bool{false, true} {
+			integerMapAffineExitEnabled = enabled
+			got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-affine-exit")
+			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+				t.Fatalf("enabled=%v case=%+v: got %x/%v, want %x/%v, memory equal=%v", enabled, tc, got, err, want, wantErr, bytes.Equal(actual, expected))
+			}
+			if diagnosticsEnabled && (hits != 0) != enabled {
+				t.Fatalf("enabled=%v case=%+v: affine exit emitted %d times", enabled, tc, hits)
+			}
+		}
+	}
+}
