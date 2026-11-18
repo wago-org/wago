@@ -1,0 +1,161 @@
+package amd64
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+var sinkShapeActive bool
+var sinkShapeID string
+var sinkShapeCounts = map[string]map[string]int{}
+
+func (f *fn) censusSinkShape(x int, tee bool) {
+	if !sinkShapeActive {
+		return
+	}
+	m := sinkShapeCounts[sinkShapeID]
+	if m == nil {
+		m = map[string]int{}
+		sinkShapeCounts[sinkShapeID] = m
+	}
+	m["TOTAL"]++
+	e := f.s.back()
+	if e == nil || !e.isDeferred() {
+		m["CONCRETE"]++
+		return
+	}
+	m["DEFERRED"]++
+	var b strings.Builder
+	n := 0
+	var walk func(*elem, int)
+	walk = func(e *elem, depth int) {
+		if e == nil {
+			b.WriteByte('-')
+			return
+		}
+		if depth >= 6 || n >= 63 {
+			b.WriteByte('#')
+			return
+		}
+		n++
+		if e.isDeferred() {
+			b.WriteByte('o')
+			b.WriteString(strconv.Itoa(int(e.deferredOp())))
+			b.WriteByte('(')
+			walk(e.arg0, depth+1)
+			b.WriteByte(',')
+			walk(e.arg1, depth+1)
+			b.WriteByte(')')
+			return
+		}
+		b.WriteByte('s')
+		b.WriteString(strconv.Itoa(int(e.st.kind)))
+		if e.st.kind == stConst {
+			switch {
+			case e.st.cval == 0:
+				b.WriteString("=0")
+			case e.st.cval == 1:
+				b.WriteString("=1")
+			case e.st.cval == -1:
+				b.WriteString("=-1")
+			case fitsImm32(e.st.cval):
+				b.WriteString("=imm")
+			default:
+				b.WriteString("=wide")
+			}
+		}
+		if (e.st.kind == stLocalReg || e.st.kind == stLocalRef) && int(e.st.idx) == x {
+			b.WriteString("=dst")
+		}
+	}
+	walk(e, 0)
+	f.censusConstantBlocker(e, x, m)
+	pr, fp, pin := f.pinReg(x)
+	_ = pr
+	state := -1
+	if x >= 0 && x < len(f.locals) {
+		state = int(f.locals[x].state)
+	}
+	context := fmt.Sprintf("tee=%v,pin=%v,fp=%v,state=%d,outer=%v,interval=%v,inline=%v,typ=%d|", tee, pin, fp, state, f.s.logicalDepth > 1, len(f.intervalReg) > 0, f.inlineDepth > 0, e.valueType())
+	m["SHAPE:"+context+b.String()]++
+	m["TOPOLOGY:"+b.String()]++
+}
+
+func (f *fn) censusConstantBlocker(e *elem, x int, m map[string]int) {
+	if e.arg0 == nil || e.arg1 == nil || !e.arg0.isValue() || !e.arg1.isValue() || e.arg0.st.kind != stLocalReg || e.arg1.st.kind != stConst {
+		return
+	}
+	op := e.deferredOp()
+	if op != opAdd && op != opSub && op != opAnd && op != opOr && op != opXor {
+		return
+	}
+	m["CONST:total"]++
+	reject := func(k string) { m["CONST:first:"+k]++ }
+	c := e.arg1.st.cval
+	if c == 0 || c == -1 || !fitsImm32(c) {
+		reject("constant")
+		return
+	}
+	src := int(e.arg0.st.idx)
+	if src < 0 || src >= len(f.locals) || x < 0 || x >= len(f.locals) {
+		reject("index")
+		return
+	}
+	sr, sfp, spin := f.pinReg(src)
+	if !spin || sfp || sr != e.arg0.st.reg {
+		reject("source_pin")
+		return
+	}
+	if f.locals[src].state != lsReg && f.locals[src].state != lsStackReg {
+		reject("source_state")
+		return
+	}
+	if f.regUser[sr] != nil {
+		reject("source_owner")
+		return
+	}
+	dr, dfp, dpin := f.pinReg(x)
+	if !dpin || dfp {
+		reject("dest_pin")
+		return
+	}
+	if f.locals[x].state != lsReg && f.locals[x].state != lsStackReg {
+		reject("dest_state")
+		return
+	}
+	if f.regUser[dr] != nil {
+		reject("dest_owner")
+		return
+	}
+	if f.s.logicalDepth > 1 {
+		reject("outer_roots")
+		return
+	}
+	if len(f.intervalReg) > 0 {
+		reject("interval")
+		return
+	}
+	if f.inlineDepth != 0 || f.localBase != 0 || f.inlineTailConstants != nil {
+		reject("inline")
+		return
+	}
+	if f.pinned != 0 || f.storeFwd.valid || f.gcResolved.valid || f.gcSubtypeProofN&gcFreshStructFactMode != 0 || f.vectorRegion.enabled {
+		reject("effect_context")
+		return
+	}
+	if f.gcFrameLocal(src) || f.gcFrameLocal(x) {
+		reject("gc_local")
+		return
+	}
+	if baseOfValentBlock(e).prev != f.s.head {
+		reject("physical_prefix")
+		return
+	}
+	if src == x {
+		m["CONST:residual_self"]++
+	} else {
+		m["CONST:residual_other"]++
+	}
+	m["CONST:residual"]++
+}

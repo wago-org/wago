@@ -1,0 +1,22 @@
+# Actual deferred local assignment shapes
+
+Instrumentation-only overlay at entry to setLocal, before its mutation/realization. Fresh recovered main production through candidateOFF; both interruptibility modes,145 workloads. Bounded topology depth6/max63 visited nodes, `#` explicitly records truncation. Leaf storage kind and constant class/destination identity retained; no raw pointer identity. Context records set/tee, destination pin/state, physical value type, other logical roots, interval mode and inline depth. Diagnostic strings/maps never enter production.
+
+580 off/on compilations PASS0.427s/no skips;290 native/full exported metadata records exactly pristine main. Test duration is not performance. Counters cover calls to setLocal, including compiler lowering helpers, not a claim of unique bytecode sites.
+
+Total79,816 assignment calls;43,386 deferred roots and36,430 concrete values. Pinned-local plus constant Add/Sub/And/Or/Xor:12,919 roots,29.8% of deferred roots,142 workloads. Two-local ALU:4,654 roots across85 workloads. XOR→rotate1704 across only blake3 and monocypher. Load-mask968 mostlypcre2.296 roots have truncated topology.
+
+Coarse pinned-destination/no-outer/no-interval/no-inline upper bounds:constant family4056;two-local1002;load-mask70. These are not actual eligibility counts: constant encoding, aliases, pending effects, source recovery, physical prefix and specializer priority still require proof. Existing complete constant sink already selected3400 transitions in separate actual admission evidence. No timing attribution follows from root counts.
+
+Constant-family context partition:4056 pinned/noouter/nointerval;3349 pinned/noouter/interval;1898 pinned/outer/nointerval;1096 pinned/outer/interval;remaining2520 unpinned destination. No inline contexts in this counted family. Largest leaders are yyjson1872,pcre21666,nanosvg932,zstd844. Missing opportunity is mostly current context restriction, not a new dominant opcode recipe. Supporting outer roots requires unchanged realizeLocalRefs and earlier-effect ordering; supporting intervals requires exact activation/eviction and node-publication visibility. Neither follows from removing a guard. Existing pure-sink core has not demonstrated stable global speedup, so broadening it must retain independent measured proof.
+
+Source/receipt/counts committed; full overlay and native export remain compiler-recovery/sink-shape-census. No production implementation or performance claim from this census.
+
+
+## Ordered admission-state refinement
+
+Second instrumentation-only run580 compiles PASS0.568s, same290 independent native/metadata parity. Exclusive first failures among12,919 constant-family roots:282 identity/immediate;0 source pin/state/ownership;2482 destination pin;78 destination state;0 destination ownership;2948 outer roots;3221 interval after rejecting outer roots;0 inline;162 pending pin/cache/vector/effect context;0 GC local or extra physical prefix;3746 residual (2336 self,1410 other). Residual is not admitted source-transition coverage: opcode adjacency, tee policy, original getter specializers and following set/get still untested here.
+
+Even eliminating both literal and binary construction for every observed constant-family root would remove25,838 events across both modes, or12,919 per145-workload mode versus the historical264,512 node-event denominator (4.88%). The denominator is from an older census, not a new current measurement; this is neither latency nor RSS attribution. Interval and outer-root restrictions account for the largest precisely observed nontrivial groups, but entail state transitions rather than optional checks.
+
+Post-construction shortcut: setLocal already establishes binarySink, realizes old local references, reserves destination, then calls condenseInto→condense→condenseBinary. A small concrete-leaf constant ALU path inside condenseBinary after diagnostic hooks could bypass impossible matcher predicates while retaining construction and the existing setLocal ownership path. It would not need broad outer/interval guard relaxation, because state reconciliation already happened. However this only removes selector checks, not the expensive construction/local-reference/control work; prior family-dispatch experiment had conflicting/no reproduced aggregate gain. It is a narrower direct-lowering experiment, not a high-impact new architecture or evidence for40%. Do not install it without independent assembly/proof and timing evidence.
