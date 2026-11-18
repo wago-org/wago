@@ -657,9 +657,14 @@ func (e *integerMapBodyEmitter) publish(lanes uint8, slp bool) {
 		if !l.written {
 			continue
 		}
-		if i == int(e.induction.local) {
-			e.a.Load32(e.gp[1], RSP, e.guard.slot(i))
+		if inductionExit := i == int(e.induction.local); inductionExit || (!e.recipe.exitAffine[i] && l.value == p.locals[e.induction.local].entry) {
+			e.a.Load32(e.gp[1], RSP, e.guard.slot(int(e.induction.local)))
 			e.a.Load32(e.gp[2], RSP, e.guard.slot(e.guard.countSlot()))
+			// A saved copy of the entry value observes the final iteration
+			// before advance updates the induction vector.
+			if !inductionExit {
+				e.a.AluRI(5, e.gp[2], 1, false)
+			}
 			e.a.ImulRI(e.gp[2], int32(e.induction.step), false)
 			e.a.Add32(e.gp[1], e.gp[2])
 		} else if e.recipe.exitAffine[i] {
