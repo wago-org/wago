@@ -1427,9 +1427,13 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			break
 		}
 	}
-	// An invariant memory coefficient must stay unchanged for the whole map.
-	// Invalid words and even byte overlaps with the output retain scalar loads.
-	for _, output := range guardedOutputs {
+	// Check each invariant's memory extent once on the re-entry path.
+	// Legacy paths also need the overlap check against each output.
+	invariantGuardOutputs := guardedOutputs
+	if resumeInvariantPrefix {
+		invariantGuardOutputs = guardedOutputs[:1]
+	}
+	for _, output := range invariantGuardOutputs {
 		for i := 0; i < nInvariant; i++ {
 			iv := p.addresses[invariant[i]]
 			read(iv.base, X16)
