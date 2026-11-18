@@ -217,3 +217,35 @@ all 145 frozen corpus runtime oracles. Performance/memory qualification for
 this revision remains pending. Earlier
 negative results remain documented above. No speedup, target achievement or
 promotion is claimed.
+
+### Short/long execution protocol bridge (c1cca19e)
+
+All 1,080 records verified in a preregistered execution-only comparison of the
+same 15-case cohort, four arms, two regimes and nine trials. The short regime
+retains original operation counts. Seven stateless cases use baseline-calibrated
+20 ms batches with three warmup and three measured batches. Eight fresh-instance
+or vector cases instead use separately reset/verified samples, capped at 32;
+all eight remain below the 20 ms target. This preserves scenario semantics,
+not a uniform-duration guarantee. No first-call or compilation result is inferred.
+
+The two new policies are enabled together versus the same binary with both off.
+Bio alignment improves within-candidate to ON/OFF 0.86572 (paired trial-bootstrap
+95% interval [0.79949, 0.95247]), but remains ON/main 1.25107
+([1.21890, 1.35334]); its main A/A control fails. Rabin–Karp shows no demonstrated
+runtime benefit despite removing native DIV: ON/OFF 0.99538
+([0.96060, 1.03952]), ON/main 1.62879 ([1.57276, 1.67923]). Its control also fails.
+
+Long-regime arithmetic mean workload ratios for the new top-eight group are
+ON/main 1.18067 ([1.15836, 1.19471]) and ON/OFF 1.00378
+([0.98388, 1.01428]). The original eight have ON/main 1.05366
+([1.03106, 1.06358]). These overlapping groups are not independent replications.
+Numerous individual controls fail despite near-one group A/A point estimates;
+zero-selected control uncertainty also fails the strict agreement requirement.
+Only PCRE2, dr_wav and fast_float pass the preregistered per-case gate: main A/A
+within 2%, its 95% interval within [0.97, 1.03], and ON/main upper interval ≤1.05.
+Thus the engine is not qualified against the overall 5% execution limit.
+
+The 83 focused tests and 145 production runtime oracles remain valid for this
+unchanged source. There is no new RSS measurement for c1cca19e; the previous
+f320c628 memory result must not be attributed to it. No promotion or PR is
+proposed, and no compile-time or absolute-memory target achievement is claimed.
