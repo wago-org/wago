@@ -714,6 +714,24 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		}
 		return nil
 	}
+	switch heap {
+	case -16, -17, -23, -13, -14, -12: // func, extern, exn and their bottoms
+		// Validation keeps the operand inside the target's hierarchy: the top
+		// admits every non-null value and the bottom admits only null.
+		value := f.materialize(f.popValue())
+		bottom := heap == -13 || heap == -14 || heap == -12
+		f.a.TestSelf(value, true)
+		switch {
+		case bottom && sub == 23:
+			f.trapIf(condNE, trapCastFailure)
+		case bottom:
+			f.trapAlways(trapCastFailure)
+		case sub == 22:
+			f.trapIf(condE, trapCastFailure)
+		}
+		f.pushReg(value, mtI64)
+		return nil
+	}
 	if heap != -20 { // i31
 		return fmt.Errorf("amd64: staged ref.cast heap %d is not i31", heap)
 	}

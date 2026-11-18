@@ -178,6 +178,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				f.trapIf(condE, trapCastFailure)
 			case -15, -21, -22: // none, struct, array: no non-null inhabitant without collector types
 				f.trapAlways(trapCastFailure)
+			case -16, -17, -23: // func, extern, exn: every non-null value of the hierarchy passes
+			case -13, -14, -12: // nofunc, noextern, noexn: no non-null inhabitant
+				f.trapAlways(trapCastFailure)
 			default:
 				return fmt.Errorf("arm64: ref.cast heap %d requires a live collector", heap)
 			}
