@@ -359,7 +359,7 @@ jobs:
             guard: true
             corpus: false
           - name: Darwin / arm64
-            runner: macos-26
+            runner: macos-15
             goos: darwin
             goarch: arm64
             runtime: true
@@ -852,7 +852,7 @@ jobs:
             shards: 4
             reference: wago-only
           - name: Darwin arm64 / shard 1 of 2
-            runner: macos-26
+            runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
@@ -860,7 +860,7 @@ jobs:
             shards: 2
             reference: wago-only
           - name: Darwin arm64 / shard 2 of 2
-            runner: macos-26
+            runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
@@ -1048,7 +1048,7 @@ jobs:
           - name: Linux arm64
             runner: ubuntu-26.04-arm
           - name: Darwin arm64
-            runner: macos-26
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1139,7 +1139,7 @@ jobs:
             runtime: false
             cli: false
           - name: Darwin / arm64
-            runner: macos-26
+            runner: macos-15
             runtime: true
             cli: false
     runs-on: ${{ matrix.runner }}
