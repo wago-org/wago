@@ -136,6 +136,9 @@ func (s *streamState) integerUnary(op byte) error {
 
 func (s *streamState) integerSelect() error {
 	cond, right, left := s.pop(), s.pop(), s.pop()
+	if s.tryPureSelect(cond, right, left) {
+		return nil
+	}
 	wide := s.node(left).wide
 	// Resolve deferred fixed-register operations before caching any operand
 	// register: a shift in another operand may evict an earlier RCX owner.

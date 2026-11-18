@@ -110,3 +110,19 @@ Mean absolute compiled-barrier VmHWM was 11.999353 / 11.974327 /
 11.975512 MiB for main / proof-OFF / ON. No memory gain is established and
 the <5 MiB target remains unmet. Source is unchanged; no PR or promotion
 is proposed.
+
+## Bounded pure-select checkpoint (fcaf7d20)
+
+`WAGO_EXPERIMENTAL_STREAM_PURE_SELECT=1` restores a bounded conditional
+evaluation strategy for unique, nontrapping integer ALU spines: at most twelve
+operations with the existing cost/multiply admission threshold. Conditions,
+inputs and scratch locations are prepared before the branch; no allocator,
+spill or trapping operation occurs inside the conditional arm. Captured frame
+operands may include unchanged local homes, which remain stable because the
+arm performs no frame/local writes. Unsupported or shared forms remain eager.
+
+The frozen checkpoint passed 66 focused ownership/statistics tests without
+skips (0.114 seconds). All 145 production runtime oracles also passed. Performance qualification
+remains pending for this revision. Prior negative evidence remains
+applicable to its labeled checkpoints; no improvement or target success is
+claimed for this new source checkpoint, and no PR is proposed.
