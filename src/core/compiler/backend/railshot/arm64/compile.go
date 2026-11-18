@@ -3467,7 +3467,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.memcopyQPairs = policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy
 	f.floatLiteralPool = policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10
 	state = f
-	f.privateGlobalConsts, f.privateStableLocals = f.provePrivateConstants()
+	// Private facts require a source global reference; the existing sparse
+	// inventory is complete even when global register pinning is disabled.
+	if len(m.Code) == 1 && hints.globalCount != 0 {
+		f.privateGlobalConsts, f.privateStableLocals = f.provePrivateConstants()
+	}
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)

@@ -202,3 +202,33 @@ func TestPrivateConstantProofSkipsMemoryAndCallImmediates(t *testing.T) {
 		}
 	}
 }
+
+func TestPrivateConstantGlobalHintsSurviveWrapperABI(t *testing.T) {
+	old := privateConstantsEnabled
+	privateConstantsEnabled = true
+	t.Cleanup(func() { privateConstantsEnabled = old })
+	for _, registerABI := range []bool{false, true} {
+		body := []byte{1, 1, 0x7f, 0x23, 0, 0x41, 7, 0x6b, 0x21, 1, 0x20, 1, 0x28, 0, 0, 0x0b}
+		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+		m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}, Init: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI32Const, I32: 64}}}}}
+		hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hints[0].globalCount != 1 {
+			t.Fatal("source global reference absent from complete hint inventory")
+		}
+		opts := CompileOptions{Optimizations: map[string]bool{"reg-abi": registerABI}}
+		var stats ModuleStats
+		if diagnosticsEnabled {
+			opts.Stats = &stats
+		}
+		got, err := runPrivateGlobalCells(t, m, opts, 0, 64)
+		if err != nil || got != 0 {
+			t.Fatalf("regABI%v: %d %v", registerABI, got, err)
+		}
+		if diagnosticsEnabled && stats.Funcs[0].Peephole["private-local-constant-fact"] == 0 {
+			t.Fatalf("regABI%v lost private fact", registerABI)
+		}
+	}
+}
