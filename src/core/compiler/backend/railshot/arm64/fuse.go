@@ -38,6 +38,15 @@ func isFusableCondition(e *elem) bool {
 	return isFusableCompare(e) || swarMaskTestEnabled && e != nil && e.isDeferred() && e.deferredOp() == opAnd && e.st.typ == mtI32
 }
 
+// XOR and modular subtraction are zero exactly when their inputs are equal.
+func isZeroCompare(e *elem) bool {
+	return e != nil && e.isDeferred() && (e.deferredOp() == opXor || e.deferredOp() == opSub)
+}
+
+func isFusableBranchPredicate(e *elem) bool {
+	return isFusableCondition(e) || isZeroCompare(e)
+}
+
 func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	if !swarMaskTestEnabled || node == nil {
 		return 0, false
@@ -210,7 +219,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.deferredOp() == opEqz && isFusableCompare(f.s.arg0(node)) {
+		for node.deferredOp() == opEqz && (isFusableCompare(f.s.arg0(node)) || isZeroCompare(f.s.arg0(node))) {
 			inner := f.s.arg0(node)
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.stats.peep("eqz-fold")
@@ -268,7 +277,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.erase(node)
 		return applyInvert(condE)
 	}
-	cc := applyInvert(condOf(node.deferredOp()))
+	cc := condNE
+	if isZeroCompare(node) {
+		f.stats.peep("zero-compare")
+	} else {
+		cc = condOf(node.deferredOp())
+	}
+	cc = applyInvert(cc)
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
 	left := f.s.arg0(node)

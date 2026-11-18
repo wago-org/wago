@@ -208,3 +208,78 @@ func TestIntegerLoadMapRejectedCandidateAllocatesZero(t *testing.T) {
 		t.Fatal("rejected candidate leaked reader or admission state")
 	}
 }
+
+func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	for _, compare := range []byte{0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f} {
+		for _, swapped := range []bool{false, true} {
+			for _, dst := range []uint32{8192, 68, 65532} {
+				body := []byte{1, 5, 0x7f}
+				constant := func(v uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(v))...) }
+				for i, v := range []uint32{64, dst, 0} {
+					constant(v)
+					body = append(body, 0x21, byte(i))
+				}
+				body = append(body, 0x03, 0x40)
+				// Store min/max of two adjacent input words to a third stream.
+				body = append(body, 0x20, 1, 0x20, 2, 0x6a)
+				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0, 0x22, 3)
+				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 4, 0x22, 4)
+				left, right := byte(3), byte(4)
+				if swapped {
+					left, right = right, left
+				}
+				body = append(body, 0x20, left, 0x20, right, compare, 0x1b, 0x36, 2, 0)
+				body = append(body, 0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
+				constant(132)
+				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x20, 4, 0x73, 0x0b)
+				m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+				want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial, "integer-load-map-vector")
+				got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+				if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+					t.Fatalf("cmp=%x swapped=%v dst=%d: got %x/%v, want %x/%v, memory equal=%v", compare, swapped, dst, got, err, want, wantErr, bytes.Equal(actual, expected))
+				}
+				if diagnosticsEnabled && dst == 8192 && hits == 0 {
+					t.Fatalf("cmp=%x swapped=%v: min/max map was not emitted", compare, swapped)
+				}
+			}
+		}
+	}
+}
+
+func TestIntegerLoadMapImmediateShifts(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	for _, op := range []byte{0x74, 0x75, 0x76} {
+		for _, count := range []int32{0, 7, 31, 32, -1} {
+			for _, dst := range []int32{8192, 68, 65532} {
+				body := []byte{1, 4, 0x7f}
+				constant := func(x int32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(x)...) }
+				for i, x := range []int32{64, dst} {
+					constant(x)
+					body = append(body, 0x21, byte(i))
+				}
+				body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 2, 0x6a)
+				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0)
+				constant(count)
+				body = append(body, op, 0x22, 3, 0x36, 2, 0, 0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
+				constant(132)
+				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
+				m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+				want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial, "integer-load-map-vector")
+				got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+				if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+					t.Fatalf("op=%x shift=%d dst=%d: got %x/%v, want %x/%v, memory equal=%v", op, count, dst, got, err, want, wantErr, bytes.Equal(actual, expected))
+				}
+				if diagnosticsEnabled && dst == 8192 && hits == 0 {
+					t.Fatalf("op=%x shift=%d: map was not emitted", op, count)
+				}
+			}
+		}
+	}
+}

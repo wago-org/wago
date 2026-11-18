@@ -1176,7 +1176,16 @@ func (f *fn) emitSelect() {
 		}
 	}
 	cond := f.popValue()
-	condReg := f.materialize(cond) // condition is i32
+	// popValue already copies any condition borrowed from an evictable
+	// regional register. A function-pinned local can be tested in place.
+	var condReg Reg
+	ownedCond := cond.st.kind != stLocalReg || !f.pinnedLocalMask.has(cond.st.reg)
+	if ownedCond {
+		condReg = f.materialize(cond)
+	} else {
+		condReg = cond.st.reg
+		f.stats.peep("select-condition-read-borrow")
+	}
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
@@ -1192,12 +1201,14 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
-		f.release(condReg)
+		if ownedCond {
+			f.release(condReg)
+		}
 		f.pushVReg(aX)
 		return
 	}
@@ -1214,12 +1225,14 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeF(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.FmovReg(aX, bX, f64)    // cond == 0 → a = b
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
-		f.release(condReg)
+		if ownedCond {
+			f.release(condReg)
+		}
 		f.pushFReg(aX, typ)
 		return
 	}
@@ -1239,7 +1252,9 @@ func (f *fn) emitSelect() {
 	f.a.Csel(aReg, bReg, aReg, condE, w) // cond == 0 → a = b (both sources explicit)
 	f.pinned = f.pinned.remove(condReg)
 	f.pinned = f.pinned.remove(bReg)
-	f.release(condReg)
+	if ownedCond {
+		f.release(condReg)
+	}
 	if ownB {
 		f.release(bReg)
 	}
@@ -1288,7 +1303,14 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		f.pinned = f.pinned.add(aReg)
 	}
 	bReg := ZR
-	if !bZero {
+	// A function-pinned local is stable while the predicate is lowered. If
+	// the true arm already owns the result register, CSEL can read it in place.
+	borrowB := !aZero && bRoot.st.kind == stLocalReg &&
+		f.pinnedLocalMask.has(bRoot.st.reg) && f.opt(optSelectSourceRead)
+	if borrowB {
+		bReg = bRoot.st.reg
+		f.stats.peep("select-source-read")
+	} else if !bZero {
 		bReg = f.materialize(bRoot)
 		f.pinned = f.pinned.add(bReg)
 	}
@@ -1305,13 +1327,13 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	if aReg != ZR {
 		f.pinned = f.pinned.remove(aReg)
 	}
-	if bReg != ZR {
+	if bReg != ZR && !borrowB {
 		f.pinned = f.pinned.remove(bReg)
 	}
 	if aReg != ZR && aReg != dest {
 		f.release(aReg)
 	}
-	if bReg != ZR && bReg != dest {
+	if bReg != ZR && bReg != dest && !borrowB {
 		f.release(bReg)
 	}
 	f.erase(bRoot)

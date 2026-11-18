@@ -31,7 +31,7 @@ var floatMapInvariantsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INVARIANTS") 
 var floatMapLatchEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LATCH") != "1"
 var floatMapFourPacketsEnabled = os.Getenv("WAGO_ARM64_FLOAT_MAP_PACKET_COUNT") != "2"
 
-// A bounded symbolic proof admits only independent scalar floating-point maps.
+// A bounded symbolic proof admits independent scalar floating-point and integer maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
 // packet to restore every observable local. All range/alias failures fall back.
 type floatMapNode struct {
@@ -39,6 +39,8 @@ type floatMapNode struct {
 	a, b int16
 	op   byte
 }
+
+func (n floatMapNode) shift() bool { return n.op >= 0x74 && n.op <= 0x76 }
 
 func (n floatMapNode) left() int  { return int(n.a) }
 func (n floatMapNode) right() int { return int(n.b) }
@@ -85,7 +87,10 @@ func (p *floatMapPlan) localWritten(index int) bool {
 	return slot >= 0 && p.locals[slot].Written
 }
 
-const floatMapScatterWorkLimit = 4096
+const (
+	floatMapMaxBytes         = 512
+	floatMapScatterWorkLimit = 4096
+)
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 	*p = floatMapPlan{}
@@ -135,7 +140,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 		p.localN++
 		return slot
 	}
-	for scan.Offset()-start < 512 {
+	for scan.Offset()-start < floatMapMaxBytes {
 		if !p.spend() {
 			return false
 		}
@@ -193,6 +198,36 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			depth -= 2
 			if !push(node(op, stack[depth], stack[depth+1], 0)) {
+				return false
+			}
+		case 0x74, 0x75, 0x76:
+			if !p.integer || depth < 2 {
+				return false
+			}
+			count := p.nodes[stack[depth-1]]
+			if count.op != 0x41 {
+				return false
+			}
+			depth -= 2
+			if !push(node(op, stack[depth], 0, count.bits&31)) {
+				return false
+			}
+		case 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+			if !p.integer || depth < 2 {
+				return false
+			}
+			depth -= 2
+			if !push(node(op, stack[depth], stack[depth+1], 0)) {
+				return false
+			}
+		case 0x1b:
+			if !p.integer || depth < 3 {
+				return false
+			}
+			depth -= 3
+			a, b, cmp := stack[depth], stack[depth+1], p.nodes[stack[depth+2]]
+			kind, ok := integerMapMinMax(a, b, cmp)
+			if !ok || !push(node(kind, a, b, 0)) {
 				return false
 			}
 		case 0x28, 0x2a, 0x2b:
@@ -283,7 +318,9 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				used[x] |= storeMask
 				v := p.nodes[x]
-				if p.binary(v.op) {
+				if v.shift() {
+					mark(v.left())
+				} else if p.binary(v.op) {
 					mark(v.left())
 					mark(v.right())
 				}
@@ -422,6 +459,9 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 		if v.op == 0x28 || v.op == 0x41 {
 			return true
 		}
+		if v.shift() {
+			return p.validExpression(v.left(), depth+1)
+		}
 		if p.binary(v.op) {
 			return p.validExpression(v.left(), depth+1) && p.validExpression(v.right(), depth+1)
 		}
@@ -452,8 +492,12 @@ func (p *floatMapPlan) labelInvariants() {
 			p.invariant[i] = !p.localWritten(v.left()) && p.locals[p.localSlot(v.left())].Type == p.valueType()
 		case 0x28, 0x2a, 0x2b:
 			p.invariant[i] = p.addresses[i].invariant
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
-			p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()]
+		default:
+			if v.shift() {
+				p.invariant[i] = p.invariant[v.left()]
+			} else if p.binary(v.op) {
+				p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()]
+			}
 		}
 	}
 }
@@ -482,6 +526,9 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if p.constant(a.op) {
 		return a.bits == b.bits
 	}
+	if a.shift() {
+		return a.bits == b.bits && p.sameMap(a.left(), b.left(), step, depth+1)
+	}
 	return p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1)
 }
 
@@ -503,7 +550,7 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 	floating := false
 	// These masks only reject; high local indices retain the full planner path.
 	var initialReads, written uint64
-	for scan.Offset()-start < 512 {
+	for scan.Offset()-start < floatMapMaxBytes {
 		op, e := scan.Byte()
 		if e != nil {
 			return false
@@ -679,6 +726,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if p.constant(v.op) {
 			return true
 		}
+		if v.shift() {
+			return collect(v.left())
+		}
 		return collect(v.left()) && collect(v.right())
 	}
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
@@ -715,6 +765,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			return 0
 		}
+		if v.shift() {
+			return countConst(v.left())
+		}
 		return countConst(v.left()) + countConst(v.right())
 	}
 	if countConst(p.result) > 2 {
@@ -737,6 +790,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		v := p.nodes[x]
 		if p.load(v.op) || v.op == 0x20 || p.constant(v.op) {
 			return 1
+		}
+		if v.shift() {
+			return pressure(v.left())
 		}
 		a, b := pressure(v.left()), pressure(v.right())+1
 		if b > a {
@@ -1138,6 +1194,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.a.NeonOrr16b(out, a, b)
 		case 0x73:
 			f.a.NeonEor16b(out, a, b)
+		case integerMapMinS:
+			f.a.NeonSminS(out, a, b)
+		case integerMapMinU:
+			f.a.NeonUminS(out, a, b)
+		case integerMapMaxS:
+			f.a.NeonSmaxS(out, a, b)
+		case integerMapMaxU:
+			f.a.NeonUmaxS(out, a, b)
 		case 0x92, 0xa0:
 			f.a.NeonFadd(out, a, b, p.wide)
 		case 0x93, 0xa1:
@@ -1152,6 +1216,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var invariantValue func(int) Reg
 	invariantValue = func(x int) Reg {
 		v := p.nodes[x]
+		if v.shift() {
+			r := invariantValue(v.left())
+			f.emitIntegerMapShift(v, r, r)
+			return r
+		}
 		if p.binary(v.op) {
 			a := invariantValue(v.left())
 			b := invariantValue(v.right())
@@ -1214,7 +1283,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		if !p.load(v.op) {
 			preload(v.left())
-			preload(v.right())
+			if !v.shift() {
+				preload(v.right())
+			}
 		}
 	}
 	// The bounded expression has at most eight levels. Count constants before
@@ -1284,13 +1355,21 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return r, true
 		}
 		a, ownA := emit(v.left())
-		b, ownB := emit(v.right())
+		var b Reg
+		var ownB bool
+		if !v.shift() {
+			b, ownB = emit(v.right())
+		}
 		out := a
 		if !ownA {
 			out = f.allocFReg(0)
 			f.fpinned = f.fpinned.add(out)
 		}
-		emitOp(v.op, out, a, b)
+		if v.shift() {
+			f.emitIntegerMapShift(v, out, a)
+		} else {
+			emitOp(v.op, out, a, b)
+		}
 		if ownB {
 			f.fpinned = f.fpinned.remove(b)
 			f.releaseF(b)

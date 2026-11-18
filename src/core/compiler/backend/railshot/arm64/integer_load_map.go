@@ -10,13 +10,39 @@
 package arm64
 
 import (
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"bytes"
 	"os"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 var integerLoadMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_LOAD_MAP") != "1"
 
 const integerLoadMapWorkLimit = 4096
+
+// Internal operators for a select over the same two operands as its relation.
+const (
+	integerMapMinS byte = 0xc5 + iota
+	integerMapMinU
+	integerMapMaxS
+	integerMapMaxU
+)
+
+func integerMapMinMax(a, b int, cmp floatMapNode) (byte, bool) {
+	if cmp.op < 0x48 || cmp.op > 0x4f {
+		return 0, false
+	}
+	swapped := cmp.left() == b && cmp.right() == a
+	if !swapped && (cmp.left() != a || cmp.right() != b) {
+		return 0, false
+	}
+	// Relational i32 opcodes encode unsigned in bit 0 and greater in bit 1.
+	op := integerMapMinS + (cmp.op & 1)
+	if (cmp.op&2 != 0) != swapped {
+		op += integerMapMaxS - integerMapMinS
+	}
+	return op, true
+}
 
 // Integer recipes use the same owned candidate, source-order Q groups, widened
 // memory immediates, nontrapping eligibility guards and scalar tail as floats.
@@ -41,7 +67,7 @@ func (p *floatMapPlan) constant(op byte) bool {
 func (p *floatMapPlan) binary(op byte) bool {
 	if p.integer {
 		switch op {
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
 			return true
 		}
 		return false
@@ -73,7 +99,15 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			return
 		}
 		if op == 0x28 {
-			f.emitIntegerLoadMapCandidate(source)
+			// A valid integer plan needs an i32.store after the first load.
+			// Immediate bytes may also match; the full planner checks opcodes.
+			left := floatMapMaxBytes - (scan.Offset() - source.Offset())
+			if left > 0 {
+				window, _ := scan.Bytes(min(left, scan.BytesLeft()))
+				if bytes.IndexByte(window, 0x36) >= 0 {
+					f.emitIntegerLoadMapCandidate(source)
+				}
+			}
 			return
 		}
 		switch op {
@@ -85,7 +119,7 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			if _, e := scan.I32(); e != nil {
 				return
 			}
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
 			// These fixed-width operators have no immediates. Keeping the
 			// tiny screen concrete avoids making its copied reader escape
 			// through the generic classifier on every rejected loop.
@@ -102,4 +136,24 @@ func (f *fn) emitIntegerLoadMapCandidate(source *wasm.Reader) {
 	f.integerLoadMapProbe = true
 	defer func() { f.integerLoadMapProbe = previous }()
 	f.emitFloatMapBody(source)
+}
+
+// Shift immediates are stored modulo 32 by the planner. NEON right shifts
+// cannot encode zero, so keep the identity exact for a zero effective count.
+func (f *fn) emitIntegerMapShift(node floatMapNode, out, input Reg) {
+	count := uint8(node.bits)
+	if count == 0 {
+		if out != input {
+			f.a.NeonMov16b(out, input)
+		}
+		return
+	}
+	switch node.op {
+	case 0x74:
+		f.a.NeonShlS(out, input, count)
+	case 0x75:
+		f.a.NeonSshrS(out, input, count)
+	case 0x76:
+		f.a.NeonUshrS(out, input, count)
+	}
 }

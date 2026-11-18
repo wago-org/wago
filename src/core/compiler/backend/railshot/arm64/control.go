@@ -1877,7 +1877,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if !fr.has(ctrlCallFreeRegion) {
 			f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
 		}
-		if isFusableCondition(f.s.back()) {
+		if isFusableBranchPredicate(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
 			if f.opt(optZeroBranch) {
@@ -3104,7 +3104,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 	}
 	// Fuse `<compare> br_if L` into CMP + conditional jump. (Local convergence is
 	// per-target and happens after the label frame is resolved.)
-	if conditional && isFusableCondition(f.s.back()) {
+	if conditional && isFusableBranchPredicate(f.s.back()) {
 		top := f.s.back()
 		idx, err := r.U32()
 		if err != nil {
