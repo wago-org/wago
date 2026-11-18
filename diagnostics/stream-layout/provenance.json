@@ -1,0 +1,69 @@
+{
+  "baseline": "b5ab03f9",
+  "hot_commit": "ea709137",
+  "neutral_commit": "958c4f41",
+  "order": "fixed profile-informed, not literal flat or cumulative ranking",
+  "neutral": "same-set late-file relocation/alignment control; not dispersed control",
+  "profile_total_ns": 11050000000,
+  "functions": [
+    {
+      "key": "fn.bodyLoop",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).bodyLoop",
+      "flat_ns": 260000000,
+      "cumulative_ns": 7570000000
+    },
+    {
+      "key": "fn.emitPlain",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitPlain",
+      "flat_ns": 230000000,
+      "cumulative_ns": 4380000000
+    },
+    {
+      "key": "fn.condenseBinary",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).condenseBinary",
+      "flat_ns": 150000000,
+      "cumulative_ns": 1020000000
+    },
+    {
+      "key": "fn.materialize",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).materialize",
+      "flat_ns": 80000000,
+      "cumulative_ns": 460000000
+    },
+    {
+      "key": "fn.setLocal",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).setLocal",
+      "flat_ns": 70000000,
+      "cumulative_ns": 1040000000
+    },
+    {
+      "key": "fn.opEnd",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).opEnd",
+      "flat_ns": 80000000,
+      "cumulative_ns": 580000000
+    },
+    {
+      "key": "scanLoopCallFreeDetails",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.scanLoopCallFreeDetails",
+      "flat_ns": 190000000,
+      "cumulative_ns": 340000000
+    },
+    {
+      "key": "byteBodyScanner.scanExpr",
+      "symbol": "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*byteBodyScanner).scanExpr",
+      "flat_ns": 210000000,
+      "cumulative_ns": 550000000
+    }
+  ],
+  "warning": "cumulative costs overlap; do not sum",
+  "stage": "Static/source and public API parity passed; production adapter runtime oracles and timing not qualified.",
+  "audits": [
+    "complete production function AST inventory equal",
+    "non-import GenDecl and init AST sequence unchanged per original file",
+    "package import dependency set equal",
+    "all 686 original headers unchanged",
+    "new header identical to all five source headers",
+    "8 moved declarations raw-byte-identical",
+    "git diff --check passed"
+  ]
+}

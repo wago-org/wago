@@ -1,0 +1,40 @@
+{
+  "new_header_matches_all_source_headers": true,
+  "original_headers_checked": 686,
+  "raw_declarations": [
+    {
+      "key": "fn.bodyLoop",
+      "sha256": "595d5781ad45d68e33a95a2201c78800835c6bcb86c6c1a287f063b53df5c346"
+    },
+    {
+      "key": "fn.emitPlain",
+      "sha256": "fb30c0440c4f6e4ce4a3d4e0b92c0c1cf9705d381cb68118033c0f2f82c91c36"
+    },
+    {
+      "key": "fn.condenseBinary",
+      "sha256": "926ea961ecfd0f2294a9d80fc7c824ec619b4a5a9481c26dfa4102c268d9ca8e"
+    },
+    {
+      "key": "fn.materialize",
+      "sha256": "19513062287984544fcfca22c8153fad0f5a1f68adad7132bd18244d9f9c89a4"
+    },
+    {
+      "key": "fn.setLocal",
+      "sha256": "31e068778a7bf7eeccb7c1a3ae362db2c8c01e85e2f85ec617e21b0468f443da"
+    },
+    {
+      "key": "fn.opEnd",
+      "sha256": "5cccda5298c3beac2a6a3c96c456e86bdc0ac05deebf8a7c4ea775f8424e4555"
+    },
+    {
+      "key": "scanLoopCallFreeDetails",
+      "sha256": "47494b846a95a5ee9dfb96fc73bedb6e9708656bcd40018630a28ba55dd1255b"
+    },
+    {
+      "key": "byteBodyScanner.scanExpr",
+      "sha256": "67b791a96b9124c16fb9649cbb3e5f2ca3b3f6cd0f1af1d47f5f6c882e82feac"
+    }
+  ],
+  "patch_sha256": "7e836d4d45d9ffe39b0d39e4b97e5504f5d1850210ec0cf7ec413c5acd50ec28",
+  "commit": "ea70913700375365edfc81aeee0f80f9e13f811a"
+}
