@@ -13,6 +13,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Release and reacquire the invocation's actual execution lease when a retained
+  host callback uses a foreign control frame, including under profiling.
 - Preserve required ARM64 memory-bounds traps after fused conditional local
   assignments replace a previously boolean value.
 

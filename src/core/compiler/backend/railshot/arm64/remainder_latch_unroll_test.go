@@ -52,6 +52,17 @@ func TestRemainderLatchUnrollPreservesTrapAndCanonicalExits(t *testing.T) {
 				fixture = remainderLatchDirectFixture
 			}
 			f, fr, condition := fixture(wide)
+			if profileEnabled {
+				original := string(f.a.B)
+				trap := f.sc.trapSites[trapDivZero][0]
+				if f.unrollRemainderLatch(fr, condition) {
+					t.Fatal("profiling accepted remainder-latch unrolling")
+				}
+				if string(f.a.B) != original || len(f.sc.trapSites[trapDivZero]) != 1 || f.sc.trapSites[trapDivZero][0] != trap {
+					t.Fatal("rejected profiling candidate changed code or trap identity")
+				}
+				continue
+			}
 			if !f.unrollRemainderLatch(fr, condition) {
 				t.Fatalf("direct=%t wide=%t: fixture rejected", direct, wide)
 			}
