@@ -399,6 +399,8 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		vc = f.allocFReg(0)
 		f.fpinned = f.fpinned.add(vc)
 	}
+	sum := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(sum)
 	// Prove the complete stream before carrying native pointers. Failure leaves
 	// every source local unchanged and resumes the original checked loop.
 	var fallback [4]int
@@ -436,6 +438,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	nFallback++
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
+	// Addition modulo 2^32 allows each lane to accumulate independently.
+	// Reduce once before resuming the checked scalar tail.
+	f.a.NeonEor16b(sum, sum, sum)
 	loop := f.a.Len()
 	for off := int32(0); off < int32(4*p.lanes); off += 16 {
 		part := va
@@ -450,9 +455,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			f.a.NeonAddS(va, va, part)
 		}
 	}
-	f.a.NeonAddvS(va, va)
-	f.a.FmovToGpr(X16, va, false)
-	f.a.Add32(acc, acc, X16)
+	f.a.NeonAddS(sum, sum, va)
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
@@ -464,6 +467,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.a.SubImm32(counter, counter, 1)
 	f.cmpImm(counter, 1, false)
 	f.patchBranch19(f.a.Bcond(condNE), loop)
+	f.a.NeonAddvS(sum, sum)
+	f.a.FmovToGpr(X16, sum, false)
+	f.a.Add32(acc, acc, X16)
 	for _, site := range fallback[:nFallback] {
 		f.patchBranch19(site, f.a.Len())
 	}
@@ -480,6 +486,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		}
 		f.setFactsForLocal(state.local, 0)
 	}
+	f.releaseF(sum)
 	f.releaseF(va)
 	f.releaseF(vb)
 	if vc != regNone {
