@@ -35,6 +35,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Publish ARM64 module-pinned globals before `throw` and `throw_ref`; a caught
   exception reloaded them from stale memory cells, discarding earlier
   `global.set` values (for example, loop counters reset and never terminated).
+- Capture AMD64 register-call results in spill slots when no free register
+  remains. A call returning three to seven integers in a function with
+  module-pinned and value-pinned globals failed to compile with "no GP register
+  available after spilling optional pins".
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
