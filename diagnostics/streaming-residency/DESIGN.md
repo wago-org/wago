@@ -56,3 +56,26 @@ Additional cases cover direct branches, old snapshots, swaps, pressure and dead
 generation handling. Production corpus/native validation and RSS measurements
 for this wider checkpoint remain pending. The preceding b05 measurements do
 not qualify this revision. No timing, speedup or target-success claim is made.
+
+## Completed wider-home screen (b119ad62)
+
+All 600 affected-screen records and 435 memory-profile runtime oracles verified.
+Same-binary OFF retained the prior four streaming options but disabled residency
+and wider homes. The timing screen did not establish acceptable performance:
+
+- Steady execution, arithmetic mean of workload ON/main ratios: 1.55324
+  (95% interval [1.29894, 2.33035]); ON/OFF: 1.01862
+  ([0.93212, 1.30141]). Aggregate main A/A was 0.99461, but individual and
+  unrelated controls failed, including Aho A/A 0.7895. Aho ON/main was 4.058
+  at the point estimate, which is not a qualified precise slowdown.
+- Arithmetic means of steady timings were 78,343.825 / 73,563.333 /
+  125,093.725 ns for main A / main B / ON. These differ from the mean of
+  per-workload ratios above.
+- Compilation ON/main was 0.96459 ([0.70223, 1.15585]); main A/A 1.02313
+  failed. First-call A/A 0.96479 also failed. No compilation gain is established.
+
+The fixed-slot, 145-workload memory run measured mean absolute compiled-barrier
+VmHWM of 11.985022 / 11.954580 / 11.956627 MiB for main / OFF / ON.
+The absolute <5 MiB target remains unmet. Failed timing controls and confidence
+intervals prevent claiming the execution limit or compilation target is met.
+No target is qualified, and no PR or promotion is proposed.
