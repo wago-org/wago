@@ -98,7 +98,7 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 			}
 			return n.op == 0x6a && walk(n.left()) && walk(n.right())
 		}
-		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 || p.integer && delta != p.step {
+		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 {
 			return false
 		}
 		p.byteSteps[i] = delta

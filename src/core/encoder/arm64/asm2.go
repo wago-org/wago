@@ -2466,12 +2466,36 @@ func (a *Asm) LdrF(rt, base Reg, disp int32, f64 bool) {
 		a.LdrS(rt, base, disp)
 	}
 }
+
 func (a *Asm) StrF(base Reg, disp int32, rt Reg, f64 bool) {
 	if f64 {
 		a.StrD(base, disp, rt)
 	} else {
 		a.StrS(base, disp, rt)
 	}
+}
+
+func neonLaneAddress(base Reg, lane uint8, wide bool) uint32 {
+	encoding := uint32(0x0D008000)
+	if wide {
+		encoding |= 1<<10 | uint32(lane&1)<<30
+	} else {
+		encoding |= uint32(lane&1)<<12 | uint32(lane&2)<<29
+	}
+	return encoding | r(base)<<5
+}
+
+// Ld1Lane loads one scalar element and preserves the other vector lanes.
+func (a *Asm) Ld1Lane(dst, base Reg, lane uint8, wide bool) {
+	a.word(1<<22 | neonLaneAddress(base, lane, wide) | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
+// St1Lane stores one scalar element from a vector lane.
+func (a *Asm) St1Lane(src, base Reg, lane uint8, wide bool) {
+	a.word(neonLaneAddress(base, lane, wide) | r(src))
 }
 
 // MovImm32 materializes a 32-bit constant into the low half of rd (upper zero).

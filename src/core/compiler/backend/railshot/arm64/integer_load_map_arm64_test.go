@@ -313,3 +313,53 @@ func TestIntegerLoadMapShifts(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapStridedStreams(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, stride := range []int32{4, 8, 12, 128} {
+		for _, scatter := range []bool{false, true} {
+			for _, layout := range []struct{ src, dst, count int32 }{
+				{64, 32768, 64}, {64, 32768, 67}, {64, 68, 67},
+				{65520, 32768, 67}, {-8, 32768, 67},
+			} {
+				body := []byte{1, 6, 0x7f}
+				constant := func(v int32) {
+					body = append(body, 0x41)
+					body = append(body, wasmtest.SLEB32(v)...)
+				}
+				constant(layout.src)
+				body = append(body, 0x21, 0)
+				constant(layout.dst)
+				body = append(body, 0x21, 1, 0x03, 0x40)
+				dstIndex := byte(2)
+				if scatter {
+					dstIndex = 5
+				}
+				body = append(body,
+					0x20, 1, 0x20, dstIndex, 0x6a,
+					0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 1, 0x41, 7, 0x73,
+					0x22, 4, 0x36, 2, 1, 0x20, 3)
+				constant(stride)
+				body = append(body, 0x6a, 0x21, 3)
+				if scatter {
+					body = append(body, 0x20, 5, 0x41, 8, 0x6a, 0x21, 5)
+				}
+				body = append(body, 0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
+				constant(4 * layout.count)
+				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x20, 4, 0x73, 0x20, 5, 0x73, 0x0b)
+				m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+				want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+				got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+				if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+					t.Fatalf("stride=%d scatter=%v layout=%+v: got %x/%v, want %x/%v, memory equal=%v", stride, scatter, layout, got, err, want, wantErr, bytes.Equal(actual, expected))
+				}
+				if diagnosticsEnabled && hits == 0 {
+					t.Fatalf("stride=%d scatter=%v layout=%+v: vector map was not emitted", stride, scatter, layout)
+				}
+			}
+		}
+	}
+}

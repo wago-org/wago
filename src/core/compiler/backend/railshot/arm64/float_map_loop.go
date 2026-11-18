@@ -306,7 +306,10 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
 			p.destOffset = stores[0].Offset
-			if !p.proveAddresses(f.localType) || p.addresses[p.dest].stride > 1 && p.counterScale <= 1 {
+			if !p.proveAddresses(f.localType) {
+				return false
+			}
+			if stride := p.addresses[p.dest].stride; stride > 1 && p.counterScale <= 1 && (!p.integer || stride != 2) {
 				return false
 			}
 			for i := 1; i < ns; i++ {
@@ -1068,6 +1071,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		panic("arm64: missing float map address")
 	}
 	d, dOff := locate(p.addresses[p.dest])
+	outputStride := max(p.counterScale, p.addresses[p.dest].stride, 1)
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
 	for i := 0; i < nInvariant; i++ {
@@ -1087,8 +1091,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
 		f.a.Sub64(X16, X16, X17)
 		f.a.AddImm64(X16, X16, width-1)
-		if p.counterScale > 1 {
-			f.a.MovImm64(X17, uint64(p.counterScale))
+		if outputStride > 1 {
+			f.a.MovImm64(X17, uint64(outputStride))
 			f.a.Mul64(X17, span, X17)
 			f.a.AddImm64(X17, X17, width-1)
 		} else {
@@ -1119,22 +1123,29 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.floatMapScatterAlias(d, s, dOff, off, span, size, p.counterScale, width, guard)
 			continue
 		}
-		if stride := p.addresses[loads[i]].stride; stride > 1 {
-			// A gather changes the lane address spacing. Require disjoint whole
-			// source/output ranges rather than reusing the unit-stride proof.
+		if stride := max(p.addresses[loads[i]].stride, 1); stride > 1 || outputStride > 1 {
+			// Non-unit spacing requires disjoint whole source and output
+			// ranges. The unit-stride packet dependence proof does not apply.
 			f.floatMapOffset(X16, d, uint64(dOff), true, X16)
 			f.floatMapOffset(X17, s, uint64(off), true, X17)
 			f.cmpRR(X16, X17, true)
 			above := f.a.Bcond(condA)
 			f.a.Sub64(X16, X17, X16)
-			f.cmpRR(X16, span, true)
+			compareSpan := func(stride uint32) {
+				extent := span
+				if stride > 1 {
+					f.a.MovImm64(X17, uint64(stride))
+					f.a.Mul64(X17, span, X17)
+					extent = X17
+				}
+				f.cmpRR(X16, extent, true)
+			}
+			compareSpan(outputStride)
 			guard(condB)
 			skip := f.a.Branch()
 			f.patchBranch19(above, f.a.Len())
 			f.a.Sub64(X16, X16, X17)
-			f.a.MovImm64(X17, uint64(stride))
-			f.a.Mul64(X17, span, X17)
-			f.cmpRR(X16, X17, true)
+			compareSpan(stride)
 			guard(condB)
 			f.patchBranch26(skip, f.a.Len())
 			continue
@@ -1401,6 +1412,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 						}
 					} else {
 						f.floatMapOffset(X17, base, address, true, X16)
+						if lane != 0 && floatMapLaneFPLoadsEnabled {
+							f.a.Ld1Lane(r, X17, uint8(lane), p.wide)
+							continue
+						}
 						if p.wide {
 							f.ld64(X16, X17, 0)
 						} else {
@@ -1462,18 +1477,22 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	packet := func(width uint32) {
 		for block = 0; block < int32(width); block += floatMapVectorBytes {
 			value, owned := emit(p.result)
-			if p.counterScale > 1 {
+			if outputStride > 1 {
 				width := uint32(4)
 				if p.wide {
 					width = 8
 				}
 				for lane := uint32(0); lane < 16/width; lane++ {
-					address := uint64(dOff) + (uint64(block)+uint64(lane*width))*uint64(p.counterScale)
+					address := uint64(dOff) + (uint64(block)+uint64(lane*width))*uint64(outputStride)
 					base, disp := d, int32(0)
 					if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
 						disp = int32(address)
 					} else {
 						f.floatMapOffset(X17, d, address, true, X16)
+						if lane != 0 {
+							f.a.St1Lane(value, X17, uint8(lane), p.wide)
+							continue
+						}
 						base = X17
 					}
 					if lane == 0 {
