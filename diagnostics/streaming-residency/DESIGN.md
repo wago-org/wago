@@ -370,3 +370,30 @@ metadata OFF / metadata ON. There is no meaningful memory gain; the absolute
 5 MiB goal remains unmet. These memory-profile observations are not latency
 measurements. This remains an experimental checkpoint, with no promotion or
 PR proposed.
+
+### Warm production-path attribution (db4f2dc7, source unchanged)
+
+A separate bounded, untagged standard-Go profile compared the same binary
+with all fifteen experimental flags OFF against the preceding thirteen ON
+and the two metadata flags OFF. An independent pristine-main public-API
+reference was verified first. Each arm used two warm-up traversals, 120 fixed
+CPU-profile traversals (17,400 Compile/Close calls), and a separate 30-traversal
+allocation pass (4,350 calls). All 145 native images matched their reference
+before and after each run. No outcome-dependent extension was performed.
+
+CPU profiles contained 11.05 / 10.88 seconds of samples for OFF / ON. Encoder
+sample unions were 4.80% / 4.78%. In ON, streaming body work covered 15.63%
+and legacy body work 53.31%; canonicalization covered 6.62% and restoration
+4.14%. These cumulative sample unions overlap and must not be added as
+independent costs. Runtime GC samples were approximately 10%; they cannot be
+assigned exclusively to lowering or converted into a cold-compile saving.
+
+Sampled allocation-space deltas were 421,555,831 / 351,581,921 bytes across
+the 4,350 OFF / ON compiles. Operand-arena allocation estimates decreased from
+102,777,520 to 33,611,989 bytes. Allocation profiles used 64 KiB sampling and
+baseline subtraction, include observer allocations, and are approximate.
+This supports reduced allocation work, not reduced retained RSS or qualified
+cold latency. The run measures warmed, pooled Compile/Close behavior, not
+first compilation. The preceding failed cold controls and unmet memory and
+execution targets remain unchanged; no demonstrated 40% opportunity or
+promotion follows from this diagnostic.
