@@ -397,3 +397,41 @@ cold latency. The run measures warmed, pooled Compile/Close behavior, not
 first compilation. The preceding failed cold controls and unmet memory and
 execution targets remain unchanged; no demonstrated 40% opportunity or
 promotion follows from this diagnostic.
+
+### Separate Go PGO experiment (frozen db4f2dc7, streaming flags OFF)
+
+This build experiment is separate from subsequent source changes. Training
+used only the preregistered 114-input training split; 31 held-out inputs were
+primary for qualification. Both full-feature adapters used identical source,
+Go 1.27.1 and build options except explicit PGO off versus the training CPU
+profile. All fifteen streaming flags were OFF. All 145 native images and
+serialized metadata matched, native images matched pristine main, and both
+production adapters passed all 145 runtime oracles.
+
+The fixed protocol verified 2,175 records each for cold compilation, first
+call and steady execution, plus 435 memory-profile records. Ratios below are
+arithmetic means of per-workload normalized median ratios, not ratios of
+aggregate mean times. Intervals are 5,000 paired trial resamples without
+workload resampling.
+
+| Scope | Cold PGO/control (95% CI) | First call | Steady |
+| --- | --- | --- | --- |
+| Held-out 31 | 1.06954 [1.02713, 1.16387] | 1.01154 [0.94594, 1.18536] | 0.99772 [0.98068, 1.01867] |
+| Training 114 | 1.13408 [1.10891, 1.19673] | 1.01824 [0.97415, 1.10116] | 1.00021 [0.99309, 1.02147] |
+| Full 145 | 1.12028 [1.10148, 1.17514] | 1.01681 [0.98042, 1.08912] | 0.99968 [0.99343, 1.01705] |
+
+All three cold and all three first-call A/A control gates failed. Held-out
+steady controls also failed: A/A 1.01686, CI [0.99414, 1.03265]. Training and
+full-suite steady aggregate controls and aggregate 5% guards passed, but this
+does not override the held-out failure or establish universal per-input
+qualification. Cold ratios of aggregate mean workload medians were 1.01080 /
+1.02708 / 1.02390 for held-out / training / full, a different estimand from
+the table. No qualified compilation improvement is established.
+
+Absolute compiled-barrier mean VmHWM (control A / control B / PGO, MiB) was
+12.167213 / 12.168725 / 12.233745 held-out, 12.064385 / 12.065138 / 12.129900
+training, and 12.086369 / 12.087284 / 12.152101 full-suite. Memory increased
+rather than approaching 5 MiB. These one-trial memory observations have no
+confidence interval. No default PGO profile, source promotion, or target
+success is proposed; failed controls preclude treating point changes as
+qualified gains or precise causal regressions.
