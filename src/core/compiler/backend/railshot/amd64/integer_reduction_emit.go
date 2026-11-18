@@ -27,7 +27,7 @@ func integerReductionLoopDefault(goos, setting string) bool {
 const integerReductionMinTripCount = 16
 
 func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
-	if f.unreachable || f.depth() != 0 || f.moduleEH || f.localBase != 0 || f.interruptible || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 {
+	if f.unreachable || f.depth() != 0 || f.moduleEH || f.localBase != 0 || f.interruptible && !cooperativeIntegerReductionEnabled || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 {
 		return false, nil
 	}
 	for _, typ := range f.localType {
@@ -49,6 +49,7 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 	depth := len(f.ctrl)
+	loopPC := f.wasmPC
 	if err := f.opBlockPlain(r, 0x03); err != nil {
 		return true, err
 	}
@@ -127,6 +128,14 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 	}
 	toFast := f.a.JmpPlaceholder()
 	fallback := f.a.Len()
+	// Backedges and odd tails must re-enter a poll, not the scalar body
+	// following the original header. gp[1] is free at that header.
+	if f.interruptible {
+		savedPC := f.wasmPC
+		f.wasmPC = loopPC
+		f.emitInterruptCheck(gp[1])
+		f.wasmPC = savedPC
+	}
 	f.a.PatchRel32(short, fallback)
 	f.ctrl[len(f.ctrl)-1].controlSite = fallback
 	if err := f.bodyLoop(r, depth); err != nil {
@@ -169,7 +178,7 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 		// The native finalizer can remove this jump to its own fall-through.
 		f.a.PatchRel32(entryDispatch, captureEntry)
 		f.cpuHas(shared.AMD64SSE41)
-		f.emitIntegerReduction(&p, gp, &fp, &entry, slot, fallback)
+		f.emitIntegerReduction(&p, gp, &fp, &entry, slot, fallback, loopPC)
 		f.stats.peep("integer-reduction-loop")
 	} else {
 		// Late home changes still need the reserved frame extent, but the
@@ -182,7 +191,7 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 	return true, nil
 }
 
-func (f *fn) emitIntegerReduction(p *integerReductionPlan, gp [2]Reg, fp *[16]Reg, entry *[256]regionEntryLocal, slot, fallback int) {
+func (f *fn) emitIntegerReduction(p *integerReductionPlan, gp [2]Reg, fp *[16]Reg, entry *[256]regionEntryLocal, slot, fallback int, loopPC uint32) {
 	off := func(i int) int32 { return f.spillOff(slot + i) }
 	reg := func(id uint8) Reg { return fp[p.register[id]] }
 	tmp := fp[p.registers-1]
@@ -223,6 +232,15 @@ func (f *fn) emitIntegerReduction(p *integerReductionPlan, gp [2]Reg, fp *[16]Re
 	f.a.ShiftImm(5, gp[0], 1, false)
 	f.a.AlignLoop()
 	top := f.a.Len()
+	if f.interruptible {
+		// Each packet represents exactly two nontrapping, memory-free scalar
+		// iterations. gp[1] is dead here; the poll touches no XMM register.
+		savedPC := f.wasmPC
+		f.wasmPC = loopPC
+		f.emitInterruptCheck(gp[1])
+		f.wasmPC = savedPC
+		f.stats.peep("cooperative-integer-reduction")
+	}
 	for id := uint8(1); id <= p.nodeN; id++ {
 		if !p.live[id] {
 			continue

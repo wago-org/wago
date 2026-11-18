@@ -6,6 +6,13 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Added
+
+- Add opt-in AMD64 cooperative integer reductions under the
+  `wago_experimental_cooperative_integer_reduction` build tag. Eligible
+  memory-free loops retain interruption checks between two-iteration SIMD
+  packets and on scalar fallback paths.
+
 ### Changed
 
 - Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
