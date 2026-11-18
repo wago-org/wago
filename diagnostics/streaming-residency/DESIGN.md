@@ -604,3 +604,33 @@ pending to verified. Source, arms, operations, controllers, trial counts,
 seeds, estimands and acceptance criteria did not change; there was no
 rerun. Prior negative outcomes remain applicable. No broad gain, promotion
 or PR is claimed.
+
+
+### Sparse implicit canonical locals checkpoint (b5ab03f9)
+
+This default-off experiment represents untouched ordinary canonical-frame
+locals without value nodes after a canonical agreement. An explicit bitset
+distinguishes these implicit values from retired zero IDs; the first get
+creates a borrowed local node. Active roots are visited in ascending local
+order. Stack and active-root alias capture and deferred materialization still
+finish before any canonical stores. Selected register-backed homes remain
+concrete; initial parameters and declared-zero locals remain explicit.
+
+An immutable age mask reserves the complete logical local-order interval at
+each agreement. Lazy reads use its rank rather than mutable active bits, so
+reading locals in a different order does not alter their reserved allocator
+ages. Alternate control restoration reconstructs the incoming agreement,
+not the predecessor's retired state. Binding writers, terminal cleanup,
+worker reuse and retained-memory accounting include the new state. This is
+not SSA and does not widen opcode admission or representation limits. Enable
+with WAGO_EXPERIMENTAL_STREAM_IMPLICIT_LOCALS=1 alongside the streaming engine.
+
+Exact clean b5ab03f9 passed 121 focused ownership/statistics tests in 0.633
+seconds and six untagged implicit-local tests in 0.007 seconds, with zero
+failures or skips. An earlier fixture failure was corrected only in its
+signed-LEB test encoding; production implementation remains 83d7a332.
+Production 145-input runtime verification, native parity, activation counts
+and performance qualification for this revision are pending. Logical ages
+do not by themselves prove native parity because physical ID allocation can
+change. All prior adverse outcomes remain recorded; no performance gain,
+RSS target success, promotion or PR is claimed.

@@ -285,6 +285,7 @@ type streamControl struct {
 // alias shares the field declaration without adding a public type. Its
 // pointer-free backing is reused only across functions of one module worker.
 type streamState struct {
+	implicitLocals              *streamImplicitLocals
 	bounds                      *streamBoundsCache
 	residency                   *streamResidency
 	nodes                       []streamNode
@@ -309,7 +310,7 @@ type streamState struct {
 }
 
 func (s *streamState) Memory() uint64 {
-	return s.boundsBytes() + s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
+	return s.implicitLocalBytes() + s.boundsBytes() + s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
 
@@ -322,11 +323,22 @@ func (s *streamState) nextOrder() uint16 {
 	s.nodes[0].order++
 	return s.nodes[0].order
 }
-func (s *streamState) add(n streamNode) streamID {
+func (s *streamState) add(n streamNode) streamID { return s.addOrdered(n, 0) }
+
+// Reserved orders are allocated by a canonical-local agreement, never invented
+// by the lazy reader. Ordinary creation continues to advance the same bound.
+func (s *streamState) addOrdered(n streamNode, order uint16) streamID {
 	if len(s.nodes) != 0 {
 		// The sentinel owns creation order and the free-list head. Reusing a
 		// dead index never changes the age or location of a live value.
-		n.order = s.nextOrder()
+		if order == 0 {
+			n.order = s.nextOrder()
+		} else {
+			if streamValueChecks && order > s.nodes[0].order {
+				panic("stream implicit: unreserved order")
+			}
+			n.order = order
+		}
 		if id := s.nodes[0].left; id != 0 {
 			if streamValueChecks && s.node(id).refs != 0 {
 				panic("streaming operands: live value in free list")
@@ -608,6 +620,9 @@ func (s *streamState) returnValue(id streamID) {
 		i = end
 	}
 	clear(s.locals)
+	if s.implicitLocals != nil {
+		*s.implicitLocals = streamImplicitLocals{}
+	}
 	reg := s.materialize(id, 0)
 	if n := s.node(id); !n.wide && n.constant&1 != 0 {
 		// W-register arithmetic already zeroes upper bits. A direct incoming
@@ -745,6 +760,10 @@ func (s *streamState) binary(op shared.IntOp, wide bool) {
 // canonicalize first captures borrowed and agreement-slot values, then writes
 // the new local/stack image. That two-phase ordering prevents alias overwrite.
 func (s *streamState) canonicalize(registerResult bool) {
+	if s.implicitLocals != nil {
+		s.canonicalizeImplicit(registerResult)
+		return
+	}
 	s.clearBoundsFacts()
 	capture := func(id streamID) {
 		if id == 0 {
@@ -787,6 +806,10 @@ func (s *streamState) canonicalize(registerResult bool) {
 		r := s.materialize(id, 0)
 		s.target.Store(s.target.LocalOffset(i), r, s.node(id).wide)
 	}
+	s.canonicalizeStack(registerResult)
+}
+
+func (s *streamState) canonicalizeStack(registerResult bool) {
 	var resultReg uint8
 	for _, r := range s.regs {
 		if (s.reserved|s.backingHomeMask())&(1<<r) == 0 {
@@ -842,12 +865,16 @@ func (s *streamState) restoreResultLocal(local uint16) {
 	id := s.stack[len(s.stack)-1]
 	s.release(s.locals[local-1])
 	s.retain(id)
-	s.locals[local-1] = id
+	s.setLocalBinding(int(local-1), id)
 	// canonicalize wrote this home on each incoming edge.
 	s.node(id).home = s.localHomeTag(int(local) - 1)
 }
 
 func (s *streamState) restore(depth int) {
+	if s.implicitLocals != nil {
+		s.restoreImplicit(depth)
+		return
+	}
 	s.clearBoundsFacts()
 
 	// Stack types are retained through the agreement. Each else restores only the
@@ -891,7 +918,7 @@ func (s *streamState) restore(depth int) {
 			found := false
 			for k, n := range s.homeLocals {
 				if n != 0 && int(n)-1 == i {
-					s.locals[i] = s.borrowBacking(s.residency.homes[k], i)
+					s.setLocalBinding(int(i), s.borrowBacking(s.residency.homes[k], i))
 					found = true
 					break
 				}
@@ -900,7 +927,7 @@ func (s *streamState) restore(depth int) {
 				continue
 			}
 		}
-		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: wide, refs: 1})
+		s.setLocalBinding(int(i), s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: wide, refs: 1}))
 	}
 
 }
@@ -1021,6 +1048,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		s.locals = append(s.locals, id)
 	}
 	s.initializeRegisterHomes(summary.HomeLocals, nParams)
+	s.initializeImplicitLocals()
 	return s.runStreamCode(code, summary)
 }
 
@@ -1029,6 +1057,7 @@ func (s *streamState) FinishWorker() {
 
 	s.Discarded += s.Memory()
 	s.bounds = nil
+	s.implicitLocals = nil
 	s.EventBytes = 0
 	s.residency = nil
 	s.nodes = nil

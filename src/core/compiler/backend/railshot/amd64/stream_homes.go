@@ -63,10 +63,10 @@ func (s *streamState) initializeRegisterHomes(selected [streamMaxHomes]uint16, n
 			if s.residency != nil {
 				cell := s.newBacking(reg, s.widths[local])
 				s.residency.homes[k] = cell
-				s.locals[local] = s.borrowBacking(cell, local)
+				s.setLocalBinding(int(local), s.borrowBacking(cell, local))
 				s.target.stats.peep("stream-residency-home")
 			} else {
-				s.locals[local] = s.add(streamNode{kind: streamBorrow, slot: int32(local), home: s.localHomeTag(local), wide: s.widths[local], refs: 1})
+				s.setLocalBinding(int(local), s.add(streamNode{kind: streamBorrow, slot: int32(local), home: s.localHomeTag(local), wide: s.widths[local], refs: 1}))
 			}
 			count++
 			s.target.stats.peep("stream-local-home")

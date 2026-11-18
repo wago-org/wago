@@ -276,7 +276,7 @@ func (s *streamState) tryBackingHomeSet(local int, id, old streamID) bool {
 	value.kind, value.slot, value.home = streamBacking, int32(cell), s.localHomeTag(local)
 	value.left, value.right, value.constant = 0, 0, 0
 	value.reg, value.depth = 0, 0
-	s.locals[local] = id
+	s.setLocalBinding(int(local), id)
 	s.target.stats.peep("stream-home-sink")
 	s.target.stats.peep("stream-residency-sink")
 	if constant {

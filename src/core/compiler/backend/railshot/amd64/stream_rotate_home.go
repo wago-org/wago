@@ -98,7 +98,7 @@ func (s *streamState) tryRotateIntoLocal(r *wasm.Reader, op byte) bool {
 	s.pop()
 	// The only old observer is the overwritten local root. Retire it and the
 	// map reference before reusing the physical home; no old snapshot is lost.
-	s.locals[local] = 0
+	s.setLocalBinding(int(local), 0)
 	s.release(old)
 	s.residency.homes[k] = 0
 	s.releaseBacking(cell)
@@ -149,7 +149,7 @@ func (s *streamState) commitRotateIntoLocal(local int, id, old streamID) bool {
 			return false
 		}
 		n.constant = 0
-		s.locals[local] = id
+		s.setLocalBinding(int(local), id)
 		s.target.stats.peep("stream-rotate-home-set")
 		return true
 	}

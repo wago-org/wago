@@ -21,6 +21,10 @@ type streamFlow struct {
 }
 
 func (s *streamState) streamRestore(fr streamFlow, result bool) {
+	if s.implicitLocals != nil {
+		s.streamRestoreImplicit(fr, result)
+		return
+	}
 	s.clearBoundsFacts()
 	for _, id := range s.locals {
 		s.release(id)
@@ -40,10 +44,10 @@ func (s *streamState) streamRestore(fr streamFlow, result bool) {
 	}
 	for i, w := range s.widths {
 		if id, ok := s.borrowSelectedBacking(i); ok {
-			s.locals[i] = id
+			s.setLocalBinding(int(i), id)
 			continue
 		}
-		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: w, refs: 1})
+		s.setLocalBinding(int(i), s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: w, refs: 1}))
 	}
 }
 func (s *streamState) streamLink(fr *streamFlow) {
@@ -182,9 +186,9 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 				deadVersion = event&streamEventDead != 0
 			}
 			if op == 0x20 {
-				id := s.locals[x]
+				id := s.localValue(int(x))
 				if deadVersion {
-					s.locals[x] = 0
+					s.setLocalBinding(int(x), 0)
 					s.node(id).home = 0
 					s.target.stats.peep("stream-local-last-read")
 				} else {
@@ -199,7 +203,7 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 						s.node(old).home = 0
 					}
 					s.release(old)
-					s.locals[x] = 0
+					s.setLocalBinding(int(x), 0)
 					if op == 0x22 {
 						s.stack = append(s.stack, id)
 					} else {
@@ -216,7 +220,7 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 					if s.node(id).kind != shared.ScalarConstant {
 						s.materialize(id, 0)
 					}
-					s.locals[x] = id
+					s.setLocalBinding(int(x), id)
 				}
 				if op == 0x22 {
 					s.retain(id)
