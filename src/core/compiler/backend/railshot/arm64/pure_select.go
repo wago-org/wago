@@ -31,7 +31,7 @@ func pureSelectLeaf(e *elem, typ machineType) bool {
 }
 
 func (f *fn) provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, ok bool) {
-	cost, multiplies := 0, 0
+	cost, hasMultiply := 0, false
 	for e != nil && e.isDeferred() {
 		if p.n == len(p.nodes) || e.st.typ != typ || e.st.hasGCRoot() ||
 			!isBinALU(e.deferredOp()) || !pureSelectLeaf(f.s.arg1(e), typ) {
@@ -42,12 +42,15 @@ func (f *fn) provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, 
 		cost++
 		if e.deferredOp() == opMul {
 			cost += 3
-			multiplies++
+			hasMultiply = true
 		}
 		e = f.s.arg0(e)
 	}
 	p.leaf = e
-	return p, cost >= 5 && multiplies != 0 && pureSelectLeaf(e, typ)
+	// A conditional branch has to save enough dependent arithmetic to
+	// repay the added control dependence. Keep a multiply and one cheap
+	// operation on the CSEL path.
+	return p, cost >= 8 && hasMultiply && pureSelectLeaf(e, typ)
 }
 
 func (f *fn) pureSelectResult(avoid regMask, need int) Reg {
