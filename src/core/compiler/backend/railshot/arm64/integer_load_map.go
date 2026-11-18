@@ -22,6 +22,8 @@ var integerMapVectorLiveOutEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_VECTOR
 
 var integerMapAffineExitEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_AFFINE_EXIT") != "1"
 
+var integerMapAfterMinPlusEnabled = os.Getenv("WAGO_ARM64_INTEGER_MAP_AFTER_MINPLUS") == "1"
+
 var integerMapAdjacentSLPEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_MAP_ADJACENT_SLP") != "1"
 
 var integerLoadMapEnabled = os.Getenv("WAGO_ARM64_NO_INTEGER_LOAD_MAP") != "1"

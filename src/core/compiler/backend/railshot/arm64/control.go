@@ -1966,9 +1966,14 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				if f.loopMemory {
 					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
-					f.emitMinPlusLoop(r)
+					minPlus := f.emitMinPlusLoop(r)
 					f.emitFloatMapLoop(r)
-					f.emitIntegerLoadMap(r)
+					// Min-plus already emits a vector prefix and resumes in
+					// the checked scalar body. A second map usually just
+					// rechecks eligibility on the short tail.
+					if !minPlus || integerMapAfterMinPlusEnabled {
+						f.emitIntegerLoadMap(r)
+					}
 					f.emitIntegerWordMap(r)
 					f.emitAbsReduceLoop(r)
 				}

@@ -244,13 +244,13 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 // Run a guarded vector prefix, then the original scalar tail. Executing the
 // tail restores every source temporary, including values observable after the
 // loop. Failed guards leave all locals and memory untouched.
-func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
+func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	if !f.opt(optDotLoopVector) || f.dotLoop != nil || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
-		return
+		return false
 	}
 	p, ok := f.inspectMinPlusLoop(r)
 	if !ok {
-		return
+		return false
 	}
 	oldPinned, oldFPinned := f.pinned, f.fpinned
 	alloc := func() Reg {
@@ -270,7 +270,7 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 					f.release(v)
 				}
 			}
-			return
+			return false
 		}
 	}
 	read := func(local int, dst Reg) {
@@ -425,4 +425,5 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("minplus-loop-vector")
+	return true
 }
