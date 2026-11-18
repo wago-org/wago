@@ -3459,7 +3459,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 				panic("invalid jump-table scale")
 			}
 			f.a.LdrIdx(X17, X17, ZR, 4, true, true) // X17 = (i32)table[idx]
-			f.a.Add64(X17, X16, X17)                 // target = table base + entry
+			f.a.Add64(X17, X16, X17)                // target = table base + entry
 		}
 		f.a.Br(X17)
 		tablePos := f.a.Len()
