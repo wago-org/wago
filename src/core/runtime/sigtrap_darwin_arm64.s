@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build darwin && arm64 && wago_guardpage
+//go:build darwin && arm64
 
 #include "textflag.h"
 

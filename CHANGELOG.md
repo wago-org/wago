@@ -8,6 +8,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Use guard-page (signals-based) memory bounds checks by default on Darwin
+  ARM64, without the `wago_guardpage` build tag. `WAGO_BOUNDS=explicit` or
+  `WithBoundsChecks(BoundsChecksExplicit)` restores explicit checks.
+
 - Improve AMD64 execution of integer maps, branches, and register-resident
   expressions while preserving checked scalar fallback for unsupported loops.
 

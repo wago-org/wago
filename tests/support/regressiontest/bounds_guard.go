@@ -1,4 +1,4 @@
-//go:build wago_guardpage
+//go:build wago_guardpage || (darwin && arm64)
 
 package regressiontest
 
