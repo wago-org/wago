@@ -51,6 +51,8 @@ func (s *streamState) integerUnary(op byte) error {
 		dst = s.alloc(uint64(1) << src)
 	}
 	f, a := s.target, s.target.a
+	// The result is about to diverge from any retained immutable generation.
+	s.forgetRegisterBacking(dst)
 	switch op {
 	case 0x45, 0x50:
 		a.TestSelf(Reg(src), inputWide)
@@ -149,6 +151,7 @@ func (s *streamState) integerSelect() error {
 	s.reserved |= uint64(1) << lr
 	dst := s.alloc(0)
 	a := s.target.a
+	s.forgetRegisterBacking(dst)
 	s.target.Move(dst, rr, wide)
 	a.TestSelf(Reg(cr), false)
 	a.Cmovcc(condNE, Reg(dst), Reg(lr), wide)
@@ -189,6 +192,10 @@ func (s *streamState) integerRotate(op byte) error {
 		if s.node(value).refs != 1 {
 			dst = s.alloc(uint64(1) << vr)
 		}
+		// A same-register zero i64 rotate emits no write. Preserve its proof.
+		if !wide || dst != vr || amount != 0 {
+			s.forgetRegisterBacking(dst)
+		}
 		if wide {
 			s.target.Move(dst, vr, true)
 		} else if dst != vr || amount == 0 {
@@ -220,6 +227,7 @@ func (s *streamState) integerRotate(op byte) error {
 		dst = s.alloc(uint64(1) << vr)
 	}
 	a := s.target.a
+	s.forgetRegisterBacking(dst)
 	if wide {
 		s.target.Move(dst, vr, true)
 	} else {

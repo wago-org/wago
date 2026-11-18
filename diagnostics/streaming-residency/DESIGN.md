@@ -79,3 +79,18 @@ VmHWM of 11.985022 / 11.954580 / 11.956627 MiB for main / OFF / ON.
 The absolute <5 MiB target remains unmet. Failed timing controls and confidence
 intervals prevent claiming the execution limit or compilation target is met.
 No target is qualified, and no PR or promotion is proposed.
+
+## Retained-copy checkpoint (ce9a47ef)
+
+The opt-in `WAGO_EXPERIMENTAL_STREAM_COPY_PROOF=1` retains an immutable
+backing-generation reference when a borrowed value is copied into an owned
+register. Spilling an unchanged copy can return to that backing without another
+store. Destructive operations relinquish the proof before writing; the existing
+dirty-i32 carrier bit remains separate. This adds no value-node width and keeps
+spill-slot ownership with the shared backing cell.
+
+The frozen checkpoint passed 61 focused ownership/statistics tests without
+skips or failures (0.142 seconds). All 145 production runtime oracles also passed with Go 1.27.1. Compilation,
+execution-latency and RSS measurements remain pending for this revision. The preceding
+negative wider-home results are historical, not qualification of this new
+checkpoint. No gain, target success or merge recommendation is claimed.

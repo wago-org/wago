@@ -6,6 +6,8 @@ import "os"
 
 const streamMaxHomes = 8
 
+var streamingCopyProofEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_COPY_PROOF") == "1"
+
 var streamingResidencyEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_RESIDENCY") == "1"
 var streamingWideHomesEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_WIDE_HOMES") == "1"
 

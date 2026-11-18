@@ -371,6 +371,9 @@ func (s *streamState) release(id streamID) {
 		s.releaseBacking(uint32(n.slot))
 	case shared.ScalarRegister:
 		s.owners[n.reg] = 0
+		if cell := streamRegisterProof(*n); cell != 0 {
+			s.releaseBacking(cell)
+		}
 	case shared.ScalarFrame:
 		if int(n.slot) >= s.tempBase {
 			s.freeSlots = append(s.freeSlots, int(n.slot))
@@ -425,8 +428,14 @@ func (s *streamState) slot() int {
 	return slot
 }
 func (s *streamState) spill(id streamID) {
-
 	n := s.node(id)
+	if cell := streamRegisterProof(*n); cell != 0 {
+		s.owners[n.reg] = 0
+		n.kind, n.slot, n.home = streamBacking, int32(cell), 0
+		n.constant, n.depth = 0, 0
+		s.target.stats.peep("stream-generation-reuse")
+		return
+	}
 	if n.home != 0 && n.home&streamRegisterHome == 0 {
 		// The unchanged local home is already a valid backing copy. Eviction
 		// needs no store or temporary slot; identity and references stay intact.
@@ -460,7 +469,7 @@ func (s *streamState) alloc(avoid uint64) uint8 {
 			continue
 		}
 		n := s.node(id)
-		keep := n.home != 0 || n.refs > 1
+		keep := (n.home != 0 || n.refs > 1) && streamRegisterProof(*n) == 0
 		// Creation order increases in bytecode order. Among equally reusable
 		// values, evict an older value so recent stack results can begin a
 		// reduction in registers. Homes and multiple references suggest reuse;
@@ -543,14 +552,20 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 			s.freeSlots = append(s.freeSlots, int(n.slot))
 		}
 	}
+	proof := streamRegisterProof(n)
 	if n.kind == streamBacking {
-		s.releaseBacking(uint32(n.slot))
+		if streamingCopyProofEnabled {
+			proof = uint32(n.slot)
+			s.target.stats.peep("stream-generation-copy")
+		} else {
+			s.releaseBacking(uint32(n.slot))
+		}
 		s.node(id).home = 0
 	}
 	s.node(id).kind = shared.ScalarRegister
 	s.node(id).reg = r
 	s.node(id).depth = 0
-	s.node(id).constant = 0 // moves and loads normalize i32 into the new register
+	s.node(id).constant = int64(uint64(proof) << 1) // moves/loads normalize bit zero, retaining generation identity
 	s.owners[r] = id
 
 	return r
@@ -585,11 +600,11 @@ func (s *streamState) returnValue(id streamID) {
 	}
 	clear(s.locals)
 	reg := s.materialize(id, 0)
-	if n := s.node(id); !n.wide && n.constant == 1 {
+	if n := s.node(id); !n.wide && n.constant&1 != 0 {
 		// W-register arithmetic already zeroes upper bits. A direct incoming
 		// i32 return has no such instruction, so normalize only that carrier.
 		s.target.NormalizeI32(reg)
-		n.constant = 0
+		n.constant &^= 1
 	}
 
 	s.target.Return(reg, s.node(id).wide, s.maxSlot)
@@ -628,6 +643,7 @@ func (s *streamState) expression(id streamID, avoid uint64) uint8 {
 				}
 				dst := s.alloc(avoid | 1<<left | 1<<index)
 
+				s.forgetRegisterBacking(dst)
 				if s.target.ScaledAdd(n.operandWide, dst, left, index, uint8(count.constant)) {
 
 					s.release(n.left)
@@ -670,6 +686,7 @@ func (s *streamState) expression(id streamID, avoid uint64) uint8 {
 		dst = s.alloc(mask)
 	}
 
+	s.forgetRegisterBacking(dst)
 	s.target.Binary(n.op, n.operandWide, dst, left, right)
 
 	s.release(n.left)

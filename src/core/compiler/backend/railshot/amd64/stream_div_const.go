@@ -65,6 +65,10 @@ func (s *streamState) integerDivConst(op byte) bool {
 	if needsMask {
 		mask = s.alloc(avoid)
 	}
+	// Same-register i64 division by +1 is the only no-write case here.
+	if !wide || dst != src || remainder || d != 1 {
+		s.forgetRegisterBacking(dst)
+	}
 	if wide {
 		f.Move(dst, src, true)
 	} else {

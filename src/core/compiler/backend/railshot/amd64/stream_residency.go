@@ -120,8 +120,11 @@ func (s *streamState) commitBackingHomes() {
 		}
 		id := s.locals[n-1]
 		cell := r.homes[k]
-		unchanged := id != 0 && s.node(id).kind == streamBacking && uint32(s.node(id).slot) == cell && r.cells[cell].kind == shared.ScalarRegister && r.cells[cell].reg == reg
+		unchanged := id != 0 && streamNodeBacking(*s.node(id)) == cell && cell != 0 && r.cells[cell].kind == shared.ScalarRegister && r.cells[cell].reg == reg
 		changed[k] = !unchanged
+		if unchanged && s.registerBacking(id) != 0 {
+			s.target.stats.peep("stream-generation-home-hit")
+		}
 	}
 	// Preserve every old destination generation before any destination writes.
 	for k, yes := range changed {
@@ -217,10 +220,10 @@ func (s *streamState) tryBackingHomeSet(local int, id, old streamID) bool {
 		return false
 	}
 	expr, before := *s.node(id), *s.node(old)
-	if expr.kind != streamDeferred || expr.refs != 1 || expr.left != old || expr.right == old || before.kind != streamBacking || before.refs != 2 {
+	if expr.kind != streamDeferred || expr.refs != 1 || expr.left != old || expr.right == old || streamNodeBacking(before) == 0 || before.refs != 2 {
 		return false
 	}
-	cell := uint32(before.slot)
+	cell := streamNodeBacking(before)
 	c := s.residency.cells[cell]
 	if c.refs != 2 || c.kind != shared.ScalarRegister {
 		return false
@@ -243,17 +246,18 @@ func (s *streamState) tryBackingHomeSet(local int, id, old streamID) bool {
 	right := *s.node(expr.right)
 	constant := right.kind == shared.ScalarConstant
 	if !constant {
-		if right.kind != streamBacking || uint32(right.slot) == cell {
+		rightCell := streamNodeBacking(right)
+		if rightCell == 0 || rightCell == cell {
 			return false
 		}
 		current := false
 		for k, n := range s.homeLocals {
-			if n != 0 && s.locals[n-1] == expr.right && s.residency.homes[k] == uint32(right.slot) {
+			if n != 0 && s.locals[n-1] == expr.right && s.residency.homes[k] == rightCell {
 				current = true
 				break
 			}
 		}
-		if !current || s.residency.cells[uint32(right.slot)].kind != shared.ScalarRegister {
+		if !current || s.residency.cells[rightCell].kind != shared.ScalarRegister {
 			return false
 		}
 	}
@@ -261,13 +265,13 @@ func (s *streamState) tryBackingHomeSet(local int, id, old streamID) bool {
 	if !s.target.Operand(expr.op, expr.operandWide, operand) {
 		return false
 	}
-	s.target.Binary(expr.op, expr.operandWide, c.reg, c.reg, operand)
 	// Reserve the expression node's future backing reference before destroying
 	// the old node, whose final release consumes its own single cell reference.
 	s.retainBacking(cell)
 	s.release(old)
 	s.release(expr.left)
 	s.release(expr.right)
+	s.target.Binary(expr.op, expr.operandWide, c.reg, c.reg, operand)
 	value := s.node(id)
 	value.kind, value.slot, value.home = streamBacking, int32(cell), s.localHomeTag(local)
 	value.left, value.right, value.constant = 0, 0, 0
@@ -281,4 +285,35 @@ func (s *streamState) tryBackingHomeSet(local int, id, old streamID) bool {
 		s.target.stats.peep("stream-home-sink-register")
 	}
 	return true
+}
+
+// Register payload: bit zero is the existing dirty-i32 carrier marker; upper
+// bits hold one owned reference to an immutable backing generation, when any.
+func streamRegisterProof(n streamNode) uint32 {
+	if n.kind != shared.ScalarRegister {
+		return 0
+	}
+	return uint32(uint64(n.constant) >> 1)
+}
+func (s *streamState) registerBacking(id streamID) uint32 { return streamRegisterProof(*s.node(id)) }
+func streamNodeBacking(n streamNode) uint32 {
+	if n.kind == streamBacking {
+		return uint32(n.slot)
+	}
+	return streamRegisterProof(n)
+}
+
+// Called before a destination register's first destructive write. Physical
+// aliases remain protected by the ordinary owner/refcount rules; only the
+// immutable equality proof is relinquished here.
+func (s *streamState) forgetRegisterBacking(reg uint8) {
+	id := s.owners[reg]
+	if id == 0 {
+		return
+	}
+	n := s.node(id)
+	if cell := streamRegisterProof(*n); cell != 0 {
+		n.constant &= 1
+		s.releaseBacking(cell)
+	}
 }
