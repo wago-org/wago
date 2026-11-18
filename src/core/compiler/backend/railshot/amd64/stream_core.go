@@ -284,6 +284,7 @@ type streamControl struct {
 // alias shares the field declaration without adding a public type. Its
 // pointer-free backing is reused only across functions of one module worker.
 type streamState struct {
+	residency                   *streamResidency
 	nodes                       []streamNode
 	stack, locals               []streamID
 	widths                      []bool
@@ -306,7 +307,7 @@ type streamState struct {
 }
 
 func (s *streamState) Memory() uint64 {
-	return s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
+	return s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
 func (s *streamState) add(n streamNode) streamID {
@@ -366,6 +367,8 @@ func (s *streamState) release(id streamID) {
 		return
 	}
 	switch n.kind {
+	case streamBacking:
+		s.releaseBacking(uint32(n.slot))
 	case shared.ScalarRegister:
 		s.owners[n.reg] = 0
 	case shared.ScalarFrame:
@@ -391,6 +394,9 @@ func (s *streamState) pop() streamID {
 func (s *streamState) operand(id streamID) shared.ScalarOperand {
 	n := s.node(id)
 	o := shared.ScalarOperand{Kind: n.kind, Reg: n.reg, Constant: n.constant}
+	if n.kind == streamBacking {
+		return s.backingOperand(uint32(n.slot))
+	}
 	if n.kind == streamBorrow {
 		if r, ok := s.localHomeReg(int(n.slot)); ok {
 			o.Kind, o.Reg = shared.ScalarRegister, r
@@ -440,8 +446,16 @@ func (s *streamState) spill(id streamID) {
 func (s *streamState) alloc(avoid uint64) uint8 {
 	avoid |= s.reserved
 	for _, r := range s.regs {
-		if avoid&(1<<r) == 0 && s.owners[r] == 0 {
+		if avoid&(1<<r) == 0 && s.owners[r] == 0 && (s.residency == nil || s.residency.registers[r] == 0) {
 			return r
+		}
+	}
+	if s.residency != nil {
+		for _, r := range s.regs {
+			if cell := s.residency.registers[r]; avoid&(1<<r) == 0 && cell != 0 {
+				s.evacuateBacking(cell)
+				return r
+			}
 		}
 	}
 	var victim streamID
@@ -471,6 +485,13 @@ func (s *streamState) alloc(avoid uint64) uint8 {
 	panic("streaming operands: physical register constraints exhausted")
 }
 func (s *streamState) evict(mask uint64) {
+	if s.residency != nil {
+		for r, cell := range s.residency.registers {
+			if cell != 0 && mask&(1<<r) != 0 {
+				s.evacuateBacking(cell)
+			}
+		}
+	}
 	for r, id := range s.owners {
 		if id != 0 && mask&(1<<r) != 0 {
 			s.spill(id)
@@ -494,7 +515,7 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 	case shared.ScalarRegister:
 		s.target.Move(r, n.reg, n.wide)
 		s.owners[n.reg] = 0
-	case shared.ScalarFrame, streamBorrow:
+	case shared.ScalarFrame, streamBorrow, streamBacking:
 		o := s.operand(id)
 		if o.Kind == shared.ScalarRegister {
 			s.target.Move(r, o.Reg, n.wide)
@@ -505,6 +526,10 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 		if n.kind == shared.ScalarFrame && int(n.slot) >= s.tempBase {
 			s.freeSlots = append(s.freeSlots, int(n.slot))
 		}
+	}
+	if n.kind == streamBacking {
+		s.releaseBacking(uint32(n.slot))
+		s.node(id).home = 0
 	}
 	s.node(id).kind = shared.ScalarRegister
 	s.node(id).reg = r
@@ -721,7 +746,7 @@ func (s *streamState) canonicalize(registerResult bool) {
 	}
 	var resultReg uint8
 	for _, r := range s.regs {
-		if s.reserved&(1<<r) == 0 {
+		if (s.reserved|s.backingHomeMask())&(1<<r) == 0 {
 			resultReg = r
 			break
 		}
@@ -741,6 +766,9 @@ func (s *streamState) canonicalize(registerResult bool) {
 	}
 
 	s.commitRegisterHomes()
+	savedHomes := s.reserved
+	s.reserved |= s.backingHomeMask()
+	defer func() { s.reserved = savedHomes }()
 	if registerResult {
 		id := s.stack[len(s.stack)-1]
 		r := s.materialize(id, 0)
@@ -795,6 +823,19 @@ func (s *streamState) restore(depth int) {
 		if s.locals[i] == 0 {
 			continue
 		}
+		if s.residency != nil {
+			found := false
+			for k, n := range s.homeLocals {
+				if n != 0 && int(n)-1 == i {
+					s.locals[i] = s.borrowBacking(s.residency.homes[k], i)
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+		}
 		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: wide, refs: 1})
 	}
 
@@ -820,6 +861,19 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 	if needed := min(summary.Nodes, 64); cap(s.nodes) < needed {
 		s.Discarded += uint64(cap(s.nodes)) * uint64(unsafe.Sizeof(streamNode{}))
 		s.nodes = make([]streamNode, 0, needed)
+	}
+	if streamingResidencyEnabled && summary.HomeLocals != ([2]uint16{}) {
+		if s.residency == nil {
+			s.residency = &streamResidency{}
+		}
+		r := s.residency
+		r.cells = r.cells[:0]
+		r.cells = append(r.cells, streamBackingCell{})
+		r.free = 0
+		r.homes = [2]uint32{}
+		r.registers = [64]uint32{}
+	} else {
+		s.residency = nil
 	}
 	s.nodes = s.nodes[:0]
 	s.add(streamNode{})
@@ -900,6 +954,7 @@ func (s *streamState) FinishWorker() {
 
 	s.Discarded += s.Memory()
 	s.EventBytes = 0
+	s.residency = nil
 	s.nodes = nil
 	s.stack = nil
 	s.locals = nil

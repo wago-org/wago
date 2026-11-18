@@ -28,6 +28,9 @@ func (s *streamState) streamRestore(fr streamFlow, result bool) {
 		s.release(id)
 	}
 	s.stack = s.stack[:0]
+	if s.residency != nil {
+		s.restoreBackingMaps()
+	}
 	for i, w := range s.flowTypes[fr.typeStart : fr.typeStart+fr.base] {
 		s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarFrame, slot: int32(i + 1), wide: w, refs: 1}))
 	}
@@ -35,6 +38,10 @@ func (s *streamState) streamRestore(fr streamFlow, result bool) {
 		s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarFrame, slot: int32(fr.base + 1), wide: fr.wide, refs: 1}))
 	}
 	for i, w := range s.widths {
+		if id, ok := s.borrowSelectedBacking(i); ok {
+			s.locals[i] = id
+			continue
+		}
 		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: w, refs: 1})
 	}
 }
@@ -68,6 +75,9 @@ func (s *streamState) streamEdge(depth int, conditional bool) {
 		homes = s.streamCaptureCondition(condition)
 	}
 	s.canonicalize(false)
+	saved := s.reserved
+	s.reserved |= s.backingHomeMask()
+	defer func() { s.reserved = saved }()
 	fr := &s.flow[target]
 	if conditional && (fr.kind == 0x03 || fr.result == 0) && streamingHomeSinkEnabled {
 		site := s.condition(condition, homes, true)

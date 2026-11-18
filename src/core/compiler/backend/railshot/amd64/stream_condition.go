@@ -13,6 +13,9 @@ type streamBranchHome struct {
 }
 
 func (s *streamState) currentBorrowHome(id streamID) (uint8, bool) {
+	if s.residency != nil {
+		return 0, false
+	}
 	n := s.node(id)
 	if n.kind != streamBorrow || n.slot < 0 || int(n.slot) >= len(s.locals) || s.locals[n.slot] != id || n.home != s.localHomeTag(int(n.slot)) {
 		return 0, false
@@ -50,6 +53,9 @@ func (s *streamState) streamCaptureCondition(id streamID) streamBranchHome {
 	return streamBranchHome{}
 }
 func (s *streamState) condition(id streamID, homes streamBranchHome, taken bool) int {
+	saved := s.reserved
+	s.reserved |= s.backingHomeMask()
+	defer func() { s.reserved = saved }()
 	n := *s.node(id)
 	if n.kind == streamDeferred && streamCompare(n.op) {
 		var left uint8

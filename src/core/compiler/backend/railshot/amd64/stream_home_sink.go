@@ -16,6 +16,9 @@ func (s *streamState) tryHomeSet(local int, id, old streamID) bool {
 	if !streamingHomeSinkEnabled {
 		return false
 	}
+	if s.residency != nil {
+		return s.tryBackingHomeSet(local, id, old)
+	}
 	home, ok := s.localHomeReg(local)
 	if !ok {
 		return false

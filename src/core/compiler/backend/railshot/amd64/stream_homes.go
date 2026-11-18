@@ -28,10 +28,12 @@ func (s *streamState) initializeRegisterHomes(selected [2]uint16, nParams int) {
 			continue
 		}
 		for _, reg := range candidates {
-			if s.reserved&(uint64(1)<<reg) != 0 {
+			if s.reserved&(uint64(1)<<reg) != 0 || (s.residency != nil && s.residency.registers[reg] != 0) {
 				continue
 			}
-			s.reserved |= uint64(1) << reg
+			if s.residency == nil {
+				s.reserved |= uint64(1) << reg
+			}
 			s.homeLocals[k], s.homeRegs[k] = n, reg
 			local := int(n) - 1
 			if local < nParams {
@@ -40,13 +42,24 @@ func (s *streamState) initializeRegisterHomes(selected [2]uint16, nParams int) {
 				s.target.Constant(reg, 0, s.widths[local])
 			}
 			s.release(s.locals[local])
-			s.locals[local] = s.add(streamNode{kind: streamBorrow, slot: int32(local), home: s.localHomeTag(local), wide: s.widths[local], refs: 1})
+			if s.residency != nil {
+				cell := s.newBacking(reg, s.widths[local])
+				s.residency.homes[k] = cell
+				s.locals[local] = s.borrowBacking(cell, local)
+				s.target.stats.peep("stream-residency-home")
+			} else {
+				s.locals[local] = s.add(streamNode{kind: streamBorrow, slot: int32(local), home: s.localHomeTag(local), wide: s.widths[local], refs: 1})
+			}
 			s.target.stats.peep("stream-local-home")
 			break
 		}
 	}
 }
 func (s *streamState) commitRegisterHomes() {
+	if s.residency != nil {
+		s.commitBackingHomes()
+		return
+	}
 	// Capture both inputs before changing either home. Ordinary owners never
 	// occupy home registers, and tagged spills always create genuine frame copies.
 	var sources [2]uint8
