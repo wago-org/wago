@@ -746,3 +746,45 @@ func TestIntegerLoadMapThreeIndependentStores(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapDiscardedLoadPreservesTrap(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, tc := range []struct {
+		base      int32
+		invariant bool
+		trap      bool
+	}{
+		{8192, false, false},
+		{1024, false, false}, // overlaps the output
+		{65528, false, true}, // traps after earlier stores
+		{8192, true, false},
+		{65533, true, true},
+	} {
+		body := []byte{1, 4, 0x7f}
+		for i, base := range []int32{2048, 1024, tc.base} {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(base)...)
+			body = append(body, 0x21, byte(i))
+		}
+		body = append(body, 0x03, 0x40, 0x01, 0x20, 2)
+		if !tc.invariant {
+			body = append(body, 0x20, 3, 0x6a)
+		}
+		body = append(body, 0x28, 2, 0, 0x1a,
+			0x20, 1, 0x20, 3, 0x6a, 0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 0, 0x36, 2, 0,
+			0x20, 3, 0x41, 4, 0x6a, 0x22, 3, 0x41, 0x8c, 2, 0x47, 0x0d, 0, 0x0b,
+			0x20, 3, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+		if (wantErr != nil) != tc.trap || (err != nil) != tc.trap || got != want || !bytes.Equal(actual, expected) {
+			t.Fatalf("case=%+v: got %x/%v, want %x/%v, memory equal=%v", tc, got, err, want, wantErr, bytes.Equal(actual, expected))
+		}
+		if diagnosticsEnabled && hits == 0 {
+			t.Fatalf("case=%+v: discarded load prevented vectorization", tc)
+		}
+	}
+}

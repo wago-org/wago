@@ -81,6 +81,8 @@ type floatMapPlan struct {
 	integer                      bool
 	orderedStoreLoads            bool
 	interleaved                  bool
+	guardOnlyLoads               [4]uint8
+	guardOnlyLoadN               int
 	extraStoreN                  int
 	extraStores                  [2]shared.LoopStore[int]
 	normalizedInduction          bool
@@ -165,6 +167,13 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			return false
 		}
 		switch op {
+		case 0x01, 0x1a: // nop and drop
+			if !p.integer || op == 0x1a && depth == 0 {
+				return false
+			}
+			if op == 0x1a {
+				depth--
+			}
 		case 0x20, 0x21, 0x22:
 			x, e := scan.U32()
 			if e != nil || x >= uint32(f.nLocals) {
@@ -390,7 +399,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			for i := 0; i < n; i++ {
 				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && used[i] == 0 {
-					return false
+					if !p.integer || p.nodes[i].op != 0x28 || p.guardOnlyLoadN == len(p.guardOnlyLoads) {
+						return false
+					}
+					p.guardOnlyLoads[p.guardOnlyLoadN] = uint8(i)
+					p.guardOnlyLoadN++
 				}
 			}
 			for i := 1; i < ns; i++ {
@@ -427,7 +440,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			// disambiguation; invariant loads already have separate guards.
 			p.orderedStoreLoads = true
 			for i := 0; i < n; i++ {
-				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != uint8(1<<loadStage[i]) {
+				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != 0 && used[i] != uint8(1<<loadStage[i]) {
 					p.orderedStoreLoads = false
 				}
 			}
@@ -847,6 +860,15 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return
 		}
 	}
+	// A discarded value needs a range proof, but cannot carry a dependence
+	// through memory. If the proof fails, the original loop preserves the
+	// location of the trap and any earlier stores.
+	for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+		address := p.addresses[load]
+		if !address.invariant && !add(address) {
+			return
+		}
+	}
 	if p.extraStoreN == 1 && nl > 8 || p.extraStoreN == 2 && nl > 4 {
 		return
 	}
@@ -1025,6 +1047,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				f.recoverLocal(p.addresses[x].base)
 			}
 		}
+		for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+			if address := p.addresses[load]; address.invariant && address.base >= 0 {
+				f.recoverLocal(address.base)
+			}
+		}
 		for _, g := range groups[:ng] {
 			if g.base >= 0 {
 				f.recoverLocal(g.base)
@@ -1171,6 +1198,17 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condAE)
 	}
 	f.ld64(size, linMemReg, -int32(bdCurBytes))
+	for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+		address := p.addresses[load]
+		if address.invariant {
+			read(address.base, X16)
+			f.floatMapOffset(X16, X16, uint64(address.bias), false, X17)
+			f.floatMapOffset(X16, X16, address.offset+4, true, X17)
+			f.cmpRR(X16, size, true)
+			guard(condA)
+		}
+	}
+
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
 		if !p.normalizedInduction || g.index == p.counter+1 {
