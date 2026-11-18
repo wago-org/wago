@@ -311,15 +311,21 @@ func (s *streamState) Memory() uint64 {
 	return s.boundsBytes() + s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
+
+// nextOrder preserves the bounded allocator-age policy even when a canonical
+// local descriptor is reused instead of released and reconstructed.
+func (s *streamState) nextOrder() uint16 {
+	if streamValueChecks && int(s.nodes[0].order) >= streamMaxNodes {
+		panic("streaming operands: admitted creation bound exceeded")
+	}
+	s.nodes[0].order++
+	return s.nodes[0].order
+}
 func (s *streamState) add(n streamNode) streamID {
 	if len(s.nodes) != 0 {
 		// The sentinel owns creation order and the free-list head. Reusing a
 		// dead index never changes the age or location of a live value.
-		if streamValueChecks && int(s.nodes[0].order) >= streamMaxNodes {
-			panic("streaming operands: admitted creation bound exceeded")
-		}
-		s.nodes[0].order++
-		n.order = s.nodes[0].order
+		n.order = s.nextOrder()
 		if id := s.nodes[0].left; id != 0 {
 			if streamValueChecks && s.node(id).refs != 0 {
 				panic("streaming operands: live value in free list")
@@ -845,8 +851,21 @@ func (s *streamState) restore(depth int) {
 
 	// Stack types are retained through the agreement. Each else restores only the
 	// pre-split prefix, whose types cannot change in a validated scalar body.
-	for _, id := range s.locals {
-		s.release(id)
+	// Decide before any release: stack rebuilding can recycle dead local IDs.
+	// Only unaliased ordinary frame borrows survive this same-path agreement;
+	// alternate-path streamRestore deliberately still reconstructs all locals.
+	var keep [4]uint64
+	if streamingRestoreReuseEnabled {
+		for i, id := range s.locals {
+			if s.canReuseRestoredLocal(i, id) {
+				keep[i/64] |= uint64(1) << uint(i%64)
+			}
+		}
+	}
+	for i, id := range s.locals {
+		if keep[i/64]&(uint64(1)<<uint(i%64)) == 0 {
+			s.release(id)
+		}
 	}
 	for i, id := range s.stack {
 		wide := s.node(id).wide
@@ -857,6 +876,13 @@ func (s *streamState) restore(depth int) {
 	}
 	s.stack = s.stack[:depth]
 	for i, wide := range s.widths {
+		if keep[i/64]&(uint64(1)<<uint(i%64)) != 0 {
+			// Keep semantic identity but refresh its allocator age at exactly
+			// the old add position. This does not relax the creation budget.
+			s.node(s.locals[i]).order = s.nextOrder()
+			s.target.stats.peep("stream-restore-local-reuse")
+			continue
+		}
 		if s.locals[i] == 0 {
 			continue
 		}

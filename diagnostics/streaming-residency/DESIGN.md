@@ -312,3 +312,30 @@ Arithmetic mean workload-median absolute compiled-barrier VmHWM was
 11.9871767 / 12.0643319 / 12.0609644 MiB for main / bounds OFF / bounds ON.
 There is no meaningful memory improvement and the absolute 5 MiB target is
 unmet. Source is unchanged; no PR or promotion is proposed.
+
+### Metadata reuse and admission funnel checkpoint (db4f2dc7)
+
+`WAGO_EXPERIMENTAL_STREAM_RESTORE_REUSE=1` retains sole-owned ordinary
+canonical-frame local descriptors during same-path restoration. It excludes
+shared values and selected register/backing homes, preserves capture/store and
+stack handling, and refreshes allocator order at the original reconstruction
+position without relaxing the creation budget. Alternate-path restoration is
+unchanged. This tests metadata-work reduction, not a new lowering semantics.
+
+`WAGO_EXPERIMENTAL_STREAM_HINT_FUNNEL=1` uses existing function-local negative
+hints to avoid unsupported admission attempts after inline planning. It does
+not prove eligibility or necessarily avoid a byte scan. The relevant small
+admission-cost attribution does not imply a 40% compilation reduction.
+
+The preceding b7f0b4f7 checkpoint passed 98 focused ownership/statistics
+top-level tests with zero failures or skips and all 145 production runtime
+oracles. This revision only reorders equivalent rejection predicates to check
+node fields before scanning selected homes. The final db4f2dc7 focused
+RestoreReuse/HintFunnel gate passed all 7 tests in 0.008 seconds with zero
+skips or failures. Across 290 fresh public-API subprocesses, OFF/ON native
+images and serialized metadata matched exactly for all 145 workloads, with
+the same 575 selected functions. Diagnostics observed 63,142 same-path
+descriptor reuses and 99 avoided admission attempts. These are mechanism
+counts, not speedup measurements. Final rebuilt production runtime verification
+and latency qualification remain pending. No measured improvement or
+promotion is claimed; earlier results remain distinct.

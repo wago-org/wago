@@ -3951,7 +3951,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// selected splices before choosing a body engine; probing the not-yet-
 		// installed tables would admit a call that emission must later reject.
 		if len(inlinedCallees) == 0 {
-			f.streamSummary = f.admitStreaming(c)
+			if streamingOperandsEnabled && streamHintsReject(hints) {
+				// This avoids an admission attempt, not necessarily a byte scan:
+				// the ordinary preflight also has cheap contextual rejection gates.
+				f.stats.peep("stream-hint-funnel-reject")
+			} else {
+				f.streamSummary = f.admitStreaming(c)
+			}
 		}
 		if f.streamSummary.Eligible && streamingRegisterHomesEnabled && hints.flags.has(hintHasLoop) {
 			f.streamSummary.selectHomes(hints.localScore)
