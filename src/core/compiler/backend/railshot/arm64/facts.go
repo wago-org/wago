@@ -21,10 +21,9 @@ const (
 	storageGCRoot
 	storageEHRoot
 	factNonZero
-	storageCapturedBounds // stReg contains an unchanged i32 address with a proof in cval
-	valueFactMask         = factUpper32Zero | factBoolean | factNonZero
-	localFactEpochStep    = valueFacts(1 << 5)
-	localFactEpochMask    = valueFacts(7 << 5)
+	valueFactMask      = factUpper32Zero | factBoolean | factNonZero
+	localFactEpochStep = valueFacts(1 << 5)
+	localFactEpochMask = valueFacts(7 << 5)
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }

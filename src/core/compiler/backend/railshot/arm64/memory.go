@@ -539,8 +539,7 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
-	capturedBounds := e.st.kind == stReg && e.st.typ == mtI32 &&
-		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off32)+int64(size) <= e.st.cval
+	capturedBounds := uint64(off32)+uint64(size) <= uint64(e.st.capturedBoundsExtent())
 	bcKind, bcIdx, bcBias := affineKind, affineIdx, affineBias
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:

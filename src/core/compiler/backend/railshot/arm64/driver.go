@@ -1377,8 +1377,7 @@ func (f *fn) realizeLocalRefsWithBounds(x int, skipFrom *elem, extent int32) {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
 			if extent > 0 && e.st.typ == mtI32 {
-				e.st.cval = int64(extent)
-				e.st.meta |= uint8(storageCapturedBounds)
+				e.st.slot = capturedBoundsExtentBit | uint32(extent)
 			}
 		case e.elemKind() == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.

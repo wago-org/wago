@@ -131,6 +131,17 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storag
 	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(size), cval: int64(borrow + 1)}
 }
 
+// Ordinary register storage has no frame slot. A high bit distinguishes the
+// checked extent from a small spill index or the retained deferred opcode.
+const capturedBoundsExtentBit = uint32(1 << 31)
+
+func (st storage) capturedBoundsExtent() uint32 {
+	if st.kind == stReg && st.typ == mtI32 && st.slot&capturedBoundsExtentBit != 0 {
+		return st.slot &^ capturedBoundsExtentBit
+	}
+	return 0
+}
+
 func (st storage) memDisp() int32     { return int32(st.slot) }
 func (st storage) slotIndex() int     { return int(st.slot) }
 func (st storage) index() int         { return int(st.idx) }
@@ -150,8 +161,8 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	cval int64  // constant bits for stConst, or checked extent for a captured address
-	slot uint32 // spill-slot index, or int32 displacement bits for stMemRef
+	cval int64  // constant value/bits for stConst
+	slot uint32 // frame slot, stMemRef displacement, or marked extent on a captured i32 register
 	cold uint32 // index+1 into stack.cold for custom plugin values
 	idx  uint32 // local/global/function index, or packed stMemRef metadata
 	kind storageKind
