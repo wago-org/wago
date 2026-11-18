@@ -1,0 +1,71 @@
+[
+  {
+    "name": "ordinary",
+    "binary": "ablation-main",
+    "env": {}
+  },
+  {
+    "name": "explicitA",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "-"
+    }
+  },
+  {
+    "name": "explicitB",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "-"
+    }
+  },
+  {
+    "name": "tree",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "tree-order,assoc-tree,linear-integer-tree"
+    }
+  },
+  {
+    "name": "inline",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "inline,inline-callfree,tail-loop-inline"
+    }
+  },
+  {
+    "name": "interval",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "interval-region-pins,interval-control,interval-next-use,interval-scratch-lease,interval-r8-lease,interval-i64-weight"
+    }
+  },
+  {
+    "name": "scalar",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "scalar-loop-unroll,counted-loop-latch,linear-sum-loop,byte-reduce-loop,pure-integer-if-select,tuple-if-select"
+    }
+  },
+  {
+    "name": "bounds",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "bounds-facts,multi-bounds-cert,memory-min-bounds"
+    }
+  },
+  {
+    "name": "control",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "straight-line-block,callfree-loop-cold-exit,callfree-loop-reg-state,loop-local-params"
+    }
+  },
+  {
+    "name": "wholeloop",
+    "binary": "ablation-main",
+    "env": {
+      "WAGO_ABLATE_OPTIMIZATIONS": "-",
+      "WAGO_AMD64_INTEGER_REDUCTION_LOOP": "0"
+    }
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "records": 4350,
+  "all_verified": true,
+  "arithmetic_mean_workload_medians_ns": {
+    "bounds": 858194.7862068965,
+    "control": 855208.7379310345,
+    "explicitA": 842898.0896551724,
+    "explicitB": 845432.6,
+    "inline": 852733.0482758621,
+    "interval": 834448.6413793104,
+    "ordinary": 795509.9103448276,
+    "scalar": 905025.6206896552,
+    "tree": 855599.275862069,
+    "wholeloop": 856520.2206896552
+  },
+  "relative_to_explicit_controls_percent": {
+    "bounds": 1.6619305051163602,
+    "control": 1.3082026135180724,
+    "explicitA": -0.1501193078084273,
+    "explicitB": 0.1501193078084162,
+    "inline": 1.0149319088697872,
+    "interval": -1.151042684684045,
+    "ordinary": -5.763732754593964,
+    "scalar": 7.20952076923973,
+    "tree": 1.3544658169802215,
+    "wholeloop": 1.4635611302655782
+  },
+  "raw_sha256": "30741f5ae28991ba30801713a25274b215b829354df8eeb57a04122717d35853"
+}
