@@ -126,3 +126,23 @@ skips (0.114 seconds). All 145 production runtime oracles also passed. Performan
 remains pending for this revision. Prior negative evidence remains
 applicable to its labeled checkpoints; no improvement or target success is
 claimed for this new source checkpoint, and no PR is proposed.
+
+### Completed pure-select diagnostic (fcaf7d20)
+
+All 600 timing records and 435 memory-profile runtime oracles verified. On the
+Aho workload, within-candidate steady ON/OFF was 0.20518 with exact paired
+95% interval [0.10281, 0.26692]; ON/main was 0.98243
+([0.72752, 1.24948]). First-call ON/OFF was 0.21480
+([0.17657, 0.25857]); ON/main was 0.97543 ([0.77407, 0.99779]).
+
+Eight actual guards restore 1,122 checksum multiplications rather than the
+prior 245,760 for this input. This count is derived from input/control flow,
+not a hardware instruction-counter measurement. It explains a workload-specific
+recovery, not a general speedup.
+
+Overall steady A/A 1.0575, compilation A/A 0.9535 and first-call A/A 1.0432
+failed their agreement checks. No overall ≤5% execution qualification or
+compilation improvement is established. Mean absolute compiled-barrier VmHWM
+was 11.986773 / 11.966676 / 11.966433 MiB for main / pure-select OFF / ON,
+essentially unchanged. The absolute memory target remains unmet. Source is
+unchanged; no PR or promotion is proposed.
