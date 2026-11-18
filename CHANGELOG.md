@@ -22,8 +22,16 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   preserving checked scalar fallback for unsupported loops.
   ([#1058](https://github.com/wago-org/wago/pull/1058))
 
+- Improve AMD64 WasmGC casts and allocation-heavy execution, including stable
+  throughput heap backing on Linux, while retaining checked fallback paths.
+  ([#1059](https://github.com/wago-org/wago/pull/1059))
+
 ### Fixed
 
+- Preserve GC roots for typed block results and reference tail calls, and
+  invalidate stale inlined and projected reference facts before they can
+  suppress required cast traps.
+  ([#1059](https://github.com/wago-org/wago/pull/1059))
 - Never reuse an ARM64 indexed X16 address across a branch target. A `br_table`
   case or loop entry could previously reach the access with X16 holding the
   jump-table address, crashing guarded builds with SIGBUS.
