@@ -346,9 +346,10 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	f.a.Csel64(X17, pivot, size, condAE)
 	f.cmpRR(X17, size, true)
 	f.a.Csel64(size, X17, size, condB)
-	comparePacket := func(bytes uint32) {
-		f.a.AddImm64(X16, d, bytes)
-		f.cmpRR(X16, size, true)
+	// Compare the destination directly against the last legal packet start.
+	// Materialize the bound once per packet width.
+	comparePacket := func() {
+		f.cmpRR(d, size, true)
 	}
 	emitVector := func(bytes uint32) {
 		packetStart := f.a.Len()
@@ -365,7 +366,7 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 			f.a.StrQ(d, off, vd)
 		}
 		f.a.AddImm32(counter, counter, bytes)
-		comparePacket(bytes)
+		comparePacket()
 		f.patchBranch19(f.a.Bcond(condBE), packetStart)
 	}
 	// Require four wider iterations to amortize the extra code and tail dispatch.
@@ -376,13 +377,17 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	if p.limit >= 4*packetBytes+8 {
 		// Amortize loop and alias checks over several SIMD blocks without adding
 		// registers. Keep one original packet for the observable scalar tail.
-		comparePacket(packetBytes)
+		f.a.SubImm64(size, size, packetBytes)
+		comparePacket()
 		tail := f.a.Bcond(condA)
 		emitVector(packetBytes)
 		f.stats.peep("minplus-loop-unroll")
 		f.patchBranch19(tail, f.a.Len())
+		f.a.AddImm64(size, size, packetBytes-16)
+	} else {
+		f.a.SubImm64(size, size, 16)
 	}
-	comparePacket(16)
+	comparePacket()
 	noPacket := f.a.Bcond(condA)
 	emitVector(16)
 	f.patchBranch19(noPacket, f.a.Len())
