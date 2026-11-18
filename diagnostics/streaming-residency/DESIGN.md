@@ -634,3 +634,48 @@ and performance qualification for this revision are pending. Logical ages
 do not by themselves prove native parity because physical ID allocation can
 change. All prior adverse outcomes remain recorded; no performance gain,
 RSS target success, promotion or PR is claimed.
+
+### Sparse implicit-local outcome (b5ab03f9, source unchanged)
+
+All 145 production runtime oracles passed. Untimed public compilation with
+OFF and ON produced identical native bytes and serialized metadata for all
+145 inputs, retaining 572 selected functions. OFF also matches the preceding
+checkpoint's native output. No execution retiming was performed for this
+metadata-only change; earlier execution qualification limits still apply.
+
+The observer records physical node additions falling from 185,315 to 114,395
+per corpus pass, and each of the capture, deferred and store visitation
+passes from 103,679 to 56,227. These are arena operations, NOT Go allocations.
+Logical orders remain 184,743. Peak live nodes (168) and arena capacity (256)
+are unchanged; the new compiler sidecar costs 104 bytes. Reported compiler
+state maximum rises from 9,640 to 9,744 bytes, not a process-RSS reduction.
+
+A separate same-binary untagged warm diagnostic used two warmups, 120 CPU
+profile traversals and 30 allocation traversals of public Compile+Close,
+with native/metadata reference checks outside profiling. Fixed-count
+execution was separately authorized before launch; the original prepared
+PLAN's stale status wording was retained with an authorization note.
+Sampled physical-add time falls from 190 to 120 ms and restore from 450 to
+350 ms, but canonicalization rises from 580 to 610 ms and streamBody from
+1,690 to 1,780 ms. These overlapping cumulative sample unions cannot be
+added or interpreted as cold savings. Sampled allocations over 4,350
+compilations are 359,035,379 versus 363,743,613 bytes (342.40 versus 346.89
+MiB), with 64 KiB sampling. Profiling, warm GC and Close costs do not establish
+an aggregate compile or memory benefit.
+
+The separately frozen fixed-145 cold screen verified all 2,900 records,
+using five trials and four arms. Only implicit locals differs between the
+same-binary candidate arms; prior stream features remain enabled and the
+older hint/reuse toggles remain off. The arithmetic mean of per-workload
+median compile times gives ON/OFF 0.979791 (paired 95% CI
+[0.915297, 1.070696]) and ON/mean-main 1.010732 [0.950416, 1.152170].
+Main A/A is 0.971924 [0.903130, 1.135647], failing the preregistered control
+gate. Intervals use 5,000 paired within-workload trial resamples, without
+workload resampling. Neither a latency gain nor the 40% target is qualified.
+
+All 435 independent memory-profile records were verified. Arithmetic-mean
+absolute compiled-barrier VmHWM is 11.990787 MiB for main, 12.082543 MiB for
+candidate OFF and 12.082651 MiB for ON, using the fixed executable slot.
+There is no RSS improvement or absolute 5 MiB target success. The bounded
+runs were not repeated until favorable. Prior negative outcomes remain;
+no promotion or PR is proposed.
