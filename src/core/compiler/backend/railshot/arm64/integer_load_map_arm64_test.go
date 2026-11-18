@@ -513,9 +513,11 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		src, dst, start, trips, bias int32
+		compound                     bool
 	}{
-		{64, 8192, 0, 64, 0}, {64, 8192, 20, 67, -17}, {64, 8192, 20, 64, -27},
-		{64, 68, 0, 64, 3}, {64, 65532, 0, 64, 3}, {65532, 8192, 0, 64, 3},
+		{64, 8192, 0, 64, 0, false}, {64, 8192, 20, 67, -17, false}, {64, 8192, 20, 64, -27, false},
+		{64, 68, 0, 64, 3, false}, {64, 65532, 0, 64, 3, false}, {65532, 8192, 0, 64, 3, false},
+		{64, 8192, 20, 64, -27, true}, {64, 8192, 20, 67, -27, true},
 	} {
 		body := []byte{1, 4, 0x7f}
 		constant := func(v int32) {
@@ -527,6 +529,10 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 			body = append(body, 0x21, byte(i))
 		}
 		body = append(body, 0x03, 0x40, 0x20, 2)
+		if tc.compound {
+			// Save 3*counter - 2*sourceBase + bias.
+			body = append(body, 0x41, 3, 0x6c, 0x20, 0, 0x41, 1, 0x74, 0x6b)
+		}
 		constant(tc.bias)
 		body = append(body, 0x6a, 0x21, 3,
 			0x20, 1, 0x20, 2, 0x6a,

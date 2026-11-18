@@ -966,8 +966,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		// Recover all borrowed pins on both paths before a check can skip setup.
 		f.recoverLocal(p.counter)
 		for i := 0; i < p.localN; i++ {
-			if exit.extra&(uint32(1)<<i) != 0 {
+			bit := uint32(1) << i
+			if exit.extra&bit != 0 {
 				f.recoverLocal(int(p.locals[i].Index))
+			}
+			if exit.invariant&bit != 0 {
+				f.recoverLocal(int(exit.source[i].local))
 			}
 		}
 		for _, term := range p.limitTerms[:p.limitTermN] {
@@ -1831,12 +1835,26 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				continue
 			}
 			x := int(cell.Index)
-			bias := exit.bias[i]
-			if exit.counter&(uint32(1)<<i) == 0 {
+			coefficient := exit.coeff[i]
+			bias := exit.bias[i] - p.counterStep*coefficient
+			switch coefficient {
+			case 0:
 				f.a.MovImm32(X16, int32(bias))
-			} else {
-				f.a.MovImm32(X16, int32(bias-p.counterStep))
-				f.a.Add32(X16, counter, X16)
+			case 1:
+				f.floatMapOffset(X16, counter, uint64(bias), false, X17)
+			default:
+				f.a.MovImm32(X17, int32(coefficient))
+				f.a.MovImm32(X16, int32(bias))
+				f.a.Madd32(X16, counter, X17, X16)
+			}
+			if exit.invariant&(uint32(1)<<i) != 0 {
+				term := exit.source[i]
+				read(int(term.local), X17)
+				if term.sub {
+					f.a.SubShiftedReg(X16, X16, X17, a64.RegShiftLSL, term.shift, true)
+				} else {
+					f.a.AddShifted(X16, X16, X17, term.shift, true)
+				}
 			}
 			if reg, _, pinned := f.pinReg(x); pinned {
 				f.a.MovReg32(reg, X16)

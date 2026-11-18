@@ -262,10 +262,12 @@ func (p *floatMapPlan) mapCounterValue(node floatMapNode) bool {
 }
 
 type integerMapExitPlan struct {
-	written uint32 // function-local coordinates
-	extra   uint32 // candidate-local coordinates
-	counter uint32
-	bias    [32]uint32
+	written   uint32 // function-local coordinates
+	extra     uint32 // candidate-local coordinates
+	invariant uint32
+	bias      [32]uint32
+	coeff     [32]uint32
+	source    [32]integerMapLimitTerm
 }
 
 func (f *fn) planIntegerMapExit(p *floatMapPlan) integerMapExitPlan {
@@ -283,36 +285,63 @@ func (f *fn) planIntegerMapExit(p *floatMapPlan) integerMapExitPlan {
 		if int(cell.Index) == p.counter || p.byteIndices&bit != 0 {
 			continue
 		}
-		bias, usesCounter, ok := p.integerMapExitValue(cell.Value, 0)
-		if !ok || cell.Type != mtI32 {
+		if cell.Type != mtI32 || !p.collectIntegerMapExitValue(&exit, i, cell.Value, 1, 0) {
 			return integerMapExitPlan{}
 		}
 		exit.extra |= bit
-		if usesCounter {
-			exit.counter |= bit
-		}
-		exit.bias[i] = bias
 	}
 	return exit
 }
 
-func (p *floatMapPlan) integerMapExitValue(x, depth int) (bias uint32, usesCounter, ok bool) {
+func (p *floatMapPlan) collectIntegerMapExitValue(exit *integerMapExitPlan, slot, x int, scale uint32, depth int) bool {
 	if depth > 8 || !p.spend() {
-		return 0, false, false
+		return false
 	}
 	v := p.nodes[x]
 	switch v.op {
 	case 0x41:
-		return uint32(v.bits), false, true
+		exit.bias[slot] += uint32(v.bits) * scale
+		return true
 	case 0x20:
-		return 0, true, v.left() == p.counter
-	case 0x6a:
-		a, left, ok := p.integerMapExitValue(v.left(), depth+1)
-		if !ok {
-			return 0, false, false
+		if v.left() == p.counter {
+			exit.coeff[slot] += scale
+			return true
 		}
-		b, right, ok := p.integerMapExitValue(v.right(), depth+1)
-		return a + b, left || right, ok && !(left && right)
+		bit := uint32(1) << slot
+		if p.localWritten(v.left()) || exit.invariant&bit != 0 {
+			return false
+		}
+		term := integerMapLimitTerm{local: uint32(v.left())}
+		if int32(scale) < 0 {
+			term.sub, scale = true, -scale
+		}
+		if scale == 0 || scale&(scale-1) != 0 {
+			return false
+		}
+		term.shift = uint8(bits.TrailingZeros32(scale))
+		exit.source[slot] = term
+		exit.invariant |= bit
+		return true
+	case 0x6a, 0x6b:
+		if !p.collectIntegerMapExitValue(exit, slot, v.left(), scale, depth+1) {
+			return false
+		}
+		if v.op == 0x6b {
+			scale = -scale
+		}
+		return p.collectIntegerMapExitValue(exit, slot, v.right(), scale, depth+1)
+	case 0x6c:
+		left, right := v.left(), v.right()
+		if p.nodes[left].op == 0x41 {
+			left, right = right, left
+		}
+		if constant := p.nodes[right]; constant.op == 0x41 {
+			return p.collectIntegerMapExitValue(exit, slot, left, scale*uint32(constant.bits), depth+1)
+		}
+	case 0x74:
+		if v.immediateShift() {
+			return p.collectIntegerMapExitValue(exit, slot, v.left(), scale<<uint32(v.bits&31), depth+1)
+		}
 	}
-	return 0, false, false
+	return false
 }
