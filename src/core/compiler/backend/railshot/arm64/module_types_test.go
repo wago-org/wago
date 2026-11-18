@@ -197,3 +197,30 @@ func TestModuleFunctionCacheDoesNotAllocate(t *testing.T) {
 		t.Fatal("incomplete function cache")
 	}
 }
+
+func TestMemoryAddressWidthFactPreservesIndexSpaces(t *testing.T) {
+	for _, addr64 := range []bool{false, true} {
+		for _, imported := range []bool{false, true} {
+			first := wasm.MemType{Limits: wasm.Limits{Addr64: addr64}}
+			second := wasm.MemType{Limits: wasm.Limits{Addr64: !addr64}}
+			m := &wasm.Module{Memories: []wasm.MemType{first, second}}
+			if imported {
+				m.Imports = []wasm.Import{{Type: wasm.NewMemExternType(first)}}
+				m.Memories = []wasm.MemType{second}
+			}
+			for _, size := range []int{0, minParallelHintBodyBytes} {
+				f := fn{m: m, sc: &scratch{moduleTypes: buildModuleTypeCache(m, size)}}
+				for _, index := range []uint32{1, 0, 1, 0, 2, ^uint32(0), 0} {
+					memory, ok := m.MemoryType(index)
+					if got := f.memoryAddr64(index); got != (ok && memory.Limits.Addr64) {
+						t.Fatalf("addr64=%t imported=%t cache-size=%d index=%d: width=%t", addr64, imported, size, index, got)
+					}
+				}
+			}
+		}
+	}
+	f := fn{m: &wasm.Module{}}
+	if f.memoryAddr64(0) || f.memoryAddr64(0) {
+		t.Fatal("absent memory was classified as memory64")
+	}
+}

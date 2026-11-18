@@ -113,3 +113,31 @@ func TestStraightBlockNestedDepthAndEdges(t *testing.T) {
 		}
 	}
 }
+
+func TestFallthroughBlockContainsOnlyPrivateIfEdges(t *testing.T) {
+	classifier := wasm.ModuleInstructionClassifier{}
+	for _, test := range []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{"if-else", []byte{0x20, 0, 0x04, 0x7f, 0x41, 7, 0x05, 0x41, 9, 0x0b, 0x0b}, true},
+		{"nested-if", []byte{0x20, 0, 0x04, 0x40, 0x20, 1, 0x04, 0x40, 0x01, 0x0b, 0x05, 0x01, 0x0b, 0x0b}, true},
+		{"outward-br", []byte{0x20, 0, 0x04, 0x40, 0x0c, 1, 0x0b, 0x0b}, false},
+		{"private-br", []byte{0x20, 0, 0x04, 0x40, 0x0c, 0, 0x0b, 0x0b}, false},
+		{"br-if", []byte{0x20, 0, 0x04, 0x40, 0x20, 0, 0x0d, 1, 0x0b, 0x0b}, false},
+		{"return", []byte{0x20, 0, 0x04, 0x40, 0x0f, 0x0b, 0x0b}, false},
+		{"loop", []byte{0x03, 0x40, 0x01, 0x0b, 0x0b}, false},
+		{"call", []byte{0x20, 0, 0x04, 0x40, 0x10, 0, 0x0b, 0x0b}, false},
+		{"stray-else", []byte{0x05, 0x0b}, false},
+		{"duplicate-else", []byte{0x20, 0, 0x04, 0x40, 0x01, 0x05, 0x01, 0x05, 0x01, 0x0b, 0x0b}, false},
+	} {
+		r := wasm.NewReader(test.body)
+		if got := IsFallthroughBlock(r, classifier, nil, true); got != test.want || r.Offset() != 0 {
+			t.Fatalf("%s got%v want%v offset%d", test.name, got, test.want, r.Offset())
+		}
+		if IsStraightLineBlock(r, classifier) {
+			t.Fatalf("%s admitted by original API", test.name)
+		}
+	}
+}

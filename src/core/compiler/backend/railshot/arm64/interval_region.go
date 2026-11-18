@@ -21,6 +21,8 @@ var intervalCallRegionsEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_CALL_REGIONS"
 
 var intervalControlsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_CONTROLS") != "0"
 
+var intervalWritebackCostEnabled = os.Getenv("WAGO_ARM64_NO_INTERVAL_WRITEBACK_COST") != "1"
+
 const (
 	noIntervalEvent   = ^uint32(0)
 	intervalEventKill = uint32(1 << 15)
@@ -398,6 +400,18 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		}
 		if f.nextUsePolicy() {
 			next, dead := f.nextIntervalLocalAccess(x)
+			// A clean victim costs one reload; a dirty victim also needs a
+			// writeback. In a whole straight-line region, compare reuse distance
+			// per memory operation instead of treating those costs equally.
+			if intervalWritebackCostEnabled && !f.intervalControl && !dead && f.wasmPC >= f.tracePCBase {
+				current := uint32(f.wasmPC - f.tracePCBase)
+				if next > current && next <= maxIntervalRegionBody {
+					next = (next - current) * 2
+					if f.locals[x].state == lsReg {
+						next /= 2
+					}
+				}
+			}
 			if best < 0 || dead && !bestDead || dead == bestDead && next > bestNext ||
 				dead == bestDead && next == bestNext && score < bestScore {
 				best, bestScore, bestNext, bestDead = x, score, next, dead
@@ -545,6 +559,10 @@ func (f *fn) demoteIntervalLocalRefs(x int) {
 // Dynamic residency is local to one native straight-line region. Canonicalize
 // every local and operand before a control edge, so all predecessors agree.
 func (f *fn) clearIntervalControlRegion() {
+	f.canonicalizeIntervalControlRegion(nil)
+}
+
+func (f *fn) canonicalizeIntervalControlRegion(condition *elem) {
 	if !f.intervalControl || f.intervalActive == 0 {
 		return
 	}
@@ -553,7 +571,11 @@ func (f *fn) clearIntervalControlRegion() {
 	// paths. Save operands and dirty locals before resuming next-use proofs.
 	next := f.intervalNext
 	f.intervalNext = false
-	f.flush()
+	if condition == nil {
+		f.flush()
+	} else {
+		f.flushBelow(condition)
+	}
 	for reg, x := range f.intervalOwner {
 		if x < 0 {
 			continue

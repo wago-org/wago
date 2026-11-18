@@ -44,7 +44,7 @@ func (f *fn) unrollRemainderPair(start int, words []uint32, exit, increment int,
 	deadRemainder := f.remainderLocalUnread(r, after...)
 	// The caller already proved the counter independent of every body operand.
 	update := words[increment]
-	f.a.B = f.a.B[:start]
+	f.truncateNativeCode(start)
 	appendWord := func(word uint32) { f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word) }
 	move := func(dst, src Reg) { appendWord(0xaa0003e0 | uint32(src)<<16 | uint32(dst)) }
 	var exits [3]int

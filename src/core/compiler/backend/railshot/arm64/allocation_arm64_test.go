@@ -323,49 +323,6 @@ func brTableComputedIndexArm64(t *testing.T) *wasm.Module {
 	return brTableComputedLabelsArm64(t, []uint32{0, 1, 2, 3, 4}, 5)
 }
 
-func brTableComputedLabelsArm64(t testing.TB, labels []uint32, def uint32) *wasm.Module {
-	t.Helper()
-	params := []wasm.ValType{wasm.I32, wasm.I32}
-	body := []byte{0x00} // no locals
-	maxLabel := def
-	for _, lbl := range labels {
-		if lbl > maxLabel {
-			maxLabel = lbl
-		}
-	}
-	blockN := int(maxLabel) + 1
-	for i := 0; i < blockN; i++ {
-		body = append(body, 0x02, 0x40) // block (void)
-	}
-	body = append(body, 0x20, 0x00, 0x20, 0x01, 0x6e) // local.get 0; local.get 1; i32.div_u
-	body = append(body, 0x0e)
-	body = append(body, wasmtest.ULEB(uint32(len(labels)))...)
-	for _, lbl := range labels {
-		body = append(body, wasmtest.ULEB(lbl)...)
-	}
-	body = append(body, wasmtest.ULEB(def)...)
-	for i := 0; i < blockN; i++ {
-		body = append(body, 0x0b) // end block i
-		body = append(body, 0x41) // i32.const
-		body = append(body, wasmtest.SLEB32(int32(1000+i))...)
-		body = append(body, 0x0f) // return
-	}
-	body = append(body, 0x0b) // end func
-
-	entry := append(wasmtest.ULEB(uint32(len(body))), body...)
-	b := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(entry)),
-	)
-	m, err := wasm.DecodeModule(b)
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	return m
-}
-
 func TestExecBrTableCompactTargetIDsArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	labels := []uint32{0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3}

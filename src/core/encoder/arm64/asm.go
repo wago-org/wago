@@ -19,6 +19,11 @@
 // same way they drive the amd64 encoder.
 package arm64
 
+import (
+	"encoding/binary"
+	"math/bits"
+)
+
 // Reg is a physical register number. GPRs are 0..30 (X0..X30 / W0..W30); 31 is
 // the zero register (XZR/WZR) in most encodings and the stack pointer (SP) in a
 // few (add/sub-immediate, load/store base) — the caller picks the meaning by
@@ -107,7 +112,7 @@ type Asm struct {
 	// patch can expand to an inverted condition followed by an unconditional B.
 	ReserveBranch19               bool
 	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
-	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
+	ReuseIndexedBase              bool // reuse a nearby proven X16 indexed address
 	DisableLogicalMoveImmediate   bool
 	DisableCompactMoveImmediate32 bool
 	AllowSingleNegativeMove32     bool // allow one W-MOVN independently of the full compact-i32 policy
@@ -128,17 +133,17 @@ func (a *Asm) Len() int { return len(a.B) }
 
 // wordAt reads the 32-bit word at byte offset pos.
 func (a *Asm) wordAt(pos int) uint32 {
-	return uint32(a.B[pos]) | uint32(a.B[pos+1])<<8 | uint32(a.B[pos+2])<<16 | uint32(a.B[pos+3])<<24
+	b := a.B[:len(a.B):len(a.B)]
+	return binary.LittleEndian.Uint32(b[pos : pos+4])
 }
 
 // patchWord OR-s extra into the word at byte offset pos (used to fill a branch
 // displacement field left zero by a placeholder emitter).
 func (a *Asm) patchWord(pos int, extra uint32) {
-	w := a.wordAt(pos) | extra
-	a.B[pos] = byte(w)
-	a.B[pos+1] = byte(w >> 8)
-	a.B[pos+2] = byte(w >> 16)
-	a.B[pos+3] = byte(w >> 24)
+	code := a.B[:len(a.B):len(a.B)]
+	b := code[pos : pos+4]
+	w := binary.LittleEndian.Uint32(b) | extra
+	binary.LittleEndian.PutUint32(b, w)
 }
 
 func r(x Reg) uint32 { return uint32(x) & 31 }
@@ -159,6 +164,7 @@ func (a *Asm) Sub32(rd, rn, rm Reg) { a.addSubReg(0x4B000000, rd, rn, rm) }
 
 func (a *Asm) Adds64(rd, rn, rm Reg) { a.addSubReg(0xAB000000, rd, rn, rm) }
 func (a *Asm) Subs64(rd, rn, rm Reg) { a.addSubReg(0xEB000000, rd, rn, rm) }
+func (a *Asm) Subs32(rd, rn, rm Reg) { a.addSubReg(0x6B000000, rd, rn, rm) }
 
 // Adc64 and Sbc64 consume NZCV carry without changing it.
 func (a *Asm) Adc64(rd, rn, rm Reg) { a.addSubReg(0x9A000000, rd, rn, rm) }
@@ -355,6 +361,14 @@ func (a *Asm) Movn32(rd Reg, imm16 uint16, hw uint32) { a.movWide(0x12800000, rd
 // MOVZ/MOVN + MOVK sequence (1..4 instructions), mirroring the amd64 encoder's
 // MovImm64. Picks MOVN-based when the value has more 0xFFFF halfwords than 0x0000.
 func (a *Asm) MovImm64(rd Reg, val uint64) {
+	if val <= 0xffff {
+		a.Movz64(rd, uint16(val), 0)
+		return
+	}
+	if ^val <= 0xffff {
+		a.Movn64(rd, uint16(^val), 0)
+		return
+	}
 	// Count halfwords equal to 0x0000 and 0xFFFF to choose MOVZ vs MOVN start.
 	var zeros, ones int
 	for i := 0; i < 4; i++ {
@@ -633,6 +647,26 @@ func (a *Asm) Cset32(rd Reg, c Cond) {
 	}
 }
 
+// CcmpReg conditionally compares Rn with Rm. If c is false, the instruction
+// installs the supplied NZCV value instead. Conditional compares write only
+// flags, so they deliberately do not report a GP-register write.
+func (a *Asm) CcmpReg(rn, rm Reg, nzcv uint8, c Cond, w32 bool) {
+	base := uint32(0xFA400000)
+	if w32 {
+		base = 0x7A400000
+	}
+	a.word(base | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&15))
+}
+
+// CcmpImm is the five-bit-immediate form of CcmpReg.
+func (a *Asm) CcmpImm(rn Reg, imm uint8, nzcv uint8, c Cond, w32 bool) {
+	base := uint32(0xFA400800)
+	if w32 {
+		base = 0x7A400800
+	}
+	a.word(base | uint32(imm&31)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&15))
+}
+
 // --- Logical (bitmask immediate) ---
 
 // AndImm64 / OrrImm64 / EorImm64 encode a logical operation with a bitmask
@@ -692,23 +726,18 @@ func encodeLogicalImm(imm uint64, is64 bool) (n, immr, imms uint32, ok bool) {
 		mask = (uint64(1) << uint(size)) - 1
 	}
 	e := imm & mask
-	ones := bitCount(e)
+	ones := bits.OnesCount64(e)
 	if ones == 0 || ones == size {
 		return 0, 0, 0, false
 	}
-	// The element must be a rotation of a contiguous run of `ones` ones.
-	run := (uint64(1) << uint(ones)) - 1
-	rot := -1
-	for k := 0; k < size; k++ {
-		cand := ((run << uint(k)) | (run >> uint(size-k))) & mask
-		if cand == e {
-			rot = k
-			break
-		}
-	}
-	if rot < 0 {
+	// A rotated contiguous run has exactly one circular zero-to-one edge.
+	// Its bit index is the left rotation of the low, unrotated run.
+	previous := (e<<1 | e>>uint(size-1)) & mask
+	start := e &^ previous
+	if start == 0 || start&(start-1) != 0 {
 		return 0, 0, 0, false
 	}
+	rot := bits.TrailingZeros64(start)
 	immr = uint32((size - rot) % size)
 	// imms high bits mark the element size (a run of ones for esize<64 that the
 	// decoder finds via HighestSetBit(N:NOT(imms))); low log2(esize) bits hold
@@ -718,15 +747,6 @@ func encodeLogicalImm(imm uint64, is64 bool) (n, immr, imms uint32, ok bool) {
 	}
 	imms = (^uint32((size<<1)-1))&0x3F | uint32(ones-1)
 	return n, immr, imms, true
-}
-
-func bitCount(x uint64) int {
-	c := 0
-	for x != 0 {
-		x &= x - 1
-		c++
-	}
-	return c
 }
 
 // --- Branches / calls ---

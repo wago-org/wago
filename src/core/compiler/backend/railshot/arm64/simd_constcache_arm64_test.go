@@ -75,3 +75,46 @@ func TestSIMDV128ConstCacheArm64(t *testing.T) {
 		t.Fatalf("cache hits = %d, want 2 (%v)", n, stats.Funcs[0].Peephole)
 	}
 }
+
+func TestSIMDV128ConstCacheWithPinnedLocalsArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	values := [5][16]byte{
+		i64x2Bytes(1, 2),
+		i64x2Bytes(3, 4),
+		i64x2Bytes(0x1111111111111111, 0x2222222222222222),
+		i64x2Bytes(0x3333333333333333, 0x4444444444444444),
+		i64x2Bytes(0x5555555555555555, 0x6666666666666666),
+	}
+	body := []byte{0x01, 0x02, 0x7b} // two v128 locals
+	for i := 0; i < 2; i++ {
+		body = append(body, simdConst(values[i])...)
+		body = append(body, 0x21, byte(i)) // local.set i
+	}
+	for range 4 {
+		body = append(body, 0x20, 0x00, 0x20, 0x01)
+		body = append(body, simdOp(81)...)
+		body = append(body, 0x1a) // drop
+	}
+	for i := 2; i < len(values); i++ {
+		body = append(body, simdConst(values[i])...)
+		body = append(body, simdConst(values[i])...)
+		body = append(body, simdOp(81)...) // each pair produces zero
+		if i != 2 {
+			body = append(body, simdOp(81)...) // combine zero vectors
+		}
+	}
+	body = append(body, simdOp(29)...)
+	body = append(body, 0x00, 0x0b) // i64x2.extract_lane 0; end
+	m := mod1(t, nil, []wasm.ValType{wasm.I64}, body)
+
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if stats.PinnedLocals < 2 {
+		t.Fatalf("pinned locals = %d, want at least 2", stats.PinnedLocals)
+	}
+	if got := stats.Peephole["v128-const-cache"]; got != 2 {
+		t.Fatalf("cache reservations = %d, want 2 (%v)", got, stats.Peephole)
+	}
+	if got := runArm64u(t, m); got != 0 {
+		t.Fatalf("result = %#x, want 0", got)
+	}
+}

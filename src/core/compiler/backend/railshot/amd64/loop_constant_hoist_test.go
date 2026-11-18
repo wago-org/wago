@@ -22,7 +22,7 @@ func constantHoistPlan(bits uint64) regionLoopPlan {
 	sum := p.add(regionLoopNode{op: 0xa0, left: mul, right: b})
 	p.events = [regionLoopMaxOps]uint8{load, a, mul, b, sum, 0x80}
 	p.eventN, p.storeN = 6, 1
-	p.stores[0] = regionLoopStore{address: address, value: sum}
+	p.stores[0] = regionLoopStore{Address: address, Value: sum}
 	return p
 }
 
@@ -89,7 +89,7 @@ func TestLoopConstantHoistBoundedPlan(t *testing.T) {
 	value = p.add(regionLoopNode{op: 0xa0, left: value, right: p.events[1]})
 	p.events[at] = value
 	at++
-	p.stores[0].value = value
+	p.stores[0].Value = value
 	p.events[at] = 0x80
 	at++
 	p.eventN = at

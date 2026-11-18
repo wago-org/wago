@@ -3,7 +3,10 @@
 package arm64
 
 import (
+	"reflect"
+	"runtime"
 	"slices"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -262,4 +265,86 @@ func TestStackArenaCapForBodyLargeFunctionArm64(t *testing.T) {
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("large stack arena cap = %d, want %d", cap(s.chunks[0]), want)
 	}
+}
+
+func TestInitialChunkCacheOwnsNoPointers(t *testing.T) {
+	var check func(reflect.Type)
+	check = func(typ reflect.Type) {
+		switch typ.Kind() {
+		case reflect.Array:
+			check(typ.Elem())
+		case reflect.Struct:
+			for i := 0; i < typ.NumField(); i++ {
+				check(typ.Field(i).Type)
+			}
+		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		default:
+			t.Fatalf("cached node contains %v", typ)
+		}
+	}
+	check(reflect.TypeOf(initialStackChunk{}))
+	if got := unsafe.Sizeof(initialStackChunk{}); got != 8192 {
+		t.Fatalf("cache bytes=%d", got)
+	}
+}
+
+func TestInitialChunkCacheExclusiveAndCleared(t *testing.T) {
+	prior := idleInitialStackChunk.Swap(nil)
+	defer idleInitialStackChunk.Store(prior)
+	a, b := newStack(), newStack()
+	ah, bh := a.head, b.head
+	if ah == bh {
+		t.Fatal("live stacks alias")
+	}
+	_, node := a.alloc()
+	node.st = storage{kind: stConst, cval: 12345, typ: mtI64, meta: 31}
+	node.next = 123
+	sc := scratch{stack: a}
+	sc.fnState.regUser[0] = node
+	sc.transient.tmpRoots = []*elem{node}
+	sc.cacheInitialStackChunk()
+	if sc.fnState.regUser[0] != nil || sc.transient.tmpRoots[0] != nil || a.head != nil || a.chunks[0] != nil {
+		t.Fatal("return retained owner links")
+	}
+	b.cacheInitialChunk()
+	c := newStack()
+	if c.head != ah || c.head == bh {
+		t.Fatal("cache did not retain exactly its first chunk")
+	}
+	_, fresh := c.alloc()
+	if *fresh != (elem{}) {
+		t.Fatalf("stale node survived cache reuse: %+v", fresh)
+	}
+	other := newStack()
+	if other.head == c.head {
+		t.Fatal("cache lent one chunk to two live stacks")
+	}
+}
+
+func TestInitialChunkCacheConcurrentOwnership(t *testing.T) {
+	var wg sync.WaitGroup
+	for worker := 0; worker < 8; worker++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for trial := 0; trial < 100; trial++ {
+				sc := newScratch()
+				var nodes [16]*elem
+				value := int64(worker*1000 + trial + 1)
+				for i := range nodes {
+					_, nodes[i] = sc.stack.alloc()
+					nodes[i].st.cval = value
+				}
+				runtime.Gosched()
+				for _, node := range nodes {
+					if node.st.cval != value {
+						t.Errorf("cache lent active storage: got %d, want %d", node.st.cval, value)
+						return
+					}
+				}
+				sc.cacheInitialStackChunk()
+			}
+		}(worker)
+	}
+	wg.Wait()
 }

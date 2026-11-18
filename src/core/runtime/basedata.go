@@ -526,7 +526,7 @@ func (j *JobMemory) SetGuardOwner(ownerLinMem uintptr) {
 	}
 }
 
-// guardCloseHook, set by the wago_guardpage build, removes a guarded reservation
+// guardCloseHook, set when guard-page support is built, removes a guarded reservation
 // from the trap handler's registry before it is unmapped. nil otherwise.
 var guardCloseHook func(reserveBase uintptr)
 
@@ -535,11 +535,11 @@ var guardCloseHook func(reserveBase uintptr)
 // respect to Wasm, while handlers consume the published pointer locklessly.
 var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 
-// guardReleaseHook, set by the wago_guardpage build, offers a released guarded
+// guardReleaseHook, set when guard-page support is built, offers a released guarded
 // reservation to the guard-page reuse cache (keeping its registry entry) instead
 // of unmapping it. It returns true when it took ownership; a false result means
 // the caller should fall back to Close. nil otherwise (guarded memory is only
-// created under the wago_guardpage build, so this is only nil in impossible
+// created only when guard-page support is built, so this is nil only in impossible
 // configurations, where Close is the correct fallback).
 var guardReleaseHook func(j *JobMemory) bool
 

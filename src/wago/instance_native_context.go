@@ -627,8 +627,7 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 	if in.isolatedNativeScalarLeaf() {
 		return preparedEntryIsolated
 	}
-	if in == nil || in.c == nil || (!memoryFree && in.c.boundsMode == BoundsChecksSignalsBased) ||
-		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode ||
+	if in == nil || in.c == nil || in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode ||
 		railshotRequiresNativeOwnerScope(in.c) {
 		return preparedEntryGeneral
 	}
@@ -646,7 +645,13 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 		!in.c.needsFuncRefContextHeader
 	if len(in.globalCells) == 0 && (in.tableDescPtr == 0 || isolatedTables) && in.gc == nil &&
 		in.c.NumImports == 0 && (!in.c.needsFuncRefContext() || isolatedTables) {
+		if !memoryFree && in.c.boundsMode == BoundsChecksSignalsBased && in.tableDescPtr != 0 {
+			return preparedEntryGeneral
+		}
 		return preparedEntryIsolated
+	}
+	if !memoryFree && in.c.boundsMode == BoundsChecksSignalsBased {
+		return preparedEntryGeneral
 	}
 	return preparedEntryPrivate
 }

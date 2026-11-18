@@ -257,7 +257,7 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 }
 
-func TestInlineExecOneLevelRecursiveArm64(t *testing.T) {
+func TestInlineExecBoundedRecursiveArm64(t *testing.T) {
 	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
 	inlineEnabled, recursiveInlineEnabled = true, true
 	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
@@ -268,12 +268,12 @@ func TestInlineExecOneLevelRecursiveArm64(t *testing.T) {
 		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
 		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b, 0x0b}
 	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
-	if got := runArm64Internal2(t, m, 10, 0); got != 55 {
-		t.Fatalf("fib(10) = %d, want 55", got)
+	if got, err := runArm64Wrapper(t, m, 10); err != nil || got != 55 {
+		t.Fatalf("fib(10) = %d, err=%v, want 55", got, err)
 	}
 	s := compileWithStats(t, m, false).Funcs[0]
-	if s.Calls["inline"] != 2 || s.Calls["regabi"] != 4 {
-		t.Fatalf("recursive call lowering = %v, want inline=2 regabi=4", s.Calls)
+	if s.Calls["inline"] != 6 || s.Calls["regabi"] != 8 {
+		t.Fatalf("recursive call lowering = %v, want inline=6 regabi=8", s.Calls)
 	}
 	rep, err := AnalyzeInlineCandidates(m)
 	if err != nil || rep.NumCandidates != 1 || !rep.Funcs[0].Candidate {
@@ -521,5 +521,30 @@ func TestInlineDeadBodyRetainsArm64LoopSiteCallee(t *testing.T) {
 	}
 	if stats.Funcs[1].CodeBytes == 0 || stats.Funcs[1].Peephole["inline-dead-body"] != 0 {
 		t.Fatalf("loop-site callee was omitted: %+v", stats.Funcs[1])
+	}
+}
+
+func TestInlineExecNestedRecursiveParameterHomesArm64(t *testing.T) {
+	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
+	inlineEnabled, recursiveInlineEnabled = true, true
+	t.Cleanup(func() { inlineEnabled, recursiveInlineEnabled = savedInline, savedRecursive })
+	// f(n, a) = n == 0 ? a : f(n-1, a+3) + a.
+	// The addition after the nested call must read the outer value of a.
+	body := []byte{0x00, 0x20, 0x00, 0x45, 0x04, 0x7e,
+		0x20, 0x01, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b,
+		0x20, 0x01, 0x42, 0x03, 0x7c, 0x10, 0x00,
+		0x20, 0x01, 0x7c, 0x0b, 0x0b}
+	m := modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32, wasm.I64}, results: []wasm.ValType{wasm.I64}, body: body})
+	for _, n := range []uintptr{0, 1, 2, 3, 8, 19} {
+		for _, a := range []uintptr{0, 7, 100, 1 << 40} {
+			want := (n+1)*a + 3*n*(n+1)/2
+			// Recursive native calls need the runtime context for stack fences.
+			// The contextless leaf spike entry leaves X26 unspecified.
+			got, err := runArm64Wrapper(t, m, uint64(n), uint64(a))
+			if err != nil || got != uint64(want) {
+				t.Fatalf("f(%d,%d) = %d, err=%v, want %d", n, a, got, err, want)
+			}
+		}
 	}
 }

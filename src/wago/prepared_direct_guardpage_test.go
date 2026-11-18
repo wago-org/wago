@@ -72,3 +72,78 @@ func TestPreparedDirectSignalEntryClearsPriorExportTrap(t *testing.T) {
 		t.Fatalf("direct add after prior export trap = %v, %v; want [42], nil", got, err)
 	}
 }
+
+func preparedSignalLoadModule(minPages byte) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, minPages})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}))),
+	)
+}
+
+func TestPreparedSignalMemoryEntryRetainsGuardTrapRecovery(t *testing.T) {
+	module := preparedSignalLoadModule(1)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	load, err := in.WasmFunc("load")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if !load.isolatedFast {
+		t.Fatal("private guarded memory did not select isolated prepared entry")
+	}
+	if got, err := load.Invoke(I32(0)); err != nil || len(got) != 1 || AsI32(got[0]) != 0 {
+		t.Fatalf("in-bounds load = %v, %v; want [0], nil", got, err)
+	}
+	if _, err := load.Invoke(I32(65536)); err == nil {
+		t.Fatal("out-of-bounds prepared load did not trap")
+	}
+	if got, err := load.Invoke(I32(0)); err != nil || len(got) != 1 || AsI32(got[0]) != 0 {
+		t.Fatalf("load after guard trap = %v, %v; want [0], nil", got, err)
+	}
+}
+
+func TestPreparedSignalZeroMemoryReuseTraps(t *testing.T) {
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
+	seed, err := Compile(cfg, preparedSignalLoadModule(1))
+	if err != nil {
+		t.Fatalf("compile seed: %v", err)
+	}
+	seedInstance, err := Instantiate(seed, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate seed: %v", err)
+	}
+	if err := seedInstance.Close(); err != nil {
+		t.Fatalf("close seed: %v", err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close seed code: %v", err)
+	}
+
+	zero, err := Compile(cfg, preparedSignalLoadModule(0))
+	if err != nil {
+		t.Fatalf("compile zero-page module: %v", err)
+	}
+	defer zero.Close()
+	in, err := Instantiate(zero, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate zero-page module: %v", err)
+	}
+	defer in.Close()
+	load, err := in.WasmFunc("load")
+	if err != nil {
+		t.Fatalf("prepare load: %v", err)
+	}
+	if _, err := load.Invoke(I32(0)); err == nil {
+		t.Fatal("zero-page memory reused a resident page without trapping")
+	}
+}

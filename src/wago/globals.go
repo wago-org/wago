@@ -1397,6 +1397,7 @@ var (
 	nativeScalarLeafMask      = directPreparedEntryMask >> 4
 	nativeScalarBoundedMask   = directPreparedEntryMask >> 5
 	goHostDispatchTagMask     = directPreparedEntryMask >> 6
+	guardedMemoryGrowMask     = directPreparedEntryMask >> 8
 	integerHostContextMask    = func() uint {
 		if goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" {
 			return directPreparedEntryMask >> 7
@@ -1415,8 +1416,10 @@ func markDirectPreparedBoundedEntry(off int) int {
 	return int(uint(off) | directPreparedBoundedMask)
 }
 func directPreparedBoundedEntry(off int) bool { return uint(off)&directPreparedBoundedMask != 0 }
+func markGuardedMemoryGrowEntry(off int) int  { return int(uint(off) | guardedMemoryGrowMask) }
+func guardedMemoryGrowEntry(off int) bool     { return uint(off)&guardedMemoryGrowMask != 0 }
 func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask | integerHostContextMask))
+	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask | directHostSegmentsMask | nativeScalarLeafMask | nativeScalarBoundedMask | goHostDispatchTagMask | integerHostContextMask | guardedMemoryGrowMask))
 }
 
 // Only fresh compiler output advertises the tagged native import ABI. The codec

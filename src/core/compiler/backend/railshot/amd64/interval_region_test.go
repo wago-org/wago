@@ -8,7 +8,103 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestDiscardDeadCallLocalsUsesExactLastReadAndDeclinesUnsafeScopes(t *testing.T) {
+	newFn := func() fn {
+		return fn{
+			nLocals:      5,
+			intervalLast: []uint32{0, 4, 5, 6, 4},
+			tracePCBase:  100,
+			wasmPC:       105,
+		}
+	}
+	f := newFn()
+	position, ok := f.deadCallLocalPosition()
+	if !ok || position != 5 {
+		t.Fatalf("position = %d, %v, want 5, true", position, ok)
+	}
+	for x, wantDead := range []bool{true, true, true, false, true} {
+		last := f.intervalLast[x]
+		if got := last == 0 || last <= position; got != wantDead {
+			t.Fatalf("local %d dead = %v, want %v", x, got, wantDead)
+		}
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*fn)
+	}{
+		{"loop", func(f *fn) { f.hasLoop = true }},
+		{"exceptions", func(f *fn) { f.moduleEH = true }},
+		{"inline", func(f *fn) { f.inlineDepth = 1 }},
+		{"foreign PC", func(f *fn) { f.wasmPC = f.tracePCBase - 1 }},
+		{"incomplete last reads", func(f *fn) { f.intervalLast = f.intervalLast[:4] }},
+		{"empty locals", func(f *fn) { f.nLocals, f.intervalLast = 0, nil }},
+	} {
+		f = newFn()
+		test.mutate(&f)
+		if _, ok := f.deadCallLocalPosition(); ok {
+			t.Fatalf("%s admitted dead call-local proof", test.name)
+		}
+	}
+}
+
+func TestIntervalRegionDropsDeadCallLocalStore(t *testing.T) {
+	body := []byte{1, 32, 0x7f}
+	for x := byte(1); x <= 32; x++ {
+		body = append(body, 0x20, 0, 0x41)
+		body = append(body, wasmtest.SLEB32(int32(x))...)
+		body = append(body, 0x6a, 0x21, x)
+	}
+	body = append(body, 0x41, 0)
+	for x := byte(1); x <= 32; x++ {
+		body = append(body, 0x20, x, 0x6a)
+	}
+	body = append(body, 0x10, 1)
+	for x := byte(1); x <= 32; x++ {
+		body = append(body, 0x20, x, 0x6a)
+	}
+	body = append(body, 0x0b)
+
+	callee := []byte{1, 32, 0x7f}
+	for x := byte(1); x <= 32; x++ {
+		callee = append(callee, 0x20, 0, 0x41, x, 0x6a, 0x21, x)
+	}
+	callee = append(callee, 0x41, 0)
+	for x := byte(1); x <= 32; x++ {
+		callee = append(callee, 0x20, x, 0x6a)
+	}
+	callee = append(callee, 0x41, 17, 0x6a, 0x0b)
+	m := modFuncs(t,
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: body},
+		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee},
+	)
+
+	for _, enabled := range []bool{false, true} {
+		for _, input := range []uint64{0, 0xffffffff} {
+			var stats ModuleStats
+			opts := CompileOptions{Stats: optionalTestStats(&stats), Optimizations: map[string]bool{
+				"inline": false, "interval-region-pins": true, "interval-control": enabled,
+			}}
+			got, err := runAmd64TailInlineWithOptions(t, m, opts, input)
+			want := uint64(uint32(33*(input*32+32*33/2) + 32*33/2 + 17))
+			if err != nil || uint64(uint32(got)) != want {
+				t.Fatalf("enabled=%v input=%x got=%x want=%x err=%v", enabled, input, got, want, err)
+			}
+			if diagnosticsEnabled {
+				wantDead := 0
+				if enabled {
+					wantDead = 1
+				}
+				if got := stats.Funcs[0].Peephole["dead-call-local-store"]; got != wantDead {
+					t.Fatalf("enabled=%v dead call-local stores = %d, want %d (stats=%v)", enabled, got, wantDead, stats.Funcs[0].Peephole)
+				}
+			}
+		}
+	}
+}
 
 func TestIntervalNextUseUsesFunctionRelativeCoordinates(t *testing.T) {
 	body := []byte{

@@ -60,7 +60,7 @@ func TestPretestLoopLatchExecutionWithRotates(t *testing.T) {
 }
 
 func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
-	for _, variant := range []string{"cmp32", "cmp64", "immediate32", "immediate64", "cbz32", "cbnz32", "cbz64", "cbnz64", "scratch", "shifted", "load", "patched", "unowned", "result-owner", "float", "spilled", "private", "calling", "stack-reg", "lazy-zero", "typed", "height", "compact", "regional", "reserve", "range", "exit-history"} {
+	for _, variant := range []string{"cmp32", "cmp64", "immediate32", "immediate64", "cbz32", "cbnz32", "cbz64", "cbnz64", "scratch", "shifted", "load", "patched", "unowned", "result-owner", "float", "spilled", "private", "calling", "stack-reg", "lazy-zero", "typed", "height", "compact", "regional", "reserve", "range", "exit-history", "guard-load32", "guard-load64", "guard-load-indexed", "guard-load-pair-first", "guard-load-pair-second", "other-load"} {
 		f := gpClassEmitter()
 		f.policy = currentCodegenPolicy()
 		f.nLocals = 2
@@ -77,7 +77,7 @@ func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
 			words[0] = 0x71001c1f // CMP W0,#7
 		case "immediate64":
 			words[0] = 0xf1001c1f
-		case "cbz32", "cbnz32", "cbz64", "cbnz64":
+		case "cbz32", "cbnz32", "cbz64", "cbnz64", "guard-load32", "guard-load64", "guard-load-indexed", "guard-load-pair-first", "guard-load-pair-second", "other-load":
 			words = []uint32{0x34000000}
 			if variant == "cbnz32" || variant == "cbnz64" {
 				words[0] |= 1 << 24
@@ -86,6 +86,9 @@ func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
 				words[0] |= 1 << 31
 			}
 		default:
+			positive = false
+		}
+		if len(variant) >= 10 && variant[:10] == "guard-load" {
 			positive = false
 		}
 		exit := len(words) - 1
@@ -136,6 +139,10 @@ func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
 		// Body bytes, including position-dependent control, must stay in place.
 		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, 0x14000002)
 		f.a.B = binary.LittleEndian.AppendUint32(f.a.B, 0xb9000000)
+		loadCases := map[string]uint32{"guard-load32": 0xb9400020, "guard-load64": 0xf9400020, "guard-load-indexed": 0xb8626820, "guard-load-pair-first": 0x29400820, "guard-load-pair-second": 0x29400022, "other-load": 0xb9400022}
+		if word, ok := loadCases[variant]; ok {
+			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, word)
+		}
 		if variant == "range" {
 			f.a.B = append(f.a.B, make([]byte, 1<<20)...)
 		}
@@ -162,6 +169,39 @@ func TestPretestLoopLatchGuardAndOwnerProof(t *testing.T) {
 			_, second, _ := f.frameEndSites(&f.ctrl[0])
 			if second != uint32(len(f.a.B)-4+1) {
 				t.Fatalf("variant=%s missing forward exit %x", variant, second)
+			}
+		}
+	}
+}
+
+func TestPretestLoopLatchLoadedPointerExecution(t *testing.T) {
+	// Initialize 8 -> 16 -> 0, then follow the chain and count its nodes.
+	body := []byte{1, 1, 0x7f,
+		0x41, 8, 0x41, 16, 0x36, 2, 0,
+		0x41, 16, 0x41, 0, 0x36, 2, 0,
+		0x02, 0x40, 0x03, 0x40, 0x20, 0, 0x45, 0x0d, 1,
+		0x20, 1, 0x41, 1, 0x6a, 0x21, 1,
+		0x20, 0, 0x28, 2, 0, 0x21, 0, 0x0c, 0,
+		0x0b, 0x0b, 0x20, 1, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	for _, enabled := range []bool{false, true} {
+		for _, high := range []uint64{0, 0xa5a5a5a500000000} {
+			for _, tc := range []struct{ input, want uint64 }{{0, 0}, {8, 2}, {16, 1}, {65532, 1}} {
+				var stats ModuleStats
+				opts := CompileOptions{Optimizations: map[string]bool{"scalar-loop-unroll": enabled}}
+				if diagnosticsEnabled {
+					opts.Stats = &stats
+				}
+				got, err := runArm64WrapperWithOptions(t, m, opts, high|tc.input)
+				if err != nil || got != tc.want {
+					t.Fatalf("enabled=%v input=%x: got=%d want=%d err=%v", enabled, high|tc.input, got, tc.want, err)
+				}
+				if diagnosticsEnabled && stats.Funcs[0].Peephole["pretest-loop-latch"] != 0 {
+					t.Fatal("memory-fed test was rotated to a latch")
+				}
+			}
+			if _, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"scalar-loop-unroll": enabled}}, high|65533); err == nil {
+				t.Fatal("cross-boundary pointer load did not trap")
 			}
 		}
 	}
