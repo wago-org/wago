@@ -1619,160 +1619,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		copyVecs[i] = f.allocFReg(copyAvoid)
 		copyAvoid = copyAvoid.add(copyVecs[i])
 	}
-	copyVec := copyVecs[0]
-
-	// Hybrid dispatch: small dynamic copies take inline XMM/8-byte memmove loops.
-	// `rep movsb` startup and its medium-size cliffs dominate the string-append
-	// copies AssemblyScript's __renew makes constantly; large copies keep ERMSB.
-	// Four exits are emitted below. Keep their patch sites on the Go stack;
-	// append still grows if a later lowering adds more exits.
-	var joinScratch [4]int
-	joins := joinScratch[:0]
-	f.a.AluRI(cmpDigit, RCX, smallCopyMax, true)
-	big := f.a.JccPlaceholder(condAE)
-
-	f.a.Cmp64(RSI, RDI)
-	fwdSmall := f.a.JccPlaceholder(condA) // src > dst → forward copy is overlap-safe
-	// dst >= src: copy backward, indexing [ptr+rcx-k] while counting rcx down.
-	f.a.AluRI(cmpDigit, RCX, 16, false)
-	backScalar := f.a.JccPlaceholder(condB)
-	back16 := f.a.Len()
-	f.mov128LoadIdx(copyVec, RSI, RCX, -16)
-	f.mov128StoreIdx(RDI, RCX, copyVec, -16)
-	f.a.AluRI(5, RCX, 16, false)
-	f.a.AluRI(cmpDigit, RCX, 16, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condAE), back16)
-	back8 := f.a.Len()
-	f.a.PatchRel32(backScalar, back8)
-	f.a.AluRI(cmpDigit, RCX, 8, false)
-	b8done := f.a.JccPlaceholder(condB)
-	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
-	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
-	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
-	f.a.PatchRel32(b8done, f.a.Len())
-	f.a.AluRI(cmpDigit, RCX, 4, false)
-	b4done := f.a.JccPlaceholder(condB)
-	f.a.LoadIdx(RDX, RSI, RCX, -4, 4, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, -4, 4)
-	f.a.AluRI(5, RCX, 4, false)
-	f.a.PatchRel32(b4done, f.a.Len())
-	f.a.AluRI(cmpDigit, RCX, 2, false)
-	b2done := f.a.JccPlaceholder(condB)
-	f.a.LoadIdx(RDX, RSI, RCX, -2, 2, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, -2, 2)
-	f.a.AluRI(5, RCX, 2, false)
-	f.a.PatchRel32(b2done, f.a.Len())
-	f.a.TestSelf(RCX, false)
-	joins = append(joins, f.a.JccPlaceholder(condE))
-	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
-	joins = append(joins, f.a.JmpPlaceholder())
-
-	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
-	f.a.PatchRel32(fwdSmall, f.a.Len())
-	f.a.Add64(RSI, RCX)
-	f.a.Add64(RDI, RCX)
-	f.a.Neg(RCX, true)
-	f.a.AluRI(cmpDigit, RCX, -16, true)
-	fwdScalar := f.a.JccPlaceholder(condG)
-	fwd16 := f.a.Len()
-	f.mov128LoadIdx(copyVec, RSI, RCX, 0)
-	f.mov128StoreIdx(RDI, RCX, copyVec, 0)
-	f.a.AluRI(0, RCX, 16, true)
-	f.a.AluRI(cmpDigit, RCX, -16, true)
-	f.a.PatchRel32(f.a.JccPlaceholder(condLE), fwd16)
-	fwd8 := f.a.Len()
-	f.a.PatchRel32(fwdScalar, fwd8)
-	f.a.AluRI(cmpDigit, RCX, -8, true)
-	f8done := f.a.JccPlaceholder(condG)
-	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
-	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
-	f.a.AluRI(0, RCX, 8, true) // rcx += 8
-	f.a.PatchRel32(f8done, f.a.Len())
-	f.a.AluRI(cmpDigit, RCX, -4, true)
-	f4done := f.a.JccPlaceholder(condG)
-	f.a.LoadIdx(RDX, RSI, RCX, 0, 4, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, 0, 4)
-	f.a.AluRI(0, RCX, 4, true)
-	f.a.PatchRel32(f4done, f.a.Len())
-	f.a.AluRI(cmpDigit, RCX, -2, true)
-	f2done := f.a.JccPlaceholder(condG)
-	f.a.LoadIdx(RDX, RSI, RCX, 0, 2, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, 0, 2)
-	f.a.AluRI(0, RCX, 2, true)
-	f.a.PatchRel32(f2done, f.a.Len())
-	f.a.TestSelf(RCX, true)
-	joins = append(joins, f.a.JccPlaceholder(condE))
-	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
-	joins = append(joins, f.a.JmpPlaceholder())
-
-	// Large: forward-safe copies retain ERMS/FSRM-accelerated rep movsb. True
-	// backward overlap uses vector loops: x86 string engines do not
-	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
-	// complete chunk before storing it so even a one-byte overlap retains memmove
-	// semantics. Medium copies stay on the lower-startup XMM path; copies of at
-	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail.
-	f.a.PatchRel32(big, f.a.Len())
-	f.a.Cmp64(RDI, RSI)
-	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
-	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
-	f.a.Cmp64(RDI, RDX)
-	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
-	if f.cpuHas(shared.AMD64AVX) {
-		f.a.AluRI(cmpDigit, RCX, 1024, false)
-		mediumBack := f.a.JccPlaceholder(condB)
-		back128 := f.a.Len()
-		f.a.AluRI(cmpDigit, RCX, 128, false)
-		ymmDone := f.a.JccPlaceholder(condB)
-		for i, disp := range [...]int32{-128, -96, -64, -32} {
-			f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
-		}
-		for i, disp := range [...]int32{-128, -96, -64, -32} {
-			f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
-		}
-		f.a.AluRI(5, RCX, 128, false)
-		f.a.JmpBack(back128)
-		f.a.PatchRel32(ymmDone, f.a.Len())
-		f.a.VZeroUpper()
-		f.a.PatchRel32(mediumBack, f.a.Len())
-	}
-
-	back64 := f.a.Len()
-	f.a.AluRI(cmpDigit, RCX, 64, false)
-	backTail := f.a.JccPlaceholder(condB)
-	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.mov128LoadIdx(copyVecs[i], RSI, RCX, disp)
-	}
-	for i, disp := range [...]int32{-64, -48, -32, -16} {
-		f.mov128StoreIdx(RDI, RCX, copyVecs[i], disp)
-	}
-	f.a.AluRI(5, RCX, 64, false)
-	f.a.JmpBack(back64)
-	f.a.PatchRel32(backTail, f.a.Len())
-	backTail8 := f.a.Len()
-	f.a.AluRI(cmpDigit, RCX, 8, false)
-	backTail1 := f.a.JccPlaceholder(condB)
-	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
-	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
-	f.a.AluRI(5, RCX, 8, false)
-	f.a.JmpBack(backTail8)
-	f.a.PatchRel32(backTail1, f.a.Len())
-	backDone := f.rcxZero32Placeholder()
-	backByte := f.a.Len()
-	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
-	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
-	f.unitAdjust(RCX, false, false)
-	f.closeRCXZero32Loop(backDone, backByte)
-	f.patchRCXZero32(backDone)
-	done := f.a.JmpPlaceholder()
-	f.a.PatchRel32(fwd, f.a.Len())
-	f.a.PatchRel32(fwdDisjoint, f.a.Len())
-	f.a.RepMovsb() // forward (DF=0 by ABI)
-	f.a.PatchRel32(done, f.a.Len())
-	for _, j := range joins {
-		f.a.PatchRel32(j, f.a.Len())
-	}
+	f.emitCheckedMemoryCopy(copyVecs)
 	for _, r := range copyVecs {
 		f.releaseF(r)
 	}
@@ -1813,63 +1660,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
 	fillVec := f.allocFReg(0)
 
-	// Byte-replicate the fill value once (rep stosb only reads AL, so the
-	// pattern's low byte keeps the big path compatible).
-	f.a.AluRI(4, RAX, 0xFF, false) // and eax, 0xff
-	f.a.MovImm64(RDX, 0x0101010101010101)
-	f.a.IMul(RAX, RDX, true)
-
-	// Small dynamic fills: inline XMM/8-byte pattern stores (rep stosb startup
-	// and its medium-size cliffs dominate); large keep rep stosb.
-	f.a.AluRI(cmpDigit, RCX, smallFillMax, true)
-	bigF := f.a.JccPlaceholder(condAE)
-	// Keep the fast-string window immediately below 128 bytes on rep stosb while
-	// the inline vector path avoids its sharp 128-byte slowdown.
-	f.a.LeaDisp(RDX, RCX, -96)
-	f.a.AluRI(cmpDigit, RDX, 32, false)
-	mediumRep := f.a.JccPlaceholder(condB)
-	f.a.AluRI(cmpDigit, RCX, 16, false)
-	fillScalar := f.a.JccPlaceholder(condB)
-	if f.cpuHas(shared.AMD64SSE41) {
-		f.a.Pinsrq(fillVec, RAX, 0)
-		f.a.Pinsrq(fillVec, RAX, 1)
-	} else {
-		f.a.MovGprToXmm(fillVec, RAX, true)
-		f.a.Punpcklqdq(fillVec, fillVec)
-	}
-	fill16 := f.a.Len()
-	f.mov128StoreIdx(RDI, RCX, fillVec, -16)
-	f.a.AluRI(5, RCX, 16, false)
-	f.a.AluRI(cmpDigit, RCX, 16, false)
-	f.a.PatchRel32(f.a.JccPlaceholder(condAE), fill16)
-	fill8 := f.a.Len()
-	f.a.PatchRel32(fillScalar, fill8)
-	f.a.AluRI(cmpDigit, RCX, 8, false)
-	fillByte := f.a.JccPlaceholder(condB)
-	f.a.StoreIdx(RDI, RCX, RAX, -8, 8)
-	f.a.AluRI(5, RCX, 8, false)
-	f.a.TestSelf(RCX, false)
-	fill8Exact := f.a.JccPlaceholder(condE)
-	// Re-storing an overlapping prefix is safe for fill and avoids a counted
-	// byte tail for every dynamic length of at least eight bytes.
-	f.a.Store64(RDI, 0, RAX)
-	f.a.PatchRel32(fill8Exact, f.a.Len())
-	f.a.XorSelf32(RCX)
-	f.a.PatchRel32(fillByte, f.a.Len())
-	fillDone := f.rcxZero32Placeholder()
-	fill1 := f.a.Len()
-	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
-	f.unitAdjust(RCX, false, false)
-	f.closeRCXZero32Loop(fillDone, fill1)
-	// Keep the bounded zero-count branch close even when the large path
-	// expands into a wide loop. Both the byte loop and its zero exit join here.
-	f.patchRCXZero32(fillDone)
-	skipRep := f.a.JmpPlaceholder()
-	rep := f.a.Len()
-	f.a.PatchRel32(bigF, rep)
-	f.a.PatchRel32(mediumRep, rep)
-	f.emitBulkFill(fillVec)
-	f.a.PatchRel32(skipRep, f.a.Len())
+	f.emitCheckedMemoryFill(fillVec)
 	f.releaseF(fillVec)
 
 	f.setDepth(d - 3)
@@ -2388,4 +2179,225 @@ func (f *fn) memoryShared(memoryIndex uint32) bool {
 	}
 	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Shared
+}
+
+// emitCheckedMemoryCopy consumes checked native RDI/RSI ranges and RCX count.
+// Clobbers RDI, RSI, RCX, RDX and the four supplied vector registers. DF stays
+// clear on every path. All bounds checks must precede entry.
+func (f *fn) emitCheckedMemoryCopy(copyVecs [4]Reg) {
+	copyVec := copyVecs[0]
+	// Hybrid dispatch: small dynamic copies take inline XMM/8-byte memmove loops.
+	// `rep movsb` startup and its medium-size cliffs dominate the string-append
+	// copies AssemblyScript's __renew makes constantly; large copies keep ERMSB.
+	// Four exits are emitted below. Keep their patch sites on the Go stack;
+	// append still grows if a later lowering adds more exits.
+	var joinScratch [4]int
+	joins := joinScratch[:0]
+	f.a.AluRI(cmpDigit, RCX, smallCopyMax, true)
+	big := f.a.JccPlaceholder(condAE)
+
+	f.a.Cmp64(RSI, RDI)
+	fwdSmall := f.a.JccPlaceholder(condA) // src > dst → forward copy is overlap-safe
+	// dst >= src: copy backward, indexing [ptr+rcx-k] while counting rcx down.
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	backScalar := f.a.JccPlaceholder(condB)
+	back16 := f.a.Len()
+	f.mov128LoadIdx(copyVec, RSI, RCX, -16)
+	f.mov128StoreIdx(RDI, RCX, copyVec, -16)
+	f.a.AluRI(5, RCX, 16, false)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), back16)
+	back8 := f.a.Len()
+	f.a.PatchRel32(backScalar, back8)
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	b8done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
+	f.a.PatchRel32(b8done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, 4, false)
+	b4done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -4, 4, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -4, 4)
+	f.a.AluRI(5, RCX, 4, false)
+	f.a.PatchRel32(b4done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, 2, false)
+	b2done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -2, 2, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -2, 2)
+	f.a.AluRI(5, RCX, 2, false)
+	f.a.PatchRel32(b2done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
+	f.a.PatchRel32(fwdSmall, f.a.Len())
+	f.a.Add64(RSI, RCX)
+	f.a.Add64(RDI, RCX)
+	f.a.Neg(RCX, true)
+	f.a.AluRI(cmpDigit, RCX, -16, true)
+	fwdScalar := f.a.JccPlaceholder(condG)
+	fwd16 := f.a.Len()
+	f.mov128LoadIdx(copyVec, RSI, RCX, 0)
+	f.mov128StoreIdx(RDI, RCX, copyVec, 0)
+	f.a.AluRI(0, RCX, 16, true)
+	f.a.AluRI(cmpDigit, RCX, -16, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condLE), fwd16)
+	fwd8 := f.a.Len()
+	f.a.PatchRel32(fwdScalar, fwd8)
+	f.a.AluRI(cmpDigit, RCX, -8, true)
+	f8done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
+	f.a.AluRI(0, RCX, 8, true) // rcx += 8
+	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, -4, true)
+	f4done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 4, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 4)
+	f.a.AluRI(0, RCX, 4, true)
+	f.a.PatchRel32(f4done, f.a.Len())
+	f.a.AluRI(cmpDigit, RCX, -2, true)
+	f2done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 2, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 2)
+	f.a.AluRI(0, RCX, 2, true)
+	f.a.PatchRel32(f2done, f.a.Len())
+	f.a.TestSelf(RCX, true)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// Large: forward-safe copies retain ERMS/FSRM-accelerated rep movsb. True
+	// backward overlap uses vector loops: x86 string engines do not
+	// accelerate DF=1 and commonly fall to roughly one byte per cycle. Load the
+	// complete chunk before storing it so even a one-byte overlap retains memmove
+	// semantics. Medium copies stay on the lower-startup XMM path; copies of at
+	// least 1 KiB use 128-byte YMM chunks before the XMM/scalar tail.
+	f.a.PatchRel32(big, f.a.Len())
+	f.a.Cmp64(RDI, RSI)
+	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
+	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
+	f.a.Cmp64(RDI, RDX)
+	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
+	if f.cpuHas(shared.AMD64AVX) {
+		f.a.AluRI(cmpDigit, RCX, 1024, false)
+		mediumBack := f.a.JccPlaceholder(condB)
+		back128 := f.a.Len()
+		f.a.AluRI(cmpDigit, RCX, 128, false)
+		ymmDone := f.a.JccPlaceholder(condB)
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquLoadIdx(copyVecs[i], RSI, RCX, disp)
+		}
+		for i, disp := range [...]int32{-128, -96, -64, -32} {
+			f.a.YMovdquStoreIdx(RDI, RCX, copyVecs[i], disp)
+		}
+		f.a.AluRI(5, RCX, 128, false)
+		f.a.JmpBack(back128)
+		f.a.PatchRel32(ymmDone, f.a.Len())
+		f.a.VZeroUpper()
+		f.a.PatchRel32(mediumBack, f.a.Len())
+	}
+
+	back64 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 64, false)
+	backTail := f.a.JccPlaceholder(condB)
+	for i, disp := range [...]int32{-64, -48, -32, -16} {
+		f.mov128LoadIdx(copyVecs[i], RSI, RCX, disp)
+	}
+	for i, disp := range [...]int32{-64, -48, -32, -16} {
+		f.mov128StoreIdx(RDI, RCX, copyVecs[i], disp)
+	}
+	f.a.AluRI(5, RCX, 64, false)
+	f.a.JmpBack(back64)
+	f.a.PatchRel32(backTail, f.a.Len())
+	backTail8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	backTail1 := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false)
+	f.a.JmpBack(backTail8)
+	f.a.PatchRel32(backTail1, f.a.Len())
+	backDone := f.rcxZero32Placeholder()
+	backByte := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
+	f.unitAdjust(RCX, false, false)
+	f.closeRCXZero32Loop(backDone, backByte)
+	f.patchRCXZero32(backDone)
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(fwd, f.a.Len())
+	f.a.PatchRel32(fwdDisjoint, f.a.Len())
+	f.a.RepMovsb() // forward (DF=0 by ABI)
+	f.a.PatchRel32(done, f.a.Len())
+	for _, j := range joins {
+		f.a.PatchRel32(j, f.a.Len())
+	}
+}
+
+// emitCheckedMemoryFill consumes checked native RDI range, RCX count and AL
+// value. Clobbers RDI, RCX, RAX, RDX, R8 and the supplied vector register.
+func (f *fn) emitCheckedMemoryFill(fillVec Reg) {
+	// Byte-replicate the fill value once (rep stosb only reads AL, so the
+	// pattern's low byte keeps the big path compatible).
+	f.a.AluRI(4, RAX, 0xFF, false) // and eax, 0xff
+	f.a.MovImm64(RDX, 0x0101010101010101)
+	f.a.IMul(RAX, RDX, true)
+
+	// Small dynamic fills: inline XMM/8-byte pattern stores (rep stosb startup
+	// and its medium-size cliffs dominate); large keep rep stosb.
+	f.a.AluRI(cmpDigit, RCX, smallFillMax, true)
+	bigF := f.a.JccPlaceholder(condAE)
+	// Keep the fast-string window immediately below 128 bytes on rep stosb while
+	// the inline vector path avoids its sharp 128-byte slowdown.
+	f.a.LeaDisp(RDX, RCX, -96)
+	f.a.AluRI(cmpDigit, RDX, 32, false)
+	mediumRep := f.a.JccPlaceholder(condB)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	fillScalar := f.a.JccPlaceholder(condB)
+	if f.cpuHas(shared.AMD64SSE41) {
+		f.a.Pinsrq(fillVec, RAX, 0)
+		f.a.Pinsrq(fillVec, RAX, 1)
+	} else {
+		f.a.MovGprToXmm(fillVec, RAX, true)
+		f.a.Punpcklqdq(fillVec, fillVec)
+	}
+	fill16 := f.a.Len()
+	f.mov128StoreIdx(RDI, RCX, fillVec, -16)
+	f.a.AluRI(5, RCX, 16, false)
+	f.a.AluRI(cmpDigit, RCX, 16, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), fill16)
+	fill8 := f.a.Len()
+	f.a.PatchRel32(fillScalar, fill8)
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	fillByte := f.a.JccPlaceholder(condB)
+	f.a.StoreIdx(RDI, RCX, RAX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false)
+	f.a.TestSelf(RCX, false)
+	fill8Exact := f.a.JccPlaceholder(condE)
+	// Re-storing an overlapping prefix is safe for fill and avoids a counted
+	// byte tail for every dynamic length of at least eight bytes.
+	f.a.Store64(RDI, 0, RAX)
+	f.a.PatchRel32(fill8Exact, f.a.Len())
+	f.a.XorSelf32(RCX)
+	f.a.PatchRel32(fillByte, f.a.Len())
+	fillDone := f.rcxZero32Placeholder()
+	fill1 := f.a.Len()
+	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
+	f.unitAdjust(RCX, false, false)
+	f.closeRCXZero32Loop(fillDone, fill1)
+	// Keep the bounded zero-count branch close even when the large path
+	// expands into a wide loop. Both the byte loop and its zero exit join here.
+	f.patchRCXZero32(fillDone)
+	skipRep := f.a.JmpPlaceholder()
+	rep := f.a.Len()
+	f.a.PatchRel32(bigF, rep)
+	f.a.PatchRel32(mediumRep, rep)
+	f.emitBulkFill(fillVec)
+	f.a.PatchRel32(skipRep, f.a.Len())
 }

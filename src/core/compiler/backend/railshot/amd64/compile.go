@@ -324,6 +324,7 @@ type fn struct {
 	gcDeadBatchLayout uint64
 	gcI31Induction    bool
 	scalarSummary     shared.ScalarSummary
+	streamSummary     streamSummary
 
 	//lint:ignore U1000 debug-only fields; the ordinary placeholder is empty
 	regallocFnState
@@ -881,6 +882,7 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 
 type scratch struct {
 	scalar shared.ScalarState
+	stream streamState
 
 	amd64Features         shared.AMD64Features
 	usedAMD64Features     shared.AMD64Features
@@ -1234,6 +1236,7 @@ func (sc *scratch) finishStackFunction() {
 // scalar feature flags; operand nodes cannot be reused again.
 func (sc *scratch) finishStackWorker() {
 	sc.scalar.FinishWorker()
+	sc.stream.FinishWorker()
 
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
@@ -3943,9 +3946,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	if !f.localTailLeaf && !hasInlineTailLoop {
-		f.scalarSummary = f.admitScalar(c)
+		f.streamSummary = f.admitStreaming(c)
+		if !f.streamSummary.Eligible {
+			f.scalarSummary = f.admitScalar(c)
+		}
 	}
-	if f.scalarSummary.Eligible {
+	if f.scalarSummary.Eligible || f.streamSummary.Eligible {
 		pinLocals = false
 	} else {
 		sc.ensureTargetStack()
@@ -4404,6 +4410,10 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
+	if f.streamSummary.Eligible {
+		f.ctrl = f.sc.ctrl[:0]
+		return f.streamBody(c)
+	}
 	if f.scalarSummary.Eligible {
 		f.ctrl = f.sc.ctrl[:0]
 		return f.scalarBody(c)
@@ -4892,7 +4902,7 @@ func (f *fn) prologue(localScores []uint32) {
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	f.zeroEHGCRootLanes()
-	if f.scalarSummary.Eligible {
+	if f.scalarSummary.Eligible || f.streamSummary.Eligible {
 		// Shared locals start as zero constants. Its control agreements store
 		// every dirty local before borrowing a frame home. Admission excludes
 		// GC, EH and effects; extending it requires revisiting this invariant.
