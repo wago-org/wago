@@ -438,6 +438,13 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	nFallback++
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
+	// The stream stride is invariant. The vector packet uses only direct
+	// Q loads and NEON arithmetic, so it leaves the backend scratch live.
+	if p.stride.op == 0x20 {
+		read(p.stride.a, X16)
+	} else {
+		f.a.MovImm64(X16, uint64(p.stride.v))
+	}
 	// Addition modulo 2^32 allows each lane to accumulate independently.
 	// Reduce once before resuming the checked scalar tail.
 	f.a.NeonEor16b(sum, sum, sum)
@@ -456,11 +463,6 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		}
 	}
 	f.a.NeonAddS(sum, sum, va)
-	if p.stride.op == 0x20 {
-		read(p.stride.a, X16)
-	} else {
-		f.a.MovImm64(X16, uint64(p.stride.v))
-	}
 	f.a.Add64(a, a, X16)
 	f.a.Add64(b, b, X16)
 	f.a.Add32(index, index, X16)
