@@ -11,6 +11,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
   bounds checks, register use, local-state preservation, and integer arithmetic.
 
+### Fixed
+
+- Preserve required ARM64 memory-bounds traps after fused conditional local
+  assignments replace a previously boolean value.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking

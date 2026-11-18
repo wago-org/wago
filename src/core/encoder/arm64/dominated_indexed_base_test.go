@@ -1,6 +1,9 @@
 package arm64
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestDominatedIndexedCandidateCount(t *testing.T) {
 	var a Asm
@@ -189,6 +192,62 @@ func TestDominatedIndexedBaseExtraEntry(t *testing.T) {
 		}
 		if hits := a.FoldDominatedIndexedBases(entry); hits != want {
 			t.Fatalf("entry=%d hits=%d want=%d", entry, hits, want)
+		}
+	}
+}
+
+func TestDominatedIndexedBaseConditionalSeedBypass(t *testing.T) {
+	for _, branch := range []struct {
+		name string
+		word uint32
+	}{
+		{"b.eq", 0x54000000}, {"cbz", 0x34000000},
+		{"cbnz", 0x35000000}, {"tbz", 0x36000000}, {"tbnz", 0x37000000},
+	} {
+		for _, instruction := range []struct {
+			name string
+			word uint32
+		}{
+			{"tst", 0x7200003f}, {"ccmp", 0x7a420020}, {"csel", 0x1a820023},
+		} {
+			for _, bypass := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/bypass%t", branch.name, instruction.name, bypass), func(t *testing.T) {
+					var a Asm
+					a.CmpImm32(X0, 0)
+					if !bypass {
+						a.AddShifted(X16, X26, X20, 0, false)
+					}
+					from := a.Len()
+					a.word(branch.word)
+					if bypass {
+						a.AddShifted(X16, X26, X20, 0, false)
+					} else {
+						a.Nop()
+					}
+					a.word(instruction.word)
+					candidate := a.Len()
+					a.AddShifted(X16, X26, X20, 0, false)
+					a.word(0xb9400a02) // LDR W2,[X16,#8]
+					a.PatchU32(from, branch.word|uint32((candidate-from)/4)<<5)
+					want := 1
+					if bypass {
+						want = 0
+					}
+					for _, fold := range []struct {
+						name  string
+						apply func(*Asm, ...int) int
+					}{
+						{"site", (*Asm).FoldDominatedIndexedBases},
+						{"key", (*Asm).FoldDominatedIndexedBasesByKey},
+					} {
+						copyAsm := a
+						copyAsm.B = append([]byte(nil), a.B...)
+						if got := fold.apply(&copyAsm); got != want {
+							t.Fatalf("%s folds=%d, want %d; branch predecessor bypasses seed=%v", fold.name, got, want, bypass)
+						}
+					}
+				})
+			}
 		}
 	}
 }
