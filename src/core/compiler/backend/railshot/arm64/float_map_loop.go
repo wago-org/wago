@@ -1418,9 +1418,11 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	// can change it. Limit clipping to contiguous single-store packets.
 	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
 		nInvariant != 0 && p.extraStoreN == 0 && outputStride == 1
-	resumeInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
-		nInvariant != 0 && p.counterScale == 1 && p.packet == floatMapVectorBytes &&
-		!p.interleaved && (p.extraStoreN == 0 || p.invariantsBeforeStores)
+	unitPacket := !p.interleaved && p.step == 4 && p.packet == floatMapVectorBytes
+	interleavedPacket := p.interleaved && p.step == 8 && p.packet == 2*floatMapVectorBytes
+	resumeInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && nInvariant != 0 &&
+		p.counterScale == 1 && (unitPacket || interleavedPacket) &&
+		(p.extraStoreN == 0 || p.invariantsBeforeStores)
 	for _, output := range guardedOutputs {
 		if output.stride != 1 {
 			resumeInvariantPrefix = false
@@ -1926,7 +1928,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	}
 	packet := func(width uint32, final bool) {
 		for block = 0; block < int32(width); block += blockBytes {
-			if p.interleaved {
+			if p.interleaved && !singleLane {
 				a, ownA := emit(outputs[0].value)
 				b, ownB := emit(outputs[1].value)
 				zipped := f.allocFReg(0)

@@ -479,6 +479,49 @@ func TestIntegerLoadMapInterleavedStores(t *testing.T) {
 	}
 }
 
+func TestIntegerLoadMapInterleavedInvariantReentry(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, tc := range []struct{ dst, src, count, invariant int32 }{
+		{1024, 8192, 64, 1024}, {1024, 8192, 64, 1029},
+		{1024, 8192, 64, 1127}, {1024, 8192, 64, 1533},
+		{1024, 8192, 67, 1128}, {1024, 8192, 67, 8192},
+		{1024, 1028, 67, 1128}, {1024, 8192, 67, 65533},
+	} {
+		body := []byte{1, 7, 0x7f}
+		constant := func(v int32) {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(v)...)
+		}
+		constant(tc.dst)
+		body = append(body, 0x21, 0)
+		constant(tc.src)
+		body = append(body, 0x21, 1)
+		constant(tc.invariant)
+		body = append(body, 0x21, 5, 0x03, 0x40)
+		body = append(body, 0x20, 5, 0x28, 2, 0, 0x21, 6)
+		body = append(body,
+			0x20, 0, 0x20, 2, 0x6a,
+			0x20, 1, 0x20, 2, 0x6a, 0x28, 2, 0, 0x20, 6, 0x6a, 0x22, 3, 0x36, 2, 0,
+			0x20, 0, 0x20, 2, 0x6a, 0x41, 4, 0x6a,
+			0x20, 1, 0x20, 2, 0x6a, 0x28, 2, 4, 0x20, 6, 0x73, 0x22, 4, 0x36, 2, 0,
+			0x20, 2, 0x41, 8, 0x6a, 0x22, 2)
+		constant(8 * tc.count)
+		body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x20, 4, 0x73, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-invariant-reentry")
+		if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+			t.Fatalf("stream=%+v: got %x/%v, want %x/%v, memory equal=%v", tc, got, err, want, wantErr, bytes.Equal(actual, expected))
+		}
+		if diagnosticsEnabled && hits == 0 {
+			t.Fatalf("stream=%+v: interleaved stores did not emit re-entry", tc)
+		}
+	}
+}
+
 func TestIntegerLoadMapTypedAfterLoadScreen(t *testing.T) {
 	for _, tc := range []struct {
 		code []byte
