@@ -245,6 +245,29 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		return r
 	}
 
+	// NEG is SUB from the zero register. Keep an owned operand in place
+	// and read pinned locals through the independent source register.
+	if node.deferredOp() == opSub && left.elemKind() == ekValue &&
+		left.st.kind == stConst && left.st.cval == 0 {
+		src, owned := f.materializeRead(right)
+		result := dest
+		if result == regNone {
+			if owned {
+				result = src
+			} else {
+				result = f.allocReg(maskOf(src))
+			}
+		}
+		f.aluRR3(opSub, result, ZR, src, w)
+		if owned && src != result {
+			f.release(src)
+		}
+		f.consumeBlockBelow(node)
+		f.occupy(node, result)
+		f.stats.peep("negate-zero-sub")
+		return result
+	}
+
 	// Fold constant 1 +/- 2^k products into one shifted ADD/SUB. The
 	// multiplier sits on the right after the commutative swap above.
 	if node.deferredOp() == opMul {
