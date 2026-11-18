@@ -524,3 +524,24 @@ corrected and its receipt retained. Production 145-input runtime, native
 mechanism and performance qualification remain pending. This is not evidence
 that the adverse 68cea43b results above have been repaired; no promotion or
 PR is proposed.
+
+### Rotate-home activation outcome (b404381d, source unchanged)
+
+The production build passed all 145 runtime oracles. Untimed public-API
+comparisons found zero rotate-home preparations and zero token commits across
+all 145 workloads. OFF/ON native images and serialized metadata matched for
+every workload, with 572 selected functions in both arms. Seven targeted
+native-kernel comparisons likewise showed no sink-induced change. No timing
+run was justified or performed for the inactive sink.
+
+The separate compact-encoding correction did change code relative to 68cea43b:
+aggregate native size decreased by 180 bytes and RORX emissions fell from 122
+to 36. Monocypher function 0 returned to 2,036 bytes with 32 ordinary immediate
+rotates, versus 2,128 bytes and 32 RORX instructions in the prior checkpoint.
+Its frame remained 264 bytes. This is an encoding correction, not a successful
+home-destination sink or eliminated MOV chain, and is not runtime evidence.
+
+The activation observer did not attribute rejection reasons. Adjacent tee,
+aliases or another guard must not be asserted as the cause without separate
+tracing. The prior 68cea43b failed timing and memory qualification remains
+unaltered; no target improvement or promotion is claimed.
