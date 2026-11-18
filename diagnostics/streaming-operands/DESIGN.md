@@ -71,3 +71,17 @@ A single loop's static frame traffic changed from four reads/two writes to zero;
 this is not a runtime speed measurement. The existing compiler's four-way loop
 unrolling is not reproduced. No measured compilation, execution or RSS
 improvement is claimed, and the performance targets remain unmet.
+
+### Subsequent register-home diagnostic
+
+All 145 production runtime oracles passed with register homes enabled. A
+100,000-iteration loop first-call diagnostic measured legacy controls at
+31.526/31.727 microseconds (0.63% control difference), versus 58.216 microseconds
+with register homes, about 1.84 times slower. This loop misses the requested
+5% execution-regression limit despite eliminating its frame traffic.
+
+A separate steady-state diagnostic had a 19.34% neutral-control difference and
+is not qualified for performance conclusions. These limited measurements are
+not full-corpus execution qualification. Preserving established loop
+specializations remains necessary before broader promotion. This branch remains
+experimental; no performance improvement or merge recommendation is claimed.
