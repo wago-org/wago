@@ -1,0 +1,198 @@
+{
+  "source": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd",
+  "toolchain": "go version go1.27.1 linux/amd64",
+  "source_tree": "0e53a23ebd0eb1ae531d62ea16c0f1ed57dcd03e",
+  "measured_builds": [
+    {
+      "arm": "baseline",
+      "binary_sha256": "764d5e12daaeffcd82b1b481b248cb8ca177e7f10885e271579b021c02113329",
+      "size": 18589025
+    },
+    {
+      "arm": "neutral",
+      "binary_sha256": "d3209d7501af5d50b98ec5e4995d2a83132324881da0a3eb76fb8f16bede8043",
+      "size": 18588705
+    },
+    {
+      "arm": "hot",
+      "binary_sha256": "91c65a975fada991ecefc9dc1d35252572677e2330df3218722647b39438deee",
+      "size": 18588801
+    }
+  ],
+  "load_geometry": {
+    "baseline": {
+      "ELF_type": 2,
+      "interpreter": false,
+      "loads": [
+        {
+          "file_offset": 0,
+          "VA": 4194304,
+          "file_size": 6280625,
+          "mem_size": 6280625,
+          "flags": 5,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        },
+        {
+          "file_offset": 6283264,
+          "VA": 10477568,
+          "file_size": 6100560,
+          "mem_size": 6100560,
+          "flags": 4,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        },
+        {
+          "file_offset": 12386304,
+          "VA": 16580608,
+          "file_size": 164832,
+          "mem_size": 34059176,
+          "flags": 6,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        }
+      ],
+      "entry": 4771840
+    },
+    "neutral": {
+      "ELF_type": 2,
+      "interpreter": false,
+      "loads": [
+        {
+          "file_offset": 0,
+          "VA": 6291456,
+          "file_size": 6280625,
+          "mem_size": 6280625,
+          "flags": 5,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        },
+        {
+          "file_offset": 6283264,
+          "VA": 12574720,
+          "file_size": 6100560,
+          "mem_size": 6100560,
+          "flags": 4,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        },
+        {
+          "file_offset": 12386304,
+          "VA": 18677760,
+          "file_size": 164832,
+          "mem_size": 34059176,
+          "flags": 6,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 0
+        }
+      ],
+      "entry": 6868992
+    },
+    "hot": {
+      "ELF_type": 2,
+      "interpreter": false,
+      "loads": [
+        {
+          "file_offset": 0,
+          "VA": 4198400,
+          "file_size": 6280625,
+          "mem_size": 6280625,
+          "flags": 5,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 4096
+        },
+        {
+          "file_offset": 6283264,
+          "VA": 10481664,
+          "file_size": 6100560,
+          "mem_size": 6100560,
+          "flags": 4,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 4096
+        },
+        {
+          "file_offset": 12386304,
+          "VA": 16584704,
+          "file_size": 164832,
+          "mem_size": 34059176,
+          "flags": 6,
+          "p_align": 4096,
+          "mod4KiB": 0,
+          "mod2MiB": 4096
+        }
+      ],
+      "entry": 4775936
+    }
+  },
+  "normalization": {
+    "neutral": {
+      "changed_functions": [],
+      "missing": [],
+      "added": [],
+      "scope": "Instruction-relative offsets and semantic operands retained; annotated direct targets and RIP-relative addresses normalized. Unresolved differences require review, not semantic-equivalence assertion."
+    },
+    "hot": {
+      "changed_functions": [],
+      "missing": [],
+      "added": [],
+      "scope": "Instruction-relative offsets and semantic operands retained; annotated direct targets and RIP-relative addresses normalized. Unresolved differences require review, not semantic-equivalence assertion."
+    }
+  },
+  "api_parity": {
+    "source_before_after": {
+      "head": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd",
+      "tree": "0e53a23ebd0eb1ae531d62ea16c0f1ed57dcd03e",
+      "status": ""
+    },
+    "native_and_serialized_equal_per_arm": 145,
+    "pristine_native_equal_per_arm": 145,
+    "host_callbacks_per_arm": 22,
+    "trap_recovery": true,
+    "PC_symbol_sanity": true,
+    "observer_exact_T_R": true,
+    "scope": "No production runtime performance claim; serialized fields exclude some private/debug fields"
+  },
+  "mechanism_raw_sha256": "f7833a0a54af2a6f2f9f7e01ec31a48b0ecad48169861374fd8396396db8363b",
+  "pipeline": {
+    "plan_sha256": "6a7dcec49c492d02964e97a33fdf63a2e0981d127faf3511ed33418b6030f5e6",
+    "recovery_plan_sha256": "bc803d033e14a8d822df052a6363517dc915e73ce3114187db2e52ed8b310286",
+    "verified_phases": [
+      {
+        "phase": "long",
+        "records": 540,
+        "raw_sha256": "098b1218a5bd8276fe0125c2b668c04bbf2a84952de6c440191ba6fa57fbca6a"
+      },
+      {
+        "phase": "cold",
+        "records": 2900,
+        "raw_sha256": "829f24843b23c4387f0957279ed9dbf0d637650186891f19c04b1502b61fffe5"
+      },
+      {
+        "phase": "rss",
+        "records": 435,
+        "raw_sha256": "e15548e21ae216303d71dc814cdcb829c65cdb2bc2c9b440e3be6c69834864f3"
+      },
+      {
+        "phase": "pages",
+        "records": 435,
+        "raw_sha256": "aec5721e5ff779d10b619e1a9fc11e362dfdd100cd50f272a583a70b975aa17d"
+      }
+    ],
+    "counts": {
+      "long": 540,
+      "cold": 2900,
+      "rss": 435,
+      "pages": 435
+    },
+    "original_partial_records_excluded": 275,
+    "analysis": "pending"
+  }
+}
