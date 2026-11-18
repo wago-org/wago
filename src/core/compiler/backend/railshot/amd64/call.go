@@ -1043,12 +1043,6 @@ func (f *fn) emitTailRegisterToWrapperJump(ft *wasm.CompType, emitJump func()) {
 	f.a.Ret()
 }
 
-type tailDeferredArg struct {
-	target Reg
-	root   *elem
-	float  bool
-}
-
 // loadCallLocalInt selects the local's exact width so packed adjacent i32 homes
 // cannot leak into an argument's upper half.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
@@ -1110,109 +1104,11 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		}
 	}
 
-	f.materializeCallExpressions(roots[:p])
-
-	var gpMoves [8]regMove
-	var fpMoves [8]regMove
-	var deferred [16]tailDeferredArg
-	gpN, fpN, deferredN := 0, 0, 0
-	gp, fp := 0, 0
-	for i, typ := range ft.Params {
-		mt := mtOf(typ)
-		root := roots[i]
-		resident := registerCallArgNeedsCapture(root)
-		if mt.isFloat() {
-			target := fpArgRegs[fp]
-			if resident {
-				src := f.materializeF(root)
-				f.fpinned = f.fpinned.add(src)
-				fpMoves[fpN] = regMove{dst: target, src: src}
-				fpN++
-			} else {
-				deferred[deferredN] = tailDeferredArg{target: target, root: root, float: true}
-				deferredN++
-			}
-			fp++
-			continue
-		}
-		target := intArgRegs[gp]
-		if resident {
-			src := f.materialize(root)
-			f.pinned = f.pinned.add(src)
-			gpMoves[gpN] = regMove{dst: target, src: src}
-			gpN++
-		} else {
-			deferred[deferredN] = tailDeferredArg{target: target, root: root}
-			deferredN++
-		}
-		gp++
-	}
-
-	for _, move := range gpMoves[:gpN] {
-		f.pinned = f.pinned.remove(move.src)
-	}
-	var checkGPMoves func()
-	if regallocCheckEnabled {
-		checkGPMoves = f.checkBeginRegMoves(gpMoves[:gpN], false)
-		defer checkGPMoves()
-	}
-	resolveRegMovesWindow(gpMoves[:gpN], func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
-	if regallocCheckEnabled {
-		checkGPMoves()
-	}
-	for _, move := range fpMoves[:fpN] {
-		f.fpinned = f.fpinned.remove(move.src)
-	}
-	fpSwapSlot := -1
-	var checkFPMoves func()
-	if regallocCheckEnabled {
-		checkFPMoves = f.checkBeginRegMoves(fpMoves[:fpN], true)
-		defer checkFPMoves()
-	}
-	resolveRegMovesWindow(fpMoves[:fpN],
-		func(dst, src Reg) { f.a.FMov(dst, src, true) },
-		func(x, y Reg) {
-			if fpSwapSlot < 0 {
-				fpSwapSlot = f.allocSpillSlot()
-			}
-			off := f.spillOff(fpSwapSlot)
-			f.a.FStoreDisp(RSP, off, x, true)
-			f.a.FMov(x, y, true)
-			f.a.FLoadDisp(y, RSP, off, true)
-		})
-	if regallocCheckEnabled {
-		checkFPMoves()
-	}
-	// Register moves establish the integer ABI homes. Deferred float literals
-	// can still need a GPR when literal-pool loads are disabled; their scratch
-	// allocation must not reuse an already staged argument (including RDI).
-	argumentPins := f.pinned
-	for _, target := range intArgRegs[:gp] {
-		f.pinned = f.pinned.add(target)
-	}
-	for _, arg := range deferred[:deferredN] {
-		if arg.float {
-			switch arg.root.st.kind {
-			case stConst:
-				f.loadFConst(arg.target, arg.root.st)
-			case stSlot:
-				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
-			case stLocalRef:
-				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
-			}
-			continue
-		}
-		switch arg.root.st.kind {
-		case stConst:
-			f.loadConst(arg.target, arg.root.st)
-		case stSlot:
-			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()))
-		case stLocalRef:
-			f.loadCallLocalInt(arg.target, arg.root.st)
-		}
-	}
-
-	f.pinned = argumentPins
+	var gpMoves, fpMoves [8]regMove
+	var deferred [16]deferredArg
+	plan := registerArgumentPlan{gpMoves: gpMoves[:0], fpMoves: fpMoves[:0], deferred: deferred[:0]}
+	plan, _ = f.captureRegisterArguments(plan, roots[:p], ft.Params, registerArgumentsTail)
+	f.commitRegisterArguments(&plan)
 	f.emitTailFrameRelease()
 	emitJump()
 }
@@ -2368,86 +2264,27 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	callTarget, callTargetSpilled := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
-	allTypes := f.logicalTypes(allRoots)
-	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	allTypes := f.logicalTypes(allRoots[:d-p])
+	belowTypes := append(f.tmpTypes2[:0], allTypes...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
-	f.materializeCallExpressions(allRoots)
-
-	// Identify the p argument roots (top of stack), deepest first.
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, 0, p)
-	}
-	argRoots = argRoots[:p]
-	f.tmpRoots = argRoots
-	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
-		}
-	}
-
-	// Register-resident args (deferred/reg/pinned-local) are materialized into
-	// owned, pinned registers now (protected from the flush below); const/memory
-	// args are loaded straight into their target register afterward.
-	moves := f.tmpMoves[:0]
-	deferred := f.tmpDeferred[:0]
-	for i := 0; i < p; i++ {
-		root := argRoots[i]
-		if registerCallArgNeedsCapture(root) {
-			// A slot-backed argument may occupy a slot that flushBelow reuses for
-			// a value beneath the arguments. Capture it before that flush instead of
-			// reloading overwritten data afterward.
-			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
-			f.pinned = f.pinned.add(reg)
-			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
-		} else {
-			deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
-		}
-	}
+	plan := registerArgumentPlan{gpMoves: f.tmpMoves[:0], deferred: f.tmpDeferred[:0]}
+	plan, firstArg := f.captureRegisterArguments(plan, allRoots, ft.Params, registerArgumentsGP)
 	if p > 0 {
-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+		f.flushBelow(firstArg)
 	} else {
 		f.flush()
 	}
-	// Store dirty pinned locals BEFORE the argument staging: a pinned local may
-	// live in an argument register (R9-R11 for 5+-arg calls) or in RDI/RSI
-	// (clobbered by the linMem/trap setup below), not just in a callee-clobbered
-	// register. Their values were already copied out above where an argument reads
-	// them. Lazy reload on the next read — WARP's STACK_REG model.
+	// Capture slots/pinned locals before prefix canonicalization and spilling.
 	f.spillLocalsForCall()
-
-	// Unpin the owned source registers, then resolve the parallel move into targets.
-	for _, m := range moves {
-		f.pinned = f.pinned.remove(m.src)
-	}
-	var checkMoves func()
-	if regallocCheckEnabled {
-		checkMoves = f.checkBeginRegMoves(moves, false)
-		defer checkMoves()
-	}
-	resolveRegMovesWindow(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
-	if regallocCheckEnabled {
-		checkMoves()
-	}
-	f.tmpMoves = moves[:0]
-	for _, da := range deferred {
-		switch da.root.st.kind {
-		case stConst:
-			f.loadConst(da.target, da.root.st)
-		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
-		case stLocalRef:
-			f.loadCallLocalInt(da.target, da.root.st)
-		}
-	}
-	f.tmpDeferred = deferred[:0]
-	f.tmpDeferredWritten = max(f.tmpDeferredWritten, len(deferred))
+	f.commitRegisterArguments(&plan)
+	// Only the GP caller retains pooled slices. The shared core must not let
+	// mixed/tail stack buffers escape through a mode-dependent retention path.
+	f.tmpMoves = plan.gpMoves[:0]
+	f.tmpDeferred = plan.deferred[:0]
+	f.tmpDeferredWritten = max(f.tmpDeferredWritten, len(plan.deferred))
 
 	// Consume the args while preserving collector identity for every value below
 	// the arguments. Those canonical slots remain live across the native call.
@@ -2589,143 +2426,24 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
-	allTypes := f.logicalTypes(allRoots)
-	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
+	allTypes := f.logicalTypes(allRoots[:d-p])
+	belowTypes := append(f.tmpTypes2[:0], allTypes...)
 	f.tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 
-	f.materializeCallExpressions(allRoots)
-
-	// Identify the p argument roots (top of stack), deepest first.
-	argRoots := f.tmpRoots[:0]
-	if cap(argRoots) < p {
-		argRoots = make([]*elem, 0, p)
-	}
-	argRoots = argRoots[:p]
-	f.tmpRoots = argRoots
-	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
-	cur := f.s.back()
-	for i := p - 1; i >= 0; i-- {
-		argRoots[i] = cur
-		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
-		}
-	}
-
-	// Register-resident args are materialized into owned, pinned registers now
-	// (per bank), so the flush below cannot spill them; const/slot/local-ref args
-	// are deferred and loaded straight into their target register afterward.
-	var gpMoveBuf [8]regMove
-	var fpMoveBuf [8]regMove
-	var deferredBuf [16]deferredMixedArg
-	gpMoves, fpMoves := gpMoveBuf[:0], fpMoveBuf[:0]
-	deferred := deferredBuf[:0]
-	gp, fp := 0, 0
-	for i, t := range ft.Params {
-		mt := mtOf(t)
-		root := argRoots[i]
-		regResident := registerCallArgNeedsCapture(root)
-		if mt.isFloat() {
-			target := fpArgRegs[fp]
-			if regResident {
-				reg := f.materializeF(root)
-				f.fpinned = f.fpinned.add(reg)
-				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
-				f.stats.peep("mixed-call-reg-arg")
-			} else {
-				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
-			}
-			fp++
-		} else {
-			target := intArgRegs[gp]
-			if regResident {
-				reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
-				f.pinned = f.pinned.add(reg)
-				gpMoves = append(gpMoves, regMove{dst: target, src: reg})
-				f.stats.peep("mixed-call-reg-arg")
-			} else {
-				deferred = append(deferred, deferredMixedArg{target: target, root: root})
-			}
-			gp++
-		}
-	}
+	var gpMoves, fpMoves [8]regMove
+	var deferred [16]deferredArg
+	plan := registerArgumentPlan{gpMoves: gpMoves[:0], fpMoves: fpMoves[:0], deferred: deferred[:0]}
+	plan, firstArg := f.captureRegisterArguments(plan, allRoots, ft.Params, registerArgumentsMixed)
 	if p > 0 {
-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+		f.flushBelow(firstArg)
 	} else {
 		f.flush()
 	}
-	// Store dirty pinned locals AFTER their values were copied out above (an arg may
-	// read a pinned local); a mixed callee may clobber every caller pin.
 	f.spillLocalsForCall()
-
-	// Resolve each bank's parallel move independently. GP swaps use XCHG; XMM has no
-	// swap, so a cyclic FP move goes through one reused spill slot (like arm64).
-	for _, m := range gpMoves {
-		f.pinned = f.pinned.remove(m.src)
-	}
-	var checkGPMoves func()
-	if regallocCheckEnabled {
-		checkGPMoves = f.checkBeginRegMoves(gpMoves, false)
-		defer checkGPMoves()
-	}
-	resolveRegMovesWindow(gpMoves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
-	if regallocCheckEnabled {
-		checkGPMoves()
-	}
-	for _, m := range fpMoves {
-		f.fpinned = f.fpinned.remove(m.src)
-	}
-	fpSwapSlot := -1
-	var checkFPMoves func()
-	if regallocCheckEnabled {
-		checkFPMoves = f.checkBeginRegMoves(fpMoves, true)
-		defer checkFPMoves()
-	}
-	resolveRegMovesWindow(fpMoves,
-		func(dst, src Reg) { f.a.FMov(dst, src, true) },
-		func(x, y Reg) {
-			if fpSwapSlot < 0 {
-				fpSwapSlot = f.allocSpillSlot()
-			}
-			off := f.spillOff(fpSwapSlot)
-			f.a.FStoreDisp(RSP, off, x, true)
-			f.a.FMov(x, y, true)
-			f.a.FLoadDisp(y, RSP, off, true)
-		})
-	if regallocCheckEnabled {
-		checkFPMoves()
-	}
-	// Register moves establish the integer ABI homes. Deferred float literals
-	// can still need a GPR when literal-pool loads are disabled; their scratch
-	// allocation must not reuse an already staged argument (including RDI).
-	argumentPins := f.pinned
-	for _, target := range intArgRegs[:gp] {
-		f.pinned = f.pinned.add(target)
-	}
-	for _, da := range deferred {
-		if da.float {
-			switch da.root.st.kind {
-			case stConst:
-				f.loadFConst(da.target, da.root.st)
-			case stSlot:
-				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
-			case stLocalRef:
-				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
-			}
-			continue
-		}
-		switch da.root.st.kind {
-		case stConst:
-			f.loadConst(da.target, da.root.st)
-		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
-		case stLocalRef:
-			f.loadCallLocalInt(da.target, da.root.st)
-		}
-	}
-	f.pinned = argumentPins
+	f.commitRegisterArguments(&plan)
 
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 

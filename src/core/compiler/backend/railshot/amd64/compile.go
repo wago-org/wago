@@ -719,13 +719,8 @@ func insertLocalCandidate(top []uint16, candidate uint16, scores []uint32, limit
 // register after the parallel register-move resolves. See emitRegisterCallVia.
 type deferredArg struct {
 	target Reg
+	float  bool // occupies existing alignment padding; record remains 16 bytes
 	root   *elem
-}
-
-type deferredMixedArg struct {
-	target Reg
-	root   *elem
-	float  bool
 }
 
 // alignPad is a shared zero source for inter-function alignment padding,
