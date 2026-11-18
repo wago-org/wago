@@ -354,15 +354,18 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 		f.cmpImm(X16, bytes+3, true)
 		scalar[nScalar] = f.a.Bcond(condB)
 		nScalar++
-		for off := int32(0); off < int32(bytes); off += 16 {
+		f.a.LdrQ(vd, d, 0)
+		f.a.LdrQPost(vs, s, int32(bytes))
+		f.a.NeonAddS(vs, vs, vp)
+		f.a.NeonSminS(vd, vd, vs)
+		f.a.StrQPost(d, int32(bytes), vd)
+		for off := 16 - int32(bytes); off < 0; off += 16 {
 			f.a.LdrQ(vd, d, off)
 			f.a.LdrQ(vs, s, off)
 			f.a.NeonAddS(vs, vs, vp)
 			f.a.NeonSminS(vd, vd, vs)
 			f.a.StrQ(d, off, vd)
 		}
-		f.a.AddImm64(d, d, bytes)
-		f.a.AddImm64(s, s, bytes)
 		f.a.AddImm32(counter, counter, bytes)
 		compare(p.limit - bytes - 8)
 		f.patchBranch19(f.a.Bcond(condBE), packetStart)
