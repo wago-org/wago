@@ -497,6 +497,9 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 	}
 	v := p.nodes[x]
 	if v.op == 0x20 {
+		if p.mapCounterValue(v) {
+			return true
+		}
 		return !p.localWritten(v.left()) && p.locals[p.localSlot(v.left())].Type == p.valueType()
 	}
 	if p.integer {
@@ -746,6 +749,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var loads [16]int
 	nl := 0
 	var coefficients uint32
+	usesCounterValue := false
 	var invariant [2]int
 	nInvariant := 0
 	var collect func(int) bool
@@ -776,7 +780,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return true
 		}
 		if v.op == 0x20 {
-			coefficients |= 1 << p.localSlot(v.left())
+			if p.mapCounterValue(v) {
+				usesCounterValue = true
+			} else {
+				coefficients |= 1 << p.localSlot(v.left())
+			}
 			return true
 		}
 		if p.constant(v.op) {
@@ -816,6 +824,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return 1000
 		}
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return 0
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
@@ -871,6 +882,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	peakPressure := pressure(p.result)
 	if p.secondStore {
 		peakPressure = max(peakPressure, pressure(p.secondResult))
+	}
+	if usesCounterValue {
+		constantCount += 2 // fixed lane offsets and the current block's counter
 	}
 	if available < constantCount+peakPressure+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
@@ -1284,6 +1298,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	nc := 0
 	var vectors [24]Reg
 	nv := 0
+	laneCounters := regNone
+	if usesCounterValue {
+		laneCounters = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(laneCounters)
+		vectors[nv] = laneCounters
+		nv++
+		f.a.NeonEor16b(laneCounters, laneCounters, laneCounters)
+		for lane := uint8(1); lane < 4; lane++ {
+			f.a.MovImm32(X16, int32(uint32(lane)*p.counterStep))
+			f.a.NeonInsS(laneCounters, X16, lane)
+		}
+	}
 
 	emitOp := func(op byte, out, a, b Reg) {
 		switch op {
@@ -1399,6 +1425,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var preload func(int)
 	preload = func(x int) {
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
@@ -1429,9 +1458,13 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		preload(output.value)
 	}
 	var block int32
+	counterValue := regNone
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return counterValue, false
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
@@ -1536,6 +1569,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	packet := func(width uint32) {
 		for block = 0; block < int32(width); block += floatMapVectorBytes {
+			if usesCounterValue {
+				counterValue = f.allocFReg(0)
+				f.fpinned = f.fpinned.add(counterValue)
+				source := counter
+				if block != 0 {
+					f.a.AddImm32(X16, counter, uint32(block)/p.spanScale)
+					source = X16
+				}
+				f.a.FmovFromGpr(counterValue, source, false)
+				f.a.NeonDupS(counterValue, counterValue)
+				f.a.NeonAddS(counterValue, counterValue, laneCounters)
+			}
 			for _, output := range outputs[:outputCount] {
 				value, owned := emit(output.value)
 				if output.stride > 1 {
@@ -1573,6 +1618,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 					f.fpinned = f.fpinned.remove(value)
 					f.releaseF(value)
 				}
+			}
+			if usesCounterValue {
+				releaseTemp(counterValue)
 			}
 		}
 		for i := 0; i < ng; i++ {

@@ -178,3 +178,9 @@ func (p *floatMapPlan) mapStoreBase(root, depth int) int {
 	}
 	return -1
 }
+
+// One logical word per iteration gives each native lane a different source
+// counter. Source-unrolled adjacent stores need a separate per-store proof.
+func (p *floatMapPlan) mapCounterValue(node floatMapNode) bool {
+	return p.integer && p.step == 4 && node.op == 0x20 && node.left() == p.counter
+}

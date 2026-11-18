@@ -403,3 +403,40 @@ func TestIntegerLoadMapIndependentStores(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapCounterValue(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	for _, step := range []byte{1, 2, 4} {
+		for _, layout := range []struct{ dst, start int32 }{{8192, 0}, {8192, 13}, {68, 0}, {65532, 0}} {
+			body := []byte{1, 5, 0x7f}
+			constant := func(v int32) {
+				body = append(body, 0x41)
+				body = append(body, wasmtest.SLEB32(v)...)
+			}
+			for i, v := range []int32{64, layout.dst, layout.start} {
+				constant(v)
+				body = append(body, 0x21, byte(i))
+			}
+			body = append(body, 0x03, 0x40,
+				0x20, 1, 0x20, 3, 0x6a,
+				0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 0,
+				0x20, 2, 0x6a, 0x22, 4, 0x36, 2, 0,
+				0x20, 3, 0x41, 4, 0x6a, 0x21, 3,
+				0x20, 2, 0x41, step, 0x6a, 0x22, 2)
+			constant(layout.start + 67*int32(step))
+			body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 4, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+			want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+			got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+				t.Fatalf("step=%d layout=%+v: got %x/%v, want %x/%v, memory equal=%v", step, layout, got, err, want, wantErr, bytes.Equal(actual, expected))
+			}
+			if diagnosticsEnabled && hits == 0 {
+				t.Fatalf("step=%d layout=%+v: vector map was not emitted", step, layout)
+			}
+		}
+	}
+}
