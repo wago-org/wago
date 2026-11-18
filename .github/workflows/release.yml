@@ -203,7 +203,7 @@ jobs:
             goos: darwin
             goarch: amd64
             target: darwin-amd64
-          - runner: macos-26
+          - runner: macos-15
             goos: darwin
             goarch: arm64
             target: darwin-arm64
