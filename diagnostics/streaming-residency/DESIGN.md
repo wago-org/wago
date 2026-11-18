@@ -280,3 +280,35 @@ with zero failures or skips (0.548 s), including five new fact-cache tests.
 Production corpus runtime verification and performance/memory qualification
 for this revision are pending. Earlier checkpoint results do not qualify this
 revision. No improvement or promotion is claimed.
+
+### Completed bounds-preservation diagnostic (5e6b747b)
+
+The production adapter passed all 145 runtime oracles. A fixed 15-case,
+nine-trial long-only execution screen verified all 540 records. It reused the
+previous baseline-calibrated operation counts without recalibration: seven
+stateless 20 ms-target batch regimes and eight cap-limited fresh/vector regimes.
+The same binary's prior eleven options remained enabled; cached bounds and
+same-value facts were switched off/on together. No first-call or compilation
+result is inferred from this execution-only screen.
+
+For the original eight, mean workload ON/main was 1.02147 (paired-bootstrap
+95% interval [0.99255, 1.04181]); ON/OFF was 0.98194 ([0.94206, 0.99175]).
+For the overlapping new top eight, ON/main was 1.14098 ([1.10586, 1.16707])
+and ON/OFF 0.97243 ([0.92802, 0.98729]). Per-case controls still fail: the
+zero-selected A/A interval is [0.97572, 1.06489], outside the required agreement
+band. Only NanoSVG and dr_wav pass the strict per-case control and execution
+gates. AES and Rabin–Karp remain approximately 1.458 and 1.501 times main at
+the point estimates. These results do not qualify the overall 5% regression
+limit or justify promotion.
+
+Native diagnostics distinguish the mechanisms. The AES round loop retains
+32 bounds comparisons and 32 unsigned trap branches, now using the cached
+register instead of loading the bound. Facts eliminated outside that loop must
+not be credited to its hot rounds. Other loops can eliminate dominated checks;
+static instruction counts are not hardware execution counts or speedup proof.
+
+All 435 matched fixed-slot, full-feature memory-profile oracles verified.
+Arithmetic mean workload-median absolute compiled-barrier VmHWM was
+11.9871767 / 12.0643319 / 12.0609644 MiB for main / bounds OFF / bounds ON.
+There is no meaningful memory improvement and the absolute 5 MiB target is
+unmet. Source is unchanged; no PR or promotion is proposed.
