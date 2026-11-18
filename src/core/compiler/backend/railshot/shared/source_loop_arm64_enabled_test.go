@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/internal/regalloccheck"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,8 @@ func TestSourceLoopARMAlignmentBound(t *testing.T) {
 
 func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want regalloccheck.Verdict) {
 	t.Helper()
+	direct := strings.HasPrefix(mode, "cbnz ")
+	mode = strings.TrimPrefix(mode, "cbnz ")
 	s, m := sourceLoopFixture(t)
 	b := BeginSourceLoop(s, m, 0, true)
 	if b == nil {
@@ -99,19 +102,44 @@ func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want re
 	if mode == "wrong condition" {
 		condition = a64.X0
 	}
-	if mode == "wide condition" {
-		a.CmpImm64(condition, 0)
+	branch := 0
+	if direct {
+		switch mode {
+		case "wide condition":
+			branch = a.Cbnz64(condition)
+		case "wrong predicate":
+			branch = a.Cbz32(condition)
+		default:
+			branch = a.Cbnz32(condition)
+		}
+
 	} else {
-		a.CmpImm32(condition, 0)
+		if mode == "wide condition" {
+			a.CmpImm64(condition, 0)
+		} else {
+			a.CmpImm32(condition, 0)
+		}
+		predicate := a64.CondNE
+		if mode == "wrong predicate" {
+			predicate = a64.CondEQ
+		}
+		branch = a.Bcond(predicate)
 	}
-	predicate := a64.CondNE
-	if mode == "wrong predicate" {
-		predicate = a64.CondEQ
-	}
-	branch := a.Bcond(predicate)
 	restore := a.Len()
 	emitSourceBranchARMFrame(&a, true)
 	a.Ret()
+	if direct {
+		if mode == "tail padding" || mode == "bad tail padding" || mode == "extra tail padding" {
+			at := a.Len()
+			a.Nop()
+			if mode == "bad tail padding" {
+				a.PatchU32(at, 0xd503205f)
+			}
+			if mode == "extra tail padding" {
+				a.Nop()
+			}
+		}
+	}
 	for _, at := range []int{0, restore} {
 		for j := 0; j < 12; j += 4 {
 			a.PatchU32(at+j, 0xd503201f)
@@ -127,7 +155,7 @@ func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want re
 	case "mixed epilogue":
 		a.PatchU32(restore+4, 0xf2a00010)
 	case "changed return control":
-		a.PatchU32(a.Len()-4, 0xd65f0000)
+		a.PatchU32(restore+12, 0xd65f0000)
 	}
 	if mode == "wrong header target" {
 		header -= 4
@@ -181,5 +209,25 @@ func sourceLoopARMControl(t *testing.T, mode string, width, padding int, want re
 	b.Close()
 	if b.owner != nil || journal.Finalize(0, 0, nil).State == regalloccheck.JournalReady || ledger.EventCount() != 0 || token.owner != nil || s.sourceAttempt != nil || s.sourceWork != work || s.sourceStorage != storage {
 		t.Fatal("retained proof/refunded history")
+	}
+}
+
+func TestSourceLoopARMDirectZeroBranchProofControls(t *testing.T) {
+	for _, width := range []int{4, 8} {
+		for _, padding := range []int{0, 5, 8} {
+			for _, mode := range []string{"cbnz positive", "cbnz tail padding"} {
+				t.Run(fmt.Sprintf("width%d/header%d/%s", width, padding, mode), func(t *testing.T) { sourceLoopARMControl(t, mode, width, padding, regalloccheck.Verified) })
+			}
+		}
+	}
+	for _, tc := range []struct {
+		mode string
+		want regalloccheck.Verdict
+	}{
+		{"wrong condition", regalloccheck.Rejected}, {"backedge-only live kill", regalloccheck.Rejected},
+		{"wide condition", regalloccheck.Inconclusive}, {"wrong predicate", regalloccheck.Inconclusive}, {"wrong header target", regalloccheck.Inconclusive},
+		{"bad tail padding", regalloccheck.Inconclusive}, {"extra tail padding", regalloccheck.Inconclusive}, {"missing GP observer", regalloccheck.Inconclusive}, {"missing effect observer", regalloccheck.Inconclusive},
+	} {
+		t.Run(tc.mode, func(t *testing.T) { sourceLoopARMControl(t, "cbnz "+tc.mode, 8, 5, tc.want) })
 	}
 }

@@ -41,6 +41,8 @@ import (
 // the architecture-specific name is the public A/B oracle going forward.
 var regMergeEnabled = os.Getenv("WAGO_ARM64_NO_REG_MERGE") != "1" && os.Getenv("WAGO_REG_MERGE") != "0"
 
+var layoutPaddingSkipEnabled = os.Getenv("WAGO_ARM64_NO_LAYOUT_PADDING_SKIP") != "1"
+
 // directGoImportEnabled bypasses cross-instance marshaling for bound Go imports
 // in bounded numeric functions. The dispatch tag remains an instance decision.
 var directGoImportEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_GO_IMPORT") != "1"
@@ -74,6 +76,11 @@ var callFreeLoopColdExitEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_COLD_EX
 // each mechanism can be measured against the same generated control flow.
 var callFreeLoopEntryEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_ENTRY") != "1"
 var callFreeLoopRegionEnabled = os.Getenv("WAGO_ARM64_NO_CALLFREE_LOOP_REGION") != "1"
+
+// localLoopPinsEnabled lets direct same-instance calls inside loops use the
+// existing STACK_REG-managed extended pin pool. Imports, indirect calls and
+// tables retain the callee-saved-only pool. The switch is an A/B rollback.
+var localLoopPinsEnabled = os.Getenv("WAGO_ARM64_NO_LOCAL_LOOP_PINS") != "1"
 
 // weightedScalarMergeEnabled reserves the canonical merge register in
 // call-free functions with loop-hot scalar result joins. It changes only the
@@ -145,12 +152,9 @@ var (
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
 	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
-	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
-	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
-	// callee-saved V range (and the STACK_REG spill helpers store 64-bit S/D), so a
-	// 128-bit pin cannot survive a call. In a call-free function nothing clobbers the
-	// register between the prologue init and the epilogue, so the full 128 bits stay
-	// live and every local.get/set becomes a register op instead of LdrQ/StrQ.
+	// function, exactly like the scalar-float pin pool. Calls spill and lazily
+	// restore the full 128 bits through the existing local-state machinery; the
+	// AAPCS64 callee-saved low half alone is not sufficient for a vector local.
 	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
 )
 
@@ -190,6 +194,16 @@ type fn struct {
 	byteReduceLoop          *byteReduceState
 	filledCopyEnd           uint32
 	filledCopyByte          byte
+	popcountLoopWork        uint16
+	shiftedALUShortEnd      int
+	shiftedALUAddressLocals uint64
+	shiftedALUAddress       bool
+	floatMapScatterWork     uint16
+	scopedConstWork         uint16
+	loopLocalLeaseWork      uint16
+	integerWordMapWork      uint16
+	integerLoadMapWork      uint16
+	integerLoadMapProbe     bool
 	pureReduce              *pureReduceJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
@@ -251,9 +265,17 @@ type fn struct {
 	// controlBaseTypeN partitions the fixed function-result scratch: function
 	// results occupy its prefix and open control-frame bases use the remaining tail.
 	controlBaseTypeN uint8
-	// localFactsEnabled admits assignment-version facts only in straight-line
-	// bodies. Facts reuse an otherwise-unused byte in each localDef.
-	localFactsEnabled bool
+	// localFactsEnabled admits assignment-version facts on the current linear
+	// path. Structured joins clear them conservatively; facts reuse an
+	// otherwise-unused byte in each localDef.
+	localFactsEnabled      bool
+	localFactEpoch         valueFacts
+	localAddressBounds     []uint32
+	localAddressAligned8   uint64
+	rootAddressLoopScanned bool
+	rootLoopRangeLocal     uint8
+	rootLoopRangeMinimum   uint32
+	rootLoopRangeMaximum   uint32
 	// loadDefinedLocals marks the first 64 locals updated by loading through their
 	// own prior value. Their explicit W-register address rename is a useful
 	// dependency break on Apple ARM cores and is retained by memory lowering.
@@ -301,6 +323,7 @@ type fn struct {
 	// Parallel V-register occupancy for float values (Phase 5).
 	fregUser         [32]*elem
 	fpinned          regMask
+	fconstBacking    [maxPreloadedFloatConsts]floatConstReg
 	fconsts          []floatConstReg
 	vconsts          []v128ConstReg
 	iconsts          [4]intConstReg
@@ -311,26 +334,29 @@ type fn struct {
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor              int
-	subRspAt                int   // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt                int   // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	tailFrameSites          []int // tail-transfer frame-free MOVZ sites (patched with frameSize)
-	phasePadWords           int   // cold tail padding that preserves following function entry phases
-	frameElided             bool  // simple register-only internal entry leaves SP unchanged
-	adapterReturnOff        int   // register-ABI wrapper continuation used by cross-tail reuse
-	adapterEndOff           int   // end of the wrapper before internal-entry alignment
-	adapterReturnReferenced bool  // cross-tail reuse embeds the local return PC; keep that tail local
-	trapBodyOff             int   // complete shared trap body start; zero when not emitted
-	trapBodyEnd             int   // complete shared trap body end
-	entryLocalsInit         int   // register-ABI entry after parameter homes, before local reset
-	entryTrapEnd            int   // checks before value-pinned globals are initialized
-	guardMode               bool  // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts             bool  // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible           bool  // emit context-cancellation polls at entries and loop headers
-	hasLoop                 bool  // finalizer preserves emission-time loop layout until alignment fragments are relaxable
-	loopMemory              bool  // at least one source loop contains a memory operation
-	opaqueFragments         bool  // jump-table or plugin bytes require explicit fragment-aware scans
-	lazyZero                bool  // defer declared-local zeroing for small call+memory functions
-	skipFence               bool  // call-free leaf with a provably small frame: no stack-fence check
+	subRspAt                int    // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt                int    // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	tailFrameSites          []int  // tail-transfer frame-free MOVZ sites (patched with frameSize)
+	phasePadWords           int    // cold tail padding that preserves following function entry phases
+	byteBoundsPhaseWords    uint32 // byte-check removals not yet padded before a generated loop prefix
+	affineBoundsLayout      bool   // a shortened affine check prefix can move later loop fetch boundaries
+	frameElided             bool   // simple register-only internal entry leaves SP unchanged
+	adapterReturnOff        int    // register-ABI wrapper continuation used by cross-tail reuse
+	adapterEndOff           int    // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int    // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int    // complete shared trap body end
+	entryLocalsInit         int    // register-ABI entry after parameter homes, before local reset
+	entryTrapEnd            int    // checks before value-pinned globals are initialized
+	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	conditionalBoundsSized  bool   // Avoid changing short, layout-sensitive source bodies.
+	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	hasLoop                 bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
+	loopMemory              bool   // at least one source loop contains a memory operation
+	opaqueFragments         bool   // jump-table or plugin bytes require explicit fragment-aware scans
+	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
+	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the ordinary linear-memory size in bytes, or the stable
 	// backing base for shared memory when shared-memory-base is enabled, in a
@@ -376,8 +402,9 @@ type fn struct {
 	// Straight-line bounds-check certificates (P6.1). Each entry records a stable
 	// local/global address source and its largest checked extent. The fixed set
 	// retains independent proofs for interleaved arrays without per-local state.
-	boundsCerts    [8]boundsCert
-	nextBoundsCert uint8
+	boundsCerts       [8]boundsCert
+	nextBoundsCert    uint8
+	boundsCertsActive bool // may remain true after source-specific invalidation
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
@@ -398,6 +425,12 @@ type fn struct {
 	// reloads). This is what makes the AssemblyScript shadow-stack pointer
 	// (touched in every function) free at call boundaries.
 	moduleGlobals         []moduleGlobalPin
+	privateGlobalConsts   uint64
+	privateStableLocals   uint64
+	privateLocalConsts    [4]privateLocalConstant
+	privateLocalConstN    uint8
+	privateInitializers   [4]privateConstantInitializer
+	privateInitializerN   uint8
 	guardedNonzeroDivisor *elem // one immediately guarded div/rem operand; never survives its assignment
 
 	// Control-flow state (Phase 3).
@@ -434,6 +467,7 @@ type fn struct {
 	inlineForward           [4]uint32
 	inlineForwardN          uint32
 	loopLocalParams         loopLocalParamHomes
+	loopLocalLease          loopLocalLease
 	inlineTailLoopFrame     int // index+1 of synthetic self-tail loop while inlining
 	inlineWriteVersions     [5]uint32
 	inlineNonzeroPredicates [8]uint32
@@ -486,6 +520,18 @@ type fn struct {
 	// consult its preserves-caller-pins bit instead of retaining a second table.
 	calleeHints []funcHints
 
+	// One-entry native frame-store fact. No register is reserved: a bounded
+	// native-word scan checks source writes and aliasing before each reuse.
+	wideReciprocalBits   uint64
+	wideReciprocalEnd    uint32
+	wideReciprocalReg    Reg
+	wideReciprocalActive bool
+
+	frameForwardEnd       uint32
+	frameForwardOff       int32
+	frameForwardReg       Reg
+	frameForwardLocal     int
+	frameForwardLocalLive bool
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
 	// opcode invalidates it; address identity is deliberately limited to a local.
@@ -500,6 +546,9 @@ type fn struct {
 	// its depth limits the state to the loop whose top test established it.
 	linearSumLoop      uint32
 	linearSumLoopDepth uint16
+	// Module types are immutable throughout this function compilation.
+	memory0TypeKnown bool
+	memory0Is64      bool
 }
 
 func (f *fn) opt(option optimization.Option) bool {
@@ -733,7 +782,10 @@ type scratch struct {
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
-	branchTargetInline      [64]uint64   // one bit per instruction; covers 16 KiB of native code
+	branchTargetInline      [64]uint64 // one bit per instruction; covers 16 KiB of native code
+	repeatedStoreOrigins    [64]uint64 // bounded Wasm-store origin bits for one candidate function
+	repeatedStoreOriginsSet bool
+	repeatedStoreOriginsN   uint16       // conservative admission count; rollback may overcount
 	finalizerMarkers        map[int]bool // validation-only inventory
 	brTableStubAt           []int        // duplicate-heavy jump-table target positions by control depth
 	finalFragments          []finalizerFragment
@@ -1067,6 +1119,11 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	sc.repeatedStoreOriginsN = 0
+	if sc.repeatedStoreOriginsSet {
+		clear(sc.repeatedStoreOrigins[:])
+		sc.repeatedStoreOriginsSet = false
+	}
 	if len(sc.stack.chunks) != 0 {
 		sc.stack.reset()
 	}
@@ -1123,9 +1180,19 @@ func (sc *scratch) finishStackFunction() {
 	sc.nodeScratchDiscarded += sc.stack.finishFunction()
 }
 
-// finishStackWorker releases every pointer-rich node chunk after a parallel
+func (sc *scratch) cacheInitialStackChunk() {
+	if len(sc.stack.chunks) == 0 || cap(sc.stack.chunks[0]) != defaultStackArenaCap {
+		return
+	}
+	sc.clearNodeReferences()
+	sc.stack.cacheInitialChunk()
+}
+
+// finishStackWorker releases each worker-owned node chunk after a parallel
 // worker's final function. The join needs only worker code arenas and scalar
 // metadata; operand nodes cannot be reused again.
+// A process may retain one pointer-free 8 KiB initial chunk; worker-retained
+// resource counters exclude that fixed cache.
 func (sc *scratch) finishStackWorker() {
 	sc.scalar.FinishWorker()
 
@@ -1134,6 +1201,7 @@ func (sc *scratch) finishStackWorker() {
 	sc.nodeScratchDiscarded += retained
 	clear(sc.stack.cold[:cap(sc.stack.cold)])
 	sc.stack.cold = nil
+	sc.stack.cacheInitialChunk()
 	sc.stack.chunks = nil
 	sc.stack.head = nil
 	sc.stack.cur = 0
@@ -1853,12 +1921,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			// A self-tail physical leaf uses the same pin-preserving ABI as an
 			// ordinary leaf. Publish that fact to callers without erasing its
 			// logical calls/loops from scheduling and work-bound analysis.
-			if !allHints[i].flags.has(hintPreservesCallerPins) {
+			if !allHints[i].flags.has(hintPreservesCallerPins) && allHints[i].hasTailTransfer() {
 				h := allHints[i]
 				h.flags.assign(hintHasCall, false)
 				if preservesCallerPins(ft, int(h.localCount), h) {
-					proof := fn{m: m, ft: ft, traceFuncIdx: uint32(i + m.ImportedFuncCount()), policy: policy, classifier: classifier, interruptible: opts.Interruptible, moduleEH: h.flags.has(hintModuleEH), gcFrameRoots: opts.GCFrameRoots.Function(i), customInstructions: opts.CustomInstructions, immutableLocalTable: immutableTable.local, immutableTableTyped: immutableTable.typed, immutableTableType: immutableTable.typeKey, monomorphicTarget: immutableTable.monomorphicTarget}
-					allHints[i].flags.assign(hintPreservesCallerPins, proof.onlySelfTailTransfers(m.Code[i].BodyBytes))
+					allHints[i].flags.assign(hintPreservesCallerPins, proveSelfTailCallerPins(m, ft, i, &opts, h, policy, classifier, immutableTable))
 				}
 			}
 		}
@@ -1883,9 +1950,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
 		relocs := newCallRelocTable(n, relocCap)
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
-		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
+		// no goroutines, channels, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts)
 		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
+		if sc.stackCap == defaultStackArenaCap {
+			defer sc.cacheInitialStackChunk()
+		}
 		sc.classifier = classifier
 		sc.moduleTypes = moduleTypes
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
@@ -2072,6 +2142,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
+// Keep the full proof workspace out of the ordinary module compiler's stack.
+// Only prospective self-tail physical leaves need this state.
+func proveSelfTailCallerPins(m *wasm.Module, ft *wasm.CompType, i int, opts *CompileOptions, h funcHints, policy CodegenPolicy, classifier wasm.ModuleInstructionClassifier, immutableTable immutableTableHint) bool {
+	proof := fn{m: m, ft: ft, traceFuncIdx: uint32(i + m.ImportedFuncCount()), policy: policy, classifier: classifier, interruptible: opts.Interruptible, moduleEH: h.flags.has(hintModuleEH), gcFrameRoots: opts.GCFrameRoots.Function(i), customInstructions: opts.CustomInstructions, immutableLocalTable: immutableTable.local, immutableTableTyped: immutableTable.typed, immutableTableType: immutableTable.typeKey, monomorphicTarget: immutableTable.monomorphicTarget}
+	return proof.onlySelfTailTransfers(m.Code[i].BodyBytes)
+}
+
 // Parallel workers reserve only the small common local range. A rare large
 // function must not multiply its full scratch size by the worker count.
 // All local arrays retain their existing growth path beyond this capacity.
@@ -2219,8 +2296,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 		}
 	}
-	for workerID := range states {
-		go runWorker(workerID)
+	if workers == 1 {
+		runWorker(0)
+	} else {
+		for workerID := range states {
+			go runWorker(workerID)
+		}
 	}
 	wg.Wait()
 	if i, err := work.failures.Result(); err != nil {
@@ -3334,12 +3415,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOpCount() >= 8
-	// The encoder's local instruction proof does not track branch targets.
-	// Guard mode removes the intervening bounds checks, so nearby accesses can
-	// straddle a control-flow join without executing the ADD that seeds X16.
-	sc.asm.ReuseIndexedBase = !guardMode && policy.EnabledOption(optIndexedBaseReuse)
+	// The encoder accepts only a tiny straight-line window whose instructions
+	// preserve the base, index, and X16. Branches and unknown words terminate the
+	// proof, so check-elided code can use the same local reuse safely.
+	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse)
+	// Repeated execution can repay the encoder's bitmask-matching work even
+	// when whole-function native compaction is disabled.
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
-		!policy.CompactNative
+		(!policy.CompactNative && !hints.flags.has(hintHasLoop))
 	sc.asm.AllowSingleNegativeMove32 = policy.EnabledOption(optSingleNegativeMove32)
 	sc.asm.DisableCompactMoveImmediate32 = !compactMoveImmediate32Enabled ||
 		!policy.CompactNative
@@ -3349,8 +3432,46 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOpCount() <= 128
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), loopMemory: hints.hasLoopMemory(), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, memLimitReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy, floatLiteralPool: policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10}
+	// Initialize worker-owned state in place. A populated fn literal retains
+	// a large Go stack temporary even though the destination already exists.
+	*f = fn{}
+	f.a, f.s, f.sc, f.m, f.ft = sc.asm, sc.stack, sc, m, ft
+	f.gcTypeLayouts, f.classifier, f.transient = gcTypeLayouts, sc.classifier, sc.transient
+	f.traceFuncIdx, f.tracePCBase = uint32(globalIdx), c.LocalDeclBytes
+	f.customInstructions = customInstructions
+	f.nParams, f.nLocals = len(ft.Params), nLocals
+	f.localType, f.localSlot, f.locals = localType, localSlot, locals
+	f.globalReg = globalReg[:0]
+	f.guardMode, f.boundsFacts = guardMode, boundsFacts
+	f.conditionalBoundsSized = len(c.BodyBytes) >= 1024
+	f.interruptible = interruptible
+	f.hasLoop = hints.flags.has(hintHasLoop)
+	f.loopMemory = hints.hasLoopMemory()
+	f.gcStructHelpers, f.gcArrayHelpers, f.gcFrameRoots = gcStructHelpers, gcArrayHelpers, gcFrameRoots
+	f.moduleEH = hints.flags.has(hintModuleEH)
+	f.regMerge = policy.EnabledOption(optRegMerge)
+	f.globalCellReg, f.memSizeReg, f.memLimitReg, f.trapCellReg = regNone, regNone, regNone, regNone
+	f.immutableLocalTable, f.immutableTableType, f.immutableTableTyped = immutableTable.local, immutableTable.typeKey, immutableTable.typed
+	f.monomorphicTarget = immutableTable.monomorphicTarget
+	f.importBindings = importBindings
+	f.stagedTailDescriptors = true
+	f.stats, f.policy = stats, policy
+	f.branchHints = m.BranchHintsForFunc(uint32(globalIdx))
+	f.branchHintLocalDecl = c.LocalDeclBytes
+	f.calleeHints = calleeHints
+	f.threadedMemory0 = mt0.Shared
+	f.localFactsEnabled = policy.EnabledOption(optValueFacts)
+	f.loadDefinedLocals = loadDefinedLocalMaskForHints(hints)
+	f.shiftedALUAddressLocals = reusedAddressLocalMaskForHints(hints)
+	f.memcopyTail4 = policy.EnabledOption(optMemcopyTail4) && boundedMemcopy
+	f.memcopyQPairs = policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy
+	f.floatLiteralPool = policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10
 	state = f
+	// Private facts require a source global reference; the existing sparse
+	// inventory is complete even when global register pinning is disabled.
+	if len(m.Code) == 1 && hints.globalCount != 0 {
+		f.privateGlobalConsts, f.privateStableLocals = f.provePrivateConstants()
+	}
 	f.adapterBacklink = sc.moduleNeedsAdapterBacklink(calleeHints)
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
@@ -3426,6 +3547,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
+	// Guard mode relies on the protected linear-memory mapping instead of
+	// explicit minimum-memory checks, so the local-address proof has no
+	// consumer. Avoid a redundant full-body walk on the ordinary Darwin path.
+	if !guardMode && hints.flags.has(hintTouchesMemory) {
+		f.prepareLocalAddressBounds(c.BodyBytes)
+	}
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {
@@ -3456,7 +3583,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
-	localTailLeaf := hasCall && f.onlyLocalTailTransfers(c.BodyBytes)
+	localTailLeaf := hasCall && hints.hasTailTransfer() && f.onlyLocalTailTransfers(c.BodyBytes)
 	if localTailLeaf {
 		hasCall = false
 		if hints.flags.has(hintCallsSelf | hintHasNonDirectCall) {
@@ -3506,7 +3633,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	hints = &planningHints
 	f.hasLoop = hints.flags.has(hintHasLoop)
-	f.localFactsEnabled = f.localFactsEnabled && !hints.flags.has(hintHasControlFlow)
 	f.streamingReduction = f.opt(optStreamReduce) && hints.hasStreamingReduction()
 	// Inlining direct Wasm calls cannot remove GC/table/atomic runtime helpers.
 	if allCallsInlined {
@@ -3546,7 +3672,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		for _, r := range [...]Reg{X24, X25, X27} {
 			f.reserved = f.reserved.add(r)
 		}
-		for _, r := range [...]Reg{X9, X10, X11, mergeReg} {
+		for _, r := range [...]Reg{X8, X9, X10, X11, mergeReg} {
 			f.reserved = f.reserved.add(r)
 		}
 	}
@@ -3627,8 +3753,23 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// STACK_REG model still publishes dirty values before calls. Keeping this
 	// narrow block also lets hot loops remain resident when a cold import follows
 	// them, matching the safe AMD64 treatment of its callee-saved pin set.
-	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasLoopCall) && !hints.flags.has(hintHasNonDirectCall) && !hints.flags.has(hintCallsImport)
+	loopLocalPinSites := uint16(0)
+	safeColdLocalCalls := f.opt(optColdCallLocalPins) && !hints.flags.has(hintHasNonDirectCall|hintCallsImport) &&
+		(!hints.flags.has(hintHasLoopCall) || localLoopPinsEnabled)
+	safeLoopLocalCalls := safeColdLocalCalls && hints.flags.has(hintHasLoopCall)
 	safeMemoryCallPins := ((hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) || safeColdLocalCalls) && len(m.Tables) == 0
+	if safeLoopLocalCalls && safeMemoryCallPins && !(hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0) {
+		loopLocalPinSites = hints.callRelocSiteCount()
+	}
+	// An ordinary direct same-instance call publishes dirty locals before argument
+	// staging; a pin-preserving leaf reserves X8 above. X8 is therefore available
+	// as one more STACK_REG-managed local between proven local calls. Keep it out
+	// of modules with imports and the ordinary call-making pool: imports, indirect
+	// calls, tables and unproven sites have wider fixed-register surfaces. The
+	// assignment gate below charges every known boundary before using it.
+	if loopLocalPinSites != 0 && m.ImportedFuncCount() == 0 && f.opt(optX8Pin) && !f.reserved.has(X8) {
+		gpPool = append(gpPool, X8)
+	}
 	if touchesMemory && hasCall && !safeMemoryCallPins {
 		gpPool = callSafePinPool(gpPool)
 	}
@@ -3765,7 +3906,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			f.regMerge = false
 		}
 	}
-	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals)
+	if intervalRegion && loopLocalPinSites != 0 {
+		// The bounded interval allocator already leases locals around call regions.
+		// Do not consume its transient registers with a second, whole-function
+		// extension of the pin pool.
+		gpPool = callSafePinPool(gpPool)
+		loopLocalPinSites = 0
+		f.stats.peep("interval-loop-pins-deferred")
+	}
+	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals, loopLocalPinSites)
 	if f.intervalControl {
 		f.intervalRegLimit = f.currentIntervalRegLimit()
 	}
@@ -3860,6 +4009,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			}
 		}
 		f.finalizePeepholes(internalOff)
+		f.finalizeNativeLoopConsts(internalOff)
+		f.finalizeAffineBoundsLoops(internalOff)
+		f.finalizeScalarLoopUnroll(internalOff)
 		if err := f.emitFloatConstPool(); err != nil {
 			return nil, nil, 0, err
 		}
@@ -3903,6 +4055,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	f.finalizePeepholes()
+	f.finalizeNativeLoopConsts()
+	f.finalizeAffineBoundsLoops()
+	f.finalizeScalarLoopUnroll()
 	if err := f.emitFloatConstPool(); err != nil {
 		return nil, nil, 0, err
 	}
@@ -4053,6 +4208,26 @@ func callSafePinPool(pool []Reg) []Reg {
 	return safe
 }
 
+const (
+	localLoopPinCallCost     = uint32(14)
+	localLoopLastPinCallCost = uint32(40)
+	localLoopLastPinMinScore = uint32(200)
+)
+
+func localLoopPinThreshold(reg Reg, callSites uint16) uint32 {
+	if callSites == 0 {
+		return 0
+	}
+	if reg == X8 || reg == X27 {
+		return max(uint32(callSites)*localLoopLastPinCallCost, localLoopLastPinMinScore)
+	}
+	return uint32(callSites) * localLoopPinCallCost
+}
+
+func localLoopPinProfitable(reg Reg, callSites uint16, score uint32) bool {
+	return score > localLoopPinThreshold(reg, callSites)
+}
+
 // gpPinLimit leaves enough of the target's unreserved allocatable file for the
 // widest ordinary lowering step: three protected inputs/temporaries plus one
 // result. Whole-function pins are optional; transient lowering must not retry a
@@ -4094,7 +4269,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool) {
+func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool, loopLocalPinSites uint16) {
 	if cap(f.locals) < f.nLocals {
 		f.locals = make([]localDef, f.nLocals)
 	} else {
@@ -4164,6 +4339,17 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if (k >= len(pinnedLocalRegs) || f.nLocals > 64) && c.score == 0 {
 			break
 		}
+		// Direct same-instance calls preserve the ordinary STACK_REG contract, but
+		// each extra caller-saved pin adds publication/reload work at every call.
+		// Admit X15 only when its loop-weighted traffic repays that boundary cost;
+		// X8 and X27 have a higher threshold because they are opportunistic pins
+		// that increase pressure around call setup. This uses the generic hint
+		// scores and relocation count, rather than recognizing source shapes.
+		if loopLocalPinSites != 0 {
+			if (gpPool[k] == X8 || gpPool[k] == X15 || gpPool[k] == X27) && !localLoopPinProfitable(gpPool[k], loopLocalPinSites, c.score) {
+				break
+			}
+		}
 		// X27 is the last, opportunistic call-making pin. Spending it adds one
 		// more entry home and call-boundary state transition, so require enough
 		// loop-weighted traffic to repay that fixed cost. Twenty loop-level local
@@ -4174,6 +4360,9 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		}
 		if gpPool[k] == X27 {
 			f.stats.peep("cold-call-x27-pin")
+		}
+		if gpPool[k] == X8 {
+			f.stats.peep("direct-call-x8-pin")
 		}
 		idx := int(c.idx)
 		if c.global {
@@ -4191,10 +4380,9 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	// Float locals use the separate V pin pool. Call-free functions also pin hot
-	// v128 locals here (same V registers, full 128-bit): a wasm→wasm call would only
-	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
-	pinV128 := f.opt(optV128Pins) && !hasCall
+	// Float and v128 locals share the V pin pool. Call boundaries home vector
+	// locals at full width and recover them lazily after the call.
+	pinV128 := f.opt(optV128Pins)
 	hotV128Candidates := 0
 	if pinLocals && f.nLocals <= 64 {
 		for i := 0; i < f.nLocals; i++ {
@@ -5060,10 +5248,22 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 }
 
 func (f *fn) emitPhasePadding() {
-	for range f.phasePadWords {
-		f.a.Nop()
+	words := f.phasePadWords
+	// Preserve downstream fetch alignment while avoiding a long run of NOPs
+	// on the entry path. No control-flow target exists inside this padding.
+	if words >= 8 && f.opt(optLayoutPaddingSkip) {
+		branch := f.a.Branch()
+		for range words - 1 {
+			f.a.Nop()
+		}
+		f.patchBranch26(branch, f.a.Len())
+	} else {
+		for range words {
+			f.a.Nop()
+		}
 	}
 	f.phasePadWords = 0
+	f.byteBoundsPhaseWords = 0
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, restore

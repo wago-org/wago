@@ -428,3 +428,39 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 		}
 	})
 }
+
+func TestFinalizePeepholesAdmitsRequiredRootsArm64(t *testing.T) {
+	oldBranch, oldStore := branchFoldEnabled, storeLoadFwdEnabled
+	oldExit, oldTest := commonExitCompareEnabled, guardedTestCCMPEnabled
+	branchFoldEnabled, storeLoadFwdEnabled = true, true
+	commonExitCompareEnabled, guardedTestCCMPEnabled = true, true
+	t.Cleanup(func() {
+		branchFoldEnabled, storeLoadFwdEnabled = oldBranch, oldStore
+		commonExitCompareEnabled, guardedTestCCMPEnabled = oldExit, oldTest
+	})
+	for _, tc := range []struct {
+		name  string
+		words []uint32
+		at    int
+		want  uint32
+	}{
+		{"branch pair", []uint32{0x54000040, 0x14000002, nopWord, 0xd65f03c0}, 0, 0x54000061},
+		{"word forwarding", []uint32{0xb90013e1, 0xb94013e2, 0xd65f03c0}, 4, 0x2a0103e2},
+		{"wide forwarding", []uint32{0xf9000be1, 0xf9400be2, 0xd65f03c0}, 4, 0xaa0103e2},
+		{"common exit", []uint32{0x7100043f, 0x540000ab, 0x6b02003f, 0x5400006c, 0x7100007f, 0xd65f03c0, 0x7100007f, 0xd65f03c0}, 8, nopWord},
+		{"guarded tests", []uint32{0x6a01001f, 0x54000061, 0x6a23005f, 0x54000060, 0x7100009f, 0xd65f03c0, 0xd65f03c0}, 4, 0x6a01001f},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := make([]byte, len(tc.words)*4)
+			for i, word := range tc.words {
+				wrWord(b, i*4, word)
+			}
+			a := &a64.Asm{B: b}
+			f := fn{a: a, sc: &scratch{asm: a}, policy: currentCodegenPolicy()}
+			f.finalizePeepholes()
+			if got := rdWord(b, tc.at); got != tc.want {
+				t.Fatalf("word at %d = %08x, want %08x", tc.at, got, tc.want)
+			}
+		})
+	}
+}

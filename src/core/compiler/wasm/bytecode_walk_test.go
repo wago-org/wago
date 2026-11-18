@@ -198,3 +198,28 @@ func TestSkipInstructionImmediateGCRefTestRejectsExactHeapMarker(t *testing.T) {
 		}
 	}
 }
+
+func TestShortScalarMemargClassificationMatchesDecoder(t *testing.T) {
+	for _, memory64 := range []bool{false, true} {
+		widths := fixedMemargWidths(memory64)
+		for _, multi := range []bool{false, true} {
+			widths.multiMemory = multi
+			for op := byte(0x28); op <= 0x3e; op++ {
+				for align := byte(0); align < 64; align++ {
+					for offset := byte(0); offset < 128; offset++ {
+						data := []byte{align, offset, 0x0b}
+						r := ReaderFrom(data)
+						got := InstructionImmediate{HasMemIndex: true, MemIndex: 17, HasHeapType: true, TouchesMemory: false}
+						err := classifyInstructionImmediateIntoWithWidths(&r, op, &got, &widths, multi)
+						slow := reader{data: data}
+						var want InstructionImmediate
+						_, wantErr := classifyExprOpAfterOpcodeWithWidths(&slow, op, &want, widths, multi)
+						if err != nil || wantErr != nil || got != want || r.pos != slow.pos {
+							t.Fatalf("op=%x align=%d offset=%d memory64=%v multi=%v got=%+v want=%+v err=%v/%v pos=%d/%d", op, align, offset, memory64, multi, got, want, err, wantErr, r.pos, slow.pos)
+						}
+					}
+				}
+			}
+		}
+	}
+}

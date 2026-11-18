@@ -14,10 +14,12 @@ func TestBulkFillCopyForwardSelection(t *testing.T) {
 		name            string
 		between         []byte
 		source, count   byte
+		destination     byte
 		enabled, shared bool
 		want            int
 	}{
 		{name: "matched", source: 1, count: 2, enabled: true, want: 1},
+		{name: "separate-memory", source: 1, count: 2, destination: 1, enabled: true},
 		{name: "disabled", source: 1, count: 2},
 		{name: "changed-source", source: 3, count: 2, enabled: true},
 		{name: "changed-count", source: 1, count: 3, enabled: true},
@@ -28,8 +30,11 @@ func TestBulkFillCopyForwardSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			body := []byte{0, 0x20, 1, 0x41, 7, 0x20, 2, 0xfc, 11, 0}
 			body = append(body, tc.between...)
-			body = append(body, 0x20, 0, 0x20, tc.source, 0x20, tc.count, 0xfc, 10, 0, 0, 0x0b)
+			body = append(body, 0x20, 0, 0x20, tc.source, 0x20, tc.count, 0xfc, 10, tc.destination, 0, 0x0b)
 			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil, body)
+			if tc.destination != 0 {
+				m.Memories = append(m.Memories, m.Memories[0])
+			}
 			if tc.shared {
 				m.Memories[0].Shared = true
 			}

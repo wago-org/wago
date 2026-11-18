@@ -69,9 +69,9 @@ func (e *regionLoopEmitter) bodyWithWidths(checkedTail int) {
 	// Non-recurrent written integer locals are not live inputs (finish proves
 	// every live written integer input has this exact self-affine recurrence).
 	for i, l := range p.locals[:p.localN] {
-		if l.step != 0 {
+		if l.Step != 0 {
 			f.a.Load32(e.gp[0], RSP, e.off(i))
-			f.a.AluRI(aluTable[opAdd].digit, e.gp[0], int32(l.step), false)
+			f.a.AluRI(aluTable[opAdd].digit, e.gp[0], int32(l.Step), false)
 			f.a.Store32(RSP, e.off(i), e.gp[0])
 		}
 	}

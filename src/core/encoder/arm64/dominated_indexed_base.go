@@ -148,13 +148,7 @@ func preservesDominatedIndexedBase(word uint32, base, index Reg) bool {
 	}
 	// Recognized integer families each write only Rd. Calls, indirect control,
 	// writeback memory, system instructions and unknown encodings are rejected.
-	writesRd := word&0x1F000000 == 0x0A000000 ||
-		word&0x1F800000 == 0x12000000 || word&0x1F800000 == 0x12800000 ||
-		word&0x1F800000 == 0x13000000 || word&0x1F000000 == 0x1B000000 ||
-		word&0x1FE00000 == 0x1AC00000 || word&0x5FE00000 == 0x5AC00000 ||
-		word&0x1FE00000 == 0x1A800000
-	if writesRd {
-		dst := Reg(word & 31)
+	if dst, ok := gpResultDestination(word); ok {
 		return dst != X16 && dst != base && dst != index
 	}
 	return preservesIndexedBase(word, base, index)

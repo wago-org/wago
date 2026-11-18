@@ -1529,6 +1529,14 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 		// Immediate-free instructions cannot write a local, introduce control,
 		// select a float literal, or call a GC/atomic helper. Keep their proof
 		// step scalar instead of clearing and filling an unused immediate record.
+		if op >= 0x45 && op <= 0xc4 {
+			if *budget == maxCallFreeLoopLookaheadBytes {
+				return false, 0, storage{}, false
+			}
+			*budget++
+			steps++
+			continue
+		}
 		if _, simple := wasm.ImmediateFreeInstructionKind(op); simple {
 			if *budget == maxCallFreeLoopLookaheadBytes {
 				return false, 0, storage{}, false

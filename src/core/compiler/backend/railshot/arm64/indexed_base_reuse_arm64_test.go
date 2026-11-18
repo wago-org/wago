@@ -53,8 +53,8 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 	if guarded.CodeImage != nil {
 		defer guarded.CodeImage.Close()
 	}
-	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits != 0 {
-		t.Fatalf("guarded code reuses an indexed base %d times", hits)
+	if hits := guardStats.Funcs[0].Peephole["indexed-base-reuse"]; hits == 0 {
+		t.Fatal("guarded code did not reuse an unchanged indexed base")
 	}
 	run := func(on bool) uint32 {
 		saved := indexedBaseReuseEnabled
@@ -79,6 +79,46 @@ func TestIndexedBaseReuseSwitchAndExecutionArm64(t *testing.T) {
 	}
 	if off.Peephole["indexed-base-reuse"] != 0 || on.CodeBytes >= off.CodeBytes {
 		t.Fatalf("enabled code/hits = %d/%d, disabled = %d/%d", on.CodeBytes, on.Peephole["indexed-base-reuse"], off.CodeBytes, off.Peephole["indexed-base-reuse"])
+	}
+}
+
+func TestIndexedFullAddressReuseExecutionArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	// Increment one word through a displacement which cannot be encoded on the
+	// memory instruction. The load leaves X16 holding the full address; the
+	// following store can reuse it after the independent integer increment.
+	const offset = 16384
+	const last = 65536 - offset - 4
+	memarg := []byte{0x02, 0x80, 0x80, 0x01} // align=4, offset=16384
+	body := []byte{0x00, 0x20, 0x00, 0x20, 0x00, 0x28}
+	body = append(body, memarg...)
+	body = append(body, 0x41, 0x01, 0x6a, 0x36)
+	body = append(body, memarg...)
+	body = append(body, 0x20, 0x00, 0x28)
+	body = append(body, memarg...)
+	body = append(body, 0x0b)
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+
+	for _, guard := range []bool{false, true} {
+		for _, on := range []bool{false, true} {
+			var stats ModuleStats
+			opts := CompileOptions{Stats: &stats, ElideBoundsChecks: guard, Optimizations: map[string]bool{
+				"indexed-base-reuse": on,
+			}}
+			for _, ptr := range []uint64{0, 4, last} {
+				got, err := runArm64WrapperWithOptions(t, m, opts, ptr)
+				if err != nil || got != 1 {
+					t.Fatalf("guard=%t reuse=%t ptr=%d: got %d, err %v", guard, on, ptr, got, err)
+				}
+			}
+			if _, err := runArm64WrapperWithOptions(t, m, opts, last+1); !guard && err == nil {
+				t.Fatalf("guard=%t reuse=%t: boundary access did not trap", guard, on)
+			}
+			hits := stats.Funcs[0].Peephole["indexed-base-reuse"]
+			if on && hits == 0 || !on && hits != 0 {
+				t.Fatalf("guard=%t reuse=%t: %d hits", guard, on, hits)
+			}
+		}
 	}
 }
 

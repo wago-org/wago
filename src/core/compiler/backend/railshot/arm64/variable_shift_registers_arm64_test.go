@@ -3,9 +3,32 @@
 package arm64
 
 import (
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestConstantShiftThreeOperand(t *testing.T) {
+	// local 0 stays borrowed while the shift writes local 1. AArch64 can encode
+	// this directly as `lsr w1, w0, #6`, without copying local 0 first.
+	body := []byte{1, 1, 0x7f, 0x3f, 0, 0x1a, 0x20, 0, 0x41, 6, 0x76, 0x21, 1, 0x20, 1, 0x0b}
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+	var stats ModuleStats
+	opts := CompileOptions{}
+	if diagnosticsEnabled {
+		opts.Stats = &stats
+	}
+	const input = uint64(0x80000040)
+	got, err := runArm64WrapperWithOptions(t, m, opts, input)
+	want := uint64(uint32(input) >> 6)
+	if err != nil || got != want {
+		t.Fatalf("got=%x want=%x err=%v", got, want, err)
+	}
+	if diagnosticsEnabled && stats.Funcs[0].Peephole["constant-shift-three-operand"] != 1 {
+		t.Fatalf("reuse not active: %v", stats.Funcs[0].Peephole)
+	}
+}
 
 func TestVariableShiftThreeOperand(t *testing.T) {
 	for _, wide := range []bool{false, true} {

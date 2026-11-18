@@ -83,3 +83,15 @@ func TestAdrFailureRejectsDisabledFinalizerArm64(t *testing.T) {
 		}
 	}
 }
+
+func TestBranchTargetClassScreenMatchesFullDecoder(t *testing.T) {
+	for upper := uint32(0); upper < 1<<11; upper++ {
+		for _, lower := range []uint32{0, 0x10, 0x1f, 0x100000, 0x1fffff} {
+			word := upper<<21 | lower
+			want, wantOK := decodeBranchTarget(64, word)
+			if got, ok := branchTarget(64, word); got != want || ok != wantOK {
+				t.Fatalf("word=%08x: target=%d,%t want=%d,%t", word, got, ok, want, wantOK)
+			}
+		}
+	}
+}
