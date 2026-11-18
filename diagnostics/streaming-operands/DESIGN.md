@@ -120,3 +120,20 @@ The prior approximately 1.84× deficit is closed on this particular long loop,
 but the ≤5% execution-regression requirement is **not qualified**. These results
 do not establish whole-corpus compilation or RSS improvements. No merge
 recommendation or general speedup is claimed.
+
+### Affected-kernel screen: rejected for promotion
+
+A predeclared screen of eight affected kernels and two unrelated controls found
+a substantial execution regression for the unchanged 5a1869fd checkpoint.
+Across the eight affected kernels, steady execution ON/OFF was +52.53%
+(95% interval +41.89% to +129.10%); the main A/A point difference was −0.35%.
+Individual results included Aho at 4.45× OFF, BLAKE3 at +45.9%, and Monocypher
+at +11.7%. The execution-regression requirement fails.
+
+Compilation ON/OFF was +1.57% (95% interval −19.17% to +8.24%), but its main
+A/A control differed by −3.22% and failed the agreement check. First-call
+controls also failed. No compilation improvement is established.
+
+The favorable long-loop code shape does not generalize to these workloads.
+This checkpoint is rejected for promotion; it remains experimental source,
+not a PR or merge recommendation.
