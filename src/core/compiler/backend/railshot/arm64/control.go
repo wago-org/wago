@@ -2210,6 +2210,7 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 		return false, err
 	}
 	f.invalidateLocalWriteFacts(x)
+	f.setFactsForLocal(x, 0)
 	cond := f.s.back()
 	if cond == nil {
 		return false, fmt.Errorf("arm64: if without condition")
