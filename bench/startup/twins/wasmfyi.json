@@ -1,0 +1,118 @@
+[
+ {
+  "name": "nbody",
+  "id": "wago/nbody/step",
+  "export": "step",
+  "args": [
+   "2000"
+  ],
+  "expected": [
+   "4125895690"
+  ],
+  "sha256": "dd42fb59fbd230e9b72a6a2ac08e616f4bf98c01f35b2581e5c2652889fca7a7",
+  "params": [
+   "i32"
+  ],
+  "results": [
+   "i32"
+  ],
+  "desc": "Benchmarks-Game N-body: leapfrog solar-system integration (f64 mul/add/div/sqrt)"
+ },
+ {
+  "name": "fib",
+  "id": "wago/fib_rec/fib",
+  "export": "fib",
+  "args": [
+   "28"
+  ],
+  "expected": [
+   "317811"
+  ],
+  "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14",
+  "params": [
+   "i32"
+  ],
+  "results": [
+   "i64"
+  ],
+  "desc": "recursion; call/return heavy"
+ },
+ {
+  "name": "sha256",
+  "id": "wago/sha256/hashN",
+  "export": "hashN",
+  "args": [
+   "8"
+  ],
+  "expected": [
+   "3825852647"
+  ],
+  "sha256": "8978d6906ee899589170cca1d0c2d33d74a7296683fc9e7d48e4a6b78b449c98",
+  "params": [
+   "i32"
+  ],
+  "results": [
+   "i32"
+  ],
+  "desc": "standards-correct SHA-256 of an n-KiB buffer (i32 rotate/shift/xor/add, 64-round)"
+ },
+ {
+  "name": "raytrace",
+  "id": "wago/raytrace/render",
+  "export": "render",
+  "args": [
+   "48"
+  ],
+  "expected": [
+   "1021273579"
+  ],
+  "sha256": "cdc7200a9a4794b0d48459f2ceb4cfce1a2308d72026cec81b2c87daecb9d66f",
+  "params": [
+   "i32"
+  ],
+  "results": [
+   "i32"
+  ],
+  "desc": "recursive Whitted ray tracer: n x n frame, 4 spheres + checker plane, depth-4 mirrors (heavy f64 vector math)"
+ },
+ {
+  "name": "coremark",
+  "id": "wago/coremark/2k-performance",
+  "export": "coremark_run",
+  "args": [
+   "1000",
+   "0"
+  ],
+  "expected": [
+   "0"
+  ],
+  "sha256": "164888a08095a9aeb1c97d428200518cc63ab51bd0c13860fcdcb9f2f1081f30",
+  "params": [
+   "i32",
+   "i32"
+  ],
+  "results": [
+   "i32"
+  ],
+  "desc": ""
+ },
+ {
+  "name": "fannkuch",
+  "id": "wago/fannkuch/run",
+  "export": "run",
+  "args": [
+   "8"
+  ],
+  "expected": [
+   "22"
+  ],
+  "sha256": "31925e0d86d0bb743e2b643b958d304d42ef23734ecf871885fc51845b543f08",
+  "params": [
+   "i32"
+  ],
+  "results": [
+   "i32"
+  ],
+  "desc": "Benchmarks-Game fannkuch-redux: permute + pancake-flip (branch/array churn, no f64)"
+ }
+]
