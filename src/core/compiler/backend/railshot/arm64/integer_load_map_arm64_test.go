@@ -587,6 +587,9 @@ func TestIntegerLoadMapScaledCounterAddress(t *testing.T) {
 		if tc.mixed {
 			// Distinct coefficients with identical base/index need distinct streams.
 			body = append(body, 0x20, 0, 0x20, 2, 0x41, 2, 0x74, 0x6a, 0x41, 4, 0x6b, 0x28, 2, 1, 0x73)
+			// Same stride and index as the first load, with a positive bias.
+			body = append(body, 0x20, 0, 0x20, 2, 0x41, byte(tc.shift), 0x74, 0x6a,
+				0x41, 4, 0x6a, 0x28, 2, 1, 0x73)
 		}
 		body = append(body, 0x36, 2, 0,
 			0x20, 2, 0x41, 1, 0x6a, 0x22, 2)
@@ -684,5 +687,26 @@ func TestIntegerLoadMapInvariantOverlapPrefix(t *testing.T) {
 				t.Fatalf("enabled=%v invariant=%d: alias prefix emitted %d times", enabled, invariant, hits)
 			}
 		}
+	}
+}
+
+func TestIntegerLoadMapMixedBiasDependence(t *testing.T) {
+	// The store at base+i+4 changes the load at base+i-4 two iterations later.
+	// The compiler must preserve that dependence within a four-word packet.
+	body := []byte{1, 2, 0x7f, 0x41, 0x80, 8, 0x21, 0, 0x03, 0x40,
+		0x20, 0, 0x20, 1, 0x6a, 0x41, 4, 0x6a,
+		0x20, 0, 0x20, 1, 0x6a, 0x41, 4, 0x6b, 0x28, 2, 0,
+		0x41, 3, 0x6a, 0x36, 2, 0,
+		0x20, 1, 0x41, 4, 0x6a, 0x22, 1, 0x41, 0x80, 2, 0x47, 0x0d, 0, 0x0b,
+		0x20, 1, 0x0b}
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+	want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+	got, actual, err, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial)
+	if err != nil || wantErr != nil || got != want || !bytes.Equal(actual, expected) {
+		t.Fatalf("got %x/%v, want %x/%v, memory equal=%v", got, err, want, wantErr, bytes.Equal(actual, expected))
 	}
 }

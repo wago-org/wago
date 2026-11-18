@@ -30,7 +30,8 @@ func (p *floatMapPlan) hasShortForwardDependence(loads []int) bool {
 		if src.base != dst.base || src.index != dst.index {
 			continue
 		}
-		d, s := uint64(dst.bias)+dst.offset, uint64(src.bias)+src.offset
+		d := int64(int32(dst.bias)) + int64(dst.offset)
+		s := int64(int32(src.bias)) + int64(src.offset)
 		if d > s && d-s < floatMapVectorBytes {
 			return true
 		}

@@ -574,7 +574,7 @@ func (p *floatMapPlan) nextAddress(x, y int, step uint32) bool {
 	if a.invariant || b.invariant {
 		return a.invariant && b.invariant && a.base == b.base && a.index == b.index && a.bias == b.bias && a.offset == b.offset
 	}
-	return a.base == b.base && a.index == b.index && a.stride == b.stride && a.offset == b.offset && uint64(a.bias)+uint64(step)*uint64(max(a.stride, 1)) == uint64(b.bias)
+	return a.base == b.base && a.index == b.index && a.stride == b.stride && a.offset == b.offset && int64(int32(a.bias))+int64(step)*int64(max(a.stride, 1)) == int64(int32(b.bias))
 }
 func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if depth > 8 || !p.spend() {
@@ -731,8 +731,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		base   int
 		index  int
 		stride uint32
-		min    uint32
-		max    uint64
+		min    int32
+		max    int64
 		reg    Reg
 	}
 	var groups [4]group
@@ -742,27 +742,22 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	ng := 0
 	add := func(a floatMapAddress) bool {
+		// Compare dynamic biases as signed offsets, then normalize the
+		// shared low address modulo i32 before checking the widened range.
+		bias := int32(a.bias)
+		end := int64(bias) + int64(a.offset)
 		for i := 0; i < ng; i++ {
 			g := &groups[i]
 			if g.base == a.base && g.index == a.index && g.stride == a.stride {
-				// Do not combine biases on opposite sides of the modular
-				// boundary into a group with an unencodable displacement.
-				if int32(a.bias^g.min) < 0 {
-					return false
-				}
-				if a.bias < g.min {
-					g.min = a.bias
-				}
-				if end := uint64(a.bias) + a.offset; end > g.max {
-					g.max = end
-				}
+				g.min = min(g.min, bias)
+				g.max = max(g.max, end)
 				return true
 			}
 		}
 		if ng == groupLimit {
 			return false
 		}
-		groups[ng] = group{base: a.base, index: a.index, stride: a.stride, min: a.bias, max: uint64(a.bias) + a.offset}
+		groups[ng] = group{base: a.base, index: a.index, stride: a.stride, min: bias, max: end}
 		ng++
 		return true
 	}
@@ -1151,7 +1146,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			read(g.index-1, X16)
 			f.a.Add32(g.reg, g.reg, X16)
 		}
-		f.floatMapOffset(g.reg, g.reg, uint64(g.min), false, X16)
+		f.floatMapOffset(g.reg, g.reg, uint64(uint32(g.min)), false, X16)
 		if g.stride > 1 {
 			f.a.MovImm64(X17, uint64(g.stride))
 			f.a.Mul64(X16, span, X17)
@@ -1159,7 +1154,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		} else {
 			f.a.Add64(X16, g.reg, span)
 		}
-		f.floatMapOffset(X16, X16, g.max-uint64(g.min), true, X17)
+		f.floatMapOffset(X16, X16, uint64(g.max-int64(g.min)), true, X17)
 		f.cmpRR(X16, size, true)
 		guard(condA)
 		f.a.MovImm64(X17, 1<<32)
@@ -1169,7 +1164,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	locate := func(a floatMapAddress) (Reg, uint32) {
 		for i := 0; i < ng; i++ {
 			if groups[i].base == a.base && groups[i].index == a.index && groups[i].stride == a.stride {
-				return groups[i].reg, uint32(uint64(a.bias) - uint64(groups[i].min) + a.offset)
+				return groups[i].reg, uint32(int64(int32(a.bias)) - int64(groups[i].min) + int64(a.offset))
 			}
 		}
 		panic("arm64: missing float map address")
@@ -1807,7 +1802,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// Range guards excluded wrap during the prefix. Recover the exact
 			// modular source index before the original scalar packet resumes.
 			f.a.Sub64(X16, g.reg, linMemReg)
-			f.a.MovImm64(X17, uint64(g.min))
+			f.a.MovImm64(X17, uint64(uint32(g.min)))
 			f.a.Sub32(X16, X16, X17)
 			read(g.base, X17)
 			f.a.Sub32(X16, X16, X17)
