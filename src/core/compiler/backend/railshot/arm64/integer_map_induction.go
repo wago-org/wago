@@ -207,6 +207,8 @@ func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 			return true
 		case 0x6a:
 			return walk(n.left(), scale) && walk(n.right(), scale)
+		case 0x6b:
+			return p.integer && walk(n.left(), scale) && walk(n.right(), -scale)
 		case 0x6c:
 			if !p.integer {
 				return false
@@ -225,7 +227,8 @@ func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 		}
 		return false
 	}
-	if !walk(root, 1) || bias > 1<<20 {
+	if !walk(root, 1) || int32(bias) > 1<<20 || int32(bias) < -(1<<20) ||
+		!p.integer && bias > 1<<20 {
 		return floatMapAddress{}, false
 	}
 	if stride == 1 {

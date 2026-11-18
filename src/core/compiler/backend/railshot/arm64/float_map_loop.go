@@ -745,6 +745,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		for i := 0; i < ng; i++ {
 			g := &groups[i]
 			if g.base == a.base && g.index == a.index && g.stride == a.stride {
+				// Do not combine biases on opposite sides of the modular
+				// boundary into a group with an unencodable displacement.
+				if int32(a.bias^g.min) < 0 {
+					return false
+				}
 				if a.bias < g.min {
 					g.min = a.bias
 				}

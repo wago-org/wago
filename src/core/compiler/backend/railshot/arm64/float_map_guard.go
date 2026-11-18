@@ -26,6 +26,10 @@ func (f *fn) floatMapOffset(dst, base Reg, offset uint64, wide bool, scratch Reg
 			}
 			return
 		}
+		if !wide && offset >= 1<<32-4095 && offset < 1<<32 {
+			f.a.SubImm32(dst, base, uint32(-offset))
+			return
+		}
 		if offset <= 4095 {
 			if wide {
 				f.a.AddImm64(dst, base, uint32(offset))
