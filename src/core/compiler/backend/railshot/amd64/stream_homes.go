@@ -58,6 +58,9 @@ func (s *streamState) commitRegisterHomes() {
 		}
 		local := int(n) - 1
 		id := s.locals[local]
+		if id == 0 {
+			continue
+		}
 		if s.node(id).home == s.localHomeTag(local) {
 			continue
 		}

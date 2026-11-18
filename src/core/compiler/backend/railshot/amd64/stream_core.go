@@ -300,12 +300,13 @@ type streamState struct {
 	flowTypes                   []bool
 	dead                        bool
 	// Scratch counters are accounting envelopes, not process-memory peaks.
+	EventBytes      uint64
 	Peak, Discarded uint64
 	Spills, Reloads int
 }
 
 func (s *streamState) Memory() uint64 {
-	return uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
+	return s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
 func (s *streamState) add(n streamNode) streamID {
@@ -521,6 +522,10 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 func (s *streamState) returnValue(id streamID) {
 	for i := 0; i < len(s.locals); {
 		local := s.locals[i]
+		if local == 0 {
+			i++
+			continue
+		}
 		end := i + 1
 		for end < len(s.locals) && s.locals[end] == local {
 			end++
@@ -609,6 +614,9 @@ func (s *streamState) expression(id streamID, avoid uint64) uint8 {
 		}
 	}
 	clobber := s.target.Clobbers(n.op)
+	if (n.op == shared.IntShl || n.op == shared.IntShrS || n.op == shared.IntShrU) && s.node(n.right).kind == shared.ScalarConstant {
+		clobber = 0 // immediate encoder never reads or writes RCX
+	}
 	s.evict(clobber)
 	avoid |= clobber
 	left, right := s.operands(n, avoid)
@@ -671,6 +679,9 @@ func (s *streamState) binary(op shared.IntOp, wide bool) {
 // the new local/stack image. That two-phase ordering prevents alias overwrite.
 func (s *streamState) canonicalize(registerResult bool) {
 	capture := func(id streamID) {
+		if id == 0 {
+			return
+		}
 		n := s.node(id)
 		if n.kind == streamBorrow && s.locals[n.slot] != id || n.kind == shared.ScalarFrame && int(n.slot) < s.tempBase {
 			s.materialize(id, 0)
@@ -688,11 +699,17 @@ func (s *streamState) canonicalize(registerResult bool) {
 		}
 	}
 	for _, id := range s.locals {
+		if id == 0 {
+			continue
+		}
 		if s.node(id).kind == streamDeferred {
 			s.materialize(id, 0)
 		}
 	}
 	for i, id := range s.locals {
+		if id == 0 {
+			continue
+		}
 		if s.node(id).home == s.localHomeTag(i) {
 			continue
 		}
@@ -775,6 +792,9 @@ func (s *streamState) restore(depth int) {
 	}
 	s.stack = s.stack[:depth]
 	for i, wide := range s.widths {
+		if s.locals[i] == 0 {
+			continue
+		}
 		s.locals[i] = s.add(streamNode{kind: streamBorrow, slot: int32(i), home: s.localHomeTag(i), wide: wide, refs: 1})
 	}
 
@@ -789,6 +809,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		return 0, fmt.Errorf("streaming operands: unadmitted function")
 	}
 
+	s.EventBytes = uint64(cap(summary.LocalEvents)) * 4
 	old := s.Memory()
 	if cap(s.nodes) > 4096 && summary.Nodes < cap(s.nodes)/4 {
 		s.nodes = nil
@@ -878,6 +899,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 func (s *streamState) FinishWorker() {
 
 	s.Discarded += s.Memory()
+	s.EventBytes = 0
 	s.nodes = nil
 	s.stack = nil
 	s.locals = nil

@@ -21,6 +21,10 @@ func (f *fn) admitStreaming(c *wasm.Func) streamSummary {
 }
 
 func (f *fn) streamBody(c *wasm.Func) error {
+	defer func() {
+		f.streamSummary.LocalEvents = nil
+		f.sc.stream.EventBytes = 0
+	}()
 	var widths [256]bool
 	for i, t := range f.localType {
 		widths[i] = t == mtI64

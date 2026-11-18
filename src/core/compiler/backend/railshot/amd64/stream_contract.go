@@ -4,6 +4,8 @@ package amd64
 
 import "os"
 
+var streamingLocalLifetimesEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_LIFETIMES") == "1"
+
 var streamingRegisterHomesEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_HOMES") == "1"
 
 func (s *streamSummary) selectHomes(scores []uint32) {
@@ -27,9 +29,16 @@ func (s *streamSummary) selectHomes(scores []uint32) {
 	}
 }
 
+const (
+	streamEventWrite uint32 = 1 << 24
+	streamEventDead  uint32 = 1 << 25
+)
+
 // streamSummary is admission metadata, not an instruction array. Admission is
 // performed on validated bytecode before any function instruction is emitted.
 type streamSummary struct {
+	LocalEvents []uint32 // straight-line local events; PC16, local8, write/dead bits
+
 	HomeLocals               [2]uint16 // selected local indices plus one; zero means absent
 	Eligible, HasIf          bool
 	ResultN                  int

@@ -40,13 +40,20 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 	}
 	var frames [129]frame
 	frames[0] = frame{result: s.ResultN, kind: 0xff}
+	straight := streamingLocalLifetimesEnabled
+	var events []uint32
 	depth, height, dead, budget := 1, 0, false, n+1
 	r := wasm.ReaderFrom(c.BodyBytes)
 	fail := func() streamSummary { return streamSummary{} }
 	for depth > 0 {
+		pc := r.Offset()
 		op, err := r.Byte()
 		if err != nil {
 			return fail()
+		}
+		if op == 0x00 || (op >= 0x02 && op <= 0x05) || (op >= 0x0c && op <= 0x0f) {
+			straight = false
+			events = nil
 		}
 		budget++
 		pop, push := 0, 0
@@ -69,6 +76,13 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 			x, e := r.U32()
 			if e != nil || int(x) >= n {
 				return fail()
+			}
+			if straight {
+				event := uint32(pc) | x<<16
+				if op != 0x20 {
+					event |= streamEventWrite
+				}
+				events = append(events, event)
 			}
 			if op == 0x20 {
 				push = 1
@@ -216,6 +230,17 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 	}
 	if r.Offset() != len(c.BodyBytes) {
 		return fail()
+	}
+	if straight {
+		var nextRead [256]bool
+		for i := len(events) - 1; i >= 0; i-- {
+			x := byte(events[i] >> 16)
+			if !nextRead[x] {
+				events[i] |= streamEventDead
+			}
+			nextRead[x] = events[i]&streamEventWrite == 0
+		}
+		s.LocalEvents = events
 	}
 	s.Nodes = budget
 	s.Eligible = true

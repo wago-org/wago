@@ -173,6 +173,38 @@ func (s *streamState) integerRotate(op byte) error {
 	if !ok {
 		return fmt.Errorf("stream: unsupported rotate %#x", op)
 	}
+	// Inspect before materialization erases the constant tag. Immediate rotates
+	// neither reserve nor evict RCX, including when its lease is persistent.
+	countID := s.stack[len(s.stack)-1]
+	if count := *s.node(countID); count.kind == shared.ScalarConstant {
+		mask := uint64(31)
+		if wide {
+			mask = 63
+		}
+		amount := byte(uint64(count.constant) & mask)
+		s.pop()
+		value := s.pop()
+		vr := s.materialize(value, 0)
+		dst := vr
+		if s.node(value).refs != 1 {
+			dst = s.alloc(uint64(1) << vr)
+		}
+		if wide {
+			s.target.Move(dst, vr, true)
+		} else if dst != vr || amount == 0 {
+			// Nonzero rotate32 itself clears the upper half. A zero rotate is
+			// elided by ShiftImm, so normalize its potentially dirty ABI input.
+			s.target.a.MovRegReg32(Reg(dst), Reg(vr))
+		}
+		digit := byte(0)
+		if op == 0x78 || op == 0x8a {
+			digit = 1
+		}
+		s.target.a.ShiftImm(digit, Reg(dst), amount, wide)
+		s.target.stats.peep("streaming-rotate-immediate")
+		s.integerResult(dst, wide, countID, value)
+		return nil
+	}
 	if s.reserved&(uint64(1)<<RCX) != 0 {
 		return fmt.Errorf("stream: rotate count register reserved")
 	}

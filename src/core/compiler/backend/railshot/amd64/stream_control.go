@@ -109,6 +109,7 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 	s.flowTypes = s.flowTypes[:0]
 	s.dead = false
 	s.flow = append(s.flow, streamFlow{kind: 0xff, result: summary.ResultN, wide: summary.ResultWide, falseSite: -1})
+	eventIndex := 0
 	r := wasm.ReaderFrom(code)
 	for len(s.flow) > 0 {
 		s.target.wasmPC = s.target.tracePCBase + uint32(r.Offset())
@@ -146,15 +147,44 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 			if e != nil {
 				return 0, e
 			}
+			deadVersion := false
+			if len(summary.LocalEvents) != 0 {
+				event := summary.LocalEvents[eventIndex]
+				eventIndex++
+				if streamValueChecks && (uint16(event) != uint16(s.target.wasmPC-s.target.tracePCBase) || byte(event>>16) != byte(x) || (event&streamEventWrite != 0) != (op != 0x20)) {
+					panic("streaming operands: local event mismatch")
+				}
+				deadVersion = event&streamEventDead != 0
+			}
 			if op == 0x20 {
 				id := s.locals[x]
-				s.retain(id)
+				if deadVersion {
+					s.locals[x] = 0
+					s.node(id).home = 0
+					s.target.stats.peep("stream-local-last-read")
+				} else {
+					s.retain(id)
+				}
 				s.stack = append(s.stack, id)
 			} else {
 				id := s.pop()
 				old := s.locals[x]
+				if deadVersion {
+					if old != 0 {
+						s.node(old).home = 0
+					}
+					s.release(old)
+					s.locals[x] = 0
+					if op == 0x22 {
+						s.stack = append(s.stack, id)
+					} else {
+						s.release(id)
+					}
+					s.target.stats.peep("stream-local-dead-set")
+					continue
+				}
 				if !s.tryHomeSet(int(x), id, old) {
-					if old != id && s.node(old).home == s.localHomeTag(int(x)) {
+					if old != 0 && old != id && s.node(old).home == s.localHomeTag(int(x)) {
 						s.node(old).home = 0
 					}
 					s.release(old)

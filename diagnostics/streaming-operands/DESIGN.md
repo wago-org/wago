@@ -137,3 +137,20 @@ controls also failed. No compilation improvement is established.
 The favorable long-loop code shape does not generalize to these workloads.
 This checkpoint is rejected for promotion; it remains experimental source,
 not a PR or merge recommendation.
+
+## Immediate and local-lifetime checkpoint (9e6edb5c)
+
+Constant shifts avoid an unused RCX clobber; constant rotates use immediate
+encoding. The fourth opt-in, `WAGO_EXPERIMENTAL_STREAM_LIFETIMES=1`, records
+straight-line local accesses during existing admission and retires last-read
+local versions/dead assignments. Any structured control, return or unreachable
+opcode discards this sidecar. This does not admit additional language features.
+The temporary four-byte event records and their allocated capacity are accounted
+for; they are released after emission, not claimed as permanent memory savings.
+
+Focused normal gates passed 38 tests (36 in 0.092 seconds and two immediate
+tests in 0.012 seconds). The combined ownership-checker/statistics gate passed
+all 38 in 0.094 seconds, with no failures or skips. Production runtime oracles
+and performance measurements for this batch remain pending. Historical negative
+results above apply to the previous checkpoint; this update does not establish
+a compilation, execution or RSS improvement or justify promotion.
