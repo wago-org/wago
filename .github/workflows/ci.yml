@@ -1120,7 +1120,9 @@ jobs:
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
-    needs: changes
+    # Release the native/corpus/conformance macOS ARM64 runners before asking
+    # the capacity-constrained hosted pool for another TinyGo runner.
+    needs: [changes, platform-test, app-corpus, core-v3]
     if: needs.changes.outputs.profile == 'full'
     strategy:
       fail-fast: false
