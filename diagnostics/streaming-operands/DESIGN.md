@@ -100,3 +100,23 @@ instructions and zero stack traffic. These are code-shape observations, not
 measured speedups. Full production runtime oracles and timing for this new
 checkpoint remain pending. The earlier eca4488a execution regression above is
 not evidence of this batch's performance in either direction.
+
+### Completed direct-home diagnostic
+
+All 145 production runtime oracles passed for 5a1869fd. A predeclared nine-trial,
+five-arm loop experiment passed 180 runtime oracles. For 100,000 iterations:
+
+- First call: quality batch 32.488 microseconds versus legacy mean 32.548
+  microseconds (−0.18%; legacy A/A difference 0.86%). The upper trial-based
+  95% confidence bound was +1.32%.
+- Steady execution: quality batch 30.555 microseconds versus legacy controls
+  29.882/30.399 microseconds (+1.38%; A/A difference 1.70%). The trial-based
+  95% interval was wide: −28.3% to +10.5%.
+
+At 20 iterations, steady execution was +5.58% (95% interval +0.55% to +11.34%).
+The short-loop first-call control failed its agreement check (4.13% A/A).
+
+The prior approximately 1.84× deficit is closed on this particular long loop,
+but the ≤5% execution-regression requirement is **not qualified**. These results
+do not establish whole-corpus compilation or RSS improvements. No merge
+recommendation or general speedup is claimed.
