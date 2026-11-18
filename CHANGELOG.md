@@ -11,6 +11,11 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 - Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
   bounds checks, register use, local-state preservation, and integer arithmetic.
 
+### Fixed
+
+- Release and reacquire the invocation's actual execution lease when a retained
+  host callback uses a foreign control frame, including under profiling.
+
 ## [v0.1.0-beta.14] - 2026-11-11
 
 ### Breaking
