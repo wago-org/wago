@@ -167,6 +167,15 @@ func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTy
 	if err := gc.ValidateTypeDescs(descs); err != nil {
 		return GCTypeMetadata{}, fmt.Errorf("frontend: lowered GC type descriptors invalid: %w", err)
 	}
+	if layouts != nil {
+		intervals, err := gc.BuildSubtypeIntervals(descs)
+		if err != nil {
+			return GCTypeMetadata{}, fmt.Errorf("frontend: lowered GC subtype intervals invalid: %w", err)
+		}
+		for i := range layouts {
+			layouts[i].SubtypeInterval = intervals[i]
+		}
+	}
 	return GCTypeMetadata{Descs: descs, Layouts: layouts}, nil
 }
 

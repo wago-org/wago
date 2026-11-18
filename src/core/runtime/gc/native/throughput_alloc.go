@@ -72,6 +72,8 @@ type throughputHeap struct {
 	freeBytes    uint64
 	pendingBytes uint64
 	spanCount    uint32
+	ownedBacking bool // explicit Close contract; occupies existing trailing padding
+	mapped       bool // mem owns the full limit-sized Linux reservation
 }
 
 func (h *throughputHeap) Init(cfg Config) error {
@@ -87,6 +89,7 @@ func (h *throughputHeap) Init(cfg Config) error {
 	if !supportedThroughputClassLimit(cfg.ThroughputClassLimit) {
 		return fmt.Errorf("gc: throughput class limit %d is not a supported size class", cfg.ThroughputClassLimit)
 	}
+	h.Close()
 	h.limit = cfg.ThroughputHeapBytes
 	h.pageBytes = cfg.ThroughputPageBytes
 	h.classLimit = cfg.ThroughputClassLimit
@@ -103,6 +106,8 @@ func (h *throughputHeap) Init(cfg Config) error {
 }
 
 func (h *throughputHeap) Close() {
+	h.releaseOwnedBacking()
+	h.ownedBacking = false
 	h.mem = nil
 	h.spanNodes = nil
 	h.pendingFree = nil
@@ -193,6 +198,15 @@ func (h *throughputHeap) beginAllocTransaction() throughputAllocTransaction {
 }
 
 func (h *throughputHeap) restoreAllocTransaction(tx throughputAllocTransaction) {
+	if h.mapped {
+		if len(tx.mem) == 0 {
+			h.releaseOwnedBacking()
+		} else {
+			// The existing map stays owned. A later regrowth must see the same
+			// zero suffix that a fresh Go allocation would have supplied.
+			clear(h.mem[len(tx.mem):])
+		}
+	}
 	h.mem = tx.mem
 	h.bump = tx.bump
 }
@@ -393,6 +407,9 @@ func (h *throughputHeap) growBacking(needed uint64) error {
 	}
 	if reserve > limit || reserve > uint64(^uint32(0)) || reserve > uint64(int(^uint(0)>>1)) {
 		return errors.New("gc: throughput heap reservation too large")
+	}
+	if h.growOwnedBacking(int(reserve)) {
+		return nil
 	}
 	newMem := makeAlignedBytes(uint32(reserve), 16)
 	copy(newMem, h.mem)

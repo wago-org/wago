@@ -12,3 +12,5 @@ package amd64
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 func (f *fn) retainGCResolvedAddress(_ *wasm.Reader, _ int, _ bool) bool { return false }
+
+func (f *fn) cacheGCCastStructAddress(_ *wasm.Reader, _ int, _ uint32) bool { return false }

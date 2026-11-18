@@ -52,6 +52,8 @@ func snapshotPromotionState(c *Collector) promotionStateSnapshot {
 
 func cloneThroughputHeap(h throughputHeap) throughputHeap {
 	h.mem = slices.Clone(h.mem)
+	h.ownedBacking = false
+	h.mapped = false
 	h.spanNodes = slices.Clone(h.spanNodes)
 	h.pendingFree = slices.Clone(h.pendingFree)
 	return h

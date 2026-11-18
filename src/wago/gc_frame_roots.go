@@ -417,7 +417,8 @@ func validGCModuleFrameRootPlanKinds(module *shared.GCModuleFrameRootPlan, allow
 		var previousReturn uint32
 		if !plan.VisitCallsites(func(i int, callsite shared.GCFrameCallsite) bool {
 			returnOffset, stackAdjust := callsite.ReturnOffset(), callsite.StackAdjust()
-			if returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsetsKinds(callsite.Offsets(), plan.FrameBytes, allowFunctions, allowExterns) {
+			frameBytes := callsite.FrameBytes(plan.FrameBytes)
+			if frameBytes < 8 || returnOffset == 0 || (i != 0 && returnOffset <= previousReturn) || stackAdjust%8 != 0 || stackAdjust > 1<<20 || !validGCFrameOffsetsKinds(callsite.Offsets(), frameBytes, allowFunctions, allowExterns) {
 				return false
 			}
 			previousReturn = returnOffset

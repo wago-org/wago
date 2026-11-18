@@ -578,7 +578,7 @@ func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
 					}
 					// Spare capacity may retain old data. Fresh identities must clear
 					// it while reused identities retain their existing side-table state.
-					entries, marks, colors := len(c.handles), len(c.mark), len(c.tinyGC.color)
+					entries, marks := len(c.handles), len(c.mark)
 					c.handles = slices.Grow(c.handles, 32)[:entries+32]
 					for i := entries; i < len(c.handles); i++ {
 						c.handles[i] = handleEntry{space: spaceOld, size: 80}
@@ -589,11 +589,6 @@ func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
 						c.mark[i] = true
 					}
 					c.mark = c.mark[:marks]
-					c.tinyGC.color = slices.Grow(c.tinyGC.color, 32)[:colors+32]
-					for i := range c.tinyGC.color {
-						c.tinyGC.color[i] = 37
-					}
-					c.tinyGC.color = c.tinyGC.color[:colors]
 					for i := range freeCount {
 						c.freeHandles = append(c.freeHandles, uint32(1+(i*17)%64))
 					}
@@ -619,12 +614,14 @@ func TestNativeHandleBatchMatchesGeneralAllocator(t *testing.T) {
 					"entries":     {got.handles, want.handles},
 					"free":        {got.freeHandles, want.freeHandles},
 					"marks":       {got.mark, want.mark},
-					"colors":      {got.tinyGC.color, want.tinyGC.color},
 					"generations": {got.checkedHandles, want.checkedHandles},
 				} {
 					if !reflect.DeepEqual(pair[0], pair[1]) {
 						t.Fatalf("%s differ: got %v want %v", name, pair[0], pair[1])
 					}
+				}
+				if len(got.tinyGC.color) != 0 || cap(got.tinyGC.color) != 0 || len(want.tinyGC.color) != 0 || cap(want.tinyGC.color) != 0 {
+					t.Fatal("Throughput handle allocation retained Tiny-only color storage")
 				}
 				if !reflect.DeepEqual(got.nurseryHandles, expected[:]) {
 					t.Fatalf("dense nursery = %v, want %v", got.nurseryHandles, expected)

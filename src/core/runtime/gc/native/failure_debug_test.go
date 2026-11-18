@@ -171,12 +171,17 @@ func TestInjectedPublicationAndBackingFailuresAreTransactional(t *testing.T) {
 	t.Run("tiny publication", func(t *testing.T) {
 		c := newTinyTestCollector(t, Config{TinyHeapBytes: 32, TinyBlockBytes: 16})
 		beforeHandles := append([]handleEntry(nil), c.handles...)
+		beforeColors := append([]tinyMarkState(nil), c.tinyGC.color...)
+		beforeColorCapacity := cap(c.tinyGC.color)
 		defer armFailure(c, failHandlePublication, 0)()
 		if _, err := c.NewStructDefault(0); !errors.Is(err, errInjectedFailure) {
 			t.Fatalf("error = %v", err)
 		}
 		if !reflect.DeepEqual(c.handles, beforeHandles) {
 			t.Fatal("tiny publication failure mutated handles")
+		}
+		if !reflect.DeepEqual(c.tinyGC.color, beforeColors) || cap(c.tinyGC.color) != beforeColorCapacity {
+			t.Fatal("tiny publication failure mutated color storage")
 		}
 		if _, err := c.NewStructDefault(0); err != nil {
 			t.Fatalf("allocation after publication failure: %v", err)

@@ -1844,6 +1844,7 @@ func (s *referenceStore) acquireGCCollector(ctx context.Context, config gc.Confi
 			s.mu.Unlock()
 			return nil, nil, err
 		}
+		collector.UseOwnedThroughputBacking()
 		selected = &gcStoreDomain{id: newGCDomainIdentity(), collector: collector, config: config, types: types, typeReps: reps, claims: 1}
 		topology.appendDomainLocked(selected)
 		s.mu.Unlock()
