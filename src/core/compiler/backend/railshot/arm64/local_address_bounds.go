@@ -25,7 +25,8 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 	if !ok || memory.Limits.Addr64 || memory.Limits.Min == 0 {
 		return
 	}
-	var bounds [64]uint32
+	bounds := f.scratchState().localAddressBoundInline[:f.nLocals]
+	clear(bounds)
 	var invalid uint64
 	var aligned8 uint64
 	for i, typ := range f.localType {
@@ -118,7 +119,7 @@ func (f *fn) prepareLocalAddressBounds(body []byte) {
 		}
 	}
 	if useful {
-		f.localAddressBounds = append([]uint32(nil), bounds[:f.nLocals]...)
+		f.localAddressBounds = bounds
 	}
 }
 

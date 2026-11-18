@@ -785,6 +785,7 @@ type scratch struct {
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
+	localAddressBoundInline [64]uint32 // reused for the current fallback function
 	branchTargetInline      [64]uint64 // one bit per instruction; covers 16 KiB of native code
 	repeatedStoreOrigins    [64]uint64 // bounded Wasm-store origin bits for one candidate function
 	repeatedStoreOriginsSet bool
