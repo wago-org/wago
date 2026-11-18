@@ -284,6 +284,7 @@ type streamControl struct {
 // alias shares the field declaration without adding a public type. Its
 // pointer-free backing is reused only across functions of one module worker.
 type streamState struct {
+	bounds                      *streamBoundsCache
 	residency                   *streamResidency
 	nodes                       []streamNode
 	stack, locals               []streamID
@@ -307,7 +308,7 @@ type streamState struct {
 }
 
 func (s *streamState) Memory() uint64 {
-	return s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
+	return s.boundsBytes() + s.residencyBytes() + s.EventBytes + uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
 func (s *streamState) add(n streamNode) streamID {
@@ -576,6 +577,7 @@ func (s *streamState) materialize(id streamID, avoid uint64) uint8 {
 // edges still keep older local versions alive. This permits an incoming/result
 // register to be the expression accumulator without creating a second owner.
 func (s *streamState) returnValue(id streamID) {
+	s.clearBoundsFacts()
 	for i := 0; i < len(s.locals); {
 		local := s.locals[i]
 		if local == 0 {
@@ -736,6 +738,7 @@ func (s *streamState) binary(op shared.IntOp, wide bool) {
 // canonicalize first captures borrowed and agreement-slot values, then writes
 // the new local/stack image. That two-phase ordering prevents alias overwrite.
 func (s *streamState) canonicalize(registerResult bool) {
+	s.clearBoundsFacts()
 	capture := func(id streamID) {
 		if id == 0 {
 			return
@@ -838,6 +841,7 @@ func (s *streamState) restoreResultLocal(local uint16) {
 }
 
 func (s *streamState) restore(depth int) {
+	s.clearBoundsFacts()
 
 	// Stack types are retained through the agreement. Each else restores only the
 	// pre-split prefix, whose types cannot change in a validated scalar body.
@@ -883,6 +887,17 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		return 0, fmt.Errorf("streaming operands: unadmitted function")
 	}
 
+	// Reset certificates before resetting the sentinel creation order. Allocate
+	// one bounded scratch object per worker, never per access or value.
+	if streamingBoundsFactsEnabled {
+		if summary.Memory && s.bounds == nil {
+			s.bounds = &streamBoundsCache{}
+		}
+		s.clearBoundsFacts()
+	} else {
+		s.Discarded += s.boundsBytes()
+		s.bounds = nil
+	}
 	s.EventBytes = uint64(cap(summary.LocalEvents)) * 4
 	old := s.Memory()
 	if cap(s.nodes) > 4096 && summary.Nodes < cap(s.nodes)/4 {
@@ -986,6 +1001,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 func (s *streamState) FinishWorker() {
 
 	s.Discarded += s.Memory()
+	s.bounds = nil
 	s.EventBytes = 0
 	s.residency = nil
 	s.nodes = nil

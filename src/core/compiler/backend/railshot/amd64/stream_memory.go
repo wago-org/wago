@@ -58,6 +58,12 @@ func streamMemoryShape(op byte) (size int, signed, wide, store bool) {
 // Arithmetic stays 64-bit: max(uint32 address)+max(uint32 offset)+8 fits well
 // below 2^64. An overflowing memory32 effective address must trap, not wrap.
 func (f *fn) streamCheckedAddress(addr, end Reg, off uint32, size int) int32 {
+	return f.streamMemoryAddress(addr, end, off, size, true)
+}
+
+// Even a certified access retains the identical nonwrapping effective-address
+// arithmetic. A hit removes only the comparison and its trap branch.
+func (f *fn) streamMemoryAddress(addr, end Reg, off uint32, size int, check bool) int32 {
 	disp := int32(0)
 	if uint64(off)+uint64(size) <= 0x7fffffff {
 		disp = int32(off)
@@ -69,8 +75,10 @@ func (f *fn) streamCheckedAddress(addr, end Reg, off uint32, size int) int32 {
 	}
 	// Keep explicit checks even for guard mappings: one bounds failure precedes
 	// any load/store, and stores cannot partially modify memory before trapping.
-	f.streamCompareMemoryEnd(end)
-	f.trapIf(condA, trapMemOOB)
+	if check {
+		f.streamCompareMemoryEnd(end)
+		f.trapIf(condA, trapMemOOB)
+	}
 	return disp
 }
 
@@ -97,6 +105,9 @@ func (s *streamState) memory(r *wasm.Reader, op byte) error {
 		value = s.pop()
 	}
 	address := s.pop()
+	addressOrder := s.node(address).order
+	extent := uint64(off) + uint64(size)
+	covered := s.boundsCover(address, extent)
 	if store {
 		// A deferred address shift can evict RCX even when reserved: fixed
 		// machine clobbers preserve IDs, not cached physical registers. Resolve
@@ -112,7 +123,12 @@ func (s *streamState) memory(r *wasm.Reader, op byte) error {
 	s.reserved |= uint64(1) << ea
 	s.release(address)
 	end := s.alloc(0)
-	disp := f.streamCheckedAddress(Reg(ea), Reg(end), uint32(off), size)
+	disp := f.streamMemoryAddress(Reg(ea), Reg(end), uint32(off), size, !covered)
+	if covered {
+		f.stats.peep("stream-bounds-fact")
+	} else {
+		s.rememberBounds(address, addressOrder, extent)
+	}
 	if store {
 		f.a.StoreIdx(RBX, Reg(ea), Reg(valueReg), disp, size)
 		s.release(value)

@@ -21,6 +21,7 @@ type streamFlow struct {
 }
 
 func (s *streamState) streamRestore(fr streamFlow, result bool) {
+	s.clearBoundsFacts()
 	for _, id := range s.locals {
 		s.release(id)
 	}
@@ -67,6 +68,7 @@ func (s *streamState) streamPatch(fr streamFlow) {
 // Transfer executes only on the taken edge. Conditional fallthrough restores
 // the pre-edge canonical image without emitting stores from the taken path.
 func (s *streamState) streamEdge(depth int, conditional bool) {
+	s.clearBoundsFacts()
 	target := len(s.flow) - 1 - depth
 	var condition streamID
 	var homes streamBranchHome
@@ -126,6 +128,11 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 		op, err := r.Byte()
 		if err != nil {
 			return 0, err
+		}
+		// Facts are deliberately confined to one straight-line segment. Include
+		// future table/grow boundaries even though their syntax is not admitted.
+		if op == 0x00 || (op >= 0x02 && op <= 0x05) || (op >= 0x0b && op <= 0x10) || op == 0x40 || op == 0xfc {
+			s.clearBoundsFacts()
 		}
 		// Structural operations remain visible through unreachable syntax; operand
 		// operations are skipped without publishing values or emitting instructions.

@@ -263,3 +263,20 @@ with zero failures or skips (0.698 s), including actual regional leases and
 memory-growth coherence. Production corpus runtime verification and performance
 qualification for this revision are pending. Prior c1cca19e runtime results are
 not qualification for this new revision. No improvement or promotion is claimed.
+
+### Same-value bounds facts checkpoint (5e6b747b)
+
+`WAGO_EXPERIMENTAL_STREAM_BOUNDS_FACTS=1` adds a four-entry weak certificate
+cache keyed by live operand identity and creation order. A successful dominating
+check can cover a later access with no larger unsigned 64-bit extent. Effective
+address arithmetic is unchanged; only the redundant comparison/trap branch is
+omitted. Certificates retain no value references and are cleared at control,
+call, bulk, canonicalization and reset boundaries. A bounded 72-byte requested
+scratch object is reused per worker and included in scratch accounting; this
+is not a measured RSS saving or a total allocator-footprint bound.
+
+The exact frozen source passed 91 focused ownership/statistics top-level tests
+with zero failures or skips (0.548 s), including five new fact-cache tests.
+Production corpus runtime verification and performance/memory qualification
+for this revision are pending. Earlier checkpoint results do not qualify this
+revision. No improvement or promotion is claimed.

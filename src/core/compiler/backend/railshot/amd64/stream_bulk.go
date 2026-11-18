@@ -65,6 +65,7 @@ func (s *streamState) streamBulkRegisters(copy bool) ([4]Reg, error) {
 // All range checks finish before the first write, including zero-length ranges.
 // No legacy operand stack, register allocator or local-state flush is involved.
 func (s *streamState) bulk(r *wasm.Reader, sub uint32) error {
+	s.clearBoundsFacts()
 	if sub != 10 && sub != 11 {
 		return fmt.Errorf("stream: unsupported bulk opcode %d", sub)
 	}

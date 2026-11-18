@@ -35,6 +35,7 @@ func (f *fn) streamCallTarget(idx uint32) (*wasm.CompType, int, bool) {
 // operand graph. The direct ABI preserves module-global registers and the
 // memory-bound cache; only ordinary value-pinned globals need cell coherence.
 func (s *streamState) integerCall(r *wasm.Reader) error {
+	s.clearBoundsFacts()
 	idx, err := r.U32()
 	if err != nil {
 		return err
