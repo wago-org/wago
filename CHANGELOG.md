@@ -32,6 +32,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   AMD64 and ARM64 code. Growing or filling such a table wrote 32-byte entries
   past its storage, corrupting adjacent tables or crashing, and non-null
   `exnref` values could not be read back from a table.
+- Publish ARM64 module-pinned globals before `throw` and `throw_ref`; a caught
+  exception reloaded them from stale memory cells, discarding earlier
+  `global.set` values (for example, loop counters reset and never terminated).
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
