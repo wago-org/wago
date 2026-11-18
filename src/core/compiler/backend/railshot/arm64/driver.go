@@ -1158,7 +1158,8 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 // stack holds a, then b, then cond on top. Lowered to compare + CSEL (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
-	if f.tryPureExpensiveSelect() {
+	// At least two deferred operations are needed to justify the branch.
+	if f.s.pendingDeferred >= pureSelectMinOps && f.tryPureExpensiveSelect() {
 		return
 	}
 	// Flags-select: when the condition is a deferred relational/eqz compare and both

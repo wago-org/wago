@@ -13,6 +13,12 @@ import "os"
 
 var pureSelectEnabled = os.Getenv("WAGO_ARM64_NO_PURE_SELECT") != "1"
 
+const (
+	pureSelectMultiplyCost = 4
+	pureSelectMinCost      = 8
+	pureSelectMinOps       = (pureSelectMinCost + pureSelectMultiplyCost - 1) / pureSelectMultiplyCost
+)
+
 type pureSelectChain struct {
 	nodes [12]*elem
 	leaf  *elem
@@ -41,7 +47,7 @@ func (f *fn) provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, 
 		p.n++
 		cost++
 		if e.deferredOp() == opMul {
-			cost += 3
+			cost += pureSelectMultiplyCost - 1
 			hasMultiply = true
 		}
 		e = f.s.arg0(e)
@@ -50,7 +56,7 @@ func (f *fn) provePureSelectChain(e *elem, typ machineType) (p pureSelectChain, 
 	// A conditional branch has to save enough dependent arithmetic to
 	// repay the added control dependence. Keep a multiply and one cheap
 	// operation on the CSEL path.
-	return p, cost >= 8 && hasMultiply && pureSelectLeaf(e, typ)
+	return p, cost >= pureSelectMinCost && hasMultiply && pureSelectLeaf(e, typ)
 }
 
 func (f *fn) pureSelectResult(avoid regMask, need int) Reg {
@@ -99,7 +105,8 @@ func (f *fn) tryPureExpensiveSelect() bool {
 		return false
 	}
 	cond := f.s.back()
-	if cond == nil || rootMachineType(cond) != mtI32 {
+	if cond == nil || rootMachineType(cond) != mtI32 ||
+		cond.isDeferred() && f.s.pendingDeferred <= pureSelectMinOps {
 		return false
 	}
 	b := f.s.prev(f.s.baseOfValentBlock(cond))
