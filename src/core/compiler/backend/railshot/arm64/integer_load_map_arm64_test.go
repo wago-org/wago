@@ -250,13 +250,13 @@ func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
 	}
 }
 
-func TestIntegerLoadMapImmediateShifts(t *testing.T) {
+func TestIntegerLoadMapShifts(t *testing.T) {
 	initial := make([]byte, 65536)
 	for i := range initial {
 		initial[i] = byte(i*197 + i/17)
 	}
 	for _, op := range []byte{0x74, 0x75, 0x76} {
-		for _, count := range []int32{0, 7, 31, 32, -1} {
+		for _, count := range []int32{0, 7, 31, 32, -1, -2} {
 			for _, dst := range []int32{8192, 68, 65532} {
 				body := []byte{1, 4, 0x7f}
 				constant := func(x int32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(x)...) }
@@ -266,7 +266,13 @@ func TestIntegerLoadMapImmediateShifts(t *testing.T) {
 				}
 				body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 2, 0x6a)
 				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0)
-				constant(count)
+				if count == -2 {
+					// Read per-lane counts from a disjoint offset. The patterned
+					// words include negative and oversized counts.
+					body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0x80, 0x20)
+				} else {
+					constant(count)
+				}
 				body = append(body, op, 0x22, 3, 0x36, 2, 0, 0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
 				constant(132)
 				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)

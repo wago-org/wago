@@ -67,7 +67,7 @@ func (p *floatMapPlan) constant(op byte) bool {
 func (p *floatMapPlan) binary(op byte) bool {
 	if p.integer {
 		switch op {
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
+		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
 			return true
 		}
 		return false

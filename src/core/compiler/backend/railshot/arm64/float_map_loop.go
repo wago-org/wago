@@ -40,7 +40,11 @@ type floatMapNode struct {
 	op   byte
 }
 
-func (n floatMapNode) shift() bool { return n.op >= 0x74 && n.op <= 0x76 }
+const integerMapImmediateShift = 1 << 32
+
+func (n floatMapNode) shift() bool {
+	return n.op >= 0x74 && n.op <= 0x76 && n.bits&integerMapImmediateShift != 0
+}
 
 func (n floatMapNode) left() int  { return int(n.a) }
 func (n floatMapNode) right() int { return int(n.b) }
@@ -205,11 +209,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				return false
 			}
 			count := p.nodes[stack[depth-1]]
-			if count.op != 0x41 {
-				return false
-			}
 			depth -= 2
-			if !push(node(op, stack[depth], 0, count.bits&31)) {
+			a, b, bits := stack[depth], stack[depth+1], uint64(0)
+			if count.op == 0x41 {
+				b, bits = 0, integerMapImmediateShift|count.bits&31
+			}
+			if !push(node(op, a, b, bits)) {
 				return false
 			}
 		case 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
@@ -1194,6 +1199,21 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.a.NeonOrr16b(out, a, b)
 		case 0x73:
 			f.a.NeonEor16b(out, a, b)
+		case 0x74, 0x75, 0x76:
+			// Wasm masks lane counts to five bits. NEON uses negative
+			// counts for right shifts.
+			count := f.allocFReg(0)
+			f.a.NeonShlS(count, b, 27)
+			f.a.NeonUshrS(count, count, 27)
+			if op != 0x74 {
+				f.a.NeonNegS(count, count)
+			}
+			if op == 0x75 {
+				f.a.NeonSshrvS(out, a, count)
+			} else {
+				f.a.NeonUshlS(out, a, count)
+			}
+			f.releaseF(count)
 		case integerMapMinS:
 			f.a.NeonSminS(out, a, b)
 		case integerMapMinU:
