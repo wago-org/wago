@@ -339,19 +339,20 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	f.a.Add64(pivot, pivot, linMemReg)
 	vec := func() Reg { x := f.allocFReg(0); f.fpinned = f.fpinned.add(x); return x }
 	vd, vs, vp := vec(), vec(), vec()
+	f.a.Load32(X16, pivot, 0)
+	f.a.NeonDupGprS(vp, X16)
 	loop := f.a.Len()
 	var scalar [2]int
 	nScalar := 0
 	emitVector := func(bytes uint32) {
 		// Pivot overlap must resume the original body: the source may cache
-		// both pivot loads before its first store.
+		// both pivot loads before its first store. Until overlap, the hoisted
+		// broadcast remains unchanged by every destination packet.
 		f.a.Sub64(X16, pivot, d)
 		f.a.AddImm64(X16, X16, 3)
 		f.cmpImm(X16, bytes+3, true)
 		scalar[nScalar] = f.a.Bcond(condB)
 		nScalar++
-		f.a.Load32(X16, pivot, 0)
-		f.a.NeonDupGprS(vp, X16)
 		for off := int32(0); off < int32(bytes); off += 16 {
 			f.a.LdrQ(vd, d, off)
 			f.a.LdrQ(vs, s, off)
@@ -365,12 +366,16 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 		f.patchBranch26(f.a.Branch(), loop)
 	}
 	// Require four wider iterations to amortize the extra code and tail dispatch.
-	if p.limit >= 4*32+8 {
-		// Amortize loop and alias checks over two SIMD blocks without adding
+	packetBytes := uint32(32)
+	if p.limit >= 4*64+8 {
+		packetBytes = 64
+	}
+	if p.limit >= 4*packetBytes+8 {
+		// Amortize loop and alias checks over several SIMD blocks without adding
 		// registers. Keep one original packet for the observable scalar tail.
-		compare(p.limit - 40)
+		compare(p.limit - packetBytes - 8)
 		tail := f.a.Bcond(condA)
-		emitVector(32)
+		emitVector(packetBytes)
 		f.stats.peep("minplus-loop-unroll")
 		f.patchBranch19(tail, f.a.Len())
 	}
@@ -395,6 +400,8 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 		f.a.AddImm64(d, d, 8)
 		f.a.AddImm64(s, s, 8)
 		f.a.AddImm32(counter, counter, 8)
+		f.a.Load32(X16, pivot, 0)
+		f.a.NeonDupGprS(vp, X16)
 		f.patchBranch26(f.a.Branch(), loop)
 	}
 	// Both a completed prefix and pivot overlap resume at the current counter.

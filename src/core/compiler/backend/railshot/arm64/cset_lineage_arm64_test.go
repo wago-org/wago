@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -102,6 +103,64 @@ func TestCsetLineageNativeWidthsConditionsAndCopies(t *testing.T) {
 	}
 }
 
+func TestCsetLineageDropsOverwrittenBoolean(t *testing.T) {
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	set := a.Len()
+	a.Cset32(X9, condL)
+	a.MovReg32(X10, X0)
+	cmp := a.Len()
+	a.CmpImm32(X9, 0)
+	sel := a.Len()
+	a.Csel32(X9, X10, X1, condE)
+	a.MovReg32(X0, X9)
+	a.Ret()
+
+	before := append([]byte(nil), a.B...)
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, set) != nopWord || rdWord(a.B, cmp) != nopWord {
+		t.Fatalf("dead lineage words = %#x/%#x, want NOP/NOP", rdWord(a.B, set), rdWord(a.B, cmp))
+	}
+	if Cond(rdWord(a.B, sel)>>12&15) != condGE {
+		t.Fatal("select did not consume the producer condition")
+	}
+	original, err := arm64spike.MapExec(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(original)
+	candidate, err := arm64spike.MapExec(a.B)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Munmap(candidate)
+	for _, pair := range [][2]uintptr{{0, 0}, {0, 1}, {1, 0}, {0x80000000, 0x7fffffff}} {
+		want := arm64spike.Call2(uintptr(unsafe.Pointer(&original[0])), pair[0], pair[1])
+		got := arm64spike.Call2(uintptr(unsafe.Pointer(&candidate[0])), pair[0], pair[1])
+		if got != want {
+			t.Fatalf("pair=%x got=%x want=%x", pair, got, want)
+		}
+	}
+}
+
+func TestCsetLineageKeepsObservedBoolean(t *testing.T) {
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	set := a.Len()
+	a.Cset32(X9, condL)
+	a.MovReg32(X10, X9)
+	a.CmpImm32(X9, 0)
+	a.Csel32(X9, X0, X1, condE)
+	a.MovReg32(X0, X9)
+	a.Ret()
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, set) == nopWord {
+		t.Fatal("observed boolean CSET was removed")
+	}
+}
+
 func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 	old := csetLineageEnabled
 	csetLineageEnabled = true
@@ -133,7 +192,7 @@ func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 		}
 	}
 	b := append([]byte(nil), base.B...)
-	for len(b) <= 4096 {
+	for len(b) <= csetLineageFunctionLimit {
 		b = append(b, 0x1f, 0x20, 0x03, 0xd5)
 	}
 	before := append([]byte(nil), b...)
@@ -141,6 +200,26 @@ func TestCsetLineageEntryAndOpaqueRejection(t *testing.T) {
 	f.foldCsetLineage(b, len(b), 0, nil)
 	if !bytes.Equal(b, before) {
 		t.Fatal("size cap")
+	}
+}
+
+func TestCsetLineageFinalizesMediumFunction(t *testing.T) {
+	for _, targeted := range []bool{false, true} {
+		a, _, _, cmp, _ := csetLineageFixture(true, false, true, true, Cond(3), condE)
+		padding := make([]byte, 4096)
+		for pc := range len(padding) / 4 {
+			wrWord(padding, pc*4, nopWord)
+		}
+		if targeted {
+			wrWord(padding, 0, 0x14000000|uint32((len(padding)+cmp)/4))
+		}
+		a.B = append(padding, a.B...)
+		sc := &scratch{asm: &a}
+		f := fn{a: &a, sc: sc, policy: currentCodegenPolicy()}
+		f.finalizePeepholes()
+		if changed := rdWord(a.B, len(padding)+cmp) == nopWord; changed == targeted {
+			t.Fatalf("targeted=%v changed=%v", targeted, changed)
+		}
 	}
 }
 
@@ -231,6 +310,54 @@ func TestCsetLineageBoundedStartMatchesFullScan(t *testing.T) {
 	}
 }
 
+func TestCsetLineageAcrossIndexedMemory(t *testing.T) {
+	old := csetLineageEnabled
+	csetLineageEnabled = true
+	defer func() { csetLineageEnabled = old }()
+	for _, memory := range []func(*enc.Asm){
+		func(a *enc.Asm) { a.LdrIdx(X11, X2, X3, 4, false, false) },
+		func(a *enc.Asm) { a.LdrIdx(X11, X2, X3, 2, true, true) },
+		func(a *enc.Asm) { a.StrIdx(X11, X2, X3, 4) },
+	} {
+		var a enc.Asm
+		a.CmpReg32(X0, X1)
+		a.Cset32(X9, condL)
+		a.CmpImm32(X9, 0)
+		cmp := a.Len() - 4
+		a.Csel(X0, X0, X1, condNE, false)
+		memory(&a)
+		a.CmpImm32(X0, 1)
+		a.Ret()
+
+		f := fn{policy: currentCodegenPolicy()}
+		f.foldCsetLineage(a.B, len(a.B), 0, nil)
+		if rdWord(a.B, cmp) != nopWord {
+			t.Fatal("indexed memory ended an otherwise live condition lineage")
+		}
+	}
+}
+
+func TestCsetLineageIndexedLoadClobbersBoolean(t *testing.T) {
+	old := csetLineageEnabled
+	csetLineageEnabled = true
+	defer func() { csetLineageEnabled = old }()
+	var a enc.Asm
+	a.CmpReg32(X0, X1)
+	a.Cset32(X9, condL)
+	a.LdrIdx(X9, X2, X3, 4, false, false)
+	a.CmpImm32(X9, 0)
+	cmp := a.Len() - 4
+	a.Csel(X0, X0, X1, condNE, false)
+	a.CmpImm32(X0, 1)
+	a.Ret()
+
+	f := fn{policy: currentCodegenPolicy()}
+	f.foldCsetLineage(a.B, len(a.B), 0, nil)
+	if rdWord(a.B, cmp) == nopWord {
+		t.Fatal("indexed load preserved lineage for the overwritten boolean")
+	}
+}
+
 func TestCsetLineageDirectCallKeepsBooleanAndCallerLocals(t *testing.T) {
 	// Keep a saved boolean observable after the select and keep twelve I64
 	// locals plus an older stack value live across a real non-inlined call.
@@ -299,6 +426,64 @@ func TestCsetLineageDirectCallKeepsBooleanAndCallerLocals(t *testing.T) {
 						t.Fatalf("callee admission wide=%v on=%v bounds=%v stats=%v", wide, on, guard, stats.Funcs[1].Peephole)
 					}
 				}
+			}
+		}
+	}
+}
+
+func TestCsetLineageKeepsBooleanReadByMemory(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		emit func(*enc.Asm)
+	}{
+		{"store data", func(a *enc.Asm) { a.Store32(X9, X2, 0) }},
+		{"load base", func(a *enc.Asm) { a.Load32(X11, X9, 0) }},
+		{"store base", func(a *enc.Asm) { a.Store32(X11, X9, 0) }},
+		{"indexed store data", func(a *enc.Asm) { a.StrIdx(X9, X2, X3, 4) }},
+		{"indexed load base", func(a *enc.Asm) { a.LdrIdx(X11, X9, X3, 4, false, false) }},
+		{"indexed load index", func(a *enc.Asm) { a.LdrIdx(X11, X2, X9, 4, false, false) }},
+		{"indexed store base", func(a *enc.Asm) { a.StrIdx(X11, X9, X3, 4) }},
+		{"indexed store index", func(a *enc.Asm) { a.StrIdx(X11, X2, X9, 4) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var a enc.Asm
+			a.CmpReg32(X0, X1)
+			set := a.Len()
+			a.Cset32(X9, condL)
+			tc.emit(&a)
+			cmp := a.Len()
+			a.CmpImm32(X9, 0)
+			a.Csel32(X9, X0, X1, condE)
+			a.Ret()
+			f := fn{policy: currentCodegenPolicy()}
+			f.foldCsetLineage(a.B, len(a.B), 0, nil)
+			if rdWord(a.B, cmp) != nopWord {
+				t.Fatal("lineage replacement did not run")
+			}
+			if rdWord(a.B, set) == nopWord {
+				t.Fatal("memory-observed boolean CSET was removed")
+			}
+		})
+	}
+}
+
+func TestCsetLineageBooleanStoreBeforeSelect(t *testing.T) {
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		1, 1, 0x7f,
+		0x20, 0, 0x20, 1, 0x48, 0x21, 2,
+		0x41, 0, 0x20, 2, 0x36, 2, 0,
+		0x20, 0, 0x20, 1, 0x20, 2, 0x1b, 0x21, 2,
+		0x41, 4, 0x20, 2, 0x36, 2, 0, 0x41, 0, 0x0b,
+	})
+	for _, pair := range [][2]uint64{{3, 5}, {5, 3}, {3, 3}, {0xffffffff, 0}} {
+		for _, on := range []bool{false, true} {
+			mem, err := runScalarUnrollMemory(t, m, CompileOptions{Optimizations: map[string]bool{"cset-lineage": on}}, pair[0], pair[1])
+			flag, want := uint32(0), uint32(pair[1])
+			if int32(pair[0]) < int32(pair[1]) {
+				flag, want = 1, uint32(pair[0])
+			}
+			if err != nil || binary.LittleEndian.Uint32(mem) != flag || binary.LittleEndian.Uint32(mem[4:]) != want {
+				t.Fatalf("pair%v on%t: memory %x error %v, want %d/%d", pair, on, mem[:8], err, flag, want)
 			}
 		}
 	}

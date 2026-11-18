@@ -714,7 +714,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	// Materialize earlier trapping roots first to preserve source trap order.
 	if repeatedLocalEarly && (op == opAdd || op == opSub || op == opMul) && f.s.logicalDepth >= 2 && left.isDeferred() && right.isValue() &&
 		(right.st.kind == stLocalReg || right.st.kind == stLocalRef) &&
-		treeUsesBorrowedLocal(left, right.st.kind, right.st.idx) && treeReorderSafe(node) && f.hasNearbyDeferredRoot(node) {
+		f.hasNearbyDeferredRoot(node) && treeUsesBorrowedLocal(left, right.st.kind, right.st.idx) && treeReorderSafe(node) {
 		f.materializeTrapsBefore(node)
 		f.materialize(node)
 		f.stats.peep("repeated-local-early")

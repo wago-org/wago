@@ -10,6 +10,7 @@
 package arm64
 
 import (
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -135,7 +136,13 @@ func (st storage) slotIndex() int     { return int(st.slot) }
 func (st storage) index() int         { return int(st.idx) }
 func (st storage) memSize() int       { return int(st.idx & 0xff) }
 func (st storage) memSigned() bool    { return st.idx&0x100 != 0 }
+func (st storage) memUXTW() bool      { return st.idx&0x200 != 0 }
 func (st storage) memAliasLocal() int { return int(st.idx>>10) - 1 }
+
+func (st storage) withMemUXTW() storage {
+	st.idx |= 0x200
+	return st
+}
 
 // memBorrow returns the local whose pinned register serves as this deferred
 // load's address, or -1 when the address register is owned.
@@ -201,6 +208,16 @@ func (e *elem) setDeferredOp(op wOp) {
 func (e *elem) deferredDepth() int16 { return int16(e.st.slot >> 8) }
 func (e *elem) setDeferredDepth(depth int16) {
 	e.st.slot = uint32(e.deferredOp()) | uint32(uint16(depth))<<8
+}
+
+// deferredStorage initializes a freshly allocated operand node in one value.
+func deferredStorage(op wOp, typ machineType, left, right nodeID, depth int16, facts valueFacts) storage {
+	return storage{
+		cval: int64(uint64(left) | uint64(right)<<32),
+		slot: uint32(op) | uint32(uint16(depth))<<8,
+		typ:  typ,
+		meta: uint8(ekDeferred)<<elemKindShift | uint8(facts&valueFactMask),
+	}
 }
 
 func (e *elem) child0ID() nodeID { return nodeID(uint32(uint64(e.st.cval))) }
@@ -269,6 +286,12 @@ const (
 	maxStackChunkCap     = 8192
 )
 
+type initialStackChunk [defaultStackArenaCap]elem
+
+// One pointer-free chunk bounds idle retention independently of module size and
+// compiler concurrency. Every slot is cleared by alloc before its next use.
+var idleInitialStackChunk atomic.Pointer[initialStackChunk]
+
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
 
 func newStackWithCap(capHint int) *stack {
@@ -283,13 +306,34 @@ func (s *stack) initWithCap(capHint int) {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
+	var first []elem
+	if capHint == defaultStackArenaCap {
+		if cached := idleInitialStackChunk.Swap(nil); cached != nil {
+			first = cached[:0]
+		}
+	}
+	if first == nil {
+		first = make([]elem, 0, capHint)
+	}
 	next, geometric := stackArenaGrowthCaps(capHint)
 	*s = stack{
-		chunks:           [][]elem{make([]elem, 0, capHint)},
+		chunks:           [][]elem{first},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
 	s.initSentinel()
+}
+
+// cacheInitialChunk ends this stack's ownership before publishing its buffer.
+// Call only after the compiler has finished and severed pending node references.
+func (s *stack) cacheInitialChunk() {
+	if len(s.chunks) == 0 || cap(s.chunks[0]) != defaultStackArenaCap {
+		return
+	}
+	chunk := (*initialStackChunk)(s.chunks[0][:defaultStackArenaCap])
+	s.chunks[0] = nil
+	s.head = nil
+	idleInitialStackChunk.CompareAndSwap(nil, chunk)
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
@@ -636,17 +680,14 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	f.boundPendingPacket()
 	id, node := f.s.alloc()
-	node.st.typ = typ
-	node.setElemKind(ekDeferred)
+	facts := valueFacts(0)
+	if f.opt(optValueFacts) {
+		facts = deferredResultFacts(op, typ)
+	}
+	node.st = deferredStorage(op, typ, leftID, rightID, 1+max16(deferDepthOf(left), deferDepthOf(right)), facts)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)
 	}
-	node.setDeferredOp(op)
-	if f.opt(optValueFacts) {
-		node.st.setValueFacts(deferredResultFacts(op, typ))
-	}
-	node.setChildren(leftID, rightID)
-	node.setDeferredDepth(1 + max16(deferDepthOf(left), deferDepthOf(right)))
 	f.s.push(id, node)
 	if f.guardMode && isDivRem(op) {
 		// A later guard-backed load can execute when its address is evicted.
@@ -816,16 +857,13 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	}
 	f.boundPendingPacket()
 	id, node := f.s.alloc()
-	node.st.typ = typ
-	node.setElemKind(ekDeferred)
+	facts := valueFacts(0)
+	if f.opt(optValueFacts) {
+		facts = deferredResultFacts(op, typ)
+	}
+	node.st = deferredStorage(op, typ, operandID, nilNodeID, 1+deferDepthOf(operand), facts)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rememberProfileNode(node)
 	}
-	node.setDeferredOp(op)
-	if f.opt(optValueFacts) {
-		node.st.setValueFacts(deferredResultFacts(op, typ))
-	}
-	node.setChildren(operandID, nilNodeID)
-	node.setDeferredDepth(1 + deferDepthOf(operand))
 	f.s.push(id, node)
 }

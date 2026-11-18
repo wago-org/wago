@@ -650,6 +650,23 @@ func (a *Asm) LdrIdx(rt, rn, rm Reg, size int, signed, wideDest bool) {
 	}
 }
 
+// LdrIdxUXTW loads rt = [rn + uint32(rm)] (rm is a byte offset, no scaling).
+// It is the memory-address counterpart of AddExtUXTW: the register-offset
+// encoding performs the zero extension without a separate MOV Wm, Wm.
+func (a *Asm) LdrIdxUXTW(rt, rn, rm Reg, size int, signed, wideDest bool) {
+	opc := uint32(1) // load, zero-extend
+	if signed {
+		opc = 3 // sign-extend to 32
+		if wideDest {
+			opc = 2 // sign-extend to 64
+		}
+	}
+	a.word(0x38204800 | sizeField(size) | opc<<22 | r(rm)<<16 | r(rn)<<5 | r(rt))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(rt, false))
+	}
+}
+
 // StrIdx stores the low `size` bytes of rt to [rn + rm] (unscaled byte offset).
 func (a *Asm) StrIdx(rt, rn, rm Reg, size int) {
 	a.word(0x38206800 | sizeField(size) | r(rm)<<16 | r(rn)<<5 | r(rt))
@@ -931,6 +948,10 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
+	if a.reuseIndexedAddress(base, index, disp) {
+		a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
+		return
+	}
 	reused := foldIdxDispEnabled && (a.reuseIndexedBase(base, index) || a.reuseIndexedBaseStablePhase(base, index))
 	if foldIdxDispEnabled && (a.DenseIdxDisp || reused) {
 		if !reused {
@@ -954,6 +975,22 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDe
 	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
 }
 
+// LoadIdxUXTW is LoadIdx for a memory32 byte index whose upper register half is
+// not known canonical. The address extension is folded into either the load or
+// the one address ADD instead of being emitted as a separate W-register move.
+func (a *Asm) LoadIdxUXTW(dst, base, index Reg, disp int32, size int, signed, wideDest bool) {
+	if disp == 0 {
+		a.LdrIdxUXTW(dst, base, index, size, signed, wideDest)
+		return
+	}
+	a.AddExtUXTW(X16, base, index)
+	if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
+		return
+	}
+	a.addDispX16(disp)
+	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
+}
+
 // LoadPairIdx loads two adjacent full-width integer values from base+index+disp.
 // It returns false when disp cannot be represented by the scaled pair immediate.
 func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool {
@@ -971,6 +1008,10 @@ func (a *Asm) LoadPairIdx(dst, dst2, base, index Reg, disp int32, size int) bool
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if disp == 0 {
 		a.StrIdx(src, base, index, size)
+		return
+	}
+	if a.reuseIndexedAddress(base, index, disp) {
+		a.StrIdx(src, X16, XZR, size)
 		return
 	}
 	if foldIdxDispEnabled && a.DenseIdxDisp {
@@ -1059,6 +1100,68 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	return false
 }
 
+// reuseIndexedAddress proves that X16 still holds the exact
+// base+index+disp address produced by a nearby access. This complements the
+// base-only proof above: once a large displacement has been added to X16, an
+// identical later access can use that full address directly. The proof accepts
+// one architectural add/sub-immediate displacement, the access which consumed
+// it, and at most one independent integer result between the two accesses.
+func (a *Asm) reuseIndexedAddress(base, index Reg, disp int32) bool {
+	if !a.ReuseIndexedBase || len(a.B) < 12 || base == X16 || index == X16 || base == ZR || index == ZR {
+		return false
+	}
+	wantDisp, ok := indexedAddressDispWord(disp)
+	if !ok {
+		return false
+	}
+	wantAdd := uint32(0x8B000000) | uint32(index&31)<<16 | uint32(base&31)<<5 | uint32(X16)
+	pos := len(a.B) - 4
+	if dst, ok := gpResultDestination(a.wordAt(pos)); ok {
+		if dst == X16 || dst == base || dst == index || pos < 4 {
+			return false
+		}
+		pos -= 4
+	}
+	if !indexedAddressMemoryPreserves(a.wordAt(pos), base, index) || pos < 8 ||
+		a.wordAt(pos-4) != wantDisp || a.wordAt(pos-8) != wantAdd {
+		return false
+	}
+	a.IndexedBaseReuses++
+	return true
+}
+
+func indexedAddressMemoryPreserves(instruction uint32, base, index Reg) bool {
+	unsignedImmediate := instruction&0x3B000000 == 0x39000000 && Reg(instruction>>5&31) == X16
+	registerOffset := instruction&0x3B20FC00 == 0x38206800 && Reg(instruction>>5&31) == X16
+	if !unsignedImmediate && !registerOffset {
+		return false
+	}
+	if !loadStoreMayWriteGPR(instruction) {
+		return true
+	}
+	dst := Reg(instruction & 31)
+	return dst != X16 && dst != base && dst != index
+}
+
+func indexedAddressDispWord(disp int32) (uint32, bool) {
+	base := uint32(0x91000000) // ADD X16,X16,#imm
+	magnitude := int64(disp)
+	if magnitude < 0 {
+		base = 0xD1000000 // SUB X16,X16,#imm
+		magnitude = -magnitude
+	}
+	var immediate uint32
+	switch {
+	case magnitude > 0 && magnitude <= 0xfff:
+		immediate = uint32(magnitude) << 10
+	case magnitude > 0 && magnitude&0xfff == 0 && magnitude <= 0xfff000:
+		immediate = 1<<22 | uint32(magnitude>>12)<<10
+	default:
+		return 0, false
+	}
+	return base | immediate | uint32(X16)<<5 | uint32(X16), true
+}
+
 // loadStoreMayWriteGPR applies only to the non-writeback unsigned-immediate
 // and register-offset classes recognized below. With V=0, opc=00 is a store,
 // 01 is a zero-extending load, and 10/11 are sign-extending loads. With V=1,
@@ -1067,6 +1170,24 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 // as a possible write. This is a clobber check, not a general load decoder.
 func loadStoreMayWriteGPR(instruction uint32) bool {
 	return instruction&(1<<26) == 0 && instruction&(3<<22) != 0
+}
+
+// gpResultDestination recognizes integer instruction families which write only
+// their Rd GPR (apart from architectural flags). Keeping this fact shared by
+// the short emission-time and whole-function address proofs prevents one from
+// accepting an instruction that needlessly terminates the other.
+func gpResultDestination(instruction uint32) (Reg, bool) {
+	writesRd := instruction&0x1F000000 == 0x0A000000 || // logical register
+		instruction&0x1F000000 == 0x0B000000 || // add/sub register
+		instruction&0x1F000000 == 0x11000000 || // add/sub immediate
+		instruction&0x1F800000 == 0x12000000 || // logical immediate
+		instruction&0x1F800000 == 0x12800000 || // move wide
+		instruction&0x1F800000 == 0x13000000 || // bitfield/extract
+		instruction&0x1F000000 == 0x1B000000 || // multiply-add/subtract
+		instruction&0x1FE00000 == 0x1AC00000 || // two-source data processing
+		instruction&0x5FE00000 == 0x5AC00000 || // one-source data processing
+		instruction&0x1FE00000 == 0x1A800000 // conditional select
+	return Reg(instruction & 31), writesRd
 }
 
 func preservesIndexedBase(instruction uint32, base, index Reg) bool {
@@ -1079,14 +1200,8 @@ func preservesIndexedBase(instruction uint32, base, index Reg) bool {
 	if instruction&0x3B20FC00 == 0x38206800 {
 		return !loadStoreMayWriteGPR(instruction) || !writesAddress(Reg(instruction&31))
 	}
-	if instruction&0x1F000000 == 0x11000000 {
-		return !writesAddress(Reg(instruction & 31))
-	}
-	// ADD/SUB (shifted or extended register), including flag-setting forms,
-	// writes only Rd.
-	// Operand width and NZCV changes do not affect the cached 64-bit address.
-	if instruction&0x1F000000 == 0x0B000000 {
-		return !writesAddress(Reg(instruction & 31))
+	if dst, ok := gpResultDestination(instruction); ok {
+		return !writesAddress(dst)
 	}
 	return false
 }
@@ -1275,6 +1390,17 @@ func (a *Asm) Stur32(rt, rn Reg, off int32) {
 
 // Nop is the canonical A64 no-op.
 func (a *Asm) Nop() { a.word(0xD503201F) }
+
+// ReadDCZID reads the EL0 zeroing permission and cache-block size descriptor.
+func (a *Asm) ReadDCZID(dst Reg) {
+	a.word(0xD53B00E0 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocGPWrites(regallocGPMask(dst, false))
+	}
+}
+
+// ZeroCacheLine requires a permitted DC ZVA block fully inside validated memory.
+func (a *Asm) ZeroCacheLine(address Reg) { a.word(0xD50B7420 | r(address)) }
 
 // Nop4 emits four canonical no-ops with one slice-capacity check. Loop-header
 // phase padding uses this exact fixed-width run for every admitted poll-free
@@ -1510,6 +1636,7 @@ func (a *Asm) NeonUrhaddH(dst, n, m Reg)   { a.neon3(0x6E201400, 2, dst, n, m) }
 func (a *Asm) NeonMulH(dst, n, m Reg)      { a.neon3(0x4E209C00, 2, dst, n, m) }
 func (a *Asm) NeonMulS(dst, n, m Reg)      { a.neon3(0x4E209C00, 4, dst, n, m) }
 func (a *Asm) NeonMlaS(dst, n, m Reg)      { a.neon3(0x4E209400, 4, dst, n, m) }
+func (a *Asm) NeonSqdmulhS(dst, n, m Reg)  { a.neon3(0x4E20B400, 4, dst, n, m) }
 func (a *Asm) NeonSqrdmulhH(dst, n, m Reg) { a.neon3(0x6E20B400, 2, dst, n, m) }
 func (a *Asm) NeonHaddH(dst, n, m Reg)     { a.neon3(0x4E202800, 2, dst, n, m) }
 func (a *Asm) NeonHaddS(dst, n, m Reg)     { a.neon3(0x4E202800, 4, dst, n, m) }
@@ -1832,6 +1959,12 @@ func (a *Asm) NeonXtnBfromH(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // XTN Vd.8B,Vn.8H
+func (a *Asm) NeonXtnHfromS(dst, n Reg) {
+	a.word(0x0E612800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+} // XTN Vd.4H,Vn.4S
 func (a *Asm) NeonXtnSfromD(dst, n Reg) {
 	a.word(0x0EA12800 | r(n)<<5 | r(dst))
 	if regallocCheckEnabled {
@@ -1844,6 +1977,14 @@ func (a *Asm) NeonUaddlpDfromS(dst, n Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 } // UADDLP Vd.2D,Vn.4S
+// NeonUadalpDfromS widens unsigned adjacent i32 pairs, then adds each
+// full-precision pair sum to its modular i64 accumulator lane.
+func (a *Asm) NeonUadalpDfromS(dst, n Reg) {
+	a.word(0x6EA06800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) neonLeftShift(bytes int, dst, n Reg, shift uint8) {
 	imm := uint32(bytes*8) + uint32(shift)
 	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
@@ -1897,6 +2038,7 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
+func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
 func (a *Asm) NeonZip1D(dst, n, m Reg) { a.neon3(0x4E003800, 8, dst, n, m) }
@@ -2335,6 +2477,19 @@ func (a *Asm) MovImm32(rd Reg, val int32) {
 			return
 		}
 		a.MovImm64(rd, uint64(u))
+		return
+	}
+	if u <= 0xffff {
+		shift := uint32(0)
+		if u == 0 {
+			shift = 1 // Preserve the existing zero encoding.
+		}
+		a.Movz32(rd, uint16(u), shift)
+		return
+	}
+	if u > 0xffff0000 {
+		a.Movn32(rd, uint16(^u), 0)
+		a.CompactMoveImmediates32++
 		return
 	}
 	lo, hi := uint16(u), uint16(u>>16)

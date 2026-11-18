@@ -240,6 +240,9 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	}
 	state := s.state
 	fn := state.fn
+	if fn.guardedMemoryGrow {
+		defer state.commitGuardedGrowth()
+	}
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
 	}
@@ -276,6 +279,16 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	}
 	cleanup.finish()
 	return result, resultErr
+}
+
+// A retained host session still owns its native execution lease after the call.
+// Other entry modes release theirs before this deferred commit runs.
+func (state *preparedSessionState) commitGuardedGrowth() {
+	if state.host {
+		state.fn.in.commitGuardedGrowthLocked()
+	} else {
+		state.fn.in.commitGuardedGrowth()
+	}
 }
 
 func (state *preparedSessionState) invokeFixedCall(count int, a0, a1, a2, a3 uint64) (result []uint64, resultErr error) {
@@ -316,6 +329,9 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 	}
 	state := s.state
 	fn := state.fn
+	if fn.guardedMemoryGrow {
+		defer state.commitGuardedGrowth()
+	}
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}

@@ -94,3 +94,32 @@ func TestCompactMoveImmediate32Arm64(t *testing.T) {
 		t.Fatalf("result = %#x, want %#x", uint32(got), ^uint32(0))
 	}
 }
+
+func TestLogicalMoveImmediateInLoopArm64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	body := []byte{0x00, 0x03, 0x40, 0x42}
+	body = append(body, wasmtest.SLEB64(0x0020002000200020)...)
+	body = append(body, 0x0f, 0x0b, 0x42, 0x00, 0x0b)
+	m := mod1(t, nil, []wasm.ValType{wasm.I64}, body)
+	before := logicalMoveImmediateEnabled
+	t.Cleanup(func() { logicalMoveImmediateEnabled = before })
+	for _, enabled := range []bool{false, true} {
+		logicalMoveImmediateEnabled = enabled
+		stats := &ModuleStats{}
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: stats, Workers: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			cm.CodeImage.Close()
+		}
+		hits := stats.Funcs[0].Peephole["logical-move-immediate"]
+		if enabled != (hits > 0) {
+			t.Fatalf("enabled %v: logical move hits = %d", enabled, hits)
+		}
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{})
+		if err != nil || got != 0x0020002000200020 {
+			t.Fatalf("enabled %v: result = %#x, err = %v", enabled, got, err)
+		}
+	}
+}

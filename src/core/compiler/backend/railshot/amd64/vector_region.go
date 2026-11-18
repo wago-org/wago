@@ -17,6 +17,7 @@ import (
 // The bounded vector cache exchanges four whole-function pins for four regional
 // leases. Set WAGO_AMD64_VECTOR_REGIONS=0 to use whole-function pins alone.
 var vectorRegionsEnabled = os.Getenv("WAGO_AMD64_VECTOR_REGIONS") != "0"
+var vectorRegionsBroaderEnabled = os.Getenv("WAGO_AMD64_NO_BROADER_VECTOR_REGIONS") != "1"
 
 type vectorRegionState struct {
 	locals  [4]uint16
@@ -86,6 +87,7 @@ func (f *fn) homeVectorLocal(i int) {
 	f.stats.peep("vector-region-writeback")
 }
 func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
+	facts := e.st.valueFacts()
 	i := -1
 	for k, v := range f.vectorRegion.locals {
 		if v == 0 {
@@ -111,7 +113,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
 	f.vectorRegion.locals[i] = uint16(x + 1)
 	f.vectorRegion.next = uint8((i + 1) % len(f.vectorRegion.locals))
 	if tee {
-		f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: reg, idx: uint32(x)})
+		f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: reg, idx: uint32(x), meta: uint8(facts)})
 	} else {
 		f.erase(e)
 	}

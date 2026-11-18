@@ -15,7 +15,7 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(72); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(96); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(112); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {
@@ -262,7 +262,7 @@ func TestPackedLocStatesArm64(t *testing.T) {
 	if got := states.get(63); got != lsMem {
 		t.Fatalf("state 63 = %d, want %d", got, lsMem)
 	}
-	if got, wantBytes := unsafe.Sizeof(states), uintptr(16); got != wantBytes {
+	if got, wantBytes := unsafe.Sizeof(states), uintptr(24); got != wantBytes {
 		t.Fatalf("packed bytes = %d, want %d", got, wantBytes)
 	}
 }
@@ -434,11 +434,86 @@ func TestLoopSetScanKeepsImmediatesNestingAndWideLocals(t *testing.T) {
 			t.Fatalf("scan = %v, want %v", got, want)
 		}
 	}
-	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}} {
+	for _, body := range [][]byte{{0x21}, {0x21, 0x80, 0x80, 4, 0x0b}, {0x10, 0, 0x0b}, {0x40, 0, 0x0b}, {0x26, 0, 0x0b}, {0x41, 0x80}, {0x42, 0x80}, {0x43, 0, 0, 0}, {0x44, 0, 0, 0, 0, 0, 0, 0}} {
 		r := wasm.ReaderFrom(body)
 		_, calls := scanLoopSetLocals(&r, classifier, nil, nil)
 		if !calls || r.Offset() != 0 {
 			t.Fatalf("effectful/malformed loop %x admitted: calls=%v offset=%d", body, calls, r.Offset())
+		}
+	}
+}
+
+func TestLoopSetScanScalarMemoryImmediates(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	var body []byte
+	for op := byte(0x28); op <= 0x3e; op++ {
+		// The alignment and offset look like a loop end and a call opcode;
+		// neither may be interpreted as an instruction.
+		body = append(body, op, 0x0b, 0x10)
+	}
+	body = append(body, 0x21, 7, 0x0b)
+	r := wasm.ReaderFrom(body)
+	got, calls := scanLoopSetLocals(&r, classifier, nil, nil)
+	if calls || len(got) != 1 || got[0] != 7 || r.Offset() != 0 {
+		t.Fatalf("scan = %v, calls=%v, offset=%d", got, calls, r.Offset())
+	}
+	for _, malformed := range [][]byte{{0x28}, {0x28, 0}, {0x28, 0x40, 0x80}} {
+		r := wasm.ReaderFrom(malformed)
+		if _, calls := scanLoopSetLocals(&r, classifier, nil, nil); !calls || r.Offset() != 0 {
+			t.Fatalf("malformed loop %x admitted: calls=%v, offset=%d", malformed, calls, r.Offset())
+		}
+	}
+}
+
+func TestLoopSetScanUnusedImmediateEffects(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	for _, instruction := range [][]byte{
+		{0x00}, {0x01}, {0x05}, {0x0c, 0x90, 0}, {0x0d, 0x8b, 0},
+		{0x0e, 1, 0x8b, 0, 0x90, 0}, {0x0f}, {0x1a}, {0x1b}, {0x1c, 1, 0x7f},
+		{0x23, 0x8b, 0}, {0x24, 0x90, 0},
+		{0x10, 0x8b, 0}, {0x11, 0x90, 0, 0}, {0x12, 0x90, 0},
+		{0x13, 0x8b, 0, 0}, {0x14, 0x90, 0}, {0x15, 0x8b, 0}, {0x40, 0},
+	} {
+		decoded := wasm.ReaderFrom(instruction[1:])
+		var immediate wasm.InstructionImmediate
+		if err := classifier.ClassifyInto(&decoded, instruction[0], &immediate); err != nil {
+			t.Fatalf("classify %x: %v", instruction, err)
+		}
+		if usesBulkScratch(immediate.Kind) || scopedConstTableBarrier(immediate.Kind) {
+			t.Fatalf("instruction %x requires a scoped barrier", instruction)
+		}
+		body := append(append([]byte{}, instruction...), 0x21, 9, 0x0b, 0x21, 10, 0x0b)
+		for _, collect := range []bool{false, true} {
+			var uses *scopedLoopConstUses
+			if collect {
+				uses = &scopedLoopConstUses{mask: 1}
+			}
+			r := wasm.ReaderFrom(body)
+			sets, calls := scanLoopSetLocals(&r, classifier, nil, uses)
+			if len(sets) != 1 || sets[0] != 9 || calls != loopInstructionMayCall(immediate.Kind) || r.Offset() != 0 {
+				t.Fatalf("scan %x, collect=%v: sets=%v calls=%v offset=%d", instruction, collect, sets, calls, r.Offset())
+			}
+			if uses != nil && (uses.blocked || uses.mask != 1) {
+				t.Fatalf("instruction %x invalidated scoped constants", instruction)
+			}
+		}
+	}
+}
+
+func TestPackLocalStatesMatchesIncrementalSnapshots(t *testing.T) {
+	for seed := uint32(0); seed < 32; seed++ {
+		for count := 0; count <= 64; count++ {
+			var locals [64]localDef
+			var want packedLocStates
+			random := seed
+			for x := 0; x < count; x++ {
+				random = random*1664525 + 1013904223
+				locals[x].state = locState(random >> 30)
+				want.set(x, locals[x].state)
+			}
+			if got := packLocalStates(locals[:count]); got != want {
+				t.Fatalf("seed=%d count=%d: packed=%+v want=%+v", seed, count, got, want)
+			}
 		}
 	}
 }

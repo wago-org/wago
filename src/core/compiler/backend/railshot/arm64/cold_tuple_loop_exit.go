@@ -162,10 +162,7 @@ func (f *fn) tryColdTupleLoopExit(r *wasm.Reader, signature wasm.Reader, types [
 	f.captureGCFrameShape(&fr)
 	// Only the cold edge reaches this block's end. Preserve its header tracker,
 	// including lazy zero locals that the hot continuation might merely read.
-	var entry packedLocStates
-	for x := range f.locals {
-		entry.set(x, f.locals[x].state)
-	}
+	entry := packLocalStates(f.locals)
 	f.setFrameEntryState(&fr, entry)
 	f.pushCtrl(&fr)
 	frame := &f.ctrl[len(f.ctrl)-1]
@@ -176,7 +173,7 @@ func (f *fn) tryColdTupleLoopExit(r *wasm.Reader, signature wasm.Reader, types [
 	}
 	f.flush()
 	code := append([]byte(nil), f.a.B[mark:]...)
-	f.a.B = f.a.B[:mark]
+	f.truncateNativeCode(mark)
 	f.setDepthTypesWithGCRoots(f.frameBaseTypes(frame), f.frameBaseGCRoots(frame))
 	f.appendFrameColdEdge(frame, coldEdge{site: site, code: code})
 	frame.set(ctrlEndReachable, true)

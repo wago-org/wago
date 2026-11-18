@@ -37,7 +37,6 @@ func IsFallthroughBlock(source *wasm.Reader, classifier wasm.ModuleInstructionCl
 	start := r.Offset()
 	depth := 0
 	var controls [8]byte
-	var imm wasm.InstructionImmediate
 	for n := 0; n < 32 && r.Offset()-start < 128; n++ {
 		op, err := r.Byte()
 		if err != nil {
@@ -65,7 +64,8 @@ func IsFallthroughBlock(source *wasm.Reader, classifier wasm.ModuleInstructionCl
 			depth++
 		}
 		if op == 0x10 && spliced != nil {
-			if err := classifier.ClassifyInto(&r, op, &imm); err != nil || !spliced(imm.Index) {
+			index, err := r.U32()
+			if err != nil || !spliced(index) {
 				return false
 			}
 			continue
@@ -73,6 +73,13 @@ func IsFallthroughBlock(source *wasm.Reader, classifier wasm.ModuleInstructionCl
 		if !(op == 0x02 || allowIf && op == 0x04 || op == 0x01 || op >= 0x1a && op <= 0x1c || op >= 0x20 && op <= 0x24 || op >= 0x28 && op <= 0x3f || op >= 0x41 && op <= 0xc4 || op == 0xfd || op == 0xfc || op == 0xfe) {
 			return false
 		}
+		if op != 0xfc && op != 0xfe {
+			if err := classifier.SkipImmediate(&r, op); err != nil {
+				return false
+			}
+			continue
+		}
+		var imm wasm.InstructionImmediate
 		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
 			return false
 		}

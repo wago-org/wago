@@ -31,6 +31,7 @@ func TestEncodings(t *testing.T) {
 		{"adc x5,x6,x7", func(a *Asm) { a.Adc64(X5, X6, X7) }, 0x9a0700c5},
 		{"sbc x5,x6,x7", func(a *Asm) { a.Sbc64(X5, X6, X7) }, 0xda0700c5},
 		{"adds x5,x6,x7", func(a *Asm) { a.Adds64(X5, X6, X7) }, 0xab0700c5},
+		{"subs w5,w6,w7", func(a *Asm) { a.Subs32(X5, X6, X7) }, 0x6b0700c5},
 		{"subs x5,x6,x7", func(a *Asm) { a.Subs64(X5, X6, X7) }, 0xeb0700c5},
 		{"adc x5,x6,x7", func(a *Asm) { a.Adc64(X5, X6, X7) }, 0x9a0700c5},
 		{"sbc x5,x6,x7", func(a *Asm) { a.Sbc64(X5, X6, X7) }, 0xda0700c5},
@@ -78,6 +79,9 @@ func TestEncodings(t *testing.T) {
 		{"csel x0,x1,x2,eq", func(a *Asm) { a.Csel64(X0, X1, X2, CondEQ) }, 0x9a820020},
 		{"csinc w5,wzr,w6,eq", func(a *Asm) { a.Csinc32(X5, XZR, X6, CondEQ) }, 0x1a8607e5},
 		{"cset x0,ne", func(a *Asm) { a.Cset64(X0, CondNE) }, 0x9a9f07e0},
+		{"ccmp w1,w2,#0,eq", func(a *Asm) { a.CcmpReg(X1, X2, 0, CondEQ, true) }, 0x7a420020},
+		{"ccmp x1,x2,#4,ne", func(a *Asm) { a.CcmpReg(X1, X2, 4, CondNE, false) }, 0xfa421024},
+		{"ccmp w1,#7,#0,eq", func(a *Asm) { a.CcmpImm(X1, 7, 0, CondEQ, true) }, 0x7a470820},
 		// multiply
 		{"madd x0,x1,x2,x3", func(a *Asm) { a.Madd64(X0, X1, X2, X3) }, 0x9b020c20},
 		{"madd w0,w1,w2,w3", func(a *Asm) { a.Madd32(X0, X1, X2, X3) }, 0x1b020c20},
@@ -511,5 +515,26 @@ func TestStoreImmIdxDenseFallbackMaterializesValueOnce(t *testing.T) {
 				t.Fatalf("encoded %x, want %x", got.B, want.B)
 			}
 		})
+	}
+}
+
+func TestWordAccessRejectsUnemittedCapacity(t *testing.T) {
+	for name, access := range map[string]func(*Asm, int){
+		"read":  func(a *Asm, pos int) { a.wordAt(pos) },
+		"patch": func(a *Asm, pos int) { a.patchWord(pos, 0xffffffff) },
+	} {
+		for _, tc := range []struct{ length, position int }{{0, 0}, {3, 0}, {4, 1}, {4, -1}, {3, 4}} {
+			backing := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+			before := bytes.Clone(backing)
+			a := &Asm{B: backing[:tc.length]}
+			panicked := false
+			func() {
+				defer func() { panicked = recover() != nil }()
+				access(a, tc.position)
+			}()
+			if !panicked || !bytes.Equal(backing, before) {
+				t.Fatalf("%s length=%d position=%d: panic=%t bytes=%x", name, tc.length, tc.position, panicked, backing)
+			}
+		}
 	}
 }

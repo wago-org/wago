@@ -11,7 +11,10 @@ package arm64
 
 import (
 	"github.com/wago-org/wago/src/core/runtime"
+	"os"
 )
+
+var expensiveLoopLeaseEnabled = os.Getenv("WAGO_ARM64_NO_EXPENSIVE_LOOP_LEASE") != "1"
 
 type intConstReg struct {
 	typ     machineType
@@ -31,13 +34,29 @@ func (f *fn) cachedIntConst(st storage) (Reg, bool) {
 }
 
 func (f *fn) preloadLoopIntConsts(h *funcHintView) {
-	if !f.opt(optLoopIntConst) || f.makesCalls || h.loopIntConstCount == 0 {
+	if !f.opt(optLoopIntConst) || f.makesCalls || (h.loopIntConstCount == 0 && h.loopIntOneHints() == 0) {
 		return
 	}
-	f.reserveLoopIntConsts(h)
+	if h.loopIntConstCount != 0 {
+		f.reserveLoopIntConsts(h, false)
+	}
+	if hints := h.loopIntOneHints(); hints != 0 {
+		inline := funcHintView{funcHints: h.funcHints}
+		if hints&loopI32OneHintMask != 0 {
+			inline.loopIntConst[inline.loopIntConstCount] = 1
+			inline.loopIntConstTypes |= 1 << (2 * inline.loopIntConstCount)
+			inline.loopIntConstCount++
+		}
+		if hints&loopI64OneHintMask != 0 {
+			inline.loopIntConst[inline.loopIntConstCount] = 1
+			inline.loopIntConstTypes |= 2 << (2 * inline.loopIntConstCount)
+			inline.loopIntConstCount++
+		}
+		f.reserveLoopIntConsts(&inline, false)
+	}
 }
 
-func (f *fn) reserveLoopIntConsts(h *funcHintView) {
+func (f *fn) reserveLoopIntConsts(h *funcHintView, scoped bool) {
 	for i := 0; i < int(h.loopIntConstCount) && int(f.iconstN) < len(f.iconsts); i++ {
 		if h.loopIntConstTypes>>(2*i)&3 != 3 {
 			typ := mtI32
@@ -57,11 +76,16 @@ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
 		reg := regNone
 		candidates := [...]Reg{X25, X24, X23, X27, X14, X13}
 		for _, candidate := range candidates {
+			if wideScopedLoopConstsEnabled && f.regUser[candidate] != nil {
+				continue
+			}
 			if candidate == X14 || candidate == X13 {
 				// Fixed-register bulk/table/EH lowering cannot preserve scratch
-				// constants. Keep an ordinary temporary-register floor too.
+				// constants. A scoped lease has scanned the entire loop for those
+				// barriers, even if an unrelated table exists in the module.
+				// Keep an ordinary temporary-register floor too.
 				if h.flags.has(hintUsesBulkMem|hintMutatesTable|hintModuleEH) || f.moduleEH ||
-					(f.m != nil && len(f.m.Tables) != 0) || len(f.customInstructions) != 0 {
+					(f.m != nil && len(f.m.Tables) != 0 && (!scoped || !wideScopedLoopConstsEnabled)) || len(f.customInstructions) != 0 {
 					continue
 				}
 				free := 0
@@ -72,6 +96,8 @@ func (f *fn) reserveLoopIntConsts(h *funcHintView) {
 				}
 				floor := 7
 				if address {
+					floor = 4
+				} else if expensiveLoopLeaseEnabled && h.loopIntConstTypes>>(2*i)&3 == 2 && intConstWideMoveCost(h.loopIntConst[i], 2) >= 3 {
 					floor = 4
 				}
 				if free <= floor {
@@ -432,7 +458,11 @@ func (f *fn) loadMemRef(dst Reg, e *elem) {
 		defer f.switchProfileOrigin(previous)
 	}
 	st := e.st
-	f.loadLinearIdx(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	if st.memUXTW() {
+		f.loadLinearIdxUXTW(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	} else {
+		f.loadLinearIdx(dst, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+	}
 }
 
 // materializeByType realizes e with the register class required by its machine

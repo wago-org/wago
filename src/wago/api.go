@@ -1582,6 +1582,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			internalEntry[i] = markDirectPreparedBoundedEntry(internalEntry[i])
 		}
 	}
+	if goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64" && boundsMode == BoundsChecksSignalsBased && validationAnalysis.ValidFor(m) {
+		if _, multipleMemories := m.MemoryType(1); !multipleMemories {
+			for i, growsMemory := range guardedMemoryGrowFunctions(m, &validationAnalysis) {
+				if growsMemory {
+					internalEntry[i] = markGuardedMemoryGrowEntry(internalEntry[i])
+				}
+			}
+		}
+	}
 
 	typeConverter := newWasmTypeDescriptorConverter(m)
 	types, err := typeConverter.typeDescriptors()
@@ -1862,6 +1871,68 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, joinPrimary(fmt.Errorf("compile: %w", err), compiled.Close())
 	}
 	return publishCompilerCompiled(compiled)
+}
+
+func guardedMemoryGrowFunctions(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) []bool {
+	if !analysis.ValidFor(m) || analysis.Flags()&wasm.ValidatedFuncUsesMemoryGrow == 0 {
+		return nil
+	}
+	grows := make([]bool, len(m.Code))
+	callHeads := make([]uint32, len(m.Code))
+	type callEdge struct {
+		caller uint32
+		next   uint32
+	}
+	var callEdges []callEdge
+	queue := make([]uint32, 0, len(m.Code))
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	imported := uint32(m.ImportedFuncCount())
+	for caller, fn := range m.Code {
+		facts := analysis.Func(caller)
+		if facts.Flags&wasm.ValidatedFuncUsesMemoryGrow != 0 {
+			grows[caller] = true
+			queue = append(queue, uint32(caller))
+		}
+		if facts.Flags&wasm.ValidatedFuncHasDirectCall == 0 {
+			continue
+		}
+		r := wasm.NewReader(fn.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return nil
+			}
+			if op == 0x10 || op == 0x12 { // call, return_call
+				target, err := r.U32()
+				if err != nil {
+					return nil
+				}
+				if target >= imported && target-imported < uint32(len(m.Code)) {
+					local := target - imported
+					callEdges = append(callEdges, callEdge{caller: uint32(caller), next: callHeads[local]})
+					callHeads[local] = uint32(len(callEdges))
+				}
+				continue
+			}
+			if _, immediateFree := wasm.ImmediateFreeInstructionKind(op); !immediateFree {
+				if err := classifier.SkipImmediate(r, op); err != nil {
+					return nil
+				}
+			}
+		}
+	}
+	for len(queue) != 0 {
+		callee := queue[0]
+		queue = queue[1:]
+		for edgeIndex := callHeads[callee]; edgeIndex != 0; edgeIndex = callEdges[edgeIndex-1].next {
+			caller := callEdges[edgeIndex-1].caller
+			if !grows[caller] {
+				grows[caller] = true
+				queue = append(queue, caller)
+			}
+		}
+	}
+	return grows
 }
 
 func normalizeAdapterReturnOffsets(offsets []uint32) []uint32 {
@@ -4484,6 +4555,9 @@ func (in *Instance) invokeCachedDirectNumeric(ic *invokeCache, entry uintptr, ar
 
 // reserved means the isolated gate and invocation lease are both held.
 func (in *Instance) invokeCachedNumericEntry(export string, ic *invokeCache, args []uint64, reserved, hostScalar bool) ([]uint64, error) {
+	if guardedMemoryGrowEntry(in.c.InternalEntry[ic.li]) {
+		defer in.commitGuardedGrowth()
+	}
 	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -4684,6 +4758,9 @@ func (in *Instance) invokeWithTokenAdmittedBody(export string, args []uint64, co
 		}
 		return in.invokeReexportedHost(export, importIdx, args, id, contexts.callback)
 	}
+	if guardedMemoryGrowEntry(in.c.InternalEntry[li]) {
+		defer in.commitGuardedGrowth()
+	}
 	if len(args) != int(ic.paramSlots) {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -4848,6 +4925,9 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 func (in *Instance) invokeAttachedLocalContextBody(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool, argumentOwners *railshotPublicFuncrefArguments) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
+	}
+	if guardedMemoryGrowEntry(in.c.InternalEntry[li]) {
+		defer in.commitGuardedGrowth()
 	}
 	sig := in.c.Funcs[li]
 	paramSlots, err := valTypesSlots(sig.Params)

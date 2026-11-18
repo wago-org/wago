@@ -34,7 +34,7 @@ const (
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
-	if !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
+	if !f.opt(optRepeatedNativeAddress) && !f.opt(optRepeatedStoreRegion) && !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
 	}
 	// The established size-stable peephole abandons a function when it reaches
@@ -66,14 +66,46 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	sc.branchTargets = targets
 	threadEligible := f.opt(optTakenZeroBranch) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	threadCandidate := false
+	addressEligible := f.opt(optRepeatedNativeAddress) && !f.opaqueFragments && !f.moduleEH && !f.interruptible && len(f.customInstructions) == 0
+	var addressSites [32]uint32
+	addressSiteN := 0
 	guardedEligible := f.opt(optGuardedBooleanXor) && !f.moduleEH && len(f.customInstructions) == 0 && !f.opaqueFragments
 	guardedCandidate := false
-	lineageEligible := f.opt(optCsetLineage) && n <= 4096 && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	lineageEligible := f.opt(optCsetLineage) && n <= csetLineageFunctionLimit && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
+	scratchReloadEligible := f.opt(optRepeatedStoreRegion) && f.hasLoop && !f.threadedMemory0 && !f.moduleEH && !f.interruptible && !f.opaqueFragments && !profileEnabled && len(f.customInstructions) == 0
+	var scratchReloadSites [64]uint32
+	scratchReloadN := 0
+	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4
+	branchPairCandidate, storeLoadCandidate := false, false
+	exitCompareCandidate, testCompareCandidate := false, false
+	branchFold := f.opt(optBranchFold)
+	storeLoad := f.opt(optStoreLoadFwd)
+	exitCompare := f.opt(optCommonExitCompare) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
+	testCompare := f.opt(optGuardedTestCCMP) && !f.opaqueFragments
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		// Earlier branch folds never introduce frame loads/stores. An absent
+		// adjacent pair therefore needs no separate forwarding walk later.
+		if storeLoad && !storeLoadCandidate && w&0xbfc003e0 == 0xb90003e0 && pc+8 <= n {
+			storeLoadCandidate = rdWord(b, pc+4)&^uint32(31) == (w|1<<22)&^uint32(31)
+		}
+		if scratchReloadEligible && w&0x7f80001f == 0x52800011 {
+			if scratchReloadN < len(scratchReloadSites) && w == lastScratchMove && pc-lastScratchMoveAt <= maxScratchConstantReloadDistance {
+				scratchReloadSites[scratchReloadN] = uint32(pc)
+				scratchReloadN++
+			}
+			lastScratchMove, lastScratchMoveAt = w, pc
+		}
+		if addressEligible && addressSiteN < len(addressSites) && pc+20 <= n && w&0xffe0fc00 == 0x8b000000 && w&31 == 16 && w>>5&31 == 26 && rdWord(b, pc+12) == w {
+			addressSites[addressSiteN] = uint32(pc)
+			addressSiteN++
+		}
+		if addressEligible && isIndirectBranch(w) {
+			addressEligible = false
+		}
 		if lineageEligible {
 			// No boolean lineage can precede its first CSET. Stop all
 			// preflight work once a subsequent consumer pair is present.
@@ -92,6 +124,19 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		if t, ok := branchTarget(pc, w); ok {
 			sc.hasBranchTargets = true
 			branchTargetAdd(targets, t, n)
+			if w&0xff000010 == 0x54000000 {
+				if branchFold && !branchPairCandidate && pc+8 <= n {
+					_, skip := bcondSkipOne(w)
+					branchPairCandidate = skip && rdWord(b, pc+4)&0xfc000000 == 0x14000000
+				}
+				// These folds require two adjacent compare/branch pairs. Earlier
+				// passes can remove such roots, but cannot create new compares.
+				if pc >= 4 && pc+12 <= n && rdWord(b, pc+8)&0xff000010 == 0x54000000 {
+					first := rdWord(b, pc-4)
+					exitCompareCandidate = exitCompareCandidate || exitCompare && pureCompareWord(first)
+					testCompareCandidate = testCompareCandidate || testCompare && first&0x7fe0fc1f == 0x6a00001f
+				}
+			}
 			if threadEligible && !threadCandidate && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
 				next := rdWord(b, t)
 				threadCandidate = next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0
@@ -108,20 +153,29 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 			}
 		}
 	}
-	if f.opt(optBranchFold) {
+	if addressEligible {
+		for _, site := range addressSites[:addressSiteN] {
+			if reuseRepeatedNativeAddressAt(b, int(site), targets, entryOffsets) {
+				f.stats.peep("repeated-native-address")
+			}
+		}
+	}
+	if branchFold {
 		f.foldSingleBitBranches(b, n, targets)
-		f.foldBranchPairs(b, n, targets)
+		if branchPairCandidate {
+			f.foldBranchPairs(b, n, targets)
+		}
 	}
 	if threadCandidate {
 		f.threadTakenZeroBranches(b, n, targets)
 	}
-	if f.opt(optStoreLoadFwd) {
+	if storeLoadCandidate {
 		f.forwardStoreLoads(b, n, targets)
 	}
-	if f.opt(optCommonExitCompare) {
+	if exitCompareCandidate {
 		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
 	}
-	if f.opt(optGuardedTestCCMP) {
+	if testCompareCandidate {
 		f.foldGuardedTests(b, n, targets)
 	}
 	if guardedCandidate {
@@ -142,6 +196,14 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		}
 		for ; hits > 0; hits-- {
 			f.stats.peep("dominated-indexed-base")
+		}
+	}
+	if f.opt(optRepeatedStoreRegion) {
+		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
+	}
+	for _, site := range scratchReloadSites[:scratchReloadN] {
+		if scratchConstantReloadAt(b, int(site), targets, entryOffsets) {
+			f.stats.peep("scratch-constant-reload")
 		}
 	}
 }
@@ -438,6 +500,13 @@ func uncondBranchImm(w uint32) (int, bool) {
 // inside the function. Explicit fragment markers keep embedded data out of the
 // instruction walk; indirect branches require no target entry.
 func branchTarget(pc int, w uint32) (int, bool) {
+	if w&0x1c000000 != 0x14000000 {
+		return 0, false
+	}
+	return decodeBranchTarget(pc, w)
+}
+
+func decodeBranchTarget(pc int, w uint32) (int, bool) {
 	switch {
 	case w&0xFC000000 == 0x14000000, w&0xFC000000 == 0x94000000: // B / BL (imm26)
 		d := int(w & 0x03FFFFFF)
