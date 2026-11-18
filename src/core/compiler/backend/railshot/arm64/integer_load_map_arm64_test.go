@@ -1006,3 +1006,55 @@ func TestIntegerLoadMapInvariantReentryTwoStores(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapThreeIndependentStoreLiveOuts(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, bases := range [][5]int32{
+		{1024, 2048, 4096, 8192, 0},
+		{1024, 2048, 1028, 8192, 0},
+		{1024, 2048, 4096, 4100, 0},
+		{1024, 2048, 65532, 8192, 0},
+		{1024, 2048, 4096, 8192, 1040},
+		{1024, 2048, 4096, 8192, 2065},
+		{1024, 2048, 4096, 8192, 4220},
+		{1024, 2048, 4096, 8192, 4227},
+	} {
+		for _, limit := range []int32{128, 140} {
+			body := []byte{1, 9, 0x7f}
+			for i, base := range bases {
+				body = append(body, 0x41)
+				body = append(body, wasmtest.SLEB32(base)...)
+				local := i
+				if i == 4 {
+					local = 8
+				}
+				body = append(body, 0x21, byte(local))
+			}
+			body = append(body, 0x03, 0x40,
+				0x20, 3, 0x20, 4, 0x6a, 0x28, 2, 0)
+			if bases[4] != 0 {
+				body = append(body, 0x20, 8, 0x28, 2, 0, 0x6a)
+			}
+			body = append(body, 0x21, 5,
+				0x20, 0, 0x20, 4, 0x6a, 0x20, 5, 0x36, 2, 0,
+				0x20, 1, 0x20, 4, 0x6a, 0x20, 5, 0x41, 3, 0x6a, 0x22, 6, 0x36, 2, 0,
+				0x20, 2, 0x20, 4, 0x6a, 0x20, 5, 0x41, 7, 0x73, 0x22, 7, 0x36, 2, 0,
+				0x20, 4, 0x41, 4, 0x6a, 0x22, 4, 0x41)
+			body = append(body, wasmtest.SLEB32(limit)...)
+			body = append(body, 0x47, 0x0d, 0, 0x0b,
+				0x20, 5, 0x20, 6, 0x6a, 0x20, 7, 0x6a, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+			want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+			got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector-live-out")
+			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+				t.Fatalf("bases=%v: got %x/%v, want %x/%v, memory equal=%v", bases, got, err, want, wantErr, bytes.Equal(actual, expected))
+			}
+			if diagnosticsEnabled && hits == 0 {
+				t.Fatalf("bases=%v: three stores did not publish live-outs", bases)
+			}
+		}
+	}
+}

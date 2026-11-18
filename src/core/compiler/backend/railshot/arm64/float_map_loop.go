@@ -1105,6 +1105,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	if p.adjacentN == 0 {
 		exit = f.planIntegerMapExit(p)
 	}
+	storedLiveOuts := exit.fromStore[0] | exit.fromStore[1] | exit.fromStore[2]
 	for _, relation := range p.adjacent[:p.adjacentN] {
 		f.recoverLocal(relation.left)
 		f.recoverLocal(relation.right)
@@ -1957,7 +1958,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 				f.a.NeonDupS(counterValue, counterValue)
 				f.a.NeonAddS(counterValue, counterValue, laneCounters)
 			}
-			for _, output := range outputs[:outputCount] {
+			for index, output := range outputs[:outputCount] {
 				value, owned := emit(output.value)
 				if singleLane {
 					if output.offset%4 == 0 && output.offset/4 <= 0xfff {
@@ -1997,10 +1998,11 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 				} else {
 					f.a.StrQ(output.reg, int32(output.offset)+block, value)
 				}
-				if final && block+floatMapVectorBytes == int32(width) {
+				mask := exit.fromStore[index]
+				if final && mask != 0 && block+floatMapVectorBytes == int32(width) {
 					f.a.NeonUmovS(X16, value, 3)
 					for i, cell := range p.locals[:p.localN] {
-						if exit.fromStore&(uint32(1)<<i) == 0 {
+						if mask&(uint32(1)<<i) == 0 {
 							continue
 						}
 						x := int(cell.Index)
@@ -2038,9 +2040,9 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		f.a.SubImm32(span, span, width)
 	}
 	scalarReserve := p.step
-	if exit.fromStore != 0 {
-		scalarReserve = p.packet
-	} else if exit.written != 0 {
+	// Reserve one iteration so the ordinary packet loop stops on an exact
+	// final packet. A non-exact trip only needs its actual scalar remainder.
+	if storedLiveOuts == 0 && exit.written != 0 {
 		scalarReserve = 0
 	}
 	// Choose a small native packet menu independently of the source unroll.
@@ -2090,7 +2092,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		f.patchBranch26(f.a.Branch(), loop)
 		f.patchBranch19(done, f.a.Len())
 	}
-	if exit.fromStore != 0 {
+	if storedLiveOuts != 0 {
 		// Capture load-derived live-outs only in the final vector packet.
 		// The normal packet body and the scalar remainder are unchanged.
 		f.cmpImm(span, p.packet, false)
@@ -2160,7 +2162,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	if exit.written != 0 {
 		for i := 0; i < p.localN; i++ {
 			cell := p.locals[i]
-			if (exit.extra&^exit.fromStore)&(uint32(1)<<i) == 0 {
+			if (exit.extra&^storedLiveOuts)&(uint32(1)<<i) == 0 {
 				continue
 			}
 			x := int(cell.Index)

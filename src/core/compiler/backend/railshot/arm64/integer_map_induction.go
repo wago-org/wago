@@ -268,9 +268,9 @@ func (p *floatMapPlan) mapCounterValue(node floatMapNode) bool {
 }
 
 type integerMapExitPlan struct {
-	written   uint32 // function-local coordinates
-	extra     uint32 // candidate-local coordinates
-	fromStore uint32 // locals that equal the last stored vector result
+	written   uint32    // function-local coordinates
+	extra     uint32    // candidate-local coordinates
+	fromStore [3]uint32 // locals grouped by the store that supplies their final value
 	invariant uint32
 	bias      [32]uint32
 	coeff     [32]uint32
@@ -297,10 +297,23 @@ func (f *fn) planIntegerMapExit(p *floatMapPlan) integerMapExitPlan {
 		}
 		exit.extra |= bit
 		if !p.collectIntegerMapExitValue(&exit, i, cell.Value, 1, 0) {
-			if !integerMapVectorLiveOutEnabled || p.step != 4 || p.extraStoreN != 0 || cell.Value != p.result {
+			if !integerMapVectorLiveOutEnabled || p.step != 4 || p.interleaved {
 				return integerMapExitPlan{}
 			}
-			exit.fromStore |= bit
+			var output int
+			if cell.Value != p.result {
+				output = -1
+				for j, store := range p.extraStores[:p.extraStoreN] {
+					if cell.Value == store.Value {
+						output = j + 1
+						break
+					}
+				}
+				if output < 0 {
+					return integerMapExitPlan{}
+				}
+			}
+			exit.fromStore[output] |= bit
 			exit.invariant &^= bit
 		}
 	}
