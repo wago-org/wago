@@ -832,3 +832,54 @@ func TestIntegerLoadMapPackedAdjacent(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapRuntimeAdjacent(t *testing.T) {
+	old := integerMapAdjacentSLPEnabled
+	defer func() { integerMapAdjacentSLPEnabled = old }()
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, tc := range []struct{ dst, src, high, coefficient, count int32 }{
+		{1024, 8192, 8196, 4096, 64}, {1024, 8192, 8196, 4096, 67},
+		{1024, 8192, 8200, 4096, 67}, {1024, 8192, 65532, 4096, 67},
+		{1024, 1020, 1024, 4096, 67}, {1024, -4, 0, 4096, 67},
+	} {
+		body := []byte{1, 5, 0x7f}
+		constant := func(v int32) {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(v)...)
+		}
+		for i, base := range []int32{tc.dst, tc.src, tc.coefficient} {
+			constant(base)
+			body = append(body, 0x21, byte(i))
+		}
+		constant(tc.high)
+		body = append(body, 0x21, 4, 0x03, 0x40,
+			0x20, 0, 0x20, 3, 0x6a,
+			0x20, 1, 0x20, 3, 0x6a, 0x28, 2, 0, 0x20, 2, 0x28, 2, 0, 0x6a, 0x36, 2, 0,
+			0x20, 0, 0x20, 3, 0x6a, 0x41, 4, 0x6a,
+			0x20, 2, 0x28, 2, 0, 0x20, 4, 0x20, 3, 0x6a, 0x28, 2, 0, 0x6a, 0x36, 2, 0,
+			0x20, 3, 0x41, 8, 0x6a, 0x22, 3)
+		constant(8 * tc.count)
+		body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		for _, enabled := range []bool{false, true} {
+			integerMapAdjacentSLPEnabled = enabled
+			got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-runtime-adjacent")
+			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+				t.Fatalf("case=%+v enabled=%v: got %x/%v, want %x/%v, memory equal=%v", tc, enabled, got, err, want, wantErr, bytes.Equal(actual, expected))
+			}
+			if diagnosticsEnabled && (hits != 0) != enabled {
+				t.Fatalf("case=%+v enabled=%v: packed adjacent hits=%d", tc, enabled, hits)
+			}
+			if diagnosticsEnabled && enabled {
+				_, _, _, paths := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+				if paths != 2 {
+					t.Fatalf("case=%+v: emitted %d vector paths, want 2", tc, paths)
+				}
+			}
+		}
+	}
+}

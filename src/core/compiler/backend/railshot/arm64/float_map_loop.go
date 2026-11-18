@@ -65,6 +65,11 @@ type floatMapAddress struct {
 	bias      uint32
 	invariant bool
 }
+type floatMapAdjacency struct {
+	left, right int
+	delta       uint32
+}
+
 type floatMapPlan struct {
 	nodes                        [128]floatMapNode
 	addresses                    [128]floatMapAddress
@@ -83,6 +88,9 @@ type floatMapPlan struct {
 	interleaved                  bool
 	guardOnlyLoads               [4]uint8
 	guardOnlyLoadN               int
+	adjacent                     [4]floatMapAdjacency
+	adjacentN                    int
+	runtimeAdjacency             bool
 	extraStoreN                  int
 	extraStores                  [2]shared.LoopStore[int]
 	normalizedInduction          bool
@@ -111,6 +119,10 @@ const (
 )
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
+	return f.inspectFloatMapCandidate(source, p, false)
+}
+
+func (f *fn) inspectFloatMapCandidate(source *wasm.Reader, p *floatMapPlan, runtimeAdjacency bool) bool {
 	*p = floatMapPlan{}
 	p.integer = f.integerLoadMapProbe
 	p.normalizedInduction = p.integer
@@ -417,6 +429,20 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				if p.sameMap(stores[0].Value, stores[i].Value, distance, 0) {
 					continue
 				}
+				if p.integer && integerMapAdjacentSLPEnabled && runtimeAdjacency && ns == 2 && p.addresses[p.dest].stride <= 1 {
+					// Prefer the original static packing proof. Guarded packing
+					// must retain the existing interleaved fallback.
+					work := p.work
+					p.runtimeAdjacency = true
+					matched := p.sameMap(stores[0].Value, stores[i].Value, distance, 0)
+					p.runtimeAdjacency = false
+					if matched {
+						p.extraStores[0] = stores[i]
+						continue
+					}
+					p.adjacentN = 0
+					p.work = work
+				}
 				if !p.integer || ns != 2 || p.addresses[p.dest].stride > 1 {
 					return false
 				}
@@ -624,6 +650,24 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 				left.bias == right.bias && left.offset+uint64(step)*uint64(max(left.stride, 1)) == right.offset {
 				return true
 			}
+			if p.runtimeAdjacency && left.base >= 0 && right.base >= 0 && left.base != right.base &&
+				left.index == right.index && left.stride == right.stride && left.offset == right.offset {
+				// Both accesses share the induction coefficient and memarg.
+				// This modular base relation makes the second address exactly
+				// the next packed lane, subject to the normal range guard.
+				delta := left.bias + step*max(left.stride, 1) - right.bias
+				relation := floatMapAdjacency{left.base, right.base, delta}
+				for _, existing := range p.adjacent[:p.adjacentN] {
+					if relation == existing {
+						return true
+					}
+				}
+				if p.adjacentN < len(p.adjacent) {
+					p.adjacent[p.adjacentN] = relation
+					p.adjacentN++
+					return true
+				}
+			}
 		}
 		return p.nextAddress(x, y, step)
 	}
@@ -639,12 +683,14 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if a.op == 0x1b && !p.sameMap(a.condition(), b.condition(), step, depth+1) {
 		return false
 	}
+	checkpoint := p.adjacentN
 	if p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1) {
 		return true
 	}
 	if p.integer && integerMapAdjacentSLPEnabled {
 		switch a.op {
 		case 0x46, 0x47, 0x6a, 0x6c, 0x71, 0x72, 0x73, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
+			p.adjacentN = checkpoint
 			return p.sameMap(a.left(), b.right(), step, depth+1) && p.sameMap(a.right(), b.left(), step, depth+1)
 		}
 	}
@@ -734,7 +780,7 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var p floatMapPlan
-	ok := f.inspectFloatMapLoop(source, &p)
+	ok := f.inspectFloatMapCandidate(source, &p, true)
 	defer func() {
 		if p.scatterCandidate {
 			// Share the bounded integer-analysis budget without adding another
@@ -745,7 +791,26 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
 		}
 	}()
-	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
+	if !ok {
+		return
+	}
+	inspectionWork := p.work
+	f.emitFloatMapPlan(&p)
+	if p.adjacentN != 0 {
+		// Keep the interleaved path available on a failed adjacency check.
+		// Give each emission its own remaining budget and charge both.
+		packedWork := p.work - inspectionWork
+		p.work = inspectionWork
+		p.adjacentN = 0
+		p.extraStoreN, p.interleaved = 1, true
+		p.packet = 2 * floatMapVectorBytes
+		f.emitFloatMapPlan(&p)
+		p.work += packedWork
+	}
+}
+
+func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
+	if p.counterScale > 1 && f.a.Len() > 64<<10 {
 		return
 	}
 	// Deeply nested copy-only loops often move a handful of words, and even
@@ -768,6 +833,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 	minimumSpan := p.packet + p.step
+	if p.adjacentN != 0 {
+		minimumSpan = 8*p.packet + p.step
+	}
 	if p.normalizedInduction {
 		minimumSpan = max(minimumSpan, 128)
 		// The guarded positive-limit path requires counter < limit, so its
@@ -1026,7 +1094,16 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.floatMapOffset(dst, dst, uint64(p.limit), false, scratch)
 		}
 	}
-	exit := f.planIntegerMapExit(&p)
+	// Keep a scalar iteration when the packed prefix continues into the
+	// interleaved path. That path can use the ordinary affine exit.
+	var exit integerMapExitPlan
+	if p.adjacentN == 0 {
+		exit = f.planIntegerMapExit(p)
+	}
+	for _, relation := range p.adjacent[:p.adjacentN] {
+		f.recoverLocal(relation.left)
+		f.recoverLocal(relation.right)
+	}
 	if p.normalizedInduction {
 		// Admission must not evict an original stack value merely to execute a
 		// scalar fallback. These are leases from the existing allocator's free
@@ -1153,9 +1230,19 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			read(groups[i].base, groups[i].reg)
 		}
 	}
-	var guards [64]int
+	var guards [68]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
+	for _, relation := range p.adjacent[:p.adjacentN] {
+		read(relation.left, size)
+		f.floatMapOffset(size, size, uint64(relation.delta), false, X17)
+		read(relation.right, X16)
+		f.cmpRR(size, X16, false)
+		guard(condNE)
+	}
+	if p.adjacentN != 0 {
+		f.stats.peep("integer-load-map-runtime-adjacent")
+	}
 	if p.counterScale > 1 {
 		// A source counter in another residue class must retain the original
 		// modular loop. Normalize only an exact multiple of the physical scale.
@@ -1890,9 +1977,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if floatMapFourPacketsEnabled && p.packet == floatMapVectorBytes {
 		wideWidth = 4 * p.packet
 	}
-	f.cmpImm(span, 4*wideWidth+scalarReserve, false)
-	short := f.a.Bcond(condB)
-	if floatMapLatchEnabled {
+	if p.adjacentN != 0 {
+		width := 2 * p.packet
+		f.cmpImm(span, width+scalarReserve, false)
+		short := f.a.Bcond(condB)
+		loop := f.a.Len()
+		packet(width, false)
+		f.cmpImm(span, width+scalarReserve, false)
+		f.patchBranch19(f.a.Bcond(condAE), loop)
+		f.patchBranch19(short, f.a.Len())
+	} else if floatMapLatchEnabled {
+		f.cmpImm(span, 4*wideWidth+scalarReserve, false)
+		short := f.a.Bcond(condB)
 		wideLoop := f.a.Len()
 		packet(wideWidth, false)
 		f.cmpImm(span, wideWidth+scalarReserve, false)
@@ -1906,6 +2002,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.patchBranch19(f.a.Bcond(condAE), compactLoop)
 		f.patchBranch19(done, f.a.Len())
 	} else {
+		f.cmpImm(span, 4*wideWidth+scalarReserve, false)
+		short := f.a.Bcond(condB)
 		wideLoop := f.a.Len()
 		f.cmpImm(span, wideWidth+scalarReserve, false)
 		tail := f.a.Bcond(condB)
