@@ -150,7 +150,7 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	cval int64  // constant value/bits for stConst
+	cval int64  // constant bits for stConst, or checked extent for a captured address
 	slot uint32 // spill-slot index, or int32 displacement bits for stMemRef
 	cold uint32 // index+1 into stack.cold for custom plugin values
 	idx  uint32 // local/global/function index, or packed stMemRef metadata

@@ -25,6 +25,8 @@ var directByteBoundsEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_BYTE_BOUNDS") != "
 
 var wideZeroStoreEnabled = os.Getenv("WAGO_ARM64_NO_WIDE_ZERO_STORE") != "1"
 
+var capturedBoundsEnabled = os.Getenv("WAGO_ARM64_CAPTURED_BOUNDS") != "0"
+
 // Settle only byte-check padding before optional generated loop prefixes.
 // The ordinary phase padding may contain unrelated removals, whose established
 // placement remains unchanged. This runs before either fast or scalar backedge.
@@ -537,6 +539,8 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
+	capturedBounds := e.st.kind == stReg && e.st.typ == mtI32 &&
+		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off32)+int64(size) <= e.st.cval
 	bcKind, bcIdx, bcBias := affineKind, affineIdx, affineBias
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
@@ -619,7 +623,10 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 		bcKind, bcBias = 0, 0
 		lookupExtent = int64(leaDisp)
 	}
-	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, int32(lookupExtent)) {
+	if f.boundsFacts && (capturedBounds || f.boundsCertCovers(bcKind, bcIdx, int32(lookupExtent))) {
+		if capturedBounds {
+			f.stats.peep("captured-bounds")
+		}
 		if bcBias != 0 {
 			f.affineBoundsLayout = true
 		}
@@ -1002,20 +1009,29 @@ func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, exte
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
+	return extent > 0 && extent <= f.boundsCertExtent(kind, idx)
+}
+
+// boundsCertExtent returns the checked extent for a stable source, or zero
+// when there is no proof for that source.
+func (f *fn) boundsCertExtent(kind uint8, idx uint32) int32 {
 	if kind == 0 || !f.boundsCertsActive {
-		return false
+		return 0
 	}
 	if !f.opt(optMultiBoundsCert) {
 		c := &f.boundsCerts[0]
-		return c.kind == kind && c.idx == idx && extent <= c.extent
+		if c.kind == kind && c.idx == idx {
+			return c.extent
+		}
+		return 0
 	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
-			return extent <= c.extent
+			return c.extent
 		}
 	}
-	return false
+	return 0
 }
 
 // boundsCertUpdate records the check about to be emitted. The bounded

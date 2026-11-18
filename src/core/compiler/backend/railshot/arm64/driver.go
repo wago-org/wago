@@ -1351,6 +1351,10 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
 // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
 func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+	f.realizeLocalRefsWithBounds(x, skipFrom, 0)
+}
+
+func (f *fn) realizeLocalRefsWithBounds(x int, skipFrom *elem, extent int32) {
 	// skipFrom (non-nil) marks the base of the value-being-set's valent block for
 	// an in-place self-update (`local.set $x (binop (local.get $x) …)`): refs to x
 	// inside that block are consumed directly into x's register by condenseInto, so
@@ -1372,6 +1376,10 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
+			if extent > 0 && e.st.typ == mtI32 {
+				e.st.cval = int64(extent)
+				e.st.meta |= uint8(storageCapturedBounds)
+			}
 		case e.elemKind() == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.
 			// memBorrow covers an in-place pinned address; memAliasLocal also covers
@@ -1399,6 +1407,11 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	// Save the proof for older stack operands before dropping facts for x.
+	var capturedExtent int32
+	if capturedBoundsEnabled && f.boundsCertsActive && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && f.localType[x] == mtI32 {
+		capturedExtent = f.boundsCertExtent(1, uint32(x))
+	}
 	f.invalidateLocalWriteFacts(x)
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
@@ -1437,7 +1450,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.stats.peep("local-memory-sink")
 	}
 
-	f.realizeLocalRefs(x, skipFrom)
+	f.realizeLocalRefsWithBounds(x, skipFrom, capturedExtent)
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}
