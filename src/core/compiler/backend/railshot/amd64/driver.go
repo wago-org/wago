@@ -77,6 +77,13 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			(f.s.cur != 0 || len(f.s.chunks[0]) >= defaultStackArenaCap) {
 			f.recycleEmptyOperandArena()
 		}
+		if scalarRegionsEnabled && minCtrl == 0 {
+			if done, err := f.tryScalarRegion(r); err != nil {
+				return err
+			} else if done {
+				continue
+			}
+		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
 		op, err := r.Byte()
 		if err != nil {

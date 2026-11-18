@@ -342,6 +342,7 @@ type fn struct {
 	customInstructions  map[uint32]CustomInstruction
 	representationLimit functionRepresentationLimit
 
+	scalarRegionNumeric bool
 	nParams             int
 	nLocals             int           // params + declared locals
 	localType           []machineType // per-local machine type
@@ -880,6 +881,7 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
+	region scalarRegionState
 	scalar shared.ScalarState
 
 	amd64Features         shared.AMD64Features
@@ -3802,8 +3804,19 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		return gcFrameRefType(m, typ)
 	}
+	f.scalarRegionNumeric = scalarRegionsEnabled
+	if scalarRegionsEnabled {
+		for _, result := range ft.Results {
+			if result.Kind() == wasm.ValRef {
+				f.scalarRegionNumeric = false
+			}
+		}
+	}
 	i := 0
 	for _, p := range ft.Params {
+		if scalarRegionsEnabled && !isIntValType(p) {
+			f.scalarRegionNumeric = false
+		}
 		if isGCType(p) {
 			f.gcLocalTypes[i/64] |= uint64(1) << uint(i%64)
 		}
@@ -3811,6 +3824,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		i++
 	}
 	for _, run := range c.Locals.Runs {
+		if scalarRegionsEnabled && run.Count != 0 && !isIntValType(run.Type) {
+			f.scalarRegionNumeric = false
+		}
 		gcRef := isGCType(run.Type)
 		for k := 0; k < int(run.Count); k++ {
 			if gcRef {
