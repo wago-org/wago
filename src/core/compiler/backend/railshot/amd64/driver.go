@@ -285,76 +285,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
-		forwarded := x32 < f.inlineForwardN
-		if forwarded {
-			x = f.inlineForward[x32]
-		}
-		if regallocCheckEnabled {
-			checkNativeSourceGet(f, x)
-		}
-		if constant, known := f.inlineTailConstantGet(int(x)); known {
-			f.pushValue(storage{kind: stConst, typ: f.localType[x], cval: constant})
-			f.stats.peep("inline-tail-constant-get")
-			break
-		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
-			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
-				return err
-			}
-		}
-		if f.localType[x] == mtV128 {
-			next, _ := r.Peek()
-			if f.forwardV128Local(int(x), next == 0xfd) {
-				break
-			}
-		}
-		var value *elem
-		if !forwarded && f.hasIntervalLocal(int(x)) {
-			f.activateIntervalLocal(int(x), r.Offset(), true)
-			if !f.intervalControl {
-				if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
-					value = f.pushReg(reg, f.localType[x])
-					f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
-					break
-				}
-			}
-		}
-		f.pushPlainLocalGet(x)
+		return f.emitDecodedLocalGet(r, x32)
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
 			return err
 		}
-		written := int(x) + f.localBase
-		if written >= 0 && written < 64 {
-			f.localWritten |= 1 << written
-		}
-		// An adjacent get of the same i32 local has tee's stack
-		// effect. Keep the value available to its consumer without generating a
-		// second local read. i64 is excluded because reference locals share its
-		// machine type and their gets publish exact GC-root metadata. Regional
-		// locals retain their event-driven lifetime.
-		if op == 0x21 && setGetTeeFoldEnabled && f.inlineTailConstants == nil &&
-			f.localType[written] == mtI32 &&
-			(written >= len(f.intervalReg) || f.intervalReg[written] == regNone) {
-			look := *r
-			if next, ok := look.Peek(); ok && next == 0x20 {
-				_, _ = look.Byte()
-				if got, err := look.U32(); err == nil && got == x {
-					f.setLocal(r, written, true)
-					if err := r.JumpTo(look.Offset()); err != nil {
-						return err
-					}
-					f.stats.peep("local-set-get-tee")
-					break
-				}
-			}
-		}
-		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
-		if op == 0x22 {
-			f.tryByteSwapAfterTee(r, written)
-		}
+		return f.emitDecodedLocalSet(r, op, x)
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
@@ -1565,4 +1502,79 @@ func (f *fn) pushPlainLocalGet(x uint32) {
 		value = f.s.pushLocalRead(stLocalRef, f.localType[x], 0, x)
 	}
 	f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+}
+
+// emitDecodedLocalGet retains local-get specializer priority after one decode.
+func (f *fn) emitDecodedLocalGet(r *wasm.Reader, x32 uint32) error {
+	x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+	forwarded := x32 < f.inlineForwardN
+	if forwarded {
+		x = f.inlineForward[x32]
+	}
+	if regallocCheckEnabled {
+		checkNativeSourceGet(f, x)
+	}
+	if constant, known := f.inlineTailConstantGet(int(x)); known {
+		f.pushValue(storage{kind: stConst, typ: f.localType[x], cval: constant})
+		f.stats.peep("inline-tail-constant-get")
+		return nil
+	}
+	if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 && f.depth() == 0 {
+		if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+			return err
+		}
+	}
+	if f.localType[x] == mtV128 {
+		next, _ := r.Peek()
+		if f.forwardV128Local(int(x), next == 0xfd) {
+			return nil
+		}
+	}
+	var value *elem
+	if !forwarded && f.hasIntervalLocal(int(x)) {
+		f.activateIntervalLocal(int(x), r.Offset(), true)
+		if !f.intervalControl {
+			if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
+				value = f.pushReg(reg, f.localType[x])
+				f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+				return nil
+			}
+		}
+	}
+	f.pushPlainLocalGet(x)
+	return nil
+}
+
+// emitDecodedLocalSet retains write tracking, tee folding, and tee postfixes.
+func (f *fn) emitDecodedLocalSet(r *wasm.Reader, op byte, x uint32) error {
+	written := int(x) + f.localBase
+	if written >= 0 && written < 64 {
+		f.localWritten |= 1 << written
+	}
+	// An adjacent get of the same i32 local has tee's stack
+	// effect. Keep the value available to its consumer without generating a
+	// second local read. i64 is excluded because reference locals share its
+	// machine type and their gets publish exact GC-root metadata. Regional
+	// locals retain their event-driven lifetime.
+	if op == 0x21 && setGetTeeFoldEnabled && f.inlineTailConstants == nil &&
+		f.localType[written] == mtI32 &&
+		(written >= len(f.intervalReg) || f.intervalReg[written] == regNone) {
+		look := *r
+		if next, ok := look.Peek(); ok && next == 0x20 {
+			_, _ = look.Byte()
+			if got, err := look.U32(); err == nil && got == x {
+				f.setLocal(r, written, true)
+				if err := r.JumpTo(look.Offset()); err != nil {
+					return err
+				}
+				f.stats.peep("local-set-get-tee")
+				return nil
+			}
+		}
+	}
+	f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
+	if op == 0x22 {
+		f.tryByteSwapAfterTee(r, written)
+	}
+	return nil
 }

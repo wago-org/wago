@@ -3814,7 +3814,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	i := 0
 	for _, p := range ft.Params {
-		if scalarRegionsEnabled && !isIntValType(p) {
+		if scalarRegionsEnabled && (mtOf(p) != mtI32 && mtOf(p) != mtI64 && mtOf(p) != mtF32 && mtOf(p) != mtF64 || p.Kind() == wasm.ValRef) {
 			f.scalarRegionNumeric = false
 		}
 		if isGCType(p) {
@@ -3824,7 +3824,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		i++
 	}
 	for _, run := range c.Locals.Runs {
-		if scalarRegionsEnabled && run.Count != 0 && !isIntValType(run.Type) {
+		if scalarRegionsEnabled && run.Count != 0 && (mtOf(run.Type) != mtI32 && mtOf(run.Type) != mtI64 && mtOf(run.Type) != mtF32 && mtOf(run.Type) != mtF64 || run.Type.Kind() == wasm.ValRef) {
 			f.scalarRegionNumeric = false
 		}
 		gcRef := isGCType(run.Type)

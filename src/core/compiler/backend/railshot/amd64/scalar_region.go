@@ -162,6 +162,45 @@ func (f *fn) exportScalarRegion(s *scalarRegionState) {
 	s.pending.valid = false
 }
 
+// A destination write is safe only with no older compact reads. Keep legacy
+// strength reductions and alias-sensitive selectors by declining their shapes.
+func (f *fn) scalarRegionTerminalSink(s *scalarRegionState, local uint32) bool {
+	if s.n != 1 || !s.pending.valid || s.pending.index != 0 || int(local) >= len(f.localType) {
+		return false
+	}
+	p := s.pending
+	dest, fp, pinned := f.pinReg(int(local))
+	if !pinned || fp || f.localType[local] != p.typ || f.regUser[dest] != nil || f.reserved.has(dest) {
+		return false
+	}
+	left, right := p.left, p.right
+	if p.op != opSub && right.kind == stLocalReg && right.reg == dest {
+		left, right = right, left
+	}
+	// Initially preserve exact pinned self-update immediate encodings only.
+	// Other shapes export to the existing destination-aware tree selector.
+	if left.kind != stLocalReg || left.reg != dest || right.kind != stConst || p.op == opMul || (p.typ.is64() && !fitsImm32(right.cval)) {
+		return false
+	}
+	c := right.cval
+	if c == 0 || c == -1 {
+		return false
+	} // preserve identity/mask folding
+	oldPC := f.wasmPC
+	f.wasmPC = p.pc
+	if (p.op == opAdd || p.op == opSub) && (c == 1 || c == -1) {
+		f.unitAdjust(dest, p.typ.is64(), (p.op == opAdd) == (c == 1))
+	} else {
+		f.a.AluRI(aluTable[p.op].digit, dest, int32(c), p.typ.is64())
+	}
+	f.wasmPC = oldPC
+	s.values[0] = storage{kind: stReg, typ: p.typ, reg: dest}
+	s.owned = maskOf(dest)
+	s.pending.valid = false
+	f.stats.peep("scalar-region-terminal-sink")
+	return true
+}
+
 func scalarRegionBinary(op byte) (wOp, machineType, bool) {
 	typ, base := mtI32, byte(0x6a)
 	if op >= 0x7c {
@@ -189,15 +228,27 @@ func (f *fn) tryScalarRegion(r *wasm.Reader) (bool, error) {
 		if !ok {
 			break
 		}
+		if (op == 0x21 || op == 0x22) && s.n == 1 && s.pending.valid {
+			pc := f.tracePCBase + uint32(r.Offset())
+			_, _ = r.Byte()
+			x, err := r.U32()
+			if err != nil {
+				return true, err
+			}
+			if int(x) >= len(f.localType) {
+				return true, fmt.Errorf("scalar region local index out of range")
+			}
+			f.wasmPC = pc
+			f.scalarRegionTerminalSink(s, x)
+			f.exportScalarRegion(s)
+			f.wasmPC = pc
+			return true, f.emitDecodedLocalSet(r, op, x)
+		}
 		operation, typ, binary := scalarRegionBinary(op)
 		if op != 0x20 && op != 0x41 && op != 0x42 && op != 0x1a && !binary {
 			break
 		}
-		// Preserve the existing source-consuming latch priority without guessing
-		// whether its structural proof would succeed.
-		if op == 0x20 && s.n == 0 && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 {
-			break
-		}
+
 		if (op == 0x20 || op == 0x41 || op == 0x42) && s.n == len(s.values) {
 			break
 		}
@@ -218,6 +269,16 @@ func (f *fn) tryScalarRegion(r *wasm.Reader) (bool, error) {
 			}
 			if int(x) >= len(f.localType) {
 				return count != 0, fmt.Errorf("scalar region local index out of range")
+			}
+			if f.localType[x] != mtI32 && f.localType[x] != mtI64 {
+				f.exportScalarRegion(s)
+				f.wasmPC = pc
+				return true, f.emitDecodedLocalGet(r, x)
+			}
+			if s.n == 0 && f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && len(f.ctrl) >= 2 {
+				if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+					return true, err
+				}
 			}
 			var v storage
 			if f.localConstZero(int(x)) {

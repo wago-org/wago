@@ -16,14 +16,31 @@ then owns their ordinary operands. All local writes use the existing snapshot,
 root, bounds and dirty-state handling. Profile/checker, exception and unsupported
 reference contexts fall back. Native code may differ from the original compiler.
 
+## Widened checkpoint
+
+Mixed numeric functions can enter integer regions; floating-point local reads
+export compact values and use the original decoded local-get handler. The
+original counted-loop latch gets first refusal at an empty compact stack.
+
+A strict terminal self-update can emit directly into its pinned local home when
+there is exactly one pending value, no older aliases, a constant immediate RHS,
+and no multiply or identity/mask special case. The ordinary decoded local setter
+still performs write tracking, snapshots, invalidation and tee/postfix handling.
+Other terminal expressions retain legacy tree selection.
+
 ## Qualification at this checkpoint
 
-Four focused test groups, including six runtime cases, pass in the normal build
-with positive region admission and no skipped tests. Tests compare results with
-independent expectations and legacy execution. The preceding checkpoint also
-passed the focused codegen-statistics build; the final pending-source-PC and
-reference-result guards have not yet been rerun under that tag.
+Focused normal and codegen-statistics tests pass without skipped cases, including
+runtime expectations, legacy comparisons, mixed numeric boundaries, counted-loop
+priority and i64 terminal-sink cases. The statistics corpus completed 580 compiles
+across 145 workloads and both interruptibility modes. Ordinary-mode counters show
+641 strict terminal sinks and 914 generic region evaluations; these are coverage
+counts, not performance evidence.
 
-Full workload correctness, execution latency, first-compilation latency and
-absolute RSS qualification remain pending. No performance improvement is claimed.
-This branch is an experimental source checkpoint, not a merge recommendation.
+The normal public Compile API also passed all 145 workloads with matching
+activation counts and no register-pressure failure. This verifies compilation
+and activation, not the full workload execution oracle.
+
+Full workload runtime, execution latency, first-compilation latency and absolute
+RSS qualification remain pending. No performance improvement is claimed. This
+branch is an experimental source checkpoint, not a merge recommendation.
