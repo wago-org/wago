@@ -401,6 +401,13 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	}
 	sum := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(sum)
+	// The eight-word packet can load each stream with one LDP if both
+	// halves fit without borrowing an occupied vector register.
+	vbHi := regNone
+	if p.lanes == 8 && available > neededVectors {
+		vbHi = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vbHi)
+	}
 	// Prove the complete stream before carrying native pointers. Failure leaves
 	// every source local unchanged and resumes the original checked loop.
 	var fallback [4]int
@@ -453,14 +460,23 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	// Reduce once before resuming the checked scalar tail.
 	f.a.NeonEor16b(sum, sum, sum)
 	loop := f.a.Len()
+	if vbHi != regNone {
+		f.a.LdpQ(va, vc, a, 0)
+		f.a.LdpQ(vb, vbHi, b, 0)
+	}
 	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		part := va
+		part, input := va, vb
 		if off != 0 {
 			part = vc
+			if vbHi != regNone {
+				input = vbHi
+			}
 		}
-		f.a.LdrQ(part, a, off)
-		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(part, part, vb)
+		if vbHi == regNone {
+			f.a.LdrQ(part, a, off)
+			f.a.LdrQ(input, b, off)
+		}
+		f.a.NeonSubS(part, part, input)
 		f.a.NeonAbsS(part, part)
 		if off != 0 {
 			f.a.NeonAddS(va, va, part)
@@ -490,6 +506,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			f.locals[state.local].state = lsMem
 		}
 		f.setFactsForLocal(state.local, 0)
+	}
+	if vbHi != regNone {
+		f.releaseF(vbHi)
 	}
 	f.releaseF(sum)
 	f.releaseF(va)
