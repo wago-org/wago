@@ -293,13 +293,16 @@ type streamState struct {
 	regs                        []uint8
 	reserved                    uint64
 	target                      *fn
+	flow                        []streamFlow
+	flowTypes                   []bool
+	dead                        bool
 	// Scratch counters are accounting envelopes, not process-memory peaks.
 	Peak, Discarded uint64
 	Spills, Reloads int
 }
 
 func (s *streamState) Memory() uint64 {
-	return uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8
+	return uint64(cap(s.nodes))*uint64(unsafe.Sizeof(streamNode{})) + uint64(cap(s.stack)+cap(s.locals))*4 + uint64(cap(s.widths)) + uint64(cap(s.controls))*uint64(unsafe.Sizeof(streamControl{})) + uint64(cap(s.freeSlots))*8 + uint64(cap(s.flow))*uint64(unsafe.Sizeof(streamFlow{})) + uint64(cap(s.flowTypes))
 }
 func (s *streamState) node(id streamID) *streamNode { return &s.nodes[id] }
 func (s *streamState) add(n streamNode) streamID {
@@ -861,150 +864,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		}
 		s.locals = append(s.locals, id)
 	}
-	r := wasm.ReaderFrom(code)
-	returned := false
-	for {
-
-		op, err := r.Byte()
-		if err != nil {
-			return 0, err
-		}
-		switch op {
-		case 0x01:
-		case 0x41:
-			v, e := r.I32()
-			if e != nil {
-				return 0, e
-			}
-			s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarConstant, constant: int64(v), refs: 1}))
-		case 0x42:
-			v, e := r.I64()
-			if e != nil {
-				return 0, e
-			}
-			s.stack = append(s.stack, s.add(streamNode{kind: shared.ScalarConstant, constant: v, wide: true, refs: 1}))
-		case 0x20, 0x21, 0x22:
-			x, e := r.U32()
-			if e != nil {
-				return 0, e
-			}
-			if op == 0x20 {
-				id := s.locals[x]
-				s.retain(id)
-				s.stack = append(s.stack, id)
-			} else {
-				id := s.pop()
-				// Release the overwritten binding before realization. Older stack reads
-				// and deferred edges retain their own references, so only an unborrowed
-				// source becomes available for in-place lowering at this sink.
-				old := s.locals[x]
-				if old != id && s.node(old).home == uint16(x+1) {
-					// An older version may remain live. Stop using this home as
-					// an eviction copy before a later agreement overwrites it.
-					s.node(old).home = 0
-				}
-				s.release(old)
-				// Keep constants available for folding through local.set/local.tee.
-				if s.node(id).kind != shared.ScalarConstant {
-					s.materialize(id, 0)
-				}
-				s.locals[x] = id
-				if op == 0x22 {
-					s.retain(id)
-					s.stack = append(s.stack, id)
-				}
-			}
-		case 0x1a:
-			s.release(s.pop())
-		case 0x02, 0x04:
-			t, e := r.Byte()
-			if e != nil {
-				return 0, e
-			}
-			result := 0
-			if t != 0x40 {
-				result = 1
-			}
-			fr := streamControl{result: result, isIf: op == 0x04, falseSite: -1, endSite: -1}
-			var cond streamID
-			if fr.isIf {
-				cond = s.pop()
-				n := *s.node(cond)
-				if n.kind == streamDeferred && streamCompare(n.op) {
-					s.materialize(n.left, 0)
-					s.materialize(n.right, 0)
-				} else {
-					s.materialize(cond, 0)
-				}
-			}
-			fr.base = len(s.stack)
-			if fr.isIf {
-				s.canonicalize(false)
-				fr.falseSite = s.condition(cond)
-			}
-			// Admission excludes br/br_if/br_table. A plain block therefore has
-			// only fallthrough edges and needs no physical state agreement.
-			s.controls = append(s.controls, fr)
-		case 0x05:
-			i := len(s.controls) - 1
-			fr := &s.controls[i]
-			if fr.result == 1 {
-				fr.resultLocal = s.resultLocal()
-			}
-			s.canonicalize(fr.result == 1)
-			fr.endSite = s.target.Jump()
-
-			if e := s.target.Patch(fr.falseSite, s.target.Position()); e != nil {
-				return 0, e
-			}
-			fr.hasElse = true
-			s.restore(fr.base)
-		case 0x0b:
-			if len(s.controls) == 0 {
-				if !returned {
-					id := s.pop()
-					s.returnValue(id)
-				}
-				s.target = nil
-				s.regs = nil
-				if m := s.Memory(); m > s.Peak {
-					s.Peak = m
-				}
-
-				return s.maxSlot, nil
-			}
-			i := len(s.controls) - 1
-			fr := s.controls[i]
-			if fr.isIf {
-				alias := fr.resultLocal
-				if alias != 0 && s.locals[alias-1] != s.stack[len(s.stack)-1] {
-					alias = 0
-				}
-				s.canonicalize(fr.result == 1)
-				if alias != 0 {
-					s.restoreResultLocal(alias)
-				}
-				site := fr.falseSite
-				if fr.hasElse {
-					site = fr.endSite
-				}
-				if e := s.target.Patch(site, s.target.Position()); e != nil {
-					return 0, e
-				}
-			}
-			s.controls = s.controls[:i]
-		case 0x0f:
-			id := s.pop()
-			s.returnValue(id)
-			returned = true
-		default:
-			operation, wide, ok := streamOpcode(op)
-			if !ok {
-				return 0, fmt.Errorf("streaming operands: admitted opcode changed: %x", op)
-			}
-			s.binary(operation, wide)
-		}
-	}
+	return s.runStreamCode(code, summary)
 }
 
 // FinishWorker releases shared scratch after the worker's last function.
@@ -1016,6 +876,8 @@ func (s *streamState) FinishWorker() {
 	s.locals = nil
 	s.widths = nil
 	s.controls = nil
+	s.flow = nil
+	s.flowTypes = nil
 	s.freeSlots = nil
 	s.target = nil
 	s.regs = nil

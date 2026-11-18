@@ -33,6 +33,34 @@ func (s *streamState) streamBulkRead32(dst Reg, id streamID) {
 	}
 }
 
+const streamBulkGPClobbers = uint64(1)<<RAX | uint64(1)<<RCX | uint64(1)<<RDX | uint64(1)<<RSI | uint64(1)<<RDI | uint64(1)<<R8
+
+// streamBulkRegisters checks persistent GP leases and chooses an entirely free
+// vector bank before any operands are popped or native instructions emitted.
+// The stream engine itself remains integer-only; legacy FP/vector constants or
+// pins cannot silently become bulk scratch when admission is extended later.
+func (s *streamState) streamBulkRegisters(copy bool) ([4]Reg, error) {
+	var vectors [4]Reg
+	f := s.target
+	if (uint64(f.reserved.union(f.pinned))|s.reserved)&streamBulkGPClobbers != 0 {
+		return vectors, fmt.Errorf("stream: bulk scratch overlaps persistent GP lease")
+	}
+	n := 1
+	if copy {
+		n = 4
+	}
+	var avoid regMask
+	for i := 0; i < n; i++ {
+		r := f.freeFReg(avoid)
+		if r == regNone {
+			return vectors, fmt.Errorf("stream: insufficient free bulk vector registers")
+		}
+		vectors[i] = r
+		avoid = avoid.add(r)
+	}
+	return vectors, nil
+}
+
 // bulk supports only memory.copy/fill on the admitted unshared memory32 zero.
 // All range checks finish before the first write, including zero-length ranges.
 // No legacy operand stack, register allocator or local-state flush is involved.
@@ -55,14 +83,17 @@ func (s *streamState) bulk(r *wasm.Reader, sub uint32) error {
 	if dst != 0 || src != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return fmt.Errorf("stream: unsupported bulk memory")
 	}
+	vectors, err := s.streamBulkRegisters(sub == 10)
+	if err != nil {
+		return err
+	}
 	count, value, dest := s.pop(), s.pop(), s.pop()
 	// Resolve pure arithmetic before fixing the machine registers. Any source
 	// registers subsequently evicted have valid homes read by streamBulkRead32.
 	s.materialize(dest, 0)
 	s.materialize(value, 0)
 	s.materialize(count, 0)
-	mask := uint64(1)<<RAX | uint64(1)<<RCX | uint64(1)<<RDX | uint64(1)<<RSI | uint64(1)<<RDI | uint64(1)<<R8
-	s.evict(mask)
+	s.evict(streamBulkGPClobbers)
 	s.streamBulkRead32(RDI, dest)
 	if sub == 10 {
 		s.streamBulkRead32(RSI, value)
@@ -81,12 +112,11 @@ func (s *streamState) bulk(r *wasm.Reader, sub uint32) error {
 		f.a.Add64(RSI, RBX)
 	}
 	f.a.Add64(RDI, RBX)
-	// The initial stream engine admits integer values only: XMM0..3 contain no
-	// live stream values. Keep this restriction until a second-bank owner exists.
+	// All chosen vector registers were checked free before operand emission.
 	if sub == 10 {
-		f.emitCheckedMemoryCopy([4]Reg{0, 1, 2, 3})
+		f.emitCheckedMemoryCopy(vectors)
 	} else {
-		f.emitCheckedMemoryFill(0)
+		f.emitCheckedMemoryFill(vectors[0])
 	}
 	s.release(dest)
 	s.release(value)

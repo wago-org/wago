@@ -3,30 +3,43 @@
 Based on 2dd082d4. Disabled by default; opt in with
 `WAGO_EXPERIMENTAL_STREAM_OPERANDS=1`.
 
-This checkpoint specializes the existing shared scalar value/refcount/spill
-engine for a concrete AMD64 compiler target. It retains bounded deferred
-expressions and canonical local/operand homes at supported control joins. It is
-not full-function SSA, and does not defer compilation until execution.
+This engine specializes the shared scalar value/refcount/spill machinery for a
+concrete AMD64 target. It consumes validated bytecode directly, retaining bounded
+deferred integer expressions and canonical local/operand homes at structured
+control joins. It is not full-function SSA and does not defer compilation until
+execution. Unsupported functions retain the established compiler.
 
-## Implemented and exercised
+## Current integrated scope
 
-Whole-function admission and body dispatch are connected for the existing
-integer ALU, block and if subset. Unsupported functions retain the established
-compiler. Local pinning, zero initialization and worker cleanup are integrated.
-Profile/checker and TinyGo builds retain the legacy path at this stage.
+Integer arithmetic/comparisons, block/if/loop, conditional/unconditional branches,
+return, unreachable, scalar integer memory loads/stores and memory.copy/fill are
+integrated. Admission is conservative: integer locals/signatures, bounded bodies
+and stack/control depth, and only unshared memory32 zero for memory operations.
+Calls, references, EH, unsupported proposals and other opcodes fall back before
+streaming emission. Profile/checker and TinyGo builds retain the legacy path.
 
-Focused normal and codegen-statistics runs passed three top-level tests without
-skips. A result-if runtime fixture returned the independently expected 32 and 24
-with the experiment both off and on; statistics verified one streaming function
-when enabled and zero when disabled. Memory shape/address unit tests also pass.
+Canonical homes provide branch agreements without phi nodes. Conditions are
+captured before local-home stores. Taken-edge result transfer does not overwrite
+fallthrough state. Loop backedges include interrupt polling when enabled. Eager
+memory accesses preserve bytecode trap order and check complete ranges before
+writes. Bulk operations verify fixed-register leases and free vector scratch.
+Legacy constant preloads are omitted for streaming functions.
 
-## Implemented but not yet integrated or qualified
+## Focused qualification
 
-Scalar memory and bulk-copy/fill helper source and execution fixtures are
-included for the next stage. Memory/bulk dispatch and loop admission are not yet
-wired into this checkpoint. Those execution fixtures were not run and are not
-claimed to pass. The full test suite, workload runtime oracle, execution latency,
-first-compilation latency and absolute RSS have not been qualified.
+The frozen checkpoint passed 14 top-level tests in both normal (0.055 seconds)
+and codegen-statistics (0.079 seconds) builds, without skips. Coverage includes:
 
-No performance improvement is claimed. This is an incremental experimental
-source checkpoint, not a merge recommendation.
+- Nine structured-control interruptibility cases with positive streaming/poll
+  counters and independent expected runtime results.
+- Scalar memory widths, address overflow, aliases and bulk operations.
+- Exact source-PC attribution for a dropped out-of-bounds load in both modes.
+- Bulk register preconditions and four legacy bulk regression cases.
+
+Creation-budget and compact branch-chain bounds are checked. A live fallthrough
+reuses the canonical state already produced at the join rather than rebuilding
+it a second time.
+
+The full workload corpus, execution latency, first-compilation latency and
+absolute RSS have not yet been qualified. No performance improvement is claimed.
+This is an incremental experimental source checkpoint, not a merge recommendation.

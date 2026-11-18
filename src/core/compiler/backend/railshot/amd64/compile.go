@@ -4230,13 +4230,15 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		!touchesMemory && len(modGlobals) == 0 && !moduleEH && len(custom) == 0 &&
 		len(gcTypeLayouts) == 0 && gcFrameRoots == nil && len(inlinedCallees) == 0
 	f.prologue(hints.localScore)
-	if hints.flags.has(hintHasFloatConst) {
+	if !f.streamSummary.Eligible && hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if hints.flags.has(hintHasSIMD) {
+	if !f.streamSummary.Eligible && hints.flags.has(hintHasSIMD) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
-	f.preloadLoopIntConsts(hints)
+	if !f.streamSummary.Eligible {
+		f.preloadLoopIntConsts(hints)
+	}
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -5152,7 +5154,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	f.derivePinnedGlobals()
-	f.preloadLoopIntConsts(hints)
+	if !f.streamSummary.Eligible {
+		f.preloadLoopIntConsts(hints)
+	}
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}

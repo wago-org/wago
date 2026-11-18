@@ -5,9 +5,11 @@ package amd64
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wRuntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 	"testing"
 
@@ -85,7 +87,7 @@ func streamMemoryTestEnable(t *testing.T) {
 
 func streamMemoryTestAdmitted(t *testing.T, m *wasm.Module) {
 	t.Helper()
-	if !admitStreamFunction(&m.Code[0], &m.Types[0].SubTypes[0].Comp).Eligible {
+	if !admitStreamBody(&m.Code[0], &m.Types[0].SubTypes[0].Comp).Eligible {
 		t.Fatal("memory fixture did not reach streaming admission")
 	}
 }
@@ -220,5 +222,65 @@ func TestStreamMemoryExecuteBulk(t *testing.T) {
 				t.Fatalf("bulk=%d args=%v unexpected trap %v", sub, args, err)
 			}
 		}
+	}
+}
+
+func TestStreamMemoryDroppedLoadTrapPC(t *testing.T) {
+	streamMemoryTestEnable(t)
+	// The dropped load remains observable and must precede unreachable.
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, []byte{0, 0x20, 0, 0x28, 0, 0, 0x1a, 0x00, 0x0b})
+	streamMemoryTestAdmitted(t, m)
+	for _, interruptible := range []bool{false, true} {
+		for _, tc := range []struct {
+			address uint64
+			code    wRuntime.TrapCode
+			pc      uint32
+		}{
+			{65535, wRuntime.TrapLinMemOutOfBounds, m.Code[0].LocalDeclBytes + 2},
+			{0, wRuntime.TrapUnreachable, m.Code[0].LocalDeclBytes + 6},
+		} {
+			_, _, err := runMemAmd64WithOptions(t, m, CompileOptions{Interruptible: interruptible}, nil, tc.address)
+			var trap *wRuntime.TrapError
+			if !errors.As(err, &trap) || trap.Code != tc.code {
+				t.Fatalf("interruptible=%v address=%d: wrong trap %v", interruptible, tc.address, err)
+			}
+			if len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != tc.pc {
+				t.Fatalf("interruptible=%v address=%d: incorrect source %+v wantpc=%d", interruptible, tc.address, trap.Frames, tc.pc)
+			}
+		}
+	}
+}
+
+func TestStreamBulkRegisterPreconditions(t *testing.T) {
+	f := &fn{}
+	s := streamState{target: f}
+	regs, err := s.streamBulkRegisters(true)
+	if err != nil || regs != ([4]Reg{0, 1, 2, 3}) {
+		t.Fatalf("free bank=%v err=%v", regs, err)
+	}
+	f.fpinned = maskOf(0)
+	f.fpinnedLocalMask = maskOf(1)
+	f.fconsts = []floatConstReg{{reg: 2}}
+	f.fregUser[3] = &elem{}
+	regs, err = s.streamBulkRegisters(true)
+	if err != nil || regs != ([4]Reg{4, 5, 6, 7}) {
+		t.Fatalf("occupied bank=%v err=%v", regs, err)
+	}
+	for _, reg := range []Reg{RAX, RCX, RDX, RSI, RDI, R8} {
+		f.reserved = maskOf(reg)
+		if _, err = s.streamBulkRegisters(true); err == nil {
+			t.Fatalf("persistent GP %d accepted as scratch", reg)
+		}
+	}
+	f.reserved = 0
+	f.fpinned = regMask(0xffff)
+	if _, err = s.streamBulkRegisters(true); err == nil {
+		t.Fatal("exhausted vector bank accepted")
+	}
+	// Fill needs only one vector register; do not require four unnecessarily.
+	f.fpinned = regMask(0xffef)
+	regs, err = s.streamBulkRegisters(false)
+	if err != nil || regs[0] != 4 {
+		t.Fatalf("single fill scratch=%v err=%v", regs, err)
 	}
 }
