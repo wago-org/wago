@@ -41,6 +41,33 @@ The normal public Compile API also passed all 145 workloads with matching
 activation counts and no register-pressure failure. This verifies compilation
 and activation, not the full workload execution oracle.
 
-Full workload runtime, execution latency, first-compilation latency and absolute
-RSS qualification remain pending. No performance improvement is claimed. This
-branch is an experimental source checkpoint, not a merge recommendation.
+## Measured outcome
+
+The full 145-workload production runtime correctness oracle passed. A nine-trial,
+four-arm, fixed-slot compilation screen completed 5,220 verified oracle records.
+Arithmetic mean first-compilation latency:
+
+| Arm | Mean |
+| --- | ---: |
+| Pristine main A | 718.351 microseconds |
+| Pristine main B | 722.717 microseconds |
+| Experimental binary, regions disabled | 730.687 microseconds |
+| Experimental binary, regions enabled | 739.063 microseconds |
+
+The point estimates were 1.146% slower than the same binary with regions disabled
+and 2.572% slower than the mean pristine-main controls. Hierarchical paired
+bootstrap intervals (2,000 resamples over workloads and trials, arithmetic mean
+of workload medians) were [-1.247%, +6.729%] and [-0.294%, +6.771%], respectively.
+The control A/A difference was about 0.60%. These results do not establish a
+precise slowdown, but do not demonstrate a compilation gain.
+
+A separate 435-record fixed-slot memory run measured mean absolute peak RSS of
+11.976778 and 11.977559 MiB for the main controls, versus 11.930711 MiB enabled.
+The roughly 46 KiB difference was already present before compilation and was
+file-backed; it does not demonstrate a lowering-memory improvement. The absolute
+5 MiB target remains unmet.
+
+Execution-latency qualification was not run because the primary compilation
+objective failed. Runtime correctness passing is not an execution-speed result.
+This branch preserves an unsuccessful architectural experiment, not a merge
+recommendation. No performance improvement is claimed.
