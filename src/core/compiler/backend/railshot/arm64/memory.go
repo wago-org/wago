@@ -518,7 +518,12 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 	}
 	off32 := uint32(off)
 	addressPins := f.pinned
-	affineKind, affineIdx, affineBias := f.affineMemoryBoundsSource(f.s.back())
+	explicitBounds := !guard && !minimumAccess
+	var bcKind uint8
+	var bcIdx, bcBias uint32
+	if explicitBounds {
+		bcKind, bcIdx, bcBias = f.affineMemoryBoundsSource(f.s.back())
+	}
 	addressScope := f.shiftedALUAddress
 	f.shiftedALUAddress = true
 	var e *elem
@@ -536,19 +541,20 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 	// moves and spills.
 	upper32Zero := e.st.kind == stConst ||
 		f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero)
-	// Bounds-certificate source: the address's stable value carrier (a local or
-	// global index), captured before materialization. A temp/computed base has no
-	// stable key. See boundsCertMeasure.
-	capturedBounds := uint64(off32)+uint64(size) <= uint64(e.st.capturedBoundsExtent())
-	bcKind, bcIdx, bcBias := affineKind, affineIdx, affineBias
-	switch e.st.kind {
-	case stLocalReg, stLocalRef:
-		bcKind, bcIdx = 1, uint32(e.st.idx)
-	case stGlobReg:
-		bcKind, bcIdx = 2, uint32(e.st.idx)
-	case stReg:
-		if local, ok := f.teeAddressLocal(e); ok {
-			bcKind, bcIdx = 1, local
+	// Capture the source before materialization, only when an explicit check
+	// can use the certificate.
+	var capturedBounds bool
+	if explicitBounds {
+		capturedBounds = uint64(off32)+uint64(size) <= uint64(e.st.capturedBoundsExtent())
+		switch e.st.kind {
+		case stLocalReg, stLocalRef:
+			bcKind, bcIdx = 1, e.st.idx
+		case stGlobReg:
+			bcKind, bcIdx = 2, e.st.idx
+		case stReg:
+			if local, ok := f.teeAddressLocal(e); ok {
+				bcKind, bcIdx = 1, local
+			}
 		}
 	}
 	disp = 0
@@ -602,7 +608,7 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 		f.release(t)
 	}
 
-	if guard || minimumAccess {
+	if !explicitBounds {
 		if minimumAccess {
 			f.stats.peep("memory-min-bounds")
 		}
