@@ -38,7 +38,7 @@
 //
 // WithBoundsChecks selects how out-of-bounds memory accesses are caught. The
 // default is the fastest mode available in the current binary:
-// BoundsChecksSignalsBased on Darwin ARM64 or when built with
+// BoundsChecksSignalsBased on Darwin ARM64 (except TinyGo) or when built with
 // -tags wago_guardpage, otherwise BoundsChecksExplicit. Signals-based mode
 // elides eligible memory-0 memory32
 // checks and relies on a guard-page mapping plus a signal handler; indexed

@@ -1,4 +1,4 @@
-//go:build wago_guardpage || (darwin && arm64)
+//go:build wago_guardpage || (darwin && arm64 && !tinygo && !wago_target_tinygo)
 
 package regressiontest
 
