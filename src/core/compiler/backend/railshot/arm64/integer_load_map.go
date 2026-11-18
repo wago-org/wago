@@ -103,8 +103,9 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			// Immediate bytes may also match; the full planner checks opcodes.
 			left := floatMapMaxBytes - (scan.Offset() - source.Offset())
 			if left > 0 {
+				look := scan
 				window, _ := scan.Bytes(min(left, scan.BytesLeft()))
-				if bytes.IndexByte(window, 0x36) >= 0 {
+				if bytes.IndexByte(window, 0x36) >= 0 && f.integerLoadMapAfterLoad(look) {
 					f.emitIntegerLoadMapCandidate(source)
 				}
 			}
@@ -127,6 +128,57 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			return
 		}
 	}
+}
+
+// A short typed probe rejects early control, calls and other memory forms
+// without constructing the candidate. Longer expressions keep the full path.
+func (f *fn) integerLoadMapAfterLoad(scan wasm.Reader) bool {
+	if !skipIntegerMapWordLoad(&scan) {
+		return false
+	}
+	for ops := 0; ops < 12 && f.integerLoadMapWork < integerLoadMapWorkLimit; ops++ {
+		f.integerLoadMapWork++
+		op, err := scan.Byte()
+		if err != nil {
+			return false
+		}
+		switch {
+		case op == 0x36:
+			return true
+		case op == 0x28:
+			if !skipIntegerMapWordLoad(&scan) {
+				return false
+			}
+		case op >= 0x20 && op <= 0x22:
+			if _, err := scan.U32(); err != nil {
+				return false
+			}
+		case op == 0x41:
+			if _, err := scan.I32(); err != nil {
+				return false
+			}
+		case op == 0x1b || op >= 0x45 && op <= 0x4f ||
+			op >= 0x6a && op <= 0x6c || op >= 0x71 && op <= 0x76:
+		default:
+			return false
+		}
+	}
+	return f.integerLoadMapWork < integerLoadMapWorkLimit
+}
+
+func skipIntegerMapWordLoad(scan *wasm.Reader) bool {
+	align, err := scan.U32()
+	if err != nil {
+		return false
+	}
+	if align >= 64 && align < 128 {
+		index, err := scan.U32()
+		if err != nil || index != 0 {
+			return false
+		}
+	}
+	off, err := scan.U32()
+	return err == nil && (off == 0 || floatMapOffsetsEnabled && off <= 1<<20)
 }
 
 // Keep the scoped reset outside the screen's loop. A defer declared inside a

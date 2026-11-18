@@ -478,3 +478,28 @@ func TestIntegerLoadMapInterleavedStores(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapTypedAfterLoadScreen(t *testing.T) {
+	for _, tc := range []struct {
+		code []byte
+		want bool
+	}{
+		{[]byte{2, 0, 0x41, 0x36, 0x6a, 0x36, 2, 0}, true},
+		{[]byte{2, 0, 0x41, 0x36, 0x10, 0, 0x36, 2, 0}, false},
+		{[]byte{0x42, 1, 0, 0x36, 2, 0}, false},
+		{[]byte{2, 0, 0x28, 0x42, 1, 0, 0x36, 2, 0}, false},
+		{[]byte{2, 0, 0x04, 0x40, 0x36, 2, 0}, false},
+		{append([]byte{2, 0}, bytes.Repeat([]byte{0x6a}, 12)...), true},
+	} {
+		f := fn{}
+		reader := wasm.ReaderFrom(tc.code)
+		if allocs := testing.AllocsPerRun(10, func() {
+			f.integerLoadMapWork = 0
+			if f.integerLoadMapAfterLoad(reader) != tc.want || reader.Offset() != 0 {
+				t.Fatalf("screen code=%x did not preserve the reader or match admission=%v", tc.code, tc.want)
+			}
+		}); allocs != 0 {
+			t.Fatalf("screen code=%x allocations=%g", tc.code, allocs)
+		}
+	}
+}
