@@ -662,38 +662,43 @@ func TestIntegerLoadMapAffineLimit(t *testing.T) {
 }
 
 func TestIntegerLoadMapInvariantOverlapPrefix(t *testing.T) {
-	old := integerMapInvariantPrefixEnabled
-	defer func() { integerMapInvariantPrefixEnabled = old }()
+	old, oldExit := integerMapInvariantPrefixEnabled, integerMapAffineExitEnabled
+	defer func() { integerMapInvariantPrefixEnabled, integerMapAffineExitEnabled = old, oldExit }()
 	initial := make([]byte, 65536)
 	for i := range initial {
 		initial[i] = byte(i*197 + i/17)
 	}
-	for _, invariant := range []int32{1020, 1021, 1024, 1151, 1152, 1153, 1280, 4096, 65533} {
-		body := []byte{1, 4, 0x7f}
-		constant := func(v int32) {
-			body = append(body, 0x41)
-			body = append(body, wasmtest.SLEB32(v)...)
-		}
-		for i, v := range []int32{8192, 1024, invariant} {
-			constant(v)
-			body = append(body, 0x21, byte(i))
-		}
-		body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 3, 0x6a,
-			0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 0,
-			0x20, 2, 0x28, 2, 0, 0x6a, 0x36, 2, 0,
-			0x20, 3, 0x41, 4, 0x6a, 0x22, 3)
-		constant(268)
-		body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x0b)
-		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
-		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
-		for _, enabled := range []bool{false, true} {
-			integerMapInvariantPrefixEnabled = enabled
-			got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-invariant-prefix")
-			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
-				t.Fatalf("enabled=%v invariant=%d: got %x/%v, want %x/%v, memory equal=%v", enabled, invariant, got, err, want, wantErr, bytes.Equal(actual, expected))
+	for _, limit := range []int32{256, 268} {
+		for _, invariant := range []int32{1020, 1021, 1024, 1151, 1152, 1153, 1280, 4096, 65533} {
+			body := []byte{1, 5, 0x7f}
+			constant := func(v int32) {
+				body = append(body, 0x41)
+				body = append(body, wasmtest.SLEB32(v)...)
 			}
-			if diagnosticsEnabled && (hits != 0) != enabled {
-				t.Fatalf("enabled=%v invariant=%d: alias prefix emitted %d times", enabled, invariant, hits)
+			for i, v := range []int32{8192, 1024, invariant} {
+				constant(v)
+				body = append(body, 0x21, byte(i))
+			}
+			body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 3, 0x6a,
+				0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 0,
+				0x20, 2, 0x28, 2, 0, 0x6a, 0x22, 4, 0x36, 2, 0,
+				0x20, 3, 0x41, 4, 0x6a, 0x22, 3)
+			constant(limit)
+			body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 4, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+			want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+			for _, affineExit := range []bool{false, true} {
+				integerMapAffineExitEnabled = affineExit
+				for _, enabled := range []bool{false, true} {
+					integerMapInvariantPrefixEnabled = enabled
+					got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-invariant-reentry")
+					if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+						t.Fatalf("enabled=%v invariant=%d: got %x/%v, want %x/%v, memory equal=%v", enabled, invariant, got, err, want, wantErr, bytes.Equal(actual, expected))
+					}
+					if diagnosticsEnabled && (hits != 0) != enabled {
+						t.Fatalf("enabled=%v invariant=%d: alias prefix emitted %d times", enabled, invariant, hits)
+					}
+				}
 			}
 		}
 	}

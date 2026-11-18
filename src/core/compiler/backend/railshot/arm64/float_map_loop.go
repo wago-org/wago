@@ -1413,6 +1413,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	// can change it. Limit clipping to contiguous single-store packets.
 	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
 		nInvariant != 0 && p.extraStoreN == 0 && outputStride == 1
+	resumeInvariantPrefix := clipInvariantPrefix && nInvariant == 1 && p.counterScale == 1 && p.packet == floatMapVectorBytes
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
 	for _, output := range guardedOutputs {
@@ -1430,6 +1431,9 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			f.a.AddImm64(X17, X16, width)
 			f.cmpRR(X17, size, true)
 			guard(condA)
+			if resumeInvariantPrefix {
+				continue
+			}
 			f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
 			if clipInvariantPrefix {
 				f.cmpRR(X16, X17, true)
@@ -1560,6 +1564,36 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	}
 	for i := 0; i < ng; i++ {
 		f.a.Add64(groups[i].reg, groups[i].reg, linMemReg)
+	}
+	reloadInvariant := 0
+	if resumeInvariantPrefix {
+		// Preserve the real output end across both vector and single-lane
+		// packets. The invariant is reloaded after each overlapping store.
+		f.a.Add64(size, d, span)
+		reloadInvariant = f.a.Len()
+		f.a.Sub64(span, size, d)
+		iv := p.addresses[invariant[0]]
+		read(iv.base, X16)
+		f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
+		if iv.offset != 0 {
+			f.floatMapOffset(X16, X16, iv.offset, true, X17)
+		}
+		f.a.Add64(X16, X16, linMemReg)
+		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
+		f.a.Subs64(X16, X16, X17)
+		behind := f.a.Bcond(condB)
+		f.cmpRR(X16, span, true)
+		f.a.Csel64(span, X16, span, condB)
+		clipped := f.a.Branch()
+		f.patchBranch19(behind, f.a.Len())
+		// The offset is negative modulo 2^64. An invariant ending at
+		// or before destination is disjoint from the remaining output.
+		f.a.AddImm64(X16, X16, 4)
+		f.cmpImm(X16, 0, true)
+		disjoint := f.a.Bcond(condLE)
+		f.a.MovImm64(span, 0)
+		f.patchBranch19(disjoint, f.a.Len())
+		f.patchBranch26(clipped, f.a.Len())
 	}
 	var constants [8]struct {
 		node int
@@ -1728,6 +1762,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		preload(output.value)
 	}
 	var block int32
+	singleLane := false
 	counterValue, cachedLoad := regNone, regNone
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
@@ -1751,7 +1786,14 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
 			stride := max(p.addresses[x].stride, 1)
-			if p.interleaved && stride == 1 {
+			if singleLane {
+				if off%4 == 0 && off/4 <= 0xfff {
+					f.a.LdrF(r, base, int32(off), false)
+				} else {
+					f.floatMapOffset(X17, base, uint64(off), true, X16)
+					f.a.LdrF(r, X17, 0, false)
+				}
+			} else if p.interleaved && stride == 1 {
 				// The whole-span guard also covers the skipped word after
 				// each selected lane, including the last one.
 				tmp := f.allocFReg(0)
@@ -1894,7 +1936,14 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			}
 			for _, output := range outputs[:outputCount] {
 				value, owned := emit(output.value)
-				if output.stride > 1 {
+				if singleLane {
+					if output.offset%4 == 0 && output.offset/4 <= 0xfff {
+						f.a.StrF(output.reg, int32(output.offset), value, false)
+					} else {
+						f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X16)
+						f.a.StrF(X17, 0, value, false)
+					}
+				} else if output.stride > 1 {
 					width := uint32(4)
 					if p.wide {
 						width = 8
@@ -2026,6 +2075,20 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		packet(p.packet, true)
 		f.patchBranch19(remainder, f.a.Len())
 		f.stats.peep("integer-load-map-vector-live-out")
+	}
+	if resumeInvariantPrefix {
+		f.a.Sub64(X16, size, d)
+		f.cmpRR(X16, span, true)
+		unclipped := f.a.Bcond(condE)
+		f.cmpImm(X16, p.step, true)
+		last := f.a.Bcond(condBE)
+		singleLane = true
+		packet(p.step, false)
+		singleLane = false
+		f.patchBranch26(f.a.Branch(), reloadInvariant)
+		f.patchBranch19(unclipped, f.a.Len())
+		f.patchBranch19(last, f.a.Len())
+		f.stats.peep("integer-load-map-invariant-reentry")
 	}
 	f.stats.peep("float-map-loop-unroll")
 	if p.normalizedInduction {
