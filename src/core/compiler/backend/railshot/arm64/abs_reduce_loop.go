@@ -361,7 +361,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			available++
 		}
 	}
-	neededVectors := 2
+	neededVectors := 3 // one packet, the second input, and the running sum
 	if p.lanes > 4 {
 		neededVectors++
 	}
