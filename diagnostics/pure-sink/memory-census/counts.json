@@ -1,0 +1,345 @@
+{
+  "applications/audio-autocorrelation": {
+    "fullwidth_load": 12
+  },
+  "applications/audio-fir": {
+    "fullwidth_load": 128,
+    "reject_context": 64,
+    "syntax": 64
+  },
+  "applications/bio-global-alignment": {
+    "fullwidth_load": 12
+  },
+  "applications/bio-kmer-count": {
+    "fullwidth_load": 10
+  },
+  "applications/bio-lcs": {
+    "fullwidth_load": 12
+  },
+  "applications/bio-local-alignment": {
+    "fullwidth_load": 10
+  },
+  "applications/columnar-query": {
+    "fullwidth_load": 12
+  },
+  "applications/compiler-constant-fold": {
+    "fullwidth_load": 20
+  },
+  "applications/compiler-dead-code": {
+    "fullwidth_load": 12
+  },
+  "applications/compiler-register-allocation": {
+    "fullwidth_load": 86
+  },
+  "applications/compression-lzw": {
+    "fullwidth_load": 4
+  },
+  "applications/crypto-aes128": {
+    "fullwidth_load": 120
+  },
+  "applications/db-bitmap-index": {
+    "fullwidth_load": 16
+  },
+  "applications/db-btree": {
+    "fullwidth_load": 32
+  },
+  "applications/db-hash-join": {
+    "fullwidth_load": 8
+  },
+  "applications/db-sort-merge-join": {
+    "fullwidth_load": 16
+  },
+  "applications/document-bidi-reorder": {
+    "fullwidth_load": 34
+  },
+  "applications/document-edit-distance": {
+    "fullwidth_load": 16
+  },
+  "applications/document-optimal-wrap": {
+    "fullwidth_load": 6
+  },
+  "applications/document-page-packing": {
+    "fullwidth_load": 22
+  },
+  "applications/files-merkle-tree": {
+    "fullwidth_load": 16
+  },
+  "applications/files-path-normalize": {
+    "fullwidth_load": 12
+  },
+  "applications/files-path-trie": {
+    "fullwidth_load": 26
+  },
+  "applications/game-cellular-automata": {
+    "fullwidth_load": 38
+  },
+  "applications/game-flocking": {
+    "fullwidth_load": 8
+  },
+  "applications/game-spatial-hash": {
+    "fullwidth_load": 10
+  },
+  "applications/geo-convex-hull": {
+    "fullwidth_load": 60
+  },
+  "applications/geo-polygon-clipping": {
+    "fullwidth_load": 36
+  },
+  "applications/geo-polyline-simplify": {
+    "fullwidth_load": 26
+  },
+  "applications/graph-dijkstra": {
+    "fullwidth_load": 32
+  },
+  "applications/graph-kruskal": {
+    "fullwidth_load": 20
+  },
+  "applications/graphics-bresenham": {
+    "fullwidth_load": 12
+  },
+  "applications/graphics-png-paeth": {
+    "fullwidth_load": 2
+  },
+  "applications/graphics-reed-solomon": {
+    "fullwidth_load": 46
+  },
+  "applications/grid-pathfinding": {
+    "fullwidth_load": 28
+  },
+  "applications/hardware-boolean-anf": {
+    "fullwidth_load": 68
+  },
+  "applications/hardware-prime-implicants": {
+    "fullwidth_load": 6
+  },
+  "applications/image-blur": {
+    "fullwidth_load": 28
+  },
+  "applications/image-composite": {
+    "fullwidth_load": 2
+  },
+  "applications/image-error-diffusion": {
+    "fullwidth_load": 22
+  },
+  "applications/image-median": {
+    "fullwidth_load": 90
+  },
+  "applications/image-resize": {
+    "fullwidth_load": 24
+  },
+  "applications/language-brainfuck": {
+    "fullwidth_load": 10
+  },
+  "applications/language-forth": {
+    "fullwidth_load": 10
+  },
+  "applications/language-register-vm": {
+    "fullwidth_load": 46
+  },
+  "applications/ml-convolution": {
+    "fullwidth_load": 18
+  },
+  "applications/ml-inference": {
+    "fullwidth_load": 8
+  },
+  "applications/ml-kmeans": {
+    "fullwidth_load": 100
+  },
+  "applications/ml-knn": {
+    "fullwidth_load": 56
+  },
+  "applications/ml-max-pooling": {
+    "fullwidth_load": 8
+  },
+  "applications/search-aho-corasick": {
+    "fullwidth_load": 154
+  },
+  "applications/search-bk-tree": {
+    "fullwidth_load": 14
+  },
+  "applications/search-horspool": {
+    "fullwidth_load": 24
+  },
+  "applications/search-kmp": {
+    "fullwidth_load": 34
+  },
+  "applications/search-rabin-karp": {
+    "fullwidth_load": 22
+  },
+  "applications/serialization-protobuf": {
+    "fullwidth_load": 6
+  },
+  "applications/stats-bootstrap": {
+    "fullwidth_load": 6
+  },
+  "applications/stats-gini": {
+    "fullwidth_load": 6
+  },
+  "applications/stats-quickselect": {
+    "fullwidth_load": 12
+  },
+  "applications/stencil-wave-equation": {
+    "fullwidth_load": 46
+  },
+  "applications/text-substitution": {
+    "fullwidth_load": 2
+  },
+  "applications/triangle-raster": {
+    "fullwidth_load": 10
+  },
+  "applications/video-deblocking": {
+    "fullwidth_load": 14
+  },
+  "applications/video-motion": {
+    "fullwidth_load": 32
+  },
+  "applications/video-optical-flow": {
+    "fullwidth_load": 60
+  },
+  "applications/video-temporal-denoise": {
+    "fullwidth_load": 64
+  },
+  "applications/video-yuv420": {
+    "fullwidth_load": 16
+  },
+  "applications/vision-components": {
+    "fullwidth_load": 30
+  },
+  "applications/vision-dilation": {
+    "fullwidth_load": 18
+  },
+  "applications/vision-distance-transform": {
+    "fullwidth_load": 48
+  },
+  "applications/vision-fast-corners": {
+    "fullwidth_load": 56
+  },
+  "applications/vision-otsu": {
+    "fullwidth_load": 8
+  },
+  "applications/vision-sobel": {
+    "fullwidth_load": 16
+  },
+  "wago/blake3/hash": {
+    "fullwidth_load": 268
+  },
+  "wago/coremark/2k-performance": {
+    "fullwidth_load": 232
+  },
+  "wago/drwav/pcm-decode-seek": {
+    "fullwidth_load": 1084
+  },
+  "wago/fannkuch/run": {
+    "fullwidth_load": 84
+  },
+  "wago/fastfloat/decimal-parse": {
+    "fullwidth_load": 196
+  },
+  "wago/json-as-simd/serializeN": {
+    "fullwidth_load": 428
+  },
+  "wago/kissfft/complex-roundtrip": {
+    "fullwidth_load": 446
+  },
+  "wago/libtommath/modular-arithmetic": {
+    "eligible": 2,
+    "eligible_add": 2,
+    "fullwidth_load": 1824,
+    "reject_pin": 4,
+    "syntax": 6
+  },
+  "wago/linked_list/sum": {
+    "fullwidth_load": 4
+  },
+  "wago/lz4/compress": {
+    "fullwidth_load": 52
+  },
+  "wago/memory/sum": {
+    "fullwidth_load": 2
+  },
+  "wago/memory_tree/run": {
+    "fullwidth_load": 2
+  },
+  "wago/monocypher/aead-blake2b": {
+    "fullwidth_load": 578
+  },
+  "wago/nanosvg/parse-structure": {
+    "fullwidth_load": 1470
+  },
+  "wago/pcre2/compile-match": {
+    "eligible": 8,
+    "eligible_sub": 8,
+    "fullwidth_load": 5960,
+    "reject_constant": 6,
+    "reject_context": 18,
+    "reject_pin": 4,
+    "reject_stack": 4,
+    "syntax": 40
+  },
+  "wago/polybench-adi/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-cholesky/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-correlation/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-deriche/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-durbin/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-fdtd-2d/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-floyd-warshall/polybench_run": {
+    "fullwidth_load": 30
+  },
+  "wago/polybench-gemm/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-gramschmidt/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-jacobi-2d/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-lu/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-nussinov/polybench_run": {
+    "fullwidth_load": 38
+  },
+  "wago/polybench-seidel-2d/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/polybench-trisolv/polybench_run": {
+    "fullwidth_load": 16
+  },
+  "wago/qoi/encode": {
+    "fullwidth_load": 32
+  },
+  "wago/sha256/hashN": {
+    "fullwidth_load": 44
+  },
+  "wago/utf-as-simd/validateN": {
+    "fullwidth_load": 32
+  },
+  "wago/utf8proc/normalize-casefold": {
+    "fullwidth_load": 554
+  },
+  "wago/xxhash/xxh64-boundaries": {
+    "fullwidth_load": 30
+  },
+  "wago/yyjson/parse-edit-write": {
+    "fullwidth_load": 2128
+  },
+  "wago/zlib/inflate": {
+    "fullwidth_load": 340
+  },
+  "wago/zstd/decompress": {
+    "fullwidth_load": 1902
+  }
+}

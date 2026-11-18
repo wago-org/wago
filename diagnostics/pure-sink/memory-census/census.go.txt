@@ -1,0 +1,116 @@
+package amd64
+
+import "github.com/wago-org/wago/src/core/compiler/wasm"
+
+var memorySinkCensusActive bool
+var memorySinkCensusID string
+var memorySinkCensusCounts = map[string]map[string]int{}
+
+func memorySinkCount(key string) {
+	m := memorySinkCensusCounts[memorySinkCensusID]
+	if m == nil {
+		m = map[string]int{}
+		memorySinkCensusCounts[memorySinkCensusID] = m
+	}
+	m[key]++
+}
+func (f *fn) censusMemorySink(r *wasm.Reader, size int) {
+	if !memorySinkCensusActive {
+		return
+	}
+	memorySinkCount("fullwidth_load")
+	q := *r
+	op, e := q.Byte()
+	if e != nil || size == 4 && op != 0x41 || size == 8 && op != 0x42 {
+		return
+	}
+	var c int64
+	if size == 4 {
+		v, e := q.I32()
+		if e != nil {
+			return
+		}
+		c = int64(v)
+	} else {
+		v, e := q.I64()
+		if e != nil {
+			return
+		}
+		c = v
+	}
+	op, e = q.Byte()
+	if e != nil {
+		return
+	}
+	if size == 8 {
+		if op < 0x7c {
+			return
+		}
+		op -= 0x12
+	}
+	if op != 0x6a && op != 0x6b && op != 0x72 && op != 0x73 {
+		return
+	}
+	set, e := q.Byte()
+	if e != nil || set != 0x21 {
+		return
+	}
+	dst, e := q.U32()
+	if e != nil {
+		return
+	}
+	memorySinkCount("syntax")
+	if c == 0 || c == -1 || !fitsImm32(c) {
+		memorySinkCount("reject_constant")
+		return
+	}
+	if f.inlineDepth != 0 || f.localBase != 0 || f.inlineTailConstants != nil || len(f.intervalReg) != 0 || f.unreachable || f.pinned != 0 || f.vectorRegion.enabled || f.storeFwd.valid || f.gcResolved.valid || f.gcSubtypeProofN&gcFreshStructFactMode != 0 {
+		memorySinkCount("reject_context")
+		return
+	}
+	if f.threadedMemory0 || f.memoryAddr64(0) {
+		memorySinkCount("reject_memory_mode")
+		return
+	}
+	n := f.s.back()
+	if f.s.logicalDepth != 1 || n == nil || n.prev != f.s.head || n.next != f.s.head {
+		memorySinkCount("reject_stack")
+		return
+	}
+	if !n.isValue() || n.st.kind != stMemRef || n.st.memSize() != size {
+		memorySinkCount("reject_not_memref")
+		return
+	}
+	if int(dst) >= len(f.localType) || f.localType[dst] != n.st.typ || f.gcFrameLocal(int(dst)) {
+		memorySinkCount("reject_type")
+		return
+	}
+	dest, fp, pin := f.pinReg(int(dst))
+	if !pin || fp || f.regUser[dest] != nil || f.locals[dst].state != lsReg && f.locals[dst].state != lsStackReg {
+		memorySinkCount("reject_pin")
+		return
+	}
+	if n.st.memBorrow() == int(dst) || n.st.reg == dest {
+		memorySinkCount("reject_address_alias")
+		return
+	}
+	if next, ok := q.Peek(); ok && next == 0x20 {
+		q.Byte()
+		got, e := q.U32()
+		if e == nil && got == dst {
+			memorySinkCount("reject_set_get")
+			return
+		}
+	}
+	memorySinkCount("eligible")
+	switch op {
+	case 0x6a:
+		memorySinkCount("eligible_add")
+	case 0x6b:
+		memorySinkCount("eligible_sub")
+	case 0x72:
+		memorySinkCount("eligible_or")
+	case 0x73:
+		memorySinkCount("eligible_xor")
+	}
+}

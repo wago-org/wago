@@ -286,6 +286,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 				return err
 			}
 		}
+		if pureLocalSinkEnabled && !forwarded && (!pureLocalSinkEntryGateEnabled || f.s.logicalDepth == 0) && f.tryPureLocalSink(r, x) {
+			break
+		}
 		if f.localType[x] == mtV128 {
 			next, _ := r.Peek()
 			if f.forwardV128Local(int(x), next == 0xfd) {

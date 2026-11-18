@@ -1,0 +1,9 @@
+# Post-load transition coverage: rejected
+
+New instrumentation-only overlay on recovered pure-sink production26013b05/live main752e12f7. No production changes. Candidate source construction bypassed only in hypothetical admission; actual compiler always used unchanged legacy lowering for counts. Existing pure-sink on/off oracle remains intact.
+
+Across145 workloads ×2 interruptibility modes:20,106 fullwidth i32/i64 load visits;110 syntactic `load; const; add/sub/or/xor; local.set` shapes. Ordered first-failure categories:82 context,8 destination pin/state,6 identity/immediate,4 non-sole stack.10 eligible transitions in total across2 workloads: pcre2 compile-match8 and libtommath modular-arithmetic2. Eligible operations:Add2/Sub8. This would remove only20 constant/binary node events across both modes. Counts are not latency attribution. Context groups inline/interval/cache/vector/ownership checks; no inference about which restriction dominates within that bucket.
+
+Census preserves existing memLoad bounds/address/store-forwarding behavior, requires a sole full-width stMemRef, stable integer destination pin, no borrowed-address alias, no shared/memory64, no following same-local get, and no profile/checker implementation promise. No AND/narrow-mask, tee, or general expression support. Expanding those grammars would be a distinct proposal, not evidence for this one.
+
+580 off/on compilations PASS0.508s (test duration only), no skips.290 native+full exported metadata hashes match independent pristine main exactly. Counts SHA256:0c299a58fa51f928db2e890f17a40bf95bc2184b7e1ce01bbb6d1ee5201fd9b0. Raw overlay/export/log under compiler-recovery/memory-sink-census. Recommend no production implementation: coverage too small to advance aggregate compile target, before considering helper admission overhead.
