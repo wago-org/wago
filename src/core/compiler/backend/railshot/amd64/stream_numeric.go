@@ -139,6 +139,9 @@ func (s *streamState) integerSelect() error {
 	if s.tryPureSelect(cond, right, left) {
 		return nil
 	}
+	if s.tryCompareSelect(cond, right, left) {
+		return nil
+	}
 	wide := s.node(left).wide
 	// Resolve deferred fixed-register operations before caching any operand
 	// register: a shift in another operand may evict an earlier RCX owner.

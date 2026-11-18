@@ -42,8 +42,11 @@ func (s *streamState) integerDivConst(op byte) bool {
 	if negative {
 		magnitude = 0 - magnitude
 	} // Includes the signed minimum divisor.
-	if magnitude == 0 || magnitude&(magnitude-1) != 0 {
+	if magnitude == 0 {
 		return false
+	}
+	if magnitude&(magnitude-1) != 0 {
+		return s.integerDivMagic32(op)
 	}
 	s.stack = s.stack[:len(s.stack)-2]
 	src := s.materialize(left, 0)

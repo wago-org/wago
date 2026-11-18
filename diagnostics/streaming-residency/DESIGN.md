@@ -198,3 +198,22 @@ Mean absolute compiled-barrier VmHWM was 11.989709 / 11.972710 / 11.972037 MiB
 for main / prior streaming / joint ON in the matched fixed-slot memory run.
 Memory is effectively unchanged and the absolute 5 MiB goal remains unmet.
 Source is unchanged. No promotion or PR is proposed.
+
+### Compare-select and unsigned division checkpoint (c1cca19e)
+
+Two additional default-off options preserve existing native selection policies:
+`WAGO_EXPERIMENTAL_STREAM_COMPARE_SELECT=1` consumes a unique deferred integer
+comparison directly as CMP/CMOV after eagerly preparing operands;
+`WAGO_EXPERIMENTAL_STREAM_MAGIC32=1` uses unsigned i32 constant-divisor
+product/shift or wide-reciprocal sequences. Signed/i64 division, zero divisors
+and unsupported cases retain their existing paths. Expensive-arm pure-select
+retains priority. All allocation and fixed-register preparation precedes the
+comparison flags consumed by CMOV.
+
+The exact frozen source passed 83 focused ownership/statistics top-level tests
+with zero failures or skips (0.546 s), including independent alias, pressure,
+width, eager-trap and arithmetic checks. The production adapter also passed
+all 145 frozen corpus runtime oracles. Performance/memory qualification for
+this revision remains pending. Earlier
+negative results remain documented above. No speedup, target achievement or
+promotion is claimed.
