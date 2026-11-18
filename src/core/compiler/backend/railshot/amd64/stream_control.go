@@ -255,6 +255,10 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 			s.streamEdge(int(depth), op == 0x0d)
 		case 0x0f:
 			s.streamEdge(len(s.flow)-1, false)
+		case 0x1b:
+			if e := s.integerSelect(); e != nil {
+				return 0, e
+			}
 		case 0xfc:
 			sub, e := r.U32()
 			if e != nil {
@@ -266,6 +270,18 @@ func (s *streamState) runStreamCode(code []byte, summary streamSummary) (int, er
 		default:
 			if size, _, _, _ := streamMemoryShape(op); size != 0 {
 				if e := s.memory(&r, op); e != nil {
+					return 0, e
+				}
+			} else if _, _, ok := streamUnaryShape(op); ok {
+				if e := s.integerUnary(op); e != nil {
+					return 0, e
+				}
+			} else if _, ok := streamRotateShape(op); ok {
+				if e := s.integerRotate(op); e != nil {
+					return 0, e
+				}
+			} else if _, _, _, ok := streamDivShape(op); ok {
+				if e := s.integerDiv(op); e != nil {
 					return 0, e
 				}
 			} else if operation, wide, ok := streamOpcode(op); ok {

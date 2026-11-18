@@ -81,10 +81,17 @@ func (s *streamState) memory(r *wasm.Reader, op byte) error {
 	var valueReg uint8
 	if store {
 		value = s.pop()
+	}
+	address := s.pop()
+	if store {
+		// A deferred address shift can evict RCX even when reserved: fixed
+		// machine clobbers preserve IDs, not cached physical registers. Resolve
+		// it before caching the value register, then refresh the address after
+		// value materialization, which may itself spill the address snapshot.
+		s.materialize(address, 0)
 		valueReg = s.materialize(value, 0)
 		s.reserved |= uint64(1) << valueReg
 	}
-	address := s.pop()
 	source := s.materialize(address, 0)
 	ea := s.alloc(uint64(1) << source)
 	f.a.MovRegReg32(Reg(ea), Reg(source))

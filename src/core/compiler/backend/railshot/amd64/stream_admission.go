@@ -77,6 +77,8 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 			}
 		case 0x1a:
 			pop = 1
+		case 0x1b:
+			pop, push = 3, 1
 		case 0x02, 0x03, 0x04:
 			t, e := r.Byte()
 			if e != nil || depth == len(frames) {
@@ -187,6 +189,12 @@ func admitStreamBody(c *wasm.Func, ft *wasm.CompType) streamSummary {
 				} else {
 					pop, push = 1, 1
 				}
+			} else if _, _, ok := streamUnaryShape(op); ok {
+				pop, push = 1, 1
+			} else if _, ok := streamRotateShape(op); ok {
+				pop, push = 2, 1
+			} else if _, _, _, ok := streamDivShape(op); ok {
+				pop, push = 2, 1
 			} else if _, _, ok := streamOpcode(op); ok {
 				pop, push = 2, 1
 			} else {

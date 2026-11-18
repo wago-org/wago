@@ -25,21 +25,28 @@ memory accesses preserve bytecode trap order and check complete ranges before
 writes. Bulk operations verify fixed-register leases and free vector scratch.
 Legacy constant preloads are omitted for streaming functions.
 
-## Focused qualification
+## Numeric checkpoint qualification
 
-The frozen checkpoint passed 14 top-level tests in both normal (0.055 seconds)
-and codegen-statistics (0.079 seconds) builds, without skips. Coverage includes:
+The integrated numeric checkpoint adds integer select, zero tests, bit counts,
+rotates, width/sign conversions and signed/unsigned division and remainder.
+Power-of-two constant divisors use eager reductions with the required overflow
+trap; other divisors use hardware division. No performance advantage is claimed.
 
-- Nine structured-control interruptibility cases with positive streaming/poll
-  counters and independent expected runtime results.
-- Scalar memory widths, address overflow, aliases and bulk operations.
-- Exact source-PC attribution for a dropped out-of-bounds load in both modes.
-- Bulk register preconditions and four legacy bulk regression cases.
+Normal and codegen-statistics focused gates passed 22 top-level tests without
+skips (0.083 and 0.101 seconds respectively). These include independent expected
+results, arithmetic edge cases, structured control, memory operations, trap
+attribution, ownership aliases and existing bulk-memory regressions.
+
+A shifted store-address regression refreshes operand locations after fixed-register
+clobbers. The focused regression passes with the fix; reverting only that fix
+reproduces an incorrect stored value. Source-PC and eager trap ordering remain
+part of the tested contract.
 
 Creation-budget and compact branch-chain bounds are checked. A live fallthrough
 reuses the canonical state already produced at the join rather than rebuilding
 it a second time.
 
-The full workload corpus, execution latency, first-compilation latency and
-absolute RSS have not yet been qualified. No performance improvement is claimed.
-This is an incremental experimental source checkpoint, not a merge recommendation.
+The expanded numeric scope has not yet completed full-corpus runtime or execution
+latency qualification. First-compilation latency and absolute RSS are not
+qualified for this checkpoint. No performance improvement is claimed. This is an
+incremental experimental source checkpoint, not a merge recommendation.

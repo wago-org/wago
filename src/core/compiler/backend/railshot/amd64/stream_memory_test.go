@@ -284,3 +284,52 @@ func TestStreamBulkRegisterPreconditions(t *testing.T) {
 		t.Fatalf("single fill scratch=%v err=%v", regs, err)
 	}
 }
+
+func TestStreamMemoryStoreAddressShiftClobber(t *testing.T) {
+	streamMemoryTestEnable(t)
+	original := scalarRegisterOrder
+	t.Cleanup(func() { scalarRegisterOrder = original })
+	forced := []uint8{uint8(RCX)}
+	for _, r := range original {
+		if r != uint8(RCX) {
+			forced = append(forced, r)
+		}
+	}
+	// Stock order covers production; RCX-first makes the fixed-register hazard
+	// deterministic rather than depending on incidental pressure heuristics.
+	for _, order := range [][]uint8{original, forced} {
+		scalarRegisterOrder = order
+		for _, alias := range []bool{false, true} {
+			addressLocal := byte(0)
+			if alias {
+				addressLocal = 3
+			}
+			body := []byte{0, 0x20, 3, 0x41, 1, 0x6a, 0x21, 3, 0x20, addressLocal, 0x20, 1, 0x74, 0x20, 3, 0x36, 0, 0, 0x20, 3, 0xb}
+			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+			streamMemoryTestAdmitted(t, m)
+			value := uint64(0x12345677)
+			if alias {
+				value = 31
+			}
+			args := []uint64{1, 2, 0, 0xaabbccdd00000000 | value}
+			address := uint32(4)
+			if alias {
+				address = uint32(value+1) << 2
+			}
+			for _, interruptible := range []bool{false, true} {
+				var stats ModuleStats
+				opts := CompileOptions{Interruptible: interruptible}
+				if diagnosticsEnabled {
+					opts.Stats = &stats
+				}
+				got, mem, err := runMemAmd64WithOptions(t, m, opts, nil, args...)
+				if err != nil || got != value+1 || binary.LittleEndian.Uint32(mem[address:]) != uint32(value+1) {
+					t.Fatalf("firstreg=%d alias=%v interruptible=%v got=%x stored=%x err=%v", order[0], alias, interruptible, got, binary.LittleEndian.Uint32(mem[address:]), err)
+				}
+				if diagnosticsEnabled && !regallocCheckEnabled && stats.Funcs[0].Peephole["streaming-function"] != 1 {
+					t.Fatal("shifted store bypassed stream engine")
+				}
+			}
+		}
+	}
+}
