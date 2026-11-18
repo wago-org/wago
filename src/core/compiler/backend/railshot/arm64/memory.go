@@ -897,7 +897,7 @@ func boundsSource(s storage) (kind uint8, idx uint32) {
 
 const (
 	maxStraightLineRangeOps = 4096
-	maxFunctionRangeOps     = 32768
+	maxFunctionRangeOps     = 16384
 )
 
 // straightLineLoadExtent finds later scalar loads from the same stable source
