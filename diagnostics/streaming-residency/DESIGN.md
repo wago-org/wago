@@ -94,3 +94,19 @@ skips or failures (0.142 seconds). All 145 production runtime oracles also passe
 execution-latency and RSS measurements remain pending for this revision. The preceding
 negative wider-home results are historical, not qualification of this new
 checkpoint. No gain, target success or merge recommendation is claimed.
+
+### Completed retained-copy diagnostic (ce9a47ef)
+
+All 600 timing-screen records and 435 RSS-profile runtime oracles verified.
+Steady execution ON/main was 1.492718 (95% interval [1.327018, 1.906952]);
+ON/same-binary proof-OFF was 1.030401 ([0.911682, 1.385978]). The main A/A
+point ratio was 0.990510, but the unrelated control ratio 0.970862 failed
+agreement. Compilation ON/main was 1.026430 ([0.800141, 1.462888]); its A/A
+point ratio 1.012901 passed, but uncertainty remained wide. First-call A/A
+1.043463 failed. These results do not establish a gain or qualify the execution
+regression limit.
+
+Mean absolute compiled-barrier VmHWM was 11.999353 / 11.974327 /
+11.975512 MiB for main / proof-OFF / ON. No memory gain is established and
+the <5 MiB target remains unmet. Source is unchanged; no PR or promotion
+is proposed.
