@@ -77,7 +77,7 @@ type floatMapPlan struct {
 	wide                         bool
 	integer                      bool
 	orderedStoreLoads            bool
-	secondStore                  bool
+	secondStore, interleaved     bool
 	secondDest, secondResult     int
 	normalizedInduction          bool
 	work, workLimit              int
@@ -380,9 +380,21 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			for i := 1; i < ns; i++ {
 				distance := uint32(i) * size
-				if !p.secondStore && (!p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance)) {
+				if p.secondStore {
+					continue
+				}
+				if !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
 					return false
 				}
+				if p.sameMap(stores[0].Value, stores[i].Value, distance, 0) {
+					continue
+				}
+				if !p.integer || ns != 2 || p.addresses[p.dest].stride > 1 {
+					return false
+				}
+				p.secondStore, p.interleaved = true, true
+				p.secondDest, p.secondResult = stores[i].Address, stores[i].Value
+				p.packet = 2 * floatMapVectorBytes
 			}
 			if !p.validExpression(p.result, 0) || p.secondStore && !p.validExpression(p.secondResult, 0) {
 				return false
@@ -881,7 +893,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	peakPressure := pressure(p.result)
 	if p.secondStore {
-		peakPressure = max(peakPressure, pressure(p.secondResult))
+		secondPressure := pressure(p.secondResult)
+		if p.interleaved {
+			secondPressure++ // the first result stays live until the ZIPs
+		}
+		peakPressure = max(peakPressure, secondPressure)
 	}
 	if usesCounterValue {
 		constantCount += 2 // fixed lane offsets and the current block's counter
@@ -1156,12 +1172,17 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condB)
 		f.patchBranch26(skip, f.a.Len())
 	}
-	if p.secondStore {
+	if p.secondStore && !p.interleaved {
 		guardDisjoint(outputs[0], outputs[1])
+	}
+	guardedOutputs := outputs[:outputCount]
+	if p.interleaved {
+		// The primary span covers both alternating words.
+		guardedOutputs = guardedOutputs[:1]
 	}
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
-	for _, output := range outputs[:outputCount] {
+	for _, output := range guardedOutputs {
 		for i := 0; i < nInvariant; i++ {
 			iv := p.addresses[invariant[i]]
 			read(iv.base, X16)
@@ -1217,7 +1238,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// Independent stores and non-unit spacing require disjoint whole
 			// ranges. The unit-stride packet dependence proof does not apply.
 			input := outputStream{reg: s, offset: off, stride: stride}
-			for _, output := range outputs[:outputCount] {
+			for _, output := range guardedOutputs {
 				guardDisjoint(output, input)
 			}
 			continue
@@ -1477,13 +1498,26 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			base, off := locate(p.addresses[x])
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
-			if stride := p.addresses[x].stride; stride > 1 {
+			stride := max(p.addresses[x].stride, 1)
+			if p.interleaved && stride == 1 {
+				// The whole-span guard also covers the skipped word after
+				// each selected lane, including the last one.
+				tmp := f.allocFReg(0)
+				f.a.LdrQ(r, base, int32(off)+block)
+				f.a.LdrQ(tmp, base, int32(off)+block+floatMapVectorBytes)
+				f.a.NeonUzp1S(r, r, tmp)
+				f.releaseF(tmp)
+			} else if stride > 1 || p.interleaved {
 				size := uint32(4)
 				if p.wide {
 					size = 8
 				}
+				laneStep := size
+				if p.interleaved {
+					laneStep = p.step
+				}
 				for lane := uint32(0); lane < 16/size; lane++ {
-					address := uint64(off) + (uint64(block)+uint64(lane*size))*uint64(stride)
+					address := uint64(off) + (uint64(block)+uint64(lane*laneStep))*uint64(stride)
 					if lane == 0 && floatMapLaneFPLoadsEnabled {
 						// The first scalar lane initializes the vector directly;
 						// later lane inserts never need its temporary GP copy.
@@ -1567,8 +1601,29 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		return out, true
 	}
+	blockBytes := int32(floatMapVectorBytes)
+	if p.interleaved {
+		blockBytes *= 2
+	}
 	packet := func(width uint32) {
-		for block = 0; block < int32(width); block += floatMapVectorBytes {
+		for block = 0; block < int32(width); block += blockBytes {
+			if p.interleaved {
+				a, ownA := emit(outputs[0].value)
+				b, ownB := emit(outputs[1].value)
+				zipped := f.allocFReg(0)
+				f.a.NeonZip1S(zipped, a, b)
+				f.a.StrQ(d, int32(dOff)+block, zipped)
+				f.a.NeonZip2S(zipped, a, b)
+				f.a.StrQ(d, int32(dOff)+block+floatMapVectorBytes, zipped)
+				f.releaseF(zipped)
+				if ownA {
+					releaseTemp(a)
+				}
+				if ownB {
+					releaseTemp(b)
+				}
+				continue
+			}
 			if usesCounterValue {
 				counterValue = f.allocFReg(0)
 				f.fpinned = f.fpinned.add(counterValue)

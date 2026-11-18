@@ -2045,6 +2045,7 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
+func (a *Asm) NeonUzp1S(dst, n, m Reg) { a.neon3(0x4E001800, 4, dst, n, m) }
 func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
