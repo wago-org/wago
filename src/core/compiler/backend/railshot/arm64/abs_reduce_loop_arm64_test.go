@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func absReduceModule(t testing.TB, lanes int, reverse, localStride bool, src, dst, rows, index, stride uint32) *wasm.Module {
+func absReduceModule(t testing.TB, lanes int, reverse, localStride, carry bool, src, dst, rows, index, stride uint32) *wasm.Module {
 	body := []byte{1, 9, 0x7f}
 	constant := func(x uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(x))...) }
 	for i, x := range []uint32{src, dst, rows, index, 0x87654321} {
@@ -19,7 +19,9 @@ func absReduceModule(t testing.TB, lanes int, reverse, localStride bool, src, ds
 	}
 	constant(stride)
 	body = append(body, 0x21, 8)
-	constant(123)
+	if carry {
+		constant(123)
+	}
 	body = append(body, 0x03, 0x40)
 	for i := 0; i < lanes; i++ {
 		off := uint32(i * 4)
@@ -48,6 +50,9 @@ func absReduceModule(t testing.TB, lanes int, reverse, localStride bool, src, ds
 	body = append(body, 0x6a, 0x21, 3, 0x20, 2)
 	constant(0xffffffff)
 	body = append(body, 0x6a, 0x22, 2, 0x0d, 0, 0x0b)
+	if !carry {
+		constant(123)
+	}
 	for _, local := range []byte{2, 3, 4, 5, 6, 7} {
 		body = append(body, 0x20, local, 0x73)
 	}
@@ -92,11 +97,13 @@ func TestAbsReduceIndependentOverflowAndFallback(t *testing.T) {
 								}
 							}
 							want := uint32(123) ^ remaining ^ index ^ acc ^ lastA ^ lastB ^ sign
-							m := absReduceModule(t, lanes, reverse, localStride, src, dst, rows, layout[2], stride)
-							for _, enabled := range []bool{false, true} {
-								got, mem, err, _ := runFloatMapMemory(t, m, enabled, initial)
-								if (err != nil) != trapped || !trapped && got != want || !bytes.Equal(mem, initial) {
-									t.Fatalf("lanes%d reverse%t local%t rows%d stride%x src%x dst%x index%x enabled%t: got%x/%v want%x trapped%t", lanes, reverse, localStride, rows, stride, src, dst, layout[2], enabled, got, err, want, trapped)
+							for _, carry := range []bool{false, true} {
+								m := absReduceModule(t, lanes, reverse, localStride, carry, src, dst, rows, layout[2], stride)
+								for _, enabled := range []bool{false, true} {
+									got, mem, err, _ := runFloatMapMemory(t, m, enabled, initial)
+									if (err != nil) != trapped || !trapped && got != want || !bytes.Equal(mem, initial) {
+										t.Fatalf("lanes%d reverse%t local%t rows%d stride%x src%x dst%x index%x enabled%t: got%x/%v want%x trapped%t carry%t", lanes, reverse, localStride, rows, stride, src, dst, layout[2], enabled, got, err, want, trapped, carry)
+									}
 								}
 							}
 						}
@@ -111,11 +118,14 @@ func TestAbsReduceAdmission(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	for _, enabled := range []bool{false, true} {
 		var stats ModuleStats
-		cm, err := CompileModuleWith(absReduceModule(t, 8, true, true, 0, 4096, 8, 0, 192), CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
+		cm, err := CompileModuleWith(absReduceModule(t, 8, true, true, false, 0, 4096, 8, 0, 192), CompileOptions{Stats: &stats, Optimizations: map[string]bool{"dot-loop-vector": enabled}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		cm.CodeImage.Close()
+		if hits := stats.Funcs[0].Peephole["abs-reduce-vector-exit"]; (hits == 1) != (enabled && absReduceVectorExitEnabled) {
+			t.Fatalf("enabled=%t vector exit admissions=%d", enabled, hits)
+		}
 		hits := stats.Funcs[0].Peephole["abs-reduce-loop-vector"]
 		if enabled && hits != 1 || !enabled && hits != 0 {
 			t.Fatalf("enabled%t admissions%d", enabled, hits)
@@ -124,7 +134,7 @@ func TestAbsReduceAdmission(t *testing.T) {
 }
 
 func TestAbsReduceDeclinesWhenAccumulatorDoesNotFit(t *testing.T) {
-	m := absReduceModule(t, 8, true, true, 0, 4096, 8, 0, 192)
+	m := absReduceModule(t, 8, true, true, true, 0, 4096, 8, 0, 192)
 	body := m.Code[0].BodyBytes
 	header := bytes.Index(body, []byte{0x03, 0x40})
 	if header < 0 {
