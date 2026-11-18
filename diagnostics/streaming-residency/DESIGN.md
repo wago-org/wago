@@ -461,3 +461,42 @@ Production 145-input runtime and performance qualification for this revision
 are pending. Earlier PGO measurements apply only to db4f2dc7 with streaming
 flags OFF, not this source checkpoint. All prior target failures remain;
 no speedup, RSS improvement, promotion or PR is claimed.
+
+### Quality-preservation outcome (68cea43b, source unchanged)
+
+All 145 production runtime oracles passed. Actual streaming selection fell
+from 575 to 572 functions: three functions retained the established dense
+legacy policy, representing 0.776% of historical compilation cost, not a
+measured saving. Their preserved function bytes matched; this is not a claim
+of whole-module metadata identity. Diagnostics observed 5,398 minimum-bound
+queries visiting 8,900 nodes, 623 successful omissions and 122 RORX emissions.
+
+The preregistered fixed 15-case long-only execution screen verified all 540
+records across nine paired trials. It reused the preceding operation counts:
+seven stateless batch regimes and eight cap-limited fresh/vector regimes,
+without recalibration. Same-binary OFF retained the prior thirteen streaming
+policies; ON added dense preservation, RORX and minimum bounds. The metadata
+reuse and hint-funnel flags were OFF. This was not full-suite execution
+qualification. Original-eight mean workload ON/main ratio was 1.01994
+(95% CI [1.00779, 1.06918]); the overlapping new-admission top-eight ratio
+was 1.14747 [1.12581, 1.18996]. Per-case and zero-selected controls failed;
+only dr_wav and fast_float passed the strict combined control/execution gate.
+
+Adverse evidence remains material: Monocypher's A/A control passed, while
+ON/main was 1.05806 [1.05614, 1.49010] and ON/OFF was 1.02214
+[1.01810, 1.44466]. The batch therefore does not meet the 5% execution guard;
+favorable individual points cannot justify promotion.
+
+The separately preregistered full 145-input cold screen verified 2,900 records.
+Arithmetic means of workload-median first-Compile times were 741.047 / 738.132 /
+751.181 / 764.990 microseconds for main A / main B / OFF / ON. ON/main was
+1.03434 [0.97237, 1.08046]; ON/OFF was 1.01838 [0.89804, 1.08459]. Main A/B
+was 1.00395 [0.95988, 1.08731], failing the confidence-interval control gate.
+Intervals used 5,000 paired within-workload trial resamples, not workload
+resampling. No qualified latency improvement or 40% reduction is established.
+
+All 435 separate fixed-slot, full-feature memory records verified. Absolute
+compiled-barrier mean VmHWM was 11.988631 / 12.113093 / 12.115113 MiB for
+main / OFF / ON. There is no RSS gain and the 5 MiB target remains unmet.
+The measured source stayed unchanged throughout; no targets are met and no
+PR or promotion is proposed.
