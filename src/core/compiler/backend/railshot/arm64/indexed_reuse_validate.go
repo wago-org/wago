@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
+//go:build arm64
+
 package arm64
 
 import (
