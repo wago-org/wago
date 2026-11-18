@@ -234,7 +234,8 @@ func (f *fn) trapSite(branch int) trapSite {
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.recordProfileTrap(branch)
 	}
-	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+	function, pc := f.gcBodySourcePC()
+	return trapSite{branch: compactTrapBranch(branch), function: function, pc: pc}
 }
 
 func compactTrapBranch(branch int) uint32 {

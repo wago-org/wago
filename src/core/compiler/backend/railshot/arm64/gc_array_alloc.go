@@ -82,7 +82,8 @@ func (f *fn) arrayAllocationShortcut(helper, typeIndex uint32, argSlot int) int 
 	f.st32(X16, 0, X17)
 	f.st32(X16, 4, X3)
 	f.st32(X16, 8, X2)
-	f.a.MovImm32(X17, int32(gc.FlagPointerFree))
+	headerFlags := uint32(gc.FlagPointerFree | gc.FlagTypeFastValid | gc.FlagTypeArray | gc.FlagTypeFinal)
+	f.a.MovImm32(X17, int32(headerFlags))
 	f.st32(X16, 12, X17)
 	f.a.AddImm64(X16, X16, gc.PayloadOffset)
 	if helper == gcArrayAllocUniform {

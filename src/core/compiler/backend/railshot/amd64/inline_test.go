@@ -104,6 +104,147 @@ func TestAnalyzeInlineCandidatesMixedMemory64Memarg(t *testing.T) {
 	}
 }
 
+func TestTinyLeafInlineGeneralRegisterABISignaturesAMD64(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		params []wasm.ValType
+		result []wasm.ValType
+		body   []byte
+		args   []byte
+		want   uint64
+	}{
+		{
+			name:   "float-absolute",
+			params: []wasm.ValType{wasm.F32},
+			result: []wasm.ValType{wasm.F32},
+			body:   []byte{0x00, 0x20, 0x00, 0x8b, 0x0b},
+			args:   []byte{0x43, 0, 0, 0x80, 0x3f},
+			want:   f32b(1),
+		},
+		{
+			name:   "integer-add",
+			params: []wasm.ValType{wasm.I64, wasm.I64},
+			result: []wasm.ValType{wasm.I64},
+			body:   []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x7c, 0x0b},
+			args:   []byte{0x42, 20, 0x42, 22},
+			want:   42,
+		},
+		{
+			name: "two-parameter-reference",
+			params: []wasm.ValType{
+				wasm.AnyRef,
+				wasm.I32,
+			},
+			result: []wasm.ValType{wasm.AnyRef},
+			body:   []byte{0x00, 0x20, 0x00, 0x0b},
+			args:   []byte{0xd0, 0x6e, 0x41, 0},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := append([]byte{0x00}, tc.args...)
+			caller = append(caller, 0x10, 0x01, 0x0b)
+			m := modFuncs(t,
+				funcDef{results: tc.result, body: caller},
+				funcDef{params: tc.params, results: tc.result, body: tc.body},
+			)
+			stats := compileWithStats(t, m, false)
+			if got := stats.Funcs[0].Calls[callKindInline]; got != 1 {
+				t.Fatalf("tiny leaf inline calls = %d, want 1 (calls=%v)", got, stats.Funcs[0].Calls)
+			}
+			if got := runAmd64u(t, m); got != tc.want {
+				t.Fatalf("tiny leaf result = %#x, want %#x", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTinyLeafInlineInstructionBudgetAMD64(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want int
+	}{
+		{name: "five", body: []byte{0x00, 0x01, 0x01, 0x01, 0x01, 0x20, 0x00, 0x0b}, want: 1},
+		{name: "six", body: []byte{0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x20, 0x00, 0x0b}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := modFuncs(t,
+				funcDef{results: []wasm.ValType{wasm.F32}, body: []byte{0x00, 0x43, 0, 0, 0x80, 0x3f, 0x10, 0x01, 0x0b}},
+				funcDef{params: []wasm.ValType{wasm.F32}, results: []wasm.ValType{wasm.F32}, body: tc.body},
+			)
+			stats := compileWithStats(t, m, false)
+			if got := stats.Funcs[0].Calls[callKindInline]; got != tc.want {
+				t.Fatalf("tiny leaf inline calls = %d, want %d (calls=%v)", got, tc.want, stats.Funcs[0].Calls)
+			}
+		})
+	}
+}
+
+func TestTinyLeafInlineGeneralEffectsAMD64(t *testing.T) {
+	requireCompilerDiagnostics(t)
+	for _, tc := range []struct {
+		name     string
+		sections [][]byte
+		body     []byte
+	}{
+		{
+			name: "global-read",
+			sections: [][]byte{
+				wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.F32, false, []byte{0x43, 0, 0, 0x80, 0x3f, 0x0b}))),
+			},
+			body: []byte{0x23, 0x00, 0x0b},
+		},
+		{
+			name: "memory-read",
+			sections: [][]byte{
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+			},
+			body: []byte{0x41, 0x00, 0x2a, 0x02, 0x00, 0x0b},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sections := [][]byte{
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+			}
+			sections = append(sections, tc.sections...)
+			sections = append(sections,
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(
+					wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+					wasmtest.Code(tc.body),
+				)),
+			)
+			m, err := wasm.DecodeModule(wasmtest.Module(sections...))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatal(err)
+			}
+			for _, compact := range []bool{false, true} {
+				name := "ordinary"
+				if compact {
+					name = "compact"
+				}
+				t.Run(name, func(t *testing.T) {
+					var stats ModuleStats
+					cm, err := CompileModuleWith(m, CompileOptions{CompactNative: compact, Stats: &stats, Workers: 1})
+					if cm != nil && cm.CodeImage != nil {
+						defer cm.CodeImage.Close()
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := stats.Funcs[0].Calls[callKindInline]; got != 1 {
+						t.Fatalf("tiny effect leaf inline calls = %d, want 1 (calls=%v)", got, stats.Funcs[0].Calls)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestInlineExecOneLevelRecursiveAMD64(t *testing.T) {
 	savedInline, savedRecursive := inlineEnabled, recursiveInlineEnabled
 	inlineEnabled, recursiveInlineEnabled = true, true

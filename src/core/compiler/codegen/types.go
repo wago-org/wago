@@ -70,8 +70,21 @@ var GCRefLayout = RefLayout{
 	ObjectTagValue: 0,
 }
 
+// GCBodyView certifies compiler-only constructor and source-position metadata.
+type GCBodyView struct {
+	BodyProof    GCBodyProof
+	Constructors map[uint32]GCDeadConstructor
+	Origins      []GCBodyOrigin
+}
+type GCDeadConstructor struct{ Type, Sink uint32 }
+type GCBodyOrigin struct {
+	NewPC, OldFunction, OldPC uint32
+	Linear                    bool
+}
+
 // ModuleInfo is the heap-relevant module metadata passed to HeapABI.
 type ModuleInfo struct {
+	GCBodyViews   map[uint32]GCBodyView
 	Features      Features
 	GCTypeDescs   []gc.TypeDesc
 	GCTypeLayouts []GCTypeLayout
@@ -94,6 +107,9 @@ type GCTypeLayout struct {
 	NativeAlloc bool
 	DirectCast  bool
 	DirectLen   bool
+	// SubtypeInterval packs DFS pre in the high word and post in the low word.
+	// Native code may use it only after proving an identity type-map snapshot.
+	SubtypeInterval uint64
 }
 
 // GCFieldLayout is the precomputed payload layout and initializer-slot shape

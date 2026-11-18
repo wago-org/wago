@@ -84,7 +84,7 @@ func TestEightGPReferenceAndCrossTailRemainGated(t *testing.T) {
 		t.Fatal("eight-GP typed-reference tail must remain gated")
 	}
 	ft.Results = []wasm.ValType{wasm.FuncRef}
-	if sigFitsReferenceResultRegABI(ft) {
+	if sigFitsReferenceResultRegABI(ft, nil) {
 		t.Fatal("eight-GP reference-result tail must remain gated")
 	}
 }

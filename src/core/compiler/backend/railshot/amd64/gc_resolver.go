@@ -18,6 +18,10 @@ type gcResolvedObject struct {
 	typeIndex     uint32
 	requiredBytes uint32
 	reg           Reg
+	spill         bool
+	spillSlot     int
+	previousFloor int
+	inputTop      bool
 }
 
 // prepareGCResolvedObject is the central invalidation gate. Apart from proven
@@ -28,6 +32,9 @@ type gcResolvedObject struct {
 func (f *fn) prepareGCResolvedObject(op byte) {
 	if !f.gcResolved.valid {
 		return
+	}
+	if f.gcResolved.inputTop && op != 0xfb {
+		f.gcResolved.inputTop = false
 	}
 	if f.gcPureIfEndPC != 0 && f.wasmPC > f.gcPureIfEndPC {
 		f.gcPureIfEndPC = 0
@@ -51,6 +58,9 @@ func (f *fn) prepareGCResolvedFB(sub uint32) {
 	if !f.gcResolved.valid {
 		return
 	}
+	if f.gcResolved.inputTop && sub != 2 && sub != 3 && sub != 4 {
+		f.gcResolved.inputTop = false
+	}
 	switch sub {
 	case 2, 3, 4, 5, 11, 12, 13, 14, 15:
 		return
@@ -64,8 +74,52 @@ func (f *fn) invalidateGCResolvedObject() {
 	if !f.gcResolved.valid {
 		return
 	}
-	f.pinned = f.pinned.remove(f.gcResolved.reg)
+	if f.gcResolved.spill {
+		end := f.gcResolved.spillSlot + 1
+		if f.spillFloor != end {
+			panic("amd64: GC resolved-address spill invalidated under another spill-floor owner")
+		}
+		f.spillFloor = f.gcResolved.previousFloor
+	} else {
+		f.pinned = f.pinned.remove(f.gcResolved.reg)
+	}
 	f.gcResolved = gcResolvedObject{}
+}
+
+// cacheGCResolvedObjectInSpill retains a raw address in one compiler-frame
+// slot when register pressure blocks the preferred register certificate. The
+// caller supplies the floor that preceded its temporary operand staging so
+// invalidation can release the complete reservation.
+func (f *fn) cacheGCResolvedObjectInSpill(local int, typeIndex, requiredBytes uint32, obj Reg, previousFloor int) {
+	slot := f.allocSpillSlot()
+	f.a.Store64(RSP, f.spillOff(slot), obj)
+	f.spillFloor = slot + 1
+	f.gcResolved = gcResolvedObject{
+		valid:         true,
+		local:         local,
+		typeIndex:     typeIndex,
+		requiredBytes: requiredBytes,
+		reg:           regNone,
+		spill:         true,
+		spillSlot:     slot,
+		previousFloor: previousFloor,
+	}
+}
+
+// materializeGCResolvedObject returns the cached raw address for one field
+// access. Spill-backed certificates borrow and pin a temporary register only
+// for that access; the frame slot remains the certificate owner.
+func (f *fn) materializeGCResolvedObject() (Reg, func()) {
+	if !f.gcResolved.spill {
+		return f.gcResolved.reg, func() {}
+	}
+	r := f.allocReg(0)
+	f.a.Load64(r, RSP, f.spillOff(f.gcResolved.spillSlot))
+	f.pinned = f.pinned.add(r)
+	return r, func() {
+		f.pinned = f.pinned.remove(r)
+		f.release(r)
+	}
 }
 
 func (f *fn) gcResolvedRegister() Reg {
@@ -78,8 +132,8 @@ func (f *fn) gcResolvedRegister() Reg {
 	return regNone
 }
 
-// Only borrowed local reads identify the current local value. An owned
-// register is a snapshot that can survive assignment to its source local.
+// Borrowed reads and owned snapshots can identify the current local value.
+// Assignment must clear the marker on outstanding owned snapshots.
 func gcLocalProvenance(e *elem) (int, bool) {
 	if e == nil || !e.isValue() {
 		return 0, false
@@ -87,6 +141,13 @@ func gcLocalProvenance(e *elem) (int, bool) {
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
 		return e.st.index(), true
+	case stReg:
+		// Materializing a local or a proved identity cast keeps the exact value
+		// but turns its storage into an owned register. slot=local+1 is the
+		// explicit provenance marker; ordinary computed registers keep slot zero.
+		if e.st.slot != 0 {
+			return int(e.st.slot - 1), true
+		}
 	}
 	return 0, false
 }
@@ -100,6 +161,23 @@ func markGCLocalProvenance(e *elem, local int) {
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 	if f.gcResolved.valid && f.gcResolved.local == local {
 		f.invalidateGCResolvedObject()
+	}
+	if !f.gcStructHelpers {
+		return
+	}
+	// Collector references use i64 storage. Numeric locals of another width
+	// cannot own an object-address certificate.
+	if uint(local) < uint(len(f.localType)) && f.localType[local] != mtI64 {
+		return
+	}
+	// Owned values retain the old value after assignment, but no longer name
+	// the current local. Clear their identity even without a cached address or
+	// a pending borrowed local read. The register-owner table has fixed size.
+	marker := uint32(local + 1)
+	for _, e := range f.regUser[:] {
+		if e != nil && e.st.kind == stReg && e.st.slot == marker {
+			e.st.slot = 0
+		}
 	}
 }
 

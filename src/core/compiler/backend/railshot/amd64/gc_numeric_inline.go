@@ -11,10 +11,12 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Exact root masks describe the original source calls. A straight-line integer
-// leaf adds no safepoint, reference local, or call of its own, so its one source
-// mask can be consumed without recording a native call. Filter the existing
-// candidate table to retain its size, signature and optimization policy limits.
+// Exact root masks describe the original source calls. A straight-line leaf
+// that cannot allocate adds no safepoint of its own, so its source-call mask can
+// be consumed without recording a native call. The normal inline classifier has
+// already bounded body size, control flow and locals. This root-plan filter also
+// rejects memory, global and allocating operations without adding another
+// per-function side table.
 func restrictGCNumericInlineTargets(m *wasm.Module, targets *inlineTargetTable) {
 	if targets.empty() {
 		return
@@ -22,10 +24,48 @@ func restrictGCNumericInlineTargets(m *wasm.Module, targets *inlineTargetTable) 
 	for i := range targets.data.targets {
 		t := &targets.data.targets[i]
 		local := t.globalIdx - targets.first
-		if !gcNumericInlineLeaf(m, local) {
+		if !gcNumericInlineLeaf(m, local) && !gcRootSafeTinyLeaf(m, local, t) {
 			targets.data.slots[local] |= inlineTargetInvalid
 		}
 	}
+}
+
+func gcRootSafeTinyLeaf(m *wasm.Module, local int, target *inlineTarget) bool {
+	if target == nil || target.hasCtrl || target.touchesMem || len(target.body) > inlineTinyLeafMaxBodyBytes {
+		return false
+	}
+	ft, ok := m.LocalFuncType(local)
+	if !ok || !tinyLeafInlineSignature(ft) || len(m.Code[local].Locals.Runs) != 0 ||
+		int(target.localTypeEnd-target.typeStart) != len(ft.Params) {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	r := wasm.NewReader(target.body)
+	var imm wasm.InstructionImmediate
+	instructions := 0
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil || classifier.ClassifyInto(r, op, &imm) != nil {
+			return false
+		}
+		if op != 0x0b {
+			instructions++
+			if instructions > inlineTinyLeafMaxInstructions {
+				return false
+			}
+		}
+		if op == 0x23 || op == 0x24 {
+			return false
+		}
+		switch imm.Kind {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc, wasm.InstrStructNewDefaultDesc,
+			wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem,
+			wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCall,
+			wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+			return false
+		}
+	}
+	return true
 }
 
 func gcNumericInlineLeaf(m *wasm.Module, local int) bool {

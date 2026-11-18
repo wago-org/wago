@@ -56,6 +56,7 @@ const (
 
 // Bits 12 and 13 encode the floating-constant cache depth below.
 const ctrlInlineFallthrough ctrlFlags = 1 << 14
+const ctrlGCIfAllocationCast ctrlFlags = 1 << 15
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
@@ -1237,7 +1238,7 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.pinned = 0
 	// A straight-line GC address survives stack canonicalization. Its register
 	// remains owned by the cache until an effect or source assignment clears it.
-	if f.gcResolved.valid {
+	if f.gcResolved.valid && !f.gcResolved.spill {
 		f.pinned = f.pinned.add(f.gcResolved.reg)
 	}
 	f.fpinned = 0
@@ -1745,6 +1746,8 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr.set(ctrlGCIfAllocationCast, kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI64 &&
+		f.gcIfReferenceResult(signature) && f.provedGCIfAllocationCast(r))
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if f.straightLineBlock(r, kind, pN, rN, res0, signature) {

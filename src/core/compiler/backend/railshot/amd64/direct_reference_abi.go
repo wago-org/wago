@@ -14,12 +14,12 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 var directReferenceABIEnabled = true
 
 // directReferenceRegABI admits only ordinary local reference calls. Dynamic
-// calls retain wrapper bodies; tail and EH modules keep their existing
-// entry/return contracts. Wrapper adapters terminate native root scans, so only
+// calls and functions that own source tails retain wrapper bodies. EH modules
+// keep their existing entry/return contracts. Wrapper adapters terminate native root scans, so only
 // private direct-only targets may acquire a new internal entry. A reference pair
 // needs a separate result-capture proof.
 func (f *fn) directReferenceRegABI(localIdx int, ft *wasm.CompType) bool {
-	if !f.opt(optDirectReferenceABI) || f.stagedTailDescriptors || f.moduleEH ||
+	if !f.opt(optDirectReferenceABI) || f.moduleEH ||
 		localIdx < 0 || localIdx >= len(f.referenceWrapperTargets) || f.referenceWrapperTargets[localIdx] ||
 		!sigFitsDirectReferenceRegABI(ft) {
 		return false
@@ -48,7 +48,7 @@ func directReferenceHostAdapters(m *wasm.Module, hints []funcHints, policy Codeg
 	emitted := wrappers
 	copied := false
 	for i, reachable := range wrappers {
-		if reachable || hints[i].flags.has(hintHasTailCall|hintModuleEH) {
+		if reachable || hints[i].flags.has(hintModuleEH) {
 			continue
 		}
 		ft, ok := m.LocalFuncType(i)

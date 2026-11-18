@@ -50,7 +50,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		if !d.HasRefs {
 			flags |= FlagPointerFree
 		}
-		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+		c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags | ObjectTypeFlags(d)})
 		c.stats.Allocations++
 
 		c.refreshNativeView()
@@ -169,7 +169,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if sp == spaceLarge {
 		flags |= FlagLarge
 	}
-	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
+	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags | ObjectTypeFlags(d)})
 	c.stats.Allocations++
 
 	if sp == spaceNursery {
@@ -223,11 +223,6 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 		*c.checkedHandles = append(*c.checkedHandles, 1)
 	}
 	c.mark = append(c.mark, false)
-	// The handle is unpublished until the profile-specific post-allocation path.
-	// Tiny overwrites this byte with its current-epoch gray/black state; keeping
-	// the shared Throughput handle-growth path at a zero append avoids irrelevant
-	// epoch encoding work.
-	c.tinyGC.color = append(c.tinyGC.color, 0)
 	h := uint32(len(c.handles) - 1)
 	c.noteMajorHandle(h)
 	return h
