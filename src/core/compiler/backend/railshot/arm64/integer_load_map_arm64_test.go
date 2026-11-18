@@ -515,7 +515,7 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 		src, dst, start, trips, bias int32
 		compound                     bool
 	}{
-		{64, 8192, 0, 64, 0, false}, {64, 8192, 20, 67, -17, false}, {64, 8192, 20, 64, -27, false},
+		{64, 8192, 0, 64, 0, false}, {64, 8192, 0, 67, 0, false}, {64, 8192, 20, 67, -17, false}, {64, 8192, 20, 64, -27, false},
 		{64, 68, 0, 64, 3, false}, {64, 65532, 0, 64, 3, false}, {65532, 8192, 0, 64, 3, false},
 		{64, 8192, 20, 64, -27, true}, {64, 8192, 20, 67, -27, true},
 	} {
@@ -533,8 +533,11 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 			// Save 3*counter - 2*sourceBase + bias.
 			body = append(body, 0x41, 3, 0x6c, 0x20, 0, 0x41, 1, 0x74, 0x6b)
 		}
-		constant(tc.bias)
-		body = append(body, 0x6a, 0x21, 3,
+		if tc.bias != 0 {
+			constant(tc.bias)
+			body = append(body, 0x6a)
+		}
+		body = append(body, 0x21, 3,
 			0x20, 1, 0x20, 2, 0x6a,
 			0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0, 0x36, 2, 0,
 			0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
@@ -550,6 +553,12 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 			}
 			if diagnosticsEnabled && (hits != 0) != enabled {
 				t.Fatalf("enabled=%v case=%+v: affine exit emitted %d times", enabled, tc, hits)
+			}
+			if diagnosticsEnabled && !enabled && tc.bias == 0 {
+				_, _, _, vectors := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+				if vectors == 0 {
+					t.Fatalf("case=%+v: disabling affine exit also disabled vectorization", tc)
+				}
 			}
 		}
 	}
