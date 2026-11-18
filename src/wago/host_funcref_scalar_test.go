@@ -427,7 +427,12 @@ func hostFuncRefNumericReferenceModule() []byte {
 }
 
 func TestHostFuncRefNumericRetainedReference(t *testing.T) {
-	rt := NewRuntime()
+	runRetainedNumericHostReference(t)
+}
+
+func runRetainedNumericHostReference(t *testing.T, options ...RuntimeOption) {
+	t.Helper()
+	rt := NewRuntime(options...)
 	defer rt.Close()
 	owner, err := rt.NewHostFuncRef(func(v int32) int32 { return v + 1 }, FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}})
 	if err != nil {

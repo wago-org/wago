@@ -420,10 +420,14 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		// invocation gate serializes the instance scope just like an ordinary call.
 		invocation.callbackScope = &state.hostScope
 	}
-	if active == root && a.localNativeMu() != nil {
+	// ARM64/AMD64 foreign host descriptors execute under the public root's
+	// lease. The producer's independent flag does not prove its mutex is held.
+	// RV64 retained native contexts can instead own a producer-local lease.
+	rootLocalLease := active == root || !railshotNativeContextTrapABI()
+	if rootLocalLease && a.localNativeMu() != nil {
 		localMu = a.localNativeMu()
 		localVersion = state.nativeContextVersion.Load()
-	} else if active.usesIndependentExecution() {
+	} else if railshotNativeContextTrapABI() && active.usesIndependentExecution() {
 		localMu = active.independentNativeExecutionMu()
 		localVersion = state.nativeContextVersion.Load()
 	}
@@ -475,7 +479,7 @@ func (a *hostLoopActivation) dispatchActive(active *Instance, ctrl uintptr, impo
 		}
 		migrated := false
 		if localMu != nil {
-			if active == root {
+			if rootLocalLease {
 				migrated = reacquireRootNative(root, localMu)
 				if migrated && a.preparedMigration != nil {
 					a.preparedMigration.Store(true)
