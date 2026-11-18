@@ -1,0 +1,204 @@
+{
+  "source_base": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd",
+  "scope": {
+    "profile_symbols": 414,
+    "moved_symbols": 413,
+    "moved_declarations": 404,
+    "groups": 16,
+    "packages": 8,
+    "generic_declarations": [
+      "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared:ResolveRegMoves",
+      "github.com/wago-org/wago/src/core/compiler/wasm:readVec",
+      "github.com/wago-org/wago/src/core/compiler/wasm:reserveMetadataStorage"
+    ],
+    "closure_declarations": 38,
+    "enclosed_closures": 55,
+    "excluded": [
+      {
+        "reason": "file-context generate/line/export directive requires separate proof",
+        "symbol": "github.com/wago-org/wago/src/core/compiler/wasm.(*Module).importCount"
+      }
+    ]
+  },
+  "ordering": "Compatibility-grouped profile order: descending aggregate FLAT CPU then smallest exact symbol within each deterministic compatible group; group files ordered by first appearance in sorted stream. Not strict global package rank. Neutral identical group membership, original filename/offset within groups, groups ordered by first original member.",
+  "frozen_variants": {
+    "hot": {
+      "head": "14bb2dab7467619d700658fdf31a79247c9c2ba9",
+      "tree": "1c00e69e154eec1845b8819bd2919e1bb5e1e0e0"
+    },
+    "neutral": {
+      "head": "b9d2a6edfe49b56157bdcec5d0a982d3d4c8a3fa",
+      "tree": "e84db1c42e7849748c99ba4508cd07da5d585e7e"
+    }
+  },
+  "original_artifact_hashes": {
+    "frozen-414.json": "f7c8849a6f8255c735056c802254140caeae758bef62fcc59461bbbfc9f2e39f",
+    "generate.go": "c0f547b4a143cae83131d14779f817f8f7edab9554691042a31ded12f89fd744",
+    "feasibility.json": "67885e30d3f91b0d38dcfaac0025754ec448b58a041db575c6537ca0e8e8e735",
+    "hot-manifest.json": "6b4b0a47e38494dd51c65eecc77641c89c79e9ab1a6e5d2447b035817543b5a7",
+    "neutral-manifest.json": "86bfde406d3cf7e2559a8055400febafc0940d725745c670f173c42f38e7694a"
+  },
+  "binding_audit": {
+    "original_freeze_sha256": "dd626cb106fb90d7a5bb4cce3ca4f87417aa812b5332f21a4fb079aef0c05a7f",
+    "binding_audit_source_sha256": "c67c4c6e566475c9815cb03d4b4056f5ad3db60988b8bf734066452b8b867da2",
+    "binding_audit_result_sha256": "07bf8ea69fd169eab0f20f080b545bddd4698e9029b9ebd432aa59d0f2b482c9",
+    "checked_both_arms": 808,
+    "potential_hits": 12,
+    "discharges": [
+      {
+        "arm": "hot",
+        "key": "inspectRegionLoop",
+        "struct_type": "regionLoopNode",
+        "lines": [
+          220,
+          226,
+          236
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "92a9a7bfc2afb259f3679667d2a32e42cbc5b565c6df029b3c0147e7d88ae649"
+      },
+      {
+        "arm": "hot",
+        "key": "inspectIntegerReductionLoop",
+        "struct_type": "integerReductionNode",
+        "lines": [
+          124,
+          130
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "b6d44f7d76e802707dec1bb006c8f48b377b99753dbdb603e66a2f808d4c031a"
+      },
+      {
+        "arm": "hot",
+        "key": "fn.preloadFloatConst",
+        "struct_type": "floatConstReg",
+        "lines": [
+          291
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "79863a879f5282b0f1026a75dbb6d653f4dd01b19ca006834c0d74269de01128"
+      },
+      {
+        "arm": "neutral",
+        "key": "fn.preloadFloatConst",
+        "struct_type": "floatConstReg",
+        "lines": [
+          291
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "79863a879f5282b0f1026a75dbb6d653f4dd01b19ca006834c0d74269de01128"
+      },
+      {
+        "arm": "neutral",
+        "key": "inspectIntegerReductionLoop",
+        "struct_type": "integerReductionNode",
+        "lines": [
+          124,
+          130
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "b6d44f7d76e802707dec1bb006c8f48b377b99753dbdb603e66a2f808d4c031a"
+      },
+      {
+        "arm": "neutral",
+        "key": "inspectRegionLoop",
+        "struct_type": "regionLoopNode",
+        "lines": [
+          220,
+          226,
+          236
+        ],
+        "reason": "bits is a named struct-literal field key, resolved in struct field namespace; not a package-level/import variable expression",
+        "source_sha256": "92a9a7bfc2afb259f3679667d2a32e42cbc5b565c6df029b3c0147e7d88ae649"
+      }
+    ],
+    "undischarged_hits": 0,
+    "final_selected_noinline_directives": 7
+  },
+  "resolver": {
+    "go_binary_sha256": "30969f97169d7f43fe6a085873d75613adc21e30818a8c61d95bd27275df4624",
+    "go_version": "go1.27.1",
+    "goroot_VERSION": "go1.27.1\ntime 2026-08-28T16:20:06Z\n",
+    "module_graph_sha256": "c0fe60a6f30a7c9f2420eb0b9213113c75ac319604e509a1e326b9985dac28e4",
+    "resolved_import_names": {
+      "bytes": "bytes",
+      "context": "context",
+      "crypto/rand": "rand",
+      "crypto/sha256": "sha256",
+      "encoding/binary": "binary",
+      "encoding/hex": "hex",
+      "encoding/json": "json",
+      "errors": "errors",
+      "fmt": "fmt",
+      "github.com/wago-org/wago/internal/functionworkers": "functionworkers",
+      "github.com/wago-org/wago/internal/jitprofile": "jitprofile",
+      "github.com/wago-org/wago/internal/jsonstrict": "jsonstrict",
+      "github.com/wago-org/wago/internal/namecheck": "namecheck",
+      "github.com/wago-org/wago/internal/regalloccheck": "regalloccheck",
+      "github.com/wago-org/wago/internal/runtimebridge": "runtimebridge",
+      "github.com/wago-org/wago/internal/wagopaths": "wagopaths",
+      "github.com/wago-org/wago/src/core/codeimage": "codeimage",
+      "github.com/wago-org/wago/src/core/compiler/backend/railshot": "railshot",
+      "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared": "shared",
+      "github.com/wago-org/wago/src/core/compiler/codegen": "codegen",
+      "github.com/wago-org/wago/src/core/compiler/frontend": "frontend",
+      "github.com/wago-org/wago/src/core/compiler/optimization": "optimization",
+      "github.com/wago-org/wago/src/core/compiler/wasm": "wasm",
+      "github.com/wago-org/wago/src/core/encoder/amd64": "amd64",
+      "github.com/wago-org/wago/src/core/nativeabi": "nativeabi",
+      "github.com/wago-org/wago/src/core/runtime": "runtime",
+      "github.com/wago-org/wago/src/core/runtime/abi": "abi",
+      "github.com/wago-org/wago/src/core/runtime/gc/native": "gc",
+      "github.com/wago-org/wago/src/core/semver": "semver",
+      "io": "io",
+      "maps": "maps",
+      "math": "math",
+      "math/bits": "bits",
+      "os": "os",
+      "reflect": "reflect",
+      "runtime": "runtime",
+      "slices": "slices",
+      "sort": "sort",
+      "strconv": "strconv",
+      "strings": "strings",
+      "sync": "sync",
+      "sync/atomic": "atomic",
+      "syscall": "syscall",
+      "time": "time",
+      "unicode/utf8": "utf8",
+      "unsafe": "unsafe"
+    }
+  },
+  "resolver_clause_inputs_count": 1337,
+  "resolver_ignored_main_count": 13,
+  "api_parity": {
+    "source_before_after": {
+      "baseline": {
+        "head": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd",
+        "tree": "0e53a23ebd0eb1ae531d62ea16c0f1ed57dcd03e",
+        "status": ""
+      },
+      "hot": {
+        "head": "14bb2dab7467619d700658fdf31a79247c9c2ba9",
+        "tree": "1c00e69e154eec1845b8819bd2919e1bb5e1e0e0",
+        "status": ""
+      },
+      "neutral": {
+        "head": "b9d2a6edfe49b56157bdcec5d0a982d3d4c8a3fa",
+        "tree": "e84db1c42e7849748c99ba4508cd07da5d585e7e",
+        "status": ""
+      }
+    },
+    "native_and_serialized_equal_per_arm": 145,
+    "pristine_native_equal_per_arm": 145,
+    "host_callbacks_per_arm": 22,
+    "trap_recovery": true,
+    "PC_symbol_sanity": true,
+    "observer_exact_T_R": true,
+    "scope": "No production runtime performance claim; serialized fields exclude some private/debug fields"
+  },
+  "patch_sha256": {
+    "hot": "db1b91a740cfb32886f3727fe702c7b1a24e456ae54c8fda5682f804c964b35e",
+    "neutral": "6ddc9f8111cbeb25ad0b08862e26bf04696316bf7d8c9a40d6d8c51abc2850b9"
+  }
+}
