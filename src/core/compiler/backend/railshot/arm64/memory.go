@@ -1117,12 +1117,7 @@ func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
 
 // inLoop reports whether any enclosing control frame is a loop.
 func (f *fn) inLoop() bool {
-	for i := range f.ctrl {
-		if f.ctrl[i].kind == cfLoop {
-			return true
-		}
-	}
-	return false
+	return f.innermostLoop != 0
 }
 
 // boundsHoistable reports whether a check on address source (kind,idx) is
@@ -1213,8 +1208,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		aliasLocal = addrLocal
 	}
 	var group modularLoadGroup
-	if modularLoadGroupEnabled && f.boundsFacts && !f.guardMode && !f.memoryAddr64(0) &&
-		f.memSizeReg != regNone && size == 4 && off == 0 {
+	if size == 4 && off == 0 && modularLoadGroupEnabled && (f.modularBoundsLive || f.inLoop()) &&
+		f.boundsFacts && !f.guardMode && f.memSizeReg != regNone && !f.memoryAddr64(0) {
 		if local, displacement, ok := f.modularLoadAddress(f.s.back()); ok {
 			if f.modularLoadGroupCovers(local, displacement) {
 				group = modularLoadGroup{local: local, first: displacement, valid: true, covered: true}
