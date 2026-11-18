@@ -405,6 +405,7 @@ type fn struct {
 	boundsCerts       [8]boundsCert
 	boundsScanWork    uint32 // decoded straight-line bounds lookahead in this function
 	nextBoundsCert    uint8
+	modularBoundsLive bool // may remain true after source-specific invalidation
 	boundsCertsActive bool // may remain true after source-specific invalidation
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole

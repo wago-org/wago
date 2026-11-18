@@ -498,14 +498,14 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // eaOwned reports whether the caller must release ea. Passing guard=false
 // requires a full-access bounds proof even in a guard-page function.
 func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32, guard bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
-	ea, eaOwned, borrow, disp, _ = f.memAddrMode(off, size, aliasPinned, rangeExtent, guard, false)
+	ea, eaOwned, borrow, disp, _ = f.memAddrMode(off, size, aliasPinned, rangeExtent, guard, false, modularLoadGroup{})
 	return
 }
 
 // memAddrMode optionally leaves an otherwise noncanonical memory32 index in
 // its W-register form when the eventual load can encode UXTW itself.
 // Explicit bounds arithmetic still receives the canonical 64-bit value.
-func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int32, guard, allowUXTW bool) (ea Reg, eaOwned bool, borrow int, disp int32, uxtw bool) {
+func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int32, guard, allowUXTW bool, group modularLoadGroup) (ea Reg, eaOwned bool, borrow int, disp int32, uxtw bool) {
 	if !guard && f.boundsFacts && f.staticallyInBounds(off, size) {
 		guard = true
 		f.stats.peep("static-bounds-elide")
@@ -611,6 +611,20 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 			f.pinned = addressPins
 		}
 		return ea, eaOwned, borrow, disp, uxtw
+	}
+	if group.valid {
+		if f.modularLoadGroupCovers(group.local, group.first) {
+			f.stats.addBoundsElidable()
+			f.pinned = addressPins
+			return ea, eaOwned, borrow, disp, uxtw
+		}
+		if !group.covered {
+			f.checkModularLoadGroup(ea, group)
+			f.boundsCertUpdate(modularBoundsKind, group.local, int32(group.low)|int32(group.high)<<8)
+			f.modularBoundsLive = true
+			f.pinned = addressPins
+			return ea, eaOwned, borrow, disp, uxtw
+		}
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
 	// same-source check in this straight-line region already proved this access
@@ -1045,7 +1059,7 @@ func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
 		if kind == 0 {
 			*c = boundsCert{}
 		} else if c.kind == kind && c.idx == idx {
-			if extent > c.extent {
+			if kind == modularBoundsKind || extent > c.extent {
 				c.extent = extent
 			}
 		} else {
@@ -1059,7 +1073,7 @@ func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
 		if c.kind == kind && c.idx == idx {
-			if extent > c.extent {
+			if kind == modularBoundsKind || extent > c.extent {
 				c.extent = extent
 			}
 			return
@@ -1086,6 +1100,7 @@ func (f *fn) invalidateBoundsCert() {
 	}
 	f.nextBoundsCert = 0
 	f.boundsCertsActive = false
+	f.modularBoundsLive = false
 }
 
 // invalidateBoundsCertFor drops only the proof whose address source changed.
@@ -1095,7 +1110,7 @@ func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
 	}
 	for i := range f.boundsCerts {
 		c := &f.boundsCerts[i]
-		if c.kind == kind && c.idx == idx {
+		if c.idx == idx && (c.kind == kind || kind == 1 && c.kind == modularBoundsKind) {
 			*c = boundsCert{}
 		}
 	}
@@ -1198,7 +1213,18 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp, uxtw := f.memAddrMode(off, size, true, rangeExtent, f.guardMode, true)
+	var group modularLoadGroup
+	if modularLoadGroupEnabled && f.boundsFacts && !f.guardMode && !f.memoryAddr64(0) &&
+		f.memSizeReg != regNone && size == 4 && off == 0 {
+		if local, displacement, ok := f.modularLoadAddress(f.s.back()); ok {
+			if f.modularLoadGroupCovers(local, displacement) {
+				group = modularLoadGroup{local: local, first: displacement, valid: true, covered: true}
+			} else if displacement != 0 && f.inLoop() {
+				group = f.scanModularLoadGroup(r, local, displacement)
+			}
+		}
+	}
+	ea, eaOwned, borrow, disp, uxtw := f.memAddrMode(off, size, true, rangeExtent, f.guardMode, true, group)
 	if seedIndexedBase && borrow == addrLocal && disp >= 0 && disp%4 == 0 && disp/4 <= 4095 {
 		if uxtw {
 			f.a.AddExtUXTW(X16, linMemReg, ea)
