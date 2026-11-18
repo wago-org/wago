@@ -20,6 +20,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+var floatMemoryBorrowEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MEMORY_BORROW") != "1"
+
 var floatLiteralPoolEnabled = os.Getenv("WAGO_ARM64_NO_FCONST_POOL") != "1"
 
 type floatPoolConst struct {
@@ -74,6 +76,12 @@ type floatConstReg struct {
 	reg       Reg
 	loopDepth uint16
 }
+
+const (
+	maxPreloadedFloatConsts    = 5
+	extraFloatConstMinUses     = 9
+	extraFloatConstFreeReserve = 10
+)
 
 func (f *fn) fconstMask() regMask {
 	var m regMask
@@ -229,8 +237,11 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
 	if r, ok := f.floatConstReg(st); ok {
 		return r, true
 	}
-	if len(f.fconsts) >= 2 {
+	if len(f.fconsts) >= maxPreloadedFloatConsts {
 		return regNone, false
+	}
+	if f.fconsts == nil {
+		f.fconsts = f.fconstBacking[:0]
 	}
 	x := f.allocFReg(0)
 	f.loadFConst(x, st)
@@ -253,14 +264,9 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	// exceeds that cap, conservatively fall back to the old first-two policy rather
 	// than rank an incomplete set. Ties retain bytecode order, also preserving the
 	// old choice for functions whose constants are all used equally often.
-	var cand [32]struct {
-		typ  machineType
-		bits int64
-		n    int
-	}
+	var cand [32]floatConstCandidate
 	nCand := 0
 	r := wasm.NewReader(code)
-	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -282,7 +288,7 @@ func (f *fn) preloadFloatConsts(code []byte) {
 			}
 			typ, bits = mtF64, int64(v)
 		default:
-			if err := f.classifier.ClassifyInto(r, op, &imm); err != nil {
+			if err := f.classifier.SkipImmediate(r, op); err != nil {
 				return
 			}
 			continue
@@ -334,6 +340,12 @@ func (f *fn) preloadFloatConsts(code []byte) {
 	}
 	if bestN >= 2*firstN {
 		choice = best
+	} else if floatConstSlotRankingEnabled {
+		previous := choice
+		choice = rankSingleFloatConstReplacement(cand[:nCand], choice, best)
+		if choice != previous {
+			f.stats.peep("fp-cache-slot-ranking")
+		}
 	}
 	oldSuppress := f.suppressFloatLiteral
 	f.suppressFloatLiteral = true
@@ -341,6 +353,48 @@ func (f *fn) preloadFloatConsts(code []byte) {
 		if i >= 0 {
 			f.preloadFloatConst(storage{kind: stConst, typ: cand[i].typ, cval: cand[i].bits})
 		}
+	}
+	// Keep a few additional genuinely repeated constants when the FP register
+	// file has ample transient capacity. This is deliberately more selective
+	// than the first two entries: an extra immutable register must avoid enough
+	// materializations to justify reducing the operand pool for the whole
+	// function.
+	available := -1
+	for len(f.fconsts) < maxPreloadedFloatConsts && len(f.fconsts) < nCand {
+		bestExtra := -1
+		for i := 0; i < nCand; i++ {
+			if cand[i].n < extraFloatConstMinUses {
+				continue
+			}
+			selected := false
+			for _, c := range f.fconsts {
+				if c.typ == cand[i].typ && c.bits == cand[i].bits {
+					selected = true
+					break
+				}
+			}
+			if !selected && (bestExtra < 0 || cand[i].n > cand[bestExtra].n) {
+				bestExtra = i
+			}
+		}
+		if bestExtra < 0 {
+			break
+		}
+		if available < 0 {
+			available = 0
+			blocked := f.blockedFRegs(0)
+			for _, reg := range fpAllocRegs {
+				if !blocked.has(reg) && f.fregUser[reg] == nil {
+					available++
+				}
+			}
+		}
+		if available <= extraFloatConstFreeReserve {
+			break
+		}
+		f.preloadFloatConst(storage{kind: stConst, typ: cand[bestExtra].typ, cval: cand[bestExtra].bits})
+		available--
+		f.stats.peep("fp-cache-extra-repeated")
 	}
 	f.suppressFloatLiteral = oldSuppress
 }
@@ -977,7 +1031,11 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0, f.guardMode)
+	rangeExtent := int32(0)
+	if floatLoadSpanEnabled && f.localBase == 0 {
+		rangeExtent = f.loadRangeExtent(r, off, size)
+	}
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent, f.guardMode)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -995,7 +1053,18 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		size = 8
 	}
 	f.materializePendingTraps()
-	xmm := f.materializeF(f.popValue())
+	value := f.popValue()
+	var xmm Reg
+	owned := true
+	if f.opt(optFloatMemoryBorrow) {
+		xmm, owned = f.operandRegF(value)
+		if !owned {
+			f.stats.peep("float-store-borrow")
+		}
+	} else {
+		xmm = f.materializeF(value)
+	}
+	previousPins := f.fpinned
 	f.fpinned = f.fpinned.add(xmm)
 	if memoryIndex != 0 || f.threadedMemory0 {
 		f.materializePendingLoads()
@@ -1003,8 +1072,10 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		f.a.StrFIdx(base, ea, xmm, disp, f64)
 		f.release(base)
 		f.release(ea)
-		f.fpinned = f.fpinned.remove(xmm)
-		f.releaseF(xmm)
+		f.fpinned = previousPins
+		if owned {
+			f.releaseF(xmm)
+		}
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
@@ -1013,11 +1084,13 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
 	f.pinned = f.pinned.remove(ea)
-	f.fpinned = f.fpinned.remove(xmm)
+	f.fpinned = previousPins
 	if eaOwned {
 		f.release(ea)
 	}
-	f.releaseF(xmm)
+	if owned {
+		f.releaseF(xmm)
+	}
 	return nil
 }
 

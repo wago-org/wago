@@ -48,6 +48,11 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
 			}
 			return value
 		}
+		if !wide {
+			if maximum, ok := f.localAddressMaximum(e); ok {
+				return maximum
+			}
+		}
 		return limit
 	}
 	if e.elemKind() != ekDeferred {
@@ -60,6 +65,27 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
 		return limit
 	}
 	left, right := f.s.arg0(e), f.s.arg1(e)
+	// A constant-entry root loop may deliberately use a high unsigned counter
+	// which wraps only in the address expression (for example, a negative
+	// displacement counter walking a known positive memory span). Preserve its
+	// proved interval through a constant add when both endpoints wrap equally.
+	// This is narrower than generic modular range analysis and adds no retained
+	// expression facts.
+	if !wide && op == opAdd {
+		base, constant := left, right
+		if base != nil && base.elemKind() == ekValue && base.st.kind == stConst {
+			base, constant = right, left
+		}
+		if constant != nil && constant.elemKind() == ekValue && constant.st.kind == stConst {
+			if minimum, maximum, ok := f.rootLoopAddressRange(base); ok {
+				bias := uint64(uint32(constant.st.cval))
+				low, high := minimum+bias, maximum+bias
+				if low>>32 == high>>32 {
+					return uint64(uint32(high))
+				}
+			}
+		}
+	}
 	a := f.unsignedAddressMaximum(left, wide, budget)
 	b := f.unsignedAddressMaximum(right, wide, budget)
 	constant := uint64(0)

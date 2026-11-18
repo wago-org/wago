@@ -77,6 +77,10 @@ func (f *fn) inlineLocalNonzero(local int) bool {
 // selects and if assignments that bypass setLocal. Assignment versions are
 // monotone through control joins; writes in another arm conservatively kill reuse.
 func (f *fn) invalidateLocalWriteFacts(local int) {
+	if f.frameForwardLocalLive && f.frameForwardLocal == local {
+		f.frameForwardLocalLive = false
+	}
+	f.invalidatePrivateLocalConstant(local)
 	f.invalidateBoundsCertFor(1, uint32(local))
 	if f.inlineTailLoopFrame == 0 {
 		return

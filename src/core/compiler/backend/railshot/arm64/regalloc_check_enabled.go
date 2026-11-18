@@ -119,6 +119,14 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
 	}
 	c := &allocationRegion{values: make(map[*elem]regalloccheck.Value)}
 	f.allocationCheck = c
+	// The machine-code forwarding proof can retain a frame value in an
+	// otherwise unowned register. Register that proven alias at region entry,
+	// before any transfers are observed, so a forwarded reload has the same
+	// incoming identity as an actual frame load.
+	if source, ok := f.frameForwardSource(f.frameForwardOff); ok {
+		value := c.state.Seed(regalloccheck.Slot(f.frameForwardOff), 8)
+		c.state.Put(checkReg(source, false), value)
+	}
 	for _, e := range roots {
 		f.checkSeed(e)
 	}
@@ -445,9 +453,10 @@ func (f *fn) checkBeginRegMoves(moves []regMove, fp bool) func() {
 	}
 }
 
-// checkHostSyncHomes verifies the precondition for a future selective bridge.
-// It does not certify implicit context/global registers or narrow preservation.
-func (f *fn) checkHostSyncHomes() {
+// checkHostSyncHomes verifies that operands and every pin the selected bridge
+// clobbers have canonical homes. It does not certify implicit context/global
+// registers or the bridge's preservation contract itself.
+func (f *fn) checkHostSyncHomes(gpClobbers, fpClobbers regMask) {
 	slot := 0
 	for _, root := range f.rootsBottomToTop() {
 		if root.elemKind() != ekValue || root.st.kind != stSlot || root.st.slotIndex() != slot {
@@ -457,7 +466,12 @@ func (f *fn) checkHostSyncHomes() {
 	}
 	if f.usesCalls {
 		for i, local := range f.locals {
-			if local.reg != regNone && local.state == lsReg {
+			if local.reg == regNone || local.state != lsReg {
+				continue
+			}
+			clobbered := local.isFloat && fpClobbers.has(local.reg) ||
+				!local.isFloat && gpClobbers.has(local.reg)
+			if clobbered {
 				panic(fmt.Sprintf("regalloccheck: host sync dirty pinned local %d", i))
 			}
 		}

@@ -502,7 +502,10 @@ func (f *fn) preloadV128Consts(code []byte) {
 }
 
 func (f *fn) v128Const(lo, hi uint64) {
-	f.pushVReg(f.v128ConstReg(lo, hi))
+	e := f.pushVReg(f.v128ConstReg(lo, hi))
+	if f.opt(optValueFacts) && (lo|hi)&0xf0f0f0f0f0f0f0f0 == 0 {
+		e.st.setValueFacts(factBytesBelow16)
+	}
 }
 
 func (f *fn) v128UnaryNot() {
@@ -618,17 +621,18 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
 			continue
 		}
+		facts := e.st.valueFacts()
 		if immediateSIMD {
 			// The following SIMD opcode consumes this top-of-stack read before
 			// the older tee value can be released. Model it as a borrowed local
 			// register so three-operand instructions read it in place.
-			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: uint32(x)})
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: uint32(x), meta: uint8(facts)})
 			f.stats.peep("simd-local-forward")
 			return true
 		}
 		dst := f.allocFReg(maskOf(e.st.reg))
 		f.mov128(dst, e.st.reg)
-		f.pushVReg(dst)
+		f.pushVReg(dst).st.setValueFacts(facts)
 		f.stats.peep("simd-local-forward")
 		return true
 	}
@@ -657,6 +661,7 @@ func (f *fn) clearV128LocalAliases(x int) {
 
 func (f *fn) i8x16Swizzle() {
 	idxElem := f.popValue()
+	bounded := f.opt(optValueFacts) && idxElem.st.valueFacts().has(factBytesBelow16)
 	srcElem := f.popValue()
 	idx := f.materializeV128(idxElem)
 	f.fpinned = f.fpinned.add(idx)
@@ -668,9 +673,13 @@ func (f *fn) i8x16Swizzle() {
 	// Saturating-add 0x70 to the index: 0..15 map to 0x70..0x7f (bit 7 clear,
 	// low nibble preserved -> src[idx]); any index >= 16 reaches >= 0x80 (bit 7
 	// set -> zero). One instruction replaces the xor/cmpgtb/and/or mask build.
-	bias := f.v128ConstReg(0x7070707070707070, 0x7070707070707070)
-	opVPaddusb.emit(f, idx, idx, bias)
-	f.releaseF(bias)
+	if bounded {
+		f.stats.peep("simd-swizzle-in-range")
+	} else {
+		bias := f.v128ConstReg(0x7070707070707070, 0x7070707070707070)
+		opVPaddusb.emit(f, idx, idx, bias)
+		f.releaseF(bias)
+	}
 
 	opVPshufb.emit(f, src, src, idx)
 	f.fpinned = f.fpinned.remove(idx).remove(src)
@@ -782,6 +791,10 @@ func (f *fn) operandRegV128(e *elem) (Reg, bool) {
 func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
 	b := f.popValue()
 	a := f.popValue()
+	var facts valueFacts
+	if f.opt(optValueFacts) {
+		facts = vectorBinaryFacts(op, a.st.valueFacts(), b.st.valueFacts())
+	}
 	xa, aOwned := f.operandRegV128(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb, bOwned := f.operandRegV128(b)
@@ -802,7 +815,7 @@ func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
 	if bOwned && xb != dst {
 		f.releaseF(xb)
 	}
-	f.pushVReg(dst)
+	f.pushVReg(dst).st.setValueFacts(facts)
 }
 
 func (f *fn) v128StackMem(e *elem) (int32, bool) {
@@ -840,6 +853,10 @@ func (f *fn) v128BinMem(r *wasm.Reader, op simdBinaryOp) {
 			return
 		}
 	}
+	var facts valueFacts
+	if f.opt(optValueFacts) {
+		facts = vectorBinaryFacts(op, left.st.valueFacts(), right.st.valueFacts())
+	}
 	dst := regNone
 	if regDisp, secondMem := f.v128StackMem(regElem); secondMem {
 		dst = f.allocFReg(0)
@@ -848,7 +865,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op simdBinaryOp) {
 		f.erase(right)
 		f.erase(left)
 		f.stats.peep("simd-mem-fold")
-		f.pushVReg(dst)
+		f.pushVReg(dst).st.setValueFacts(facts)
 		return
 	}
 	src, owned := f.operandRegV128(regElem)
@@ -862,7 +879,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op simdBinaryOp) {
 		f.releaseF(src)
 	}
 	f.stats.peep("simd-mem-fold")
-	f.pushVReg(dst)
+	f.pushVReg(dst).st.setValueFacts(facts)
 }
 
 // v128FloatMinMax lowers f32x4/f64x2 min/max with the branchless vectorized
@@ -1362,9 +1379,18 @@ func (f *fn) i8x16Shift(op simdBinaryOp, kind int) {
 // a constant byte mask that clears the bits that crossed lane boundaries — two to
 // four ops with all-constant masks (cacheable), versus the runtime widen/pack.
 func (f *fn) i8x16ShiftConst(kind int, n byte) {
-	x := f.materializeV128(f.popValue())
+	value := f.popValue()
+	facts := value.st.valueFacts() & factBytesBelow16
+	if !f.opt(optValueFacts) {
+		facts = 0
+	} else if kind == i8ShiftShrU && n >= 4 {
+		facts = factBytesBelow16
+	} else if n != 0 && kind != i8ShiftShrU {
+		facts = 0
+	}
+	x := f.materializeV128(value)
 	if n == 0 {
-		f.pushVReg(x) // shift by 0 is the identity
+		f.pushVReg(x).st.setValueFacts(facts) // shift by 0 is the identity
 		return
 	}
 	f.fpinned = f.fpinned.add(x)
@@ -1390,7 +1416,7 @@ func (f *fn) i8x16ShiftConst(kind int, n byte) {
 		f.releaseF(bias)
 	}
 	f.fpinned = f.fpinned.remove(x)
-	f.pushVReg(x)
+	f.pushVReg(x).st.setValueFacts(facts)
 }
 
 func (f *fn) i16x8Shift(op simdBinaryOp, opImm simdShiftImmediate) {

@@ -149,8 +149,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			err = f.opReturn()
 		default:
 			if f.unreachable {
-				var imm wasm.InstructionImmediate
-				err = f.classifier.ClassifyInto(r, op, &imm)
+				err = f.classifier.SkipImmediate(r, op)
 			} else {
 				err = f.emitPlain(r, op)
 			}
@@ -1274,6 +1273,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the
 		// scalar FMov below would drop the upper 64 bits).
+		facts := e.st.valueFacts()
 		f.evictRelinquishedFReg(pr)
 		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
@@ -1288,7 +1288,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x)})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x), meta: uint8(facts)})
 		} else {
 			f.erase(e)
 		}

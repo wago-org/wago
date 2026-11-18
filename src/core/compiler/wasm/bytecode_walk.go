@@ -166,6 +166,14 @@ func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *Instruc
 		imm.Kind = InstrF64Const
 		return err
 	}
+	// A one-byte alignment without a memory index and a one-byte offset
+	// have the same interpretation in memory32 and memory64.
+	if op >= 0x28 && op <= 0x3e && r.pos+1 < len(r.data) && r.data[r.pos] < 64 && r.data[r.pos+1] < 0x80 {
+		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
+		imm.MemAlign, imm.MemOffset = uint32(r.data[r.pos]), uint64(r.data[r.pos+1])
+		r.pos += 2
+		return nil
+	}
 	ir := reader{data: r.data, pos: r.pos}
 	_, err := classifyExprOpAfterOpcodeWithWidths(&ir, op, imm, *widths, multiMemory)
 	r.pos = ir.pos
@@ -193,6 +201,12 @@ func SkipInstructionImmediateWithMemarg64(r *Reader, op byte, memarg64 bool) err
 // It retains the classifier's memory-index grammar and per-memory offset width.
 
 func (c ModuleInstructionClassifier) SkipScalarMemoryImmediate(r *Reader) error {
+	// Most memory accesses have an implicit memory index and one-byte offset.
+	// This encoding has the same extent for both 32- and 64-bit memories.
+	if r.pos+1 < len(r.data) && r.data[r.pos] < 64 && r.data[r.pos+1] < 0x80 {
+		r.pos += 2
+		return nil
+	}
 	internal := reader{data: r.data, pos: r.pos}
 	err := skipScalarMemoryImmediate(&internal, c.widths, c.multiMemory)
 	r.pos = internal.pos

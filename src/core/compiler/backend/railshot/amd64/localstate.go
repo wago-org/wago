@@ -286,23 +286,43 @@ func (f *fn) materializeGCFrameLocal(index uint32) {
 }
 
 func (f *fn) spillLocalsForCall() {
+	position, discardDead := f.deadCallLocalPosition()
 	for _, x := range f.pinnedLocals {
 		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
+		dead := discardDead && (f.intervalLast[x] == 0 || f.intervalLast[x] <= position)
 		// Argument materialization may have reassigned a relinquished pin to a
 		// temporary. Its local already has a valid frame home; the eager model
 		// must honor that state too, instead of saving the temporary over it.
 		if !f.usesCalls && !f.pinRelinquished {
-			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
+			if dead {
+				f.stats.peep("dead-call-local-store")
+			} else {
+				f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
+			}
 			continue
 		}
 		if f.locals[x].state == lsConstZero {
 			continue // a clobbered register does not change the wasm local's zero value
 		}
-		if f.locals[x].state == lsReg { // dirty: write it back
-			f.storeLocalReg(x, reg, isFloat)
+		if f.locals[x].state == lsReg { // dirty: write it back unless no source read remains
+			if dead {
+				f.stats.peep("dead-call-local-store")
+			} else {
+				f.storeLocalReg(x, reg, isFloat)
+			}
 		}
 		f.locals[x].state = lsMem // callee clobbers the register
 	}
+}
+
+// Loop-free interval candidates retain exact source offsets for every local's
+// final read. Backedges, EH and inlined readers decline through the existing
+// interval-admission and local guards.
+func (f *fn) deadCallLocalPosition() (uint32, bool) {
+	if f.nLocals == 0 || f.hasLoop || f.moduleEH || f.inlineDepth != 0 || f.wasmPC < f.tracePCBase || len(f.intervalLast) != f.nLocals {
+		return 0, false
+	}
+	return uint32(f.wasmPC - f.tracePCBase), true
 }
 
 // reloadLocalsForCall restores every pinned local after a call — only for the

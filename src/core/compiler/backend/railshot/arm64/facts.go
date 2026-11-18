@@ -21,7 +21,9 @@ const (
 	storageGCRoot
 	storageEHRoot
 	factNonZero
-	valueFactMask = factUpper32Zero | factBoolean | factNonZero
+	valueFactMask      = factUpper32Zero | factBoolean | factNonZero
+	localFactEpochStep = valueFacts(1 << 5)
+	localFactEpochMask = valueFacts(7 << 5)
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }
@@ -66,7 +68,10 @@ func (f *fn) factsForLocal(x int) valueFacts {
 		facts |= factUpper32Zero
 	}
 	if f.localFactsEnabled {
-		facts |= f.locals[x].facts
+		localFacts := f.locals[x].facts
+		if localFacts&localFactEpochMask == f.localFactEpoch {
+			facts |= localFacts & valueFactMask
+		}
 	}
 	if f.inlineLocalNonzero(x) {
 		facts |= factNonZero
@@ -106,37 +111,91 @@ func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParam
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		f.locals[x].facts = facts &^ factNonZero
+		f.locals[x].facts = facts&valueFactMask&^factNonZero | f.localFactEpoch
+	}
+}
+
+// clearLocalValueFacts ends the current straight-line assignment versions.
+// A structured join can be reached by an edge compiled before the current
+// fallthrough, so facts from only the fallthrough cannot survive that join.
+// Roots are separate storage bits and remain untouched.
+func (f *fn) clearLocalValueFacts() {
+	if !f.localFactsEnabled {
+		return
+	}
+	f.localFactEpoch = (f.localFactEpoch + localFactEpochStep) & localFactEpochMask
+	if f.localFactEpoch != 0 {
+		return
+	}
+	// Prevent an old generation from becoming current again after the bounded
+	// tag wraps. This full clear occurs only once per eight structured joins.
+	for i := range f.locals {
+		f.locals[i].facts = 0
 	}
 }
 
 func (f *fn) applyFactsForLocal(e *elem, x int) {
 	facts := f.factsForLocal(x)
 	e.st.setValueFacts(facts)
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) && f.locals[x].facts != 0 {
-		f.stats.peep("local-fact")
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
+		localFacts := f.locals[x].facts
+		if localFacts&localFactEpochMask == f.localFactEpoch && localFacts&valueFactMask != 0 {
+			f.stats.peep("local-fact")
+		}
 	}
+}
+
+const deferredFactI32Only valueFacts = 1 << 7
+
+// Unknown operations retain no facts. The extra table bit restricts ordinary
+// integer results to W-register lowering and never enters operand metadata.
+var deferredOpFacts = [256]valueFacts{
+	opAdd:    factUpper32Zero | deferredFactI32Only,
+	opSub:    factUpper32Zero | deferredFactI32Only,
+	opAnd:    factUpper32Zero | deferredFactI32Only,
+	opOr:     factUpper32Zero | deferredFactI32Only,
+	opXor:    factUpper32Zero | deferredFactI32Only,
+	opShl:    factUpper32Zero | deferredFactI32Only,
+	opShrU:   factUpper32Zero | deferredFactI32Only,
+	opShrS:   factUpper32Zero | deferredFactI32Only,
+	opRotl:   factUpper32Zero | deferredFactI32Only,
+	opRotr:   factUpper32Zero | deferredFactI32Only,
+	opMul:    factUpper32Zero | deferredFactI32Only,
+	opDivU:   factUpper32Zero | deferredFactI32Only,
+	opDivS:   factUpper32Zero | deferredFactI32Only,
+	opRemU:   factUpper32Zero | deferredFactI32Only,
+	opRemS:   factUpper32Zero | deferredFactI32Only,
+	opClz:    factUpper32Zero | deferredFactI32Only,
+	opCtz:    factUpper32Zero | deferredFactI32Only,
+	opPopcnt: factUpper32Zero | deferredFactI32Only,
+	opWrap:   factUpper32Zero,
+	opZExt32: factUpper32Zero,
+	opEq:     factUpper32Zero | factBoolean,
+	opNe:     factUpper32Zero | factBoolean,
+	opLtS:    factUpper32Zero | factBoolean,
+	opLtU:    factUpper32Zero | factBoolean,
+	opGtS:    factUpper32Zero | factBoolean,
+	opGtU:    factUpper32Zero | factBoolean,
+	opLeS:    factUpper32Zero | factBoolean,
+	opLeU:    factUpper32Zero | factBoolean,
+	opGeS:    factUpper32Zero | factBoolean,
+	opGeU:    factUpper32Zero | factBoolean,
+	opEqz:    factUpper32Zero | factBoolean,
+	opFEq:    factUpper32Zero | factBoolean,
+	opFNe:    factUpper32Zero | factBoolean,
+	opFLt:    factUpper32Zero | factBoolean,
+	opFGt:    factUpper32Zero | factBoolean,
+	opFLe:    factUpper32Zero | factBoolean,
+	opFGe:    factUpper32Zero | factBoolean,
 }
 
 // deferredResultFacts returns only properties guaranteed by the Wasm operation
 // and ARM64's W-register write semantics. Reads from locals, globals, memory, or
 // unknown calls begin with no facts and cannot enter through this function.
 func deferredResultFacts(op wOp, typ machineType) valueFacts {
-	if isCompare(op) || isFloatCompare(op) || op == opEqz {
-		return factUpper32Zero | factBoolean
-	}
-	if op == opWrap || op == opZExt32 {
-		return factUpper32Zero
-	}
-	if typ != mtI32 {
+	facts := deferredOpFacts[op]
+	if typ != mtI32 && facts&deferredFactI32Only != 0 {
 		return 0
 	}
-	switch op {
-	case opAdd, opSub, opAnd, opOr, opXor,
-		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS,
-		opClz, opCtz, opPopcnt:
-		return factUpper32Zero
-	}
-	return 0
+	return facts &^ deferredFactI32Only
 }

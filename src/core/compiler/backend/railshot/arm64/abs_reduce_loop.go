@@ -361,7 +361,11 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			available++
 		}
 	}
-	if available < 2 {
+	neededVectors := 2
+	if p.lanes > 4 {
+		neededVectors++
+	}
+	if available < neededVectors {
 		return
 	}
 	read := func(local int, dst Reg) {
@@ -390,43 +394,77 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	f.fpinned = f.fpinned.add(va)
 	vb := f.allocFReg(0)
 	f.fpinned = f.fpinned.add(vb)
-	loop := f.a.Len()
-	f.cmpImm(counter, 1, false)
-	done := f.a.Bcond(condBE)
-	read(p.baseA, a)
-	read(p.baseB, b)
-	f.a.Add32(a, a, index)
-	f.a.MovImm64(X16, uint64(p.biasA))
-	f.a.Add32(a, a, X16)
-	f.a.Add32(b, b, index)
-	f.a.MovImm64(X16, uint64(p.biasB))
-	f.a.Add32(b, b, X16)
-	f.a.AddImm64(X16, a, uint32(4*p.lanes))
-	f.cmpRR(X16, size, true)
-	badA := f.a.Bcond(condA)
-	f.a.AddImm64(X16, b, uint32(4*p.lanes))
-	f.cmpRR(X16, size, true)
-	badB := f.a.Bcond(condA)
-	f.a.Add64(a, a, linMemReg)
-	f.a.Add64(b, b, linMemReg)
-	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		f.a.LdrQ(va, a, off)
-		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(va, va, vb)
-		f.a.NeonAbsS(va, va)
-		f.a.NeonAddvS(va, va)
-		f.a.FmovToGpr(X16, va, false)
-		f.a.Add32(acc, acc, X16)
+	vc := regNone
+	if p.lanes > 4 {
+		vc = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vc)
 	}
+	// Prove the complete stream before carrying native pointers. Failure leaves
+	// every source local unchanged and resumes the original checked loop.
+	var fallback [4]int
+	nFallback := 0
+	f.cmpImm(counter, 1, false)
+	fallback[nFallback] = f.a.Bcond(condBE)
+	nFallback++
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
 		f.a.MovImm64(X16, uint64(p.stride.v))
 	}
+	f.a.SubImm32(X17, counter, 2)
+	f.a.Mul64(X17, X17, X16)
+	f.cmpRR(X17, size, true)
+	fallback[nFallback] = f.a.Bcond(condA)
+	nFallback++
+	read(p.baseA, a)
+	read(p.baseB, b)
+	f.a.Add64(a, a, index)
+	f.a.MovImm64(X16, uint64(p.biasA))
+	f.a.Add64(a, a, X16)
+	f.a.Add64(b, b, index)
+	f.a.MovImm64(X16, uint64(p.biasB))
+	f.a.Add64(b, b, X16)
+	f.a.Add64(X16, a, X17)
+	f.a.AddImm64(X16, X16, uint32(4*p.lanes))
+	f.cmpRR(X16, size, true)
+	fallback[nFallback] = f.a.Bcond(condA)
+	nFallback++
+	f.a.Add64(X16, b, X17)
+	f.a.AddImm64(X16, X16, uint32(4*p.lanes))
+	f.cmpRR(X16, size, true)
+	fallback[nFallback] = f.a.Bcond(condA)
+	nFallback++
+	f.a.Add64(a, a, linMemReg)
+	f.a.Add64(b, b, linMemReg)
+	loop := f.a.Len()
+	for off := int32(0); off < int32(4*p.lanes); off += 16 {
+		part := va
+		if off != 0 {
+			part = vc
+		}
+		f.a.LdrQ(part, a, off)
+		f.a.LdrQ(vb, b, off)
+		f.a.NeonSubS(part, part, vb)
+		f.a.NeonAbsS(part, part)
+		if off != 0 {
+			f.a.NeonAddS(va, va, part)
+		}
+	}
+	f.a.NeonAddvS(va, va)
+	f.a.FmovToGpr(X16, va, false)
+	f.a.Add32(acc, acc, X16)
+	if p.stride.op == 0x20 {
+		read(p.stride.a, X16)
+	} else {
+		f.a.MovImm64(X16, uint64(p.stride.v))
+	}
+	f.a.Add64(a, a, X16)
+	f.a.Add64(b, b, X16)
 	f.a.Add32(index, index, X16)
 	f.a.SubImm32(counter, counter, 1)
-	f.patchBranch26(f.a.Branch(), loop)
-	for _, site := range []int{done, badA, badB} {
+	f.cmpImm(counter, 1, false)
+	f.patchBranch19(f.a.Bcond(condNE), loop)
+	for _, site := range fallback[:nFallback] {
 		f.patchBranch19(site, f.a.Len())
 	}
 	for _, state := range []struct {
@@ -444,6 +482,9 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	}
 	f.releaseF(va)
 	f.releaseF(vb)
+	if vc != regNone {
+		f.releaseF(vc)
+	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("abs-reduce-loop-vector")

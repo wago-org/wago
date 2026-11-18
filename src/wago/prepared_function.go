@@ -68,6 +68,7 @@ type WasmFunc struct {
 	directIntBounded      bool
 	directIntMode         preparedIntCallMode
 	boundedNumericHost    bool
+	guardedMemoryGrow     bool
 	directIntCall         wruntime.PreparedIntCall
 	directGate            *invocationGate
 	hostPrepared          *wruntime.PreparedHostScalarCall
@@ -299,6 +300,7 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 	// These modules cannot replace resource-context pointers during execution.
 	// The instance GC view itself is stable; collector contents remain live.
 	fn.gcPrivateContext = fn.gcScalar32Plain && fn.boundedWrapper && in.c.memoryCount() == 0 && !in.c.HasTable && len(in.c.Globals) == 0
+	fn.guardedMemoryGrow = guardedMemoryGrowEntry(in.c.InternalEntry[ic.li])
 	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
 		entryMode := in.preparedEntryMode()
 		if entryMode != preparedEntryGeneral {
@@ -374,6 +376,9 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 // Invoke calls the resolved export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
+	if fn != nil && fn.guardedMemoryGrow {
+		defer fn.in.commitGuardedGrowth()
+	}
 	if codeProfileEnabled && fn != nil && fn.in.boundaryProfile() != nil {
 		return fn.invokeGeneral(args)
 	}

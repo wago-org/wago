@@ -19,6 +19,7 @@ func TestInternalEntryValidation(t *testing.T) {
 		{"compiler native bounded marker", []int{int(nativeScalarBoundedMask)}, true},
 		{"compiler Go host dispatch marker", []int{int(goHostDispatchTagMask)}, true},
 		{"compiler integer host context marker", []int{int(integerHostContextMask)}, true},
+		{"compiler guarded memory grow marker", []int{markGuardedMemoryGrowEntry(0)}, true},
 		{"compiler marker", []int{markDirectPreparedEntry(0)}, true},
 		{"compiler native leaf marker", []int{int(directPreparedEntryMask >> 4)}, true},
 		{"compiler invalid offset", []int{markDirectPreparedEntry(2)}, false},
