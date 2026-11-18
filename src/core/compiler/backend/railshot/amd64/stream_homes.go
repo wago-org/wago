@@ -20,10 +20,28 @@ func (s *streamState) localHomeTag(local int) uint16 {
 	}
 	return tag
 }
-func (s *streamState) initializeRegisterHomes(selected [2]uint16, nParams int) {
+func (s *streamState) initializeRegisterHomes(selected [streamMaxHomes]uint16, nParams int) {
 	// Fixed division/shift/bulk/poll scratch registers are never home candidates.
-	candidates := [...]uint8{uint8(R12), uint8(R13), uint8(R14), uint8(R10), uint8(R11)}
+	baseCandidates := [...]uint8{uint8(R12), uint8(R13), uint8(R14), uint8(R10), uint8(R11)}
+	candidates := baseCandidates[:]
+	limit := 2
+	var candidateStorage [16]uint8
+	if s.residency != nil && streamingWideHomesEnabled {
+		var poolStorage [16]Reg
+		f := s.target
+		regABI := f.ft != nil && f.opt(optRegABI) && sigFitsRegABI(f.ft)
+		pool := gpPinPool(poolStorage[:0], regABI, nParams, true, f.opt(optEntryArgPins))
+		candidates = candidateStorage[:0]
+		for _, r := range pool {
+			candidates = append(candidates, uint8(r))
+		}
+		limit = min(streamMaxHomes, gpPinLimit(regMask(s.reserved), 4))
+	}
+	count := 0
 	for k, n := range selected {
+		if count >= limit {
+			break
+		}
 		if n == 0 || int(n) > len(s.locals) {
 			continue
 		}
@@ -50,6 +68,7 @@ func (s *streamState) initializeRegisterHomes(selected [2]uint16, nParams int) {
 			} else {
 				s.locals[local] = s.add(streamNode{kind: streamBorrow, slot: int32(local), home: s.localHomeTag(local), wide: s.widths[local], refs: 1})
 			}
+			count++
 			s.target.stats.peep("stream-local-home")
 			break
 		}
@@ -62,8 +81,8 @@ func (s *streamState) commitRegisterHomes() {
 	}
 	// Capture both inputs before changing either home. Ordinary owners never
 	// occupy home registers, and tagged spills always create genuine frame copies.
-	var sources [2]uint8
-	var changed [2]bool
+	var sources [streamMaxHomes]uint8
+	var changed [streamMaxHomes]bool
 	saved := s.reserved
 	for k, n := range s.homeLocals {
 		if n == 0 {

@@ -294,8 +294,8 @@ type streamState struct {
 	nextSlot, tempBase, maxSlot int
 	regs                        []uint8
 	reserved                    uint64
-	homeLocals                  [2]uint16
-	homeRegs                    [2]uint8
+	homeLocals                  [streamMaxHomes]uint16
+	homeRegs                    [streamMaxHomes]uint8
 	target                      *fn
 	flow                        []streamFlow
 	flowTypes                   []bool
@@ -450,14 +450,6 @@ func (s *streamState) alloc(avoid uint64) uint8 {
 			return r
 		}
 	}
-	if s.residency != nil {
-		for _, r := range s.regs {
-			if cell := s.residency.registers[r]; avoid&(1<<r) == 0 && cell != 0 {
-				s.evacuateBacking(cell)
-				return r
-			}
-		}
-	}
 	var victim streamID
 	var victimOrder uint16
 	var reg uint8
@@ -476,6 +468,30 @@ func (s *streamState) alloc(avoid uint64) uint8 {
 		// bank and leaves active operands and fixed registers excluded above.
 		if victim == 0 || protected && !keep || protected == keep && n.order < victimOrder {
 			victim, victimOrder, reg, protected = id, n.order, r, keep
+		}
+	}
+	if s.residency != nil {
+		// Prefer an unprotected single-reference ordinary owner to evacuating a
+		// scored home. Otherwise evacuate the coldest allowed home generation.
+		if victim != 0 && !protected {
+			s.spill(victim)
+			s.target.stats.peep("stream-residency-ordinary-victim")
+			return reg
+		}
+		bank := uint64(0)
+		for _, r := range s.regs {
+			bank |= uint64(1) << r
+		}
+		for k := len(s.residency.homes) - 1; k >= 0; k-- {
+			cell := s.residency.homes[k]
+			if cell == 0 {
+				continue
+			}
+			c := s.residency.cells[cell]
+			if c.kind == shared.ScalarRegister && avoid&(1<<c.reg) == 0 && bank&(1<<c.reg) != 0 {
+				s.evacuateBacking(cell)
+				return c.reg
+			}
 		}
 	}
 	if victim != 0 {
@@ -862,7 +878,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		s.Discarded += uint64(cap(s.nodes)) * uint64(unsafe.Sizeof(streamNode{}))
 		s.nodes = make([]streamNode, 0, needed)
 	}
-	if streamingResidencyEnabled && summary.HomeLocals != ([2]uint16{}) {
+	if streamingResidencyEnabled && summary.HomeLocals != ([streamMaxHomes]uint16{}) {
 		if s.residency == nil {
 			s.residency = &streamResidency{}
 		}
@@ -870,7 +886,7 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 		r.cells = r.cells[:0]
 		r.cells = append(r.cells, streamBackingCell{})
 		r.free = 0
-		r.homes = [2]uint32{}
+		r.homes = [streamMaxHomes]uint32{}
 		r.registers = [64]uint32{}
 	} else {
 		s.residency = nil
@@ -908,8 +924,8 @@ func (s *streamState) compileStream(code []byte, summary streamSummary, localWid
 	s.Reloads = 0
 	s.target = target
 	s.regs, s.reserved = target.Registers()
-	s.homeLocals = [2]uint16{}
-	s.homeRegs = [2]uint8{}
+	s.homeLocals = [streamMaxHomes]uint16{}
+	s.homeRegs = [streamMaxHomes]uint8{}
 	var zeros [2]streamID
 	for i, wide := range localWide {
 		if i < nParams {

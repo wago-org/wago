@@ -140,7 +140,7 @@ func streamResidencyUnitState() *streamState {
 	for i := 0; i < 2; i++ {
 		s.locals = append(s.locals, s.add(streamNode{kind: streamBorrow, slot: int32(i), home: uint16(i + 1), refs: 1}))
 	}
-	s.initializeRegisterHomes([2]uint16{1, 2}, 2)
+	s.initializeRegisterHomes([streamMaxHomes]uint16{1, 2}, 2)
 	return s
 }
 func TestStreamResidencyDetachedCellAlias(t *testing.T) {
@@ -214,6 +214,7 @@ func TestStreamResidencyMaterializeRereadsCell(t *testing.T) {
 	cell := s.residency.homes[0]
 	home := s.homeRegs[0]
 	s.regs = []uint8{home}
+	s.reserved = ^(uint64(1) << home) // Only the source backing is a legal victim.
 	before := s.target.a.Len()
 	slot := s.nextSlot
 	got := s.materialize(id, 0)
@@ -244,12 +245,18 @@ func TestStreamResidencyParallelHomeCommit(t *testing.T) {
 		t.Fatalf("swap must capture both generations before writes: got%x want%x", s.target.a.B[before:], want.B)
 	}
 	for _, cell := range oldCells {
+		if cell == 0 {
+			continue
+		}
 		if s.residency.cells[cell].refs != 1 || s.residency.cells[cell].kind != shared.ScalarFrame {
 			t.Fatal("old snapshot not retained after map exchange")
 		}
 	}
 	s.restore(0)
 	for _, cell := range oldCells {
+		if cell == 0 {
+			continue
+		}
 		if s.residency.cells[cell].refs != 0 {
 			t.Fatal("old generation leaked after restore")
 		}
@@ -287,7 +294,7 @@ func TestStreamResidencyRepeatedVoidCleanup(t *testing.T) {
 	var first uint64
 	for i := 0; i < 12; i++ {
 		f := &fn{a: &encoder.Asm{}, localSlot: []uint32{0, 8}, nLocals: 2, nLocalSlots: 2}
-		summary := streamSummary{Eligible: true, Nodes: 32, HasIf: true, HomeLocals: [2]uint16{1, 2}}
+		summary := streamSummary{Eligible: true, Nodes: 32, HasIf: true, HomeLocals: [streamMaxHomes]uint16{1, 2}}
 		if _, e := s.CompileStream([]byte{0x01, 0x0b}, summary, []bool{false, false}, 2, f); e != nil {
 			t.Fatal(e)
 		}

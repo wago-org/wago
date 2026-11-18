@@ -36,10 +36,10 @@ func (s *streamState) streamCaptureCondition(id streamID) streamBranchHome {
 				}
 			}
 		}
-		if !streamingHomeSinkEnabled || s.node(n.left).kind != shared.ScalarConstant {
+		if (!streamingHomeSinkEnabled || s.node(n.left).kind != shared.ScalarConstant) && !(s.residency != nil && streamingHomeSinkEnabled && s.node(n.left).kind == streamBacking) {
 			s.materialize(n.left, 0)
 		}
-		if !streamingHomeSinkEnabled || s.node(n.right).kind != shared.ScalarConstant {
+		if (!streamingHomeSinkEnabled || s.node(n.right).kind != shared.ScalarConstant) && !(s.residency != nil && streamingHomeSinkEnabled && s.node(n.right).kind == streamBacking) {
 			s.materialize(n.right, 0)
 		}
 	} else {
@@ -48,7 +48,9 @@ func (s *streamState) streamCaptureCondition(id streamID) streamBranchHome {
 				return streamBranchHome{left: home, flags: 4}
 			}
 		}
-		s.materialize(id, 0)
+		if !(s.residency != nil && streamingHomeSinkEnabled && s.node(id).kind == streamBacking) {
+			s.materialize(id, 0)
+		}
 	}
 	return streamBranchHome{}
 }
@@ -60,7 +62,18 @@ func (s *streamState) condition(id streamID, homes streamBranchHome, taken bool)
 	if n.kind == streamDeferred && streamCompare(n.op) {
 		var left uint8
 		var right shared.ScalarOperand
-		if homes.flags&1 != 0 {
+		resolved := false
+		if s.residency != nil && streamingHomeSinkEnabled {
+			// Resolve retained identities after canonicalization. No allocation or
+			// fixed-role operation may intervene between these reads and CMP/Jcc.
+			l, r := s.operand(n.left), s.operand(n.right)
+			if l.Kind == shared.ScalarRegister && s.target.Operand(n.op, n.operandWide, r) {
+				left, right, resolved = l.Reg, r, true
+				s.target.stats.peep("stream-residency-branch")
+			}
+		}
+		if resolved {
+		} else if homes.flags&1 != 0 {
 			left = homes.left
 			right = shared.ScalarOperand{Kind: shared.ScalarConstant, Constant: homes.constant}
 			if homes.flags&2 != 0 {
@@ -80,7 +93,16 @@ func (s *streamState) condition(id streamID, homes streamBranchHome, taken bool)
 		return site
 	}
 	reg := homes.left
-	if homes.flags&4 == 0 {
+	resolved := false
+	if s.residency != nil && streamingHomeSinkEnabled {
+		o := s.operand(id)
+		if o.Kind == shared.ScalarRegister {
+			reg, resolved = o.Reg, true
+			s.target.stats.peep("stream-residency-branch")
+		}
+	}
+	if resolved {
+	} else if homes.flags&4 == 0 {
 		reg = s.materialize(id, 0)
 	} else {
 		s.target.stats.peep("stream-home-branch")

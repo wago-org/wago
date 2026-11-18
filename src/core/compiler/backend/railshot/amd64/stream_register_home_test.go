@@ -116,13 +116,16 @@ func streamHomeUnitState(reserved uint64) *streamState {
 	for i := 0; i < 2; i++ {
 		s.locals = append(s.locals, s.add(streamNode{kind: streamBorrow, slot: int32(i), home: uint16(i + 1), refs: 1}))
 	}
-	s.initializeRegisterHomes([2]uint16{1, 2}, 2)
+	s.initializeRegisterHomes([streamMaxHomes]uint16{1, 2}, 2)
 	return s
 }
 func TestStreamRegisterHomeSpillBacking(t *testing.T) {
 	for _, reserved := range []uint64{0, 1<<R12 | 1<<R13 | 1<<R14} {
 		s := streamHomeUnitState(reserved)
-		for _, r := range s.homeRegs {
+		for k, r := range s.homeRegs {
+			if s.homeLocals[k] == 0 {
+				continue
+			}
 			if (uint64(1)<<r)&(reserved|1<<RAX|1<<RCX|1<<RDX|1<<RSI|1<<RDI|1<<R8) != 0 {
 				t.Fatalf("unsafe home register%d", r)
 			}

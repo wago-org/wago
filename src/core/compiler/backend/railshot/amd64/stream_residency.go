@@ -4,11 +4,8 @@ package amd64
 
 import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"os"
 	"unsafe"
 )
-
-var streamingResidencyEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_RESIDENCY") == "1"
 
 const streamBacking shared.ScalarLocation = 5
 
@@ -24,7 +21,7 @@ type streamBackingCell struct {
 type streamResidency struct {
 	cells     []streamBackingCell
 	free      uint32
-	homes     [2]uint32
+	homes     [streamMaxHomes]uint32
 	registers [64]uint32
 }
 
@@ -111,7 +108,7 @@ func (s *streamState) commitBackingHomes() {
 	// frame aliases. Reserve all destinations before touching any source value.
 	r := s.residency
 	saved := s.reserved
-	var changed [2]bool
+	var changed [streamMaxHomes]bool
 	for k, n := range s.homeLocals {
 		if n == 0 {
 			continue
@@ -129,7 +126,15 @@ func (s *streamState) commitBackingHomes() {
 	// Preserve every old destination generation before any destination writes.
 	for k, yes := range changed {
 		if yes && r.homes[k] != 0 {
-			s.evacuateBacking(r.homes[k])
+			if r.cells[r.homes[k]].refs == 1 {
+				// No value node can observe this obsolete generation. Dropping its map
+				// reference needs neither a snapshot store nor a temporary spill slot.
+				s.releaseBacking(r.homes[k])
+				r.homes[k] = 0
+				s.target.stats.peep("stream-residency-dead-generation")
+			} else {
+				s.evacuateBacking(r.homes[k])
+			}
 		}
 	}
 	for k, yes := range changed {
