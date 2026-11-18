@@ -339,3 +339,34 @@ descriptor reuses and 99 avoided admission attempts. These are mechanism
 counts, not speedup measurements. Final rebuilt production runtime verification
 and latency qualification remain pending. No measured improvement or
 promotion is claimed; earlier results remain distinct.
+
+### Metadata experiment outcome (source unchanged at db4f2dc7)
+
+The final production build passed all 145 runtime oracles. Public-API native
+images and serialized metadata matched OFF/ON for all 145 inputs; OFF native
+images also matched the preceding 5e6b747b candidate. Selection remained 575
+functions, with 63,142 same-path descriptor reuses and 99 avoided admission
+attempts. Unchanged emitted code does not repair the earlier engine execution
+regressions documented above.
+
+The preregistered full-suite cold screen verified 2,900 fresh-process records:
+145 inputs, five trials, four randomized adjacent arms. The same executable
+slot and full-feature adapter were used. OFF retained the preceding thirteen
+experimental flags but disabled restore reuse and the hint funnel. The
+estimand was the arithmetic mean of per-workload median first public-Compile
+times. Confidence intervals used 5,000 paired within-workload trial resamples,
+with identical indices across arms and no workload resampling of this fixed
+145-input suite.
+
+Mean times were 725.119 / 742.951 / 760.174 / 753.588 microseconds for main A /
+main B / metadata OFF / metadata ON. ON/OFF was 0.99134 (95% CI
+[0.95307, 1.06813]); ON/mean-main was 1.02664 [0.95450, 1.09281]. Main A/B was
+0.97600 [0.94240, 1.13871], failing the preregistered control gate. Thus no
+qualified latency improvement or 40% reduction is established.
+
+All 435 separate fixed-slot memory-profile records verified. Absolute
+compiled-barrier mean VmHWM was 11.987904 / 12.062231 / 12.060722 MiB for main /
+metadata OFF / metadata ON. There is no meaningful memory gain; the absolute
+5 MiB goal remains unmet. These memory-profile observations are not latency
+measurements. This remains an experimental checkpoint, with no promotion or
+PR proposed.
