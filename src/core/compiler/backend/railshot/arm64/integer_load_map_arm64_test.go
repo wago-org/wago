@@ -710,3 +710,39 @@ func TestIntegerLoadMapMixedBiasDependence(t *testing.T) {
 		t.Fatalf("got %x/%v, want %x/%v, memory equal=%v", got, err, want, wantErr, bytes.Equal(actual, expected))
 	}
 }
+
+func TestIntegerLoadMapThreeIndependentStores(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*73 + i/19)
+	}
+	for _, bases := range [][4]int32{
+		{1024, 2048, 4096, 8192},
+		{1024, 2048, 1028, 8192},
+		{1024, 2048, 4096, 4100},
+		{1024, 2048, 65532, 8192},
+	} {
+		body := []byte{1, 6, 0x7f}
+		for i, base := range bases {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(base)...)
+			body = append(body, 0x21, byte(i))
+		}
+		body = append(body, 0x03, 0x40,
+			0x20, 3, 0x20, 4, 0x6a, 0x28, 2, 0, 0x21, 5,
+			0x20, 0, 0x20, 4, 0x6a, 0x20, 5, 0x36, 2, 0,
+			0x20, 1, 0x20, 4, 0x6a, 0x20, 5, 0x41, 3, 0x6a, 0x36, 2, 0,
+			0x20, 2, 0x20, 4, 0x6a, 0x20, 5, 0x41, 7, 0x73, 0x36, 2, 0,
+			0x20, 4, 0x41, 4, 0x6a, 0x22, 4, 0x41, 0x8c, 2, 0x47, 0x0d, 0, 0x0b,
+			0x20, 5, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+		if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+			t.Fatalf("bases=%v: got %x/%v, want %x/%v, memory equal=%v", bases, got, err, want, wantErr, bytes.Equal(actual, expected))
+		}
+		if diagnosticsEnabled && hits == 0 {
+			t.Fatalf("bases=%v: three stores were not vectorized", bases)
+		}
+	}
+}

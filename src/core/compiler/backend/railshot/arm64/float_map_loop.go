@@ -80,8 +80,9 @@ type floatMapPlan struct {
 	wide                         bool
 	integer                      bool
 	orderedStoreLoads            bool
-	secondStore, interleaved     bool
-	secondDest, secondResult     int
+	interleaved                  bool
+	extraStoreN                  int
+	extraStores                  [2]shared.LoopStore[int]
 	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
@@ -294,11 +295,22 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			if p.integer {
 				packetStores := ns
-				if ns == 2 {
-					first := p.mapStoreBase(stores[0].Address, 0)
-					second := p.mapStoreBase(stores[1].Address, 0)
-					p.secondStore = first >= 0 && second >= 0 && first != second
-					if p.secondStore {
+				if ns > 1 && ns <= len(p.extraStores)+1 {
+					var bases [3]int
+					distinct := true
+					for i, store := range stores[:ns] {
+						if !distinct {
+							break
+						}
+						base := p.mapStoreBase(store.Address, 0)
+						distinct = distinct && base >= 0
+						for _, previous := range bases[:i] {
+							distinct = distinct && previous != base
+						}
+						bases[i] = base
+					}
+					if distinct {
+						p.extraStoreN = ns - 1
 						packetStores = 1
 					}
 				}
@@ -334,11 +346,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				a.offset = stores[i].Offset
 				p.addresses[stores[i].Address] = a
-				if p.secondStore {
+				if p.extraStoreN != 0 {
 					if a.invariant || a.stride > 2 {
 						return false
 					}
-					p.secondDest, p.secondResult = stores[i].Address, stores[i].Value
+					p.extraStores[i-1] = stores[i]
 				}
 			}
 			if p.normalizedInduction && !p.integer {
@@ -383,7 +395,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			for i := 1; i < ns; i++ {
 				distance := uint32(i) * size
-				if p.secondStore {
+				if p.extraStoreN != 0 {
 					continue
 				}
 				if !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
@@ -395,12 +407,17 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				if !p.integer || ns != 2 || p.addresses[p.dest].stride > 1 {
 					return false
 				}
-				p.secondStore, p.interleaved = true, true
-				p.secondDest, p.secondResult = stores[i].Address, stores[i].Value
+				p.extraStoreN, p.interleaved = 1, true
+				p.extraStores[i-1] = stores[i]
 				p.packet = 2 * floatMapVectorBytes
 			}
-			if !p.validExpression(p.result, 0) || p.secondStore && !p.validExpression(p.secondResult, 0) {
+			if !p.validExpression(p.result, 0) {
 				return false
+			}
+			for _, store := range p.extraStores[:p.extraStoreN] {
+				if !p.validExpression(store.Value, 0) {
+					return false
+				}
 			}
 			if floatMapInvariantsEnabled {
 				p.labelInvariants()
@@ -737,7 +754,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	var groups [4]group
 	groupLimit := 3
-	if p.secondStore {
+	if p.extraStoreN != 0 {
 		groupLimit = len(groups)
 	}
 	ng := 0
@@ -763,6 +780,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	var loads [16]int
 	nl := 0
+	reusedLoad := -1
 	var coefficients uint32
 	usesCounterValue := false
 	var invariant [2]int
@@ -786,6 +804,16 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				invariant[nInvariant] = x
 				nInvariant++
 				return true
+			}
+			if p.extraStoreN != 0 && !p.interleaved {
+				for _, seen := range loads[:nl] {
+					if seen == x {
+						if reusedLoad < 0 {
+							reusedLoad = x
+						}
+						return true
+					}
+				}
 			}
 			if nl == len(loads) || !add(p.addresses[x]) {
 				return false
@@ -814,7 +842,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		return
 	}
 	// Each input has a disjointness check against both outputs.
-	if p.secondStore && (!add(p.addresses[p.secondDest]) || !collect(p.secondResult) || nl > 8) {
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		if !add(p.addresses[store.Address]) || !collect(store.Value) {
+			return
+		}
+	}
+	if p.extraStoreN == 1 && nl > 8 || p.extraStoreN == 2 && nl > 4 {
 		return
 	}
 	// Each carried byte index must have a guarded stream from which its next
@@ -861,8 +894,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		return count
 	}
 	constantCount := countConst(p.result)
-	if p.secondStore {
-		constantCount += countConst(p.secondResult)
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		constantCount += countConst(store.Value)
 	}
 	if constantCount > 2 {
 		return
@@ -895,15 +928,18 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		return peak
 	}
 	peakPressure := pressure(p.result)
-	if p.secondStore {
-		secondPressure := pressure(p.secondResult)
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		storePressure := pressure(store.Value)
 		if p.interleaved {
-			secondPressure++ // the first result stays live until the ZIPs
+			storePressure++ // the first result stays live until the ZIPs
 		}
-		peakPressure = max(peakPressure, secondPressure)
+		peakPressure = max(peakPressure, storePressure)
 	}
 	if usesCounterValue {
 		constantCount += 2 // fixed lane offsets and the current block's counter
+	}
+	if reusedLoad >= 0 {
+		constantCount++ // shared across the independent outputs of one block
 	}
 	if available < constantCount+peakPressure+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
@@ -1177,12 +1213,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		stride uint32
 		value  int
 	}
-	outputs := [2]outputStream{{d, dOff, outputStride, p.result}}
-	outputCount := 1
-	if p.secondStore {
-		base, off := locate(p.addresses[p.secondDest])
-		outputs[1] = outputStream{base, off, max(p.addresses[p.secondDest].stride, 1), p.secondResult}
-		outputCount++
+	outputs := [3]outputStream{{d, dOff, outputStride, p.result}}
+	outputCount := 1 + p.extraStoreN
+	for i, store := range p.extraStores[:p.extraStoreN] {
+		address := p.addresses[store.Address]
+		base, off := locate(address)
+		outputs[i+1] = outputStream{base, off, max(address.stride, 1), store.Value}
 	}
 	compareSpan := func(stride uint32) {
 		extent := span
@@ -1208,8 +1244,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condB)
 		f.patchBranch26(skip, f.a.Len())
 	}
-	if p.secondStore && !p.interleaved {
-		guardDisjoint(outputs[0], outputs[1])
+	if !p.interleaved {
+		for i, output := range outputs[:outputCount] {
+			for _, previous := range outputs[:i] {
+				guardDisjoint(previous, output)
+			}
+		}
 	}
 	guardedOutputs := outputs[:outputCount]
 	if p.interleaved {
@@ -1219,7 +1259,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	// The scalar suffix reloads the invariant before any original store
 	// can change it. Limit clipping to contiguous single-store packets.
 	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
-		nInvariant != 0 && !p.secondStore && outputStride == 1
+		nInvariant != 0 && p.extraStoreN == 0 && outputStride == 1
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
 	for _, output := range guardedOutputs {
@@ -1290,7 +1330,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			continue
 		}
 		stride := max(p.addresses[loads[i]].stride, 1)
-		if p.secondStore || stride > 1 || outputStride > 1 {
+		if p.extraStoreN != 0 || stride > 1 || outputStride > 1 {
 			// Independent stores and non-unit spacing require disjoint whole
 			// ranges. The unit-stride packet dependence proof does not apply.
 			input := outputStream{reg: s, offset: off, stride: stride}
@@ -1535,7 +1575,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		preload(output.value)
 	}
 	var block int32
-	counterValue := regNone
+	counterValue, cachedLoad := regNone, regNone
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
@@ -1551,6 +1591,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			panic("arm64: missing float map constant")
 		}
 		if p.load(v.op) {
+			if x == reusedLoad && cachedLoad != regNone {
+				return cachedLoad, false
+			}
 			base, off := locate(p.addresses[x])
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
@@ -1615,6 +1658,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				}
 			} else {
 				f.a.LdrQ(r, base, int32(off)+block)
+			}
+			if x == reusedLoad {
+				cachedLoad = r
+				return r, false
 			}
 			return r, true
 		}
@@ -1729,6 +1776,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 					f.fpinned = f.fpinned.remove(value)
 					f.releaseF(value)
 				}
+			}
+			if cachedLoad != regNone {
+				releaseTemp(cachedLoad)
+				cachedLoad = regNone
 			}
 			if usesCounterValue {
 				releaseTemp(counterValue)
