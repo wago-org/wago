@@ -77,36 +77,37 @@ func (f *fn) modularLoadGroupCovers(local uint32, displacement uint8) bool {
 // requires full 4-GiB memory and word-aligned addresses; otherwise a member of
 // the dense set traps. No source state or memory is changed by this check.
 func (f *fn) checkModularLoadGroup(ea Reg, g modularLoadGroup) {
-	pins := f.pinned
-	f.pinned = f.pinned.add(ea)
-	low := f.allocReg(0)
+	// Keep the widened end in the backend scratch rather than borrowing
+	// registers from the loop. The original alignment survives adding or
+	// subtracting whole words, so both slow checks can use the same end.
+	end := X16
+	owned := ea == end || f.memSizeReg == end
+	if owned {
+		end = f.allocReg(maskOf(ea, f.memSizeReg))
+	}
 	switch delta := int32(g.low) - int32(g.first); {
 	case delta > 0:
-		f.a.AddImm32(low, ea, uint32(delta))
+		f.a.AddImm32(end, ea, uint32(delta))
 	case delta < 0:
-		f.a.SubImm32(low, ea, uint32(-delta))
+		f.a.SubImm32(end, ea, uint32(-delta))
 	default:
-		f.a.MovReg32(low, ea)
+		f.a.MovReg32(end, ea)
 	}
-	high := f.allocReg(maskOf(low))
-	// Allocation may spill a live value. Keep that spill before the split,
-	// where both paths execute it and agree with the allocator at the join.
-	limit := f.allocReg(maskOf(low, high))
-	f.a.AddImm64(high, low, uint32(g.high-g.low)+4)
-	f.cmpRR(high, f.memSizeReg, true)
+	f.a.AddImm64(end, end, uint32(g.high-g.low)+4)
+	f.cmpRR(end, f.memSizeReg, true)
 	done := f.a.Bcond(condBE)
-	f.a.MovImm64(limit, 1<<32)
-	f.cmpRR(f.memSizeReg, limit, true)
-	f.trapIf(condNE, trapMemOOB)
-	f.a.SubImm64(high, high, 4)
-	f.cmpRR(high, limit, true)
-	f.trapIf(condB, trapMemOOB)
-	f.a.TstImm32(low, 3)
+	// Both values are below 2^33, and memory32 has at most 2^32
+	// bytes. Bit 32 tests full memory and a wrapped last start.
+	f.a.TstImm64(f.memSizeReg, 1<<32)
+	f.trapIf(condE, trapMemOOB)
+	f.a.SubImm64(end, end, 4)
+	f.a.TstImm64(end, 1<<32)
+	f.trapIf(condE, trapMemOOB)
+	f.a.TstImm32(end, 3)
 	f.trapIf(condNE, trapMemOOB)
 	f.patchBranch19(done, f.a.Len())
-	f.release(limit)
-	f.release(high)
-	f.release(low)
-	f.pinned = pins
+	if owned {
+		f.release(end)
+	}
 	f.stats.peep("modular-load-group")
 }
