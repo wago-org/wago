@@ -981,7 +981,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				f.a.AddShifted(dst, dst, scratch, second.shift, true)
 			}
 		}
-		f.floatMapOffset(dst, dst, uint64(p.limit), false, scratch)
+		if p.limit != 0 {
+			f.floatMapOffset(dst, dst, uint64(p.limit), false, scratch)
+		}
 	}
 	exit := f.planIntegerMapExit(&p)
 	if p.normalizedInduction {
@@ -1034,8 +1036,15 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		// Compare in source-counter units before leasing/initializing streams,
 		// computing widened byte spans or checking ranges. A wrapped negative
 		// difference may pass here but is rejected by the full eligibility proof.
-		readLimit(X16, X17)
-		read(p.counter, X17)
+		// A compound bound may need both scratch registers. Keep the
+		// established schedule for constant and single-local bounds.
+		if p.limitTermN == 2 || p.limitTermN == 1 && p.limit != 0 {
+			readLimit(X16, X17)
+			read(p.counter, X17)
+		} else {
+			read(p.counter, X17)
+			readLimit(X16, X17)
+		}
 		f.a.Sub32(X17, X16, X17)
 		f.cmpImm(X17, (minimumSpan+p.spanScale-1)/p.spanScale, false)
 		scalar := f.a.Bcond(condB)

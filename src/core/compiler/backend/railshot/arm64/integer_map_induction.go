@@ -15,6 +15,9 @@ import "math/bits"
 // count elements while independent address locals advance in bytes. Only small
 // exact power-of-two ratios are admitted; no local histories escape the plan.
 func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead []bool) bool {
+	// The fixed-byte probe may have read its limit before rejecting the
+	// induction. Collect the normalized limit from a fresh accumulator.
+	p.limit, p.limitTermN = 0, 0
 	increment := condition
 	limitNode := -1
 	if c := p.nodes[condition]; c.op == 0x47 {
