@@ -669,8 +669,13 @@ func TestIntegerLoadMapInvariantOverlapPrefix(t *testing.T) {
 		initial[i] = byte(i*197 + i/17)
 	}
 	for _, limit := range []int32{256, 268} {
-		for _, invariant := range []int32{1020, 1021, 1024, 1151, 1152, 1153, 1280, 4096, 65533} {
-			body := []byte{1, 5, 0x7f}
+		for _, addresses := range [][2]int32{
+			{1020, -1}, {1021, -1}, {1024, -1}, {1151, -1}, {1152, -1}, {1153, -1},
+			{1280, -1}, {4096, -1}, {65533, -1},
+			{1040, 1216}, {1216, 1040}, {1023, 1103}, {1152, 1153}, {1152, 65533},
+		} {
+			invariant, second := addresses[0], addresses[1]
+			body := []byte{1, 6, 0x7f}
 			constant := func(v int32) {
 				body = append(body, 0x41)
 				body = append(body, wasmtest.SLEB32(v)...)
@@ -679,9 +684,17 @@ func TestIntegerLoadMapInvariantOverlapPrefix(t *testing.T) {
 				constant(v)
 				body = append(body, 0x21, byte(i))
 			}
+			if second >= 0 {
+				constant(second)
+				body = append(body, 0x21, 5)
+			}
 			body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 3, 0x6a,
 				0x20, 0, 0x20, 3, 0x6a, 0x28, 2, 0,
-				0x20, 2, 0x28, 2, 0, 0x6a, 0x22, 4, 0x36, 2, 0,
+				0x20, 2, 0x28, 2, 0, 0x6a)
+			if second >= 0 {
+				body = append(body, 0x20, 5, 0x28, 2, 0, 0x6a)
+			}
+			body = append(body, 0x22, 4, 0x36, 2, 0,
 				0x20, 3, 0x41, 4, 0x6a, 0x22, 3)
 			constant(limit)
 			body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 4, 0x0b)
@@ -693,10 +706,10 @@ func TestIntegerLoadMapInvariantOverlapPrefix(t *testing.T) {
 					integerMapInvariantPrefixEnabled = enabled
 					got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-invariant-reentry")
 					if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
-						t.Fatalf("enabled=%v invariant=%d: got %x/%v, want %x/%v, memory equal=%v", enabled, invariant, got, err, want, wantErr, bytes.Equal(actual, expected))
+						t.Fatalf("enabled=%v invariants=%v: got %x/%v, want %x/%v, memory equal=%v", enabled, addresses, got, err, want, wantErr, bytes.Equal(actual, expected))
 					}
 					if diagnosticsEnabled && (hits != 0) != enabled {
-						t.Fatalf("enabled=%v invariant=%d: alias prefix emitted %d times", enabled, invariant, hits)
+						t.Fatalf("enabled=%v invariants=%v: alias prefix emitted %d times", enabled, addresses, hits)
 					}
 				}
 			}
@@ -893,6 +906,59 @@ func TestIntegerLoadMapRuntimeAdjacent(t *testing.T) {
 				if paths != 2 {
 					t.Fatalf("case=%+v: emitted %d vector paths, want 2", tc, paths)
 				}
+			}
+		}
+	}
+}
+
+func TestIntegerLoadMapInvariantReentryTwoStores(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*101 + i/31)
+	}
+	for _, lateLoad := range []bool{false, true} {
+		for _, invariant := range []int32{1024, 1025, 1144, 4096, 4099, 4216, 8192, 65533} {
+			body := []byte{1, 6, 0x7f}
+			constant := func(v int32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(v)...) }
+			for i, v := range []int32{8192, 1024, 4096, invariant} {
+				constant(v)
+				body = append(body, 0x21, byte(i))
+			}
+			body = append(body, 0x03, 0x40)
+			loadInvariant := []byte{0x20, 3, 0x28, 2, 0, 0x21, 5}
+			if !lateLoad {
+				body = append(body, loadInvariant...)
+			}
+			body = append(body,
+				0x20, 1, 0x20, 4, 0x6a,
+				0x20, 0, 0x20, 4, 0x6a, 0x28, 2, 0)
+			if lateLoad {
+				constant(7)
+			} else {
+				body = append(body, 0x20, 5)
+			}
+			body = append(body, 0x6a, 0x36, 2, 0)
+			if lateLoad {
+				body = append(body, loadInvariant...)
+			}
+			body = append(body,
+				0x20, 2, 0x20, 4, 0x6a,
+				0x20, 4, 0x20, 5, 0x73, 0x36, 2, 0,
+				0x20, 4, 0x41, 4, 0x6a, 0x22, 4)
+			constant(128)
+			body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 4, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+			want, wantMem, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+			got, gotMem, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-invariant-reentry")
+			if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(gotMem, wantMem) {
+				t.Fatalf("lateLoad=%v invariant=%d: got %x/%v want %x/%v, memory equal=%v", lateLoad, invariant, got, err, want, wantErr, bytes.Equal(gotMem, wantMem))
+			}
+			wantHits := 1
+			if lateLoad {
+				wantHits = 0
+			}
+			if diagnosticsEnabled && hits != wantHits {
+				t.Fatalf("lateLoad=%v invariant=%d: got %d re-entry paths, want %d", lateLoad, invariant, hits, wantHits)
 			}
 		}
 	}

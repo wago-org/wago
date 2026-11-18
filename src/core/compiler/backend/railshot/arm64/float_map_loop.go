@@ -85,6 +85,7 @@ type floatMapPlan struct {
 	wide                         bool
 	integer                      bool
 	orderedStoreLoads            bool
+	invariantsBeforeStores       bool
 	interleaved                  bool
 	guardOnlyLoads               [4]uint8
 	guardOnlyLoadN               int
@@ -465,7 +466,11 @@ func (f *fn) inspectFloatMapCandidate(source *wasm.Reader, p *floatMapPlan, runt
 			// stage created it. Earlier captured values retain whole-range
 			// disambiguation; invariant loads already have separate guards.
 			p.orderedStoreLoads = true
+			p.invariantsBeforeStores = true
 			for i := 0; i < n; i++ {
+				if p.load(p.nodes[i].op) && p.addresses[i].invariant && used[i] != 0 && loadStage[i] != 0 {
+					p.invariantsBeforeStores = false
+				}
 				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != 0 && used[i] != uint8(1<<loadStage[i]) {
 					p.orderedStoreLoads = false
 				}
@@ -1413,7 +1418,15 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	// can change it. Limit clipping to contiguous single-store packets.
 	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
 		nInvariant != 0 && p.extraStoreN == 0 && outputStride == 1
-	resumeInvariantPrefix := clipInvariantPrefix && nInvariant == 1 && p.counterScale == 1 && p.packet == floatMapVectorBytes
+	resumeInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
+		nInvariant != 0 && p.counterScale == 1 && p.packet == floatMapVectorBytes &&
+		!p.interleaved && (p.extraStoreN == 0 || p.invariantsBeforeStores)
+	for _, output := range guardedOutputs {
+		if output.stride != 1 {
+			resumeInvariantPrefix = false
+			break
+		}
+	}
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
 	for _, output := range guardedOutputs {
@@ -1572,28 +1585,32 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		f.a.Add64(size, d, span)
 		reloadInvariant = f.a.Len()
 		f.a.Sub64(span, size, d)
-		iv := p.addresses[invariant[0]]
-		read(iv.base, X16)
-		f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
-		if iv.offset != 0 {
-			f.floatMapOffset(X16, X16, iv.offset, true, X17)
+		for _, load := range invariant[:nInvariant] {
+			iv := p.addresses[load]
+			for _, output := range guardedOutputs {
+				read(iv.base, X16)
+				f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
+				if iv.offset != 0 {
+					f.floatMapOffset(X16, X16, iv.offset, true, X17)
+				}
+				f.a.Add64(X16, X16, linMemReg)
+				f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
+				f.a.Subs64(X16, X16, X17)
+				behind := f.a.Bcond(condB)
+				f.cmpRR(X16, span, true)
+				f.a.Csel64(span, X16, span, condB)
+				clipped := f.a.Branch()
+				f.patchBranch19(behind, f.a.Len())
+				// The offset is negative modulo 2^64. An invariant ending at
+				// or before destination is disjoint from the remaining output.
+				f.a.AddImm64(X16, X16, 4)
+				f.cmpImm(X16, 0, true)
+				disjoint := f.a.Bcond(condLE)
+				f.a.MovImm64(span, 0)
+				f.patchBranch19(disjoint, f.a.Len())
+				f.patchBranch26(clipped, f.a.Len())
+			}
 		}
-		f.a.Add64(X16, X16, linMemReg)
-		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
-		f.a.Subs64(X16, X16, X17)
-		behind := f.a.Bcond(condB)
-		f.cmpRR(X16, span, true)
-		f.a.Csel64(span, X16, span, condB)
-		clipped := f.a.Branch()
-		f.patchBranch19(behind, f.a.Len())
-		// The offset is negative modulo 2^64. An invariant ending at
-		// or before destination is disjoint from the remaining output.
-		f.a.AddImm64(X16, X16, 4)
-		f.cmpImm(X16, 0, true)
-		disjoint := f.a.Bcond(condLE)
-		f.a.MovImm64(span, 0)
-		f.patchBranch19(disjoint, f.a.Len())
-		f.patchBranch26(clipped, f.a.Len())
 	}
 	var constants [8]struct {
 		node int
@@ -2172,7 +2189,7 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 			f.setFactsForLocal(x, 0)
 		}
 		var done int
-		if clipInvariantPrefix {
+		if clipInvariantPrefix || resumeInvariantPrefix {
 			// A zero vector span can be the clipped limit. Only skip the
 			// original loop after reaching its actual source bound.
 			readLimit(X16, X17)
