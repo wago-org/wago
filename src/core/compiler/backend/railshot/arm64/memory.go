@@ -2365,7 +2365,7 @@ func (f *fn) beginLoopMemoryLimit(r *wasm.Reader, fr *ctrlFrame) {
 	if blocked.has(reg) || f.regUser[reg] != nil {
 		return
 	}
-	var hits4, hits8 int
+	var hits2, hits4, hits8 int
 	scan := *r
 	for i := 0; i < 64 && scan.HasNext(); i++ {
 		op, err := scan.Byte()
@@ -2382,6 +2382,8 @@ func (f *fn) beginLoopMemoryLimit(r *wasm.Reader, fr *ctrlFrame) {
 			}
 			if index == 0 {
 				switch offset + uint64(memAccessSize(op)) {
+				case 2:
+					hits2++
 				case 4:
 					hits4++
 				case 8:
@@ -2396,7 +2398,15 @@ func (f *fn) beginLoopMemoryLimit(r *wasm.Reader, fr *ctrlFrame) {
 	if hits8 > hits4 {
 		extent = 8
 	}
-	if max(hits4, hits8) < 2 {
+	// Require four halfword loads to amortize the extra preheader and
+	// register lifetime. Keep the new lease out of deeply nested control.
+	if hits2 < 4 || len(f.ctrl) > 16 {
+		hits2 = 0
+	}
+	if hits2 > max(hits4, hits8) {
+		extent = 2
+	}
+	if max(hits2, hits4, hits8) < 2 {
 		return
 	}
 	free := 0

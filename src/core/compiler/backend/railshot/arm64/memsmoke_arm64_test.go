@@ -125,3 +125,34 @@ func TestScopedMemoryLimitLiveRange(t *testing.T) {
 		t.Fatal("expected the second address to trap")
 	}
 }
+
+func TestScopedHalfwordMemoryLimit(t *testing.T) {
+	body := []byte{1, 3, 0x7f,
+		0x20, 0, 0x41, 8, 0x6a, 0x21, 1,
+		0x41, 2, 0x21, 2,
+		0x03, 0x40,
+		0x20, 0, 0x2f, 1, 0, 0x1a,
+		0x20, 0, 0x2f, 1, 0, 0x1a,
+		0x20, 1, 0x2f, 1, 0, 0x1a,
+		0x20, 3, 0x20, 1, 0x2f, 1, 0, 0x6a, 0x21, 3,
+		0x20, 2, 0x41, 1, 0x6b, 0x22, 2, 0x0d, 0,
+		0x0b, 0x20, 3, 0x0b,
+	}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	seed := func(mem []byte) { mem[65534], mem[65535] = 3, 2 }
+	var stats ModuleStats
+	opts := CompileOptions{}
+	if diagnosticsEnabled {
+		opts.Stats = &stats
+	}
+	got, err := runArm64WrapperMemWithOptions(t, m, opts, 65526, seed)
+	if err != nil || got != 2*515 {
+		t.Fatalf("last valid halfword = %d, %v; want 1030", got, err)
+	}
+	if diagnosticsEnabled && stats.Funcs[0].Peephole["scoped-memory-limit"] != 1 {
+		t.Fatal("expected one scoped memory limit")
+	}
+	if _, err := runArm64WrapperMemWithOptions(t, m, opts, 65527, seed); err == nil {
+		t.Fatal("expected halfword crossing the end of memory to trap")
+	}
+}
