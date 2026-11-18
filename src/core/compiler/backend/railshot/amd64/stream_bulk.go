@@ -103,11 +103,11 @@ func (s *streamState) bulk(r *wasm.Reader, sub uint32) error {
 	s.streamBulkRead32(RCX, count)
 	// The uint32 addends fit in 64 bits, so neither end can silently wrap.
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
-	f.a.AluRM(cmpRMcode, RDX, RBX, -bdCurBytes, true)
+	f.streamCompareMemoryEnd(RDX)
 	f.trapIf(condA, trapMemOOB)
 	if sub == 10 {
 		f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
-		f.a.AluRM(cmpRMcode, RDX, RBX, -bdCurBytes, true)
+		f.streamCompareMemoryEnd(RDX)
 		f.trapIf(condA, trapMemOOB)
 		f.a.Add64(RSI, RBX)
 	}

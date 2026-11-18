@@ -249,3 +249,17 @@ The 83 focused tests and 145 production runtime oracles remain valid for this
 unchanged source. There is no new RSS measurement for c1cca19e; the previous
 f320c628 memory result must not be attributed to it. No promotion or PR is
 proposed, and no compile-time or absolute-memory target achievement is claimed.
+
+### Cached memory-bound checkpoint (e746f1ea)
+
+`WAGO_EXPERIMENTAL_STREAM_CACHED_BOUND=1` reuses the existing unshared-memory
+size register for scalar and bulk unsigned end-of-access comparisons when
+available. It retains explicit checks and trap ordering; absent-cache and
+shared-memory cases retain the memory-backed comparison. This is not a
+dominated-check cache and does not eliminate checks.
+
+The exact frozen source passed 86 focused ownership/statistics top-level tests
+with zero failures or skips (0.698 s), including actual regional leases and
+memory-growth coherence. Production corpus runtime verification and performance
+qualification for this revision are pending. Prior c1cca19e runtime results are
+not qualification for this new revision. No improvement or promotion is claimed.

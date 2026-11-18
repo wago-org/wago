@@ -11,10 +11,24 @@ package amd64
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+var streamingCachedBoundEnabled = os.Getenv("WAGO_EXPERIMENTAL_STREAM_CACHED_BOUND") == "1"
+
+// streamCompareMemoryEnd preserves the explicit unsigned check. Shared memory's
+// cache can hold a base pointer rather than an extent, so it must not be used.
+func (f *fn) streamCompareMemoryEnd(end Reg) {
+	if streamingCachedBoundEnabled && !f.threadedMemory0 && f.memSizeReg != regNone {
+		f.a.Cmp64(end, f.memSizeReg)
+		f.stats.peep("stream-cached-bound")
+	} else {
+		f.a.AluRM(cmpRMcode, end, RBX, -bdCurBytes, true)
+	}
+}
 
 // streamMemoryShape rejects floating-point and proposal instructions before
 // lowering. Alignment is a hint, not a requirement for plain scalar accesses.
@@ -55,7 +69,7 @@ func (f *fn) streamCheckedAddress(addr, end Reg, off uint32, size int) int32 {
 	}
 	// Keep explicit checks even for guard mappings: one bounds failure precedes
 	// any load/store, and stores cannot partially modify memory before trapping.
-	f.a.AluRM(cmpRMcode, end, RBX, -bdCurBytes, true)
+	f.streamCompareMemoryEnd(end)
 	f.trapIf(condA, trapMemOOB)
 	return disp
 }
