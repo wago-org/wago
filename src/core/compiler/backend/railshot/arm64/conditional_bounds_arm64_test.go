@@ -71,3 +71,40 @@ func TestConditionalBoundsFallthroughAndJoin(t *testing.T) {
 		}
 	}
 }
+
+func TestConditionalBoundsSmallOuterBlock(t *testing.T) {
+	body := []byte{0, 0x02, 0x40, 0x02, 0x40,
+		0x20, 0, 0x29, 0, 0, 0x1a,
+		0x20, 2, 0x0d, 1,
+		0x20, 0, 0x20, 1, 0x36, 0, 4,
+		0x0b, 0x0b,
+		0x20, 3, 0x21, 0,
+		0x20, 0, 0x20, 1, 0x36, 0, 0,
+		0x41, 0, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	var checks [2]int
+	for i, enabled := range []bool{false, true} {
+		var opts CompileOptions
+		opts.Optimizations = map[string]bool{"bounds-facts": true, "memory-min-bounds": false, "conditional-bounds-fallthrough": enabled}
+		var stats ModuleStats
+		if diagnosticsEnabled {
+			opts.Stats = &stats
+		}
+		for _, branch := range []uint64{0, 1} {
+			got, err := runScalarUnrollMemory(t, m, opts, 65528, 42, branch, 65533)
+			want := make([]byte, 65536)
+			if branch == 0 {
+				binary.LittleEndian.PutUint32(want[65532:], 42)
+			}
+			if err == nil || !bytes.Equal(got, want) {
+				t.Fatalf("enabled=%v branch=%d error=%v memory equal=%v", enabled, branch, err, bytes.Equal(got, want))
+			}
+		}
+		if diagnosticsEnabled {
+			checks[i] = stats.Funcs[0].BoundsChecks
+		}
+	}
+	if diagnosticsEnabled && checks[0] != checks[1]+1 {
+		t.Fatalf("inline checks without/with fallthrough proof = %v", checks)
+	}
+}

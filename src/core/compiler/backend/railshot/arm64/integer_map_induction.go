@@ -9,41 +9,34 @@
 
 package arm64
 
+import "math/bits"
+
 // Summarize the entry-to-exit updates of one source packet. A trip counter can
 // count elements while independent address locals advance in bytes. Only small
 // exact power-of-two ratios are admitted; no local histories escape the plan.
 func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead []bool) bool {
+	// The fixed-byte probe may have read its limit before rejecting the
+	// induction. Collect the normalized limit from a fresh accumulator.
+	p.limit, p.limitTermN = 0, 0
 	increment := condition
 	limitNode := -1
-	p.limitLocal = -1
 	if c := p.nodes[condition]; c.op == 0x47 {
 		increment, limitNode = c.left(), c.right()
-		if p.nodes[increment].op != 0x6a {
+		if _, _, ok := p.integerMapIncrement(increment); !ok {
 			increment, limitNode = limitNode, increment
 		}
 	}
-	inc := p.nodes[increment]
-	if inc.op != 0x6a {
+	counter, step, ok := p.integerMapIncrement(increment)
+	if !ok {
 		return false
 	}
-	local, stride := p.nodes[inc.left()], p.nodes[inc.right()]
-	if local.op != 0x20 {
-		local, stride = stride, local
-	}
-	if local.op != 0x20 || stride.op != 0x41 || stride.bits == 0 || stride.bits > 32 {
-		return false
-	}
-	slot := p.localSlot(local.left())
-	if slot < 0 || p.locals[slot].Type != mtI32 || p.locals[slot].Value != increment {
-		return false
-	}
-	p.counter = local.left()
+	p.counter = counter
 	size := uint32(4)
 	if p.wide {
 		size = 8
 	}
 	p.step = uint32(stores) * size
-	p.counterStep = uint32(stride.bits)
+	p.counterStep = step
 	if p.step%p.counterStep != 0 {
 		return false
 	}
@@ -56,17 +49,8 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 		return false
 	}
 	if limitNode >= 0 {
-		limit := p.nodes[limitNode]
-		switch limit.op {
-		case 0x41:
-			p.limit = uint32(limit.bits)
-		case 0x20:
-			s := p.localSlot(limit.left())
-			if s < 0 || p.locals[s].Type != mtI32 || p.locals[s].Written {
-				return false
-			}
-			p.limitLocal = limit.left()
-		default:
+		op := p.nodes[limitNode].op
+		if !p.integer && op != 0x41 && op != 0x20 || !p.collectIntegerMapLimit(limitNode, 1, 0) {
 			return false
 		}
 	}
@@ -98,7 +82,7 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 			}
 			return n.op == 0x6a && walk(n.left()) && walk(n.right())
 		}
-		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 || p.integer && delta != p.step {
+		if !walk(cell.Value) || reads != 1 || delta == 0 || delta%p.step != 0 || delta/p.step > 256 {
 			return false
 		}
 		p.byteSteps[i] = delta
@@ -107,53 +91,284 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 	return true
 }
 
+func (p *floatMapPlan) integerMapIncrement(root int) (int, uint32, bool) {
+	inc := p.nodes[root]
+	if inc.op != 0x6a {
+		return 0, 0, false
+	}
+	local, stride := p.nodes[inc.left()], p.nodes[inc.right()]
+	if local.op != 0x20 {
+		local, stride = stride, local
+	}
+	if local.op != 0x20 || stride.op != 0x41 || stride.bits == 0 || stride.bits > 32 {
+		return 0, 0, false
+	}
+	slot := p.localSlot(local.left())
+	if slot < 0 || p.locals[slot].Type != mtI32 || p.locals[slot].Value != root {
+		return 0, 0, false
+	}
+	return local.left(), uint32(stride.bits), true
+}
+
+type integerMapLimitTerm struct {
+	local uint32
+	shift uint8
+	sub   bool
+}
+
+// Collect a modular affine limit whose immutable operands can be read with
+// two GP scratch registers. The runtime trip guard still checks the final value.
+func (p *floatMapPlan) collectIntegerMapLimit(x int, scale uint32, depth int) bool {
+	if depth > 8 || !p.spend() {
+		return false
+	}
+	n := p.nodes[x]
+	switch n.op {
+	case 0x41:
+		p.limit += uint32(n.bits) * scale
+		return true
+	case 0x20:
+		i := p.localSlot(n.left())
+		if i < 0 || p.locals[i].Written || p.locals[i].Type != mtI32 ||
+			p.limitTermN == len(p.limitTerms) {
+			return false
+		}
+		term := integerMapLimitTerm{local: uint32(n.left())}
+		if int32(scale) < 0 {
+			term.sub, scale = true, -scale
+		}
+		if scale == 0 || scale&(scale-1) != 0 {
+			return false
+		}
+		term.shift = uint8(bits.TrailingZeros32(scale))
+		p.limitTerms[p.limitTermN] = term
+		p.limitTermN++
+		return true
+	case 0x6a:
+		return p.collectIntegerMapLimit(n.left(), scale, depth+1) &&
+			p.collectIntegerMapLimit(n.right(), scale, depth+1)
+	case 0x6b:
+		return p.integer && p.collectIntegerMapLimit(n.left(), scale, depth+1) &&
+			p.collectIntegerMapLimit(n.right(), -scale, depth+1)
+	case 0x6c:
+		if !p.integer {
+			return false
+		}
+		left, right := n.left(), n.right()
+		if p.nodes[left].op == 0x41 {
+			left, right = right, left
+		}
+		if constant := p.nodes[right]; constant.op == 0x41 {
+			return p.collectIntegerMapLimit(left, scale*uint32(constant.bits), depth+1)
+		}
+	case 0x74:
+		if p.integer && n.immediateShift() {
+			return p.collectIntegerMapLimit(n.left(), scale<<uint32(n.bits&31), depth+1)
+		}
+	}
+	return false
+}
+
 // An address has at most one advancing byte index, one unchanged base and a
 // modular constant. Memory immediates remain separate widened additions.
 func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 	base, index := -1, -1
-	var bias uint32
-	var walk func(int) bool
-	walk = func(x int) bool {
+	var bias, stride uint32
+	var walk func(int, uint32) bool
+	walk = func(x int, scale uint32) bool {
 		if !p.spend() {
 			return false
 		}
 		n := p.nodes[x]
 		switch n.op {
 		case 0x41:
-			bias += uint32(n.bits)
+			bias += scale * uint32(n.bits)
 			return true
 		case 0x20:
 			slot := p.localSlot(n.left())
 			if slot < 0 || p.locals[slot].Type != mtI32 {
 				return false
 			}
-			advancing := p.byteIndices&(1<<slot) != 0 || n.left() == p.counter && p.spanScale == 1
-			if advancing {
-				if index >= 0 {
+			if n.left() == p.counter {
+				if index >= 0 || scale == 0 || scale%p.spanScale != 0 || scale/p.spanScale > 256 {
 					return false
 				}
-				index = n.left()
+				index, stride = n.left(), scale/p.spanScale
 				return true
 			}
-			if p.locals[slot].Written || base >= 0 {
+			if p.byteIndices&(1<<slot) != 0 {
+				if index >= 0 || scale != 1 {
+					return false
+				}
+				index, stride = n.left(), p.byteSteps[slot]/p.step
+				return true
+			}
+			if p.locals[slot].Written || base >= 0 || scale != 1 {
 				return false
 			}
 			base = n.left()
 			return true
 		case 0x6a:
-			return walk(n.left()) && walk(n.right())
+			return walk(n.left(), scale) && walk(n.right(), scale)
+		case 0x6b:
+			return p.integer && walk(n.left(), scale) && walk(n.right(), -scale)
+		case 0x6c:
+			if !p.integer {
+				return false
+			}
+			left, right := n.left(), n.right()
+			if p.nodes[left].op == 0x41 {
+				left, right = right, left
+			}
+			if constant := p.nodes[right]; constant.op == 0x41 {
+				return walk(left, scale*uint32(constant.bits))
+			}
+		case 0x74:
+			if p.integer && n.immediateShift() {
+				return walk(n.left(), scale<<uint32(n.bits&31))
+			}
 		}
 		return false
 	}
-	if !walk(root) || bias > 1<<20 {
+	if !walk(root, 1) || int32(bias) > 1<<20 || int32(bias) < -(1<<20) ||
+		!p.integer && bias > 1<<20 {
 		return floatMapAddress{}, false
-	}
-	stride := uint32(0)
-	if index >= 0 && index != p.counter {
-		stride = p.byteSteps[p.localSlot(index)] / p.step
 	}
 	if stride == 1 {
 		stride = 0
 	}
 	return floatMapAddress{base: base, index: index + 1, bias: bias, invariant: index < 0, stride: stride}, true
+}
+
+// mapStoreBase identifies a candidate immutable base, leaving address
+// legality and disjointness to the existing normalized proof and guards.
+func (p *floatMapPlan) mapStoreBase(root, depth int) int {
+	if depth > 8 || !p.spend() {
+		return -1
+	}
+	n := p.nodes[root]
+	switch n.op {
+	case 0x20:
+		if !p.localWritten(n.left()) {
+			return n.left()
+		}
+	case 0x6a:
+		if left := p.mapStoreBase(n.left(), depth+1); left >= 0 {
+			return left
+		}
+		return p.mapStoreBase(n.right(), depth+1)
+	}
+	return -1
+}
+
+// One logical word per iteration gives each native lane a different source
+// counter. Source-unrolled adjacent stores need a separate per-store proof.
+func (p *floatMapPlan) mapCounterValue(node floatMapNode) bool {
+	return p.integer && p.step == 4 && node.op == 0x20 && node.left() == p.counter
+}
+
+type integerMapExitPlan struct {
+	written   uint32    // function-local coordinates
+	extra     uint32    // candidate-local coordinates
+	fromStore [3]uint32 // locals grouped by the store that supplies their final value
+	invariant uint32
+	bias      [32]uint32
+	coeff     [32]uint32
+	source    [32]integerMapLimitTerm
+}
+
+func (f *fn) planIntegerMapExit(p *floatMapPlan) integerMapExitPlan {
+	if !integerMapAffineExitEnabled || !p.integer || f.vectorLoopExit != nil || f.usesCalls || f.nLocals > 32 ||
+		f.depth() != 0 || len(f.intervalLast) != 0 || f.preserveCallerPins {
+		return integerMapExitPlan{}
+	}
+	var exit integerMapExitPlan
+	for i, cell := range p.locals[:p.localN] {
+		if !cell.Written {
+			continue
+		}
+		exit.written |= uint32(1) << cell.Index
+		bit := uint32(1) << i
+		if int(cell.Index) == p.counter || p.byteIndices&bit != 0 {
+			continue
+		}
+		if cell.Type != mtI32 {
+			return integerMapExitPlan{}
+		}
+		exit.extra |= bit
+		if !p.collectIntegerMapExitValue(&exit, i, cell.Value, 1, 0) {
+			if !integerMapVectorLiveOutEnabled || p.step != 4 || p.interleaved {
+				return integerMapExitPlan{}
+			}
+			var output int
+			if cell.Value != p.result {
+				output = -1
+				for j, store := range p.extraStores[:p.extraStoreN] {
+					if cell.Value == store.Value {
+						output = j + 1
+						break
+					}
+				}
+				if output < 0 {
+					return integerMapExitPlan{}
+				}
+			}
+			exit.fromStore[output] |= bit
+			exit.invariant &^= bit
+		}
+	}
+	return exit
+}
+
+func (p *floatMapPlan) collectIntegerMapExitValue(exit *integerMapExitPlan, slot, x int, scale uint32, depth int) bool {
+	if depth > 8 || !p.spend() {
+		return false
+	}
+	v := p.nodes[x]
+	switch v.op {
+	case 0x41:
+		exit.bias[slot] += uint32(v.bits) * scale
+		return true
+	case 0x20:
+		if v.left() == p.counter {
+			exit.coeff[slot] += scale
+			return true
+		}
+		bit := uint32(1) << slot
+		if p.localWritten(v.left()) || exit.invariant&bit != 0 {
+			return false
+		}
+		term := integerMapLimitTerm{local: uint32(v.left())}
+		if int32(scale) < 0 {
+			term.sub, scale = true, -scale
+		}
+		if scale == 0 || scale&(scale-1) != 0 {
+			return false
+		}
+		term.shift = uint8(bits.TrailingZeros32(scale))
+		exit.source[slot] = term
+		exit.invariant |= bit
+		return true
+	case 0x6a, 0x6b:
+		if !p.collectIntegerMapExitValue(exit, slot, v.left(), scale, depth+1) {
+			return false
+		}
+		if v.op == 0x6b {
+			scale = -scale
+		}
+		return p.collectIntegerMapExitValue(exit, slot, v.right(), scale, depth+1)
+	case 0x6c:
+		left, right := v.left(), v.right()
+		if p.nodes[left].op == 0x41 {
+			left, right = right, left
+		}
+		if constant := p.nodes[right]; constant.op == 0x41 {
+			return p.collectIntegerMapExitValue(exit, slot, left, scale*uint32(constant.bits), depth+1)
+		}
+	case 0x74:
+		if v.immediateShift() {
+			return p.collectIntegerMapExitValue(exit, slot, v.left(), scale<<uint32(v.bits&31), depth+1)
+		}
+	}
+	return false
 }

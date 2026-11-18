@@ -10,8 +10,20 @@
 package arm64
 
 import (
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+var absReduceVectorExitEnabled = os.Getenv("WAGO_ARM64_NO_ABS_REDUCE_VECTOR_EXIT") != "1"
+
+type absReduceExitValue struct {
+	local uint8
+	base  uint8
+	lane  uint8
+	sign  bool
+	bias  uint32
+}
 
 // Integer addition is associative modulo 2^32. A bounded proof recognizes
 // contiguous signed-absolute-difference reductions without reordering effects.
@@ -20,6 +32,9 @@ type absReducePlan struct {
 	biasA, biasB                      uint32
 	stride                            dotNode
 	lanes                             int
+	exitValues                        [4]absReduceExitValue
+	exitN                             int
+	exitWrites                        uint32
 }
 
 // Decode a small prefix before reserving symbolic scratch. Unsupported effects
@@ -305,11 +320,62 @@ func proveAbsReduce(nodes []dotNode, values []int, written, initialRead []bool, 
 			}
 			if valid {
 				p.acc, p.index, p.baseA, p.baseB, p.biasA, p.biasB, p.stride, p.lanes = acc, index, bases[0], bases[1], mins[0], mins[1], stride, count
+				p.planVectorExit(nodes, values, written, pairs[:count], offsets[:count])
 				return p, true
 			}
 		}
 	}
 	return p, false
+}
+
+// The last source iteration can publish addresses and signs already computed
+// by the vector packet. Other final values retain the original scalar tail.
+func (p *absReducePlan) planVectorExit(nodes []dotNode, values []int, written []bool, pairs [][2]int, offsets [][2]uint32) {
+	if !absReduceVectorExitEnabled {
+		return
+	}
+	var writes uint32
+	for local, value := range values {
+		if !written[local] {
+			continue
+		}
+		writes |= 1 << local
+		if local == p.acc || local == p.counter || local == p.index {
+			continue
+		}
+		if p.exitN == len(p.exitValues) {
+			return
+		}
+		out := absReduceExitValue{local: uint8(local)}
+		base, bias, affine := affineDotAddress(nodes, value, p.index)
+		if affine && (base == p.baseA || base == p.baseB) && bias <= 4095 {
+			out.base, out.bias = uint8(base), bias
+		} else {
+			sign := nodes[value]
+			if sign.op != 0x75 || nodes[sign.b].op != 0x41 || nodes[sign.b].v != 31 {
+				return
+			}
+			diff := nodes[sign.a]
+			if diff.op != 0x6b {
+				return
+			}
+			found := false
+			for i, pair := range pairs {
+				if pair[0] == diff.a && pair[1] == diff.b {
+					out.sign = true
+					out.lane = uint8((offsets[i][0] - p.biasA) / 4)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return
+			}
+		}
+		p.exitValues[p.exitN] = out
+		p.exitN++
+	}
+	p.exitWrites = writes
 }
 
 func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
@@ -320,6 +386,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	if !ok {
 		return
 	}
+	vectorExit := p.exitWrites != 0 && f.vectorLoopExit == nil && !f.usesCalls && !f.preserveCallerPins && f.depth() == 0
 	oldPinned, oldFPinned := f.pinned, f.fpinned
 	var regs [6]Reg
 	nr := 0
@@ -361,7 +428,7 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 			available++
 		}
 	}
-	neededVectors := 2
+	neededVectors := 3 // one packet, the second input, and the running sum
 	if p.lanes > 4 {
 		neededVectors++
 	}
@@ -399,6 +466,15 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		vc = f.allocFReg(0)
 		f.fpinned = f.fpinned.add(vc)
 	}
+	sum := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(sum)
+	// The eight-word packet can load each stream with one LDP if both
+	// halves fit without borrowing an occupied vector register.
+	vbHi := regNone
+	if p.lanes == 8 && available > neededVectors {
+		vbHi = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vbHi)
+	}
 	// Prove the complete stream before carrying native pointers. Failure leaves
 	// every source local unchanged and resumes the original checked loop.
 	var fallback [4]int
@@ -411,7 +487,11 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	} else {
 		f.a.MovImm64(X16, uint64(p.stride.v))
 	}
-	f.a.SubImm32(X17, counter, 2)
+	last := uint32(2)
+	if vectorExit {
+		last = 1
+	}
+	f.a.SubImm32(X17, counter, last)
 	f.a.Mul64(X17, X17, X16)
 	f.cmpRR(X17, size, true)
 	fallback[nFallback] = f.a.Bcond(condA)
@@ -436,34 +516,94 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 	nFallback++
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
-	loop := f.a.Len()
-	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		part := va
-		if off != 0 {
-			part = vc
-		}
-		f.a.LdrQ(part, a, off)
-		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(part, part, vb)
-		f.a.NeonAbsS(part, part)
-		if off != 0 {
-			f.a.NeonAddS(va, va, part)
-		}
-	}
-	f.a.NeonAddvS(va, va)
-	f.a.FmovToGpr(X16, va, false)
-	f.a.Add32(acc, acc, X16)
+	// The stream stride is invariant. The vector packet uses only direct
+	// Q loads and NEON arithmetic, so it leaves the backend scratch live.
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
 		f.a.MovImm64(X16, uint64(p.stride.v))
 	}
+	// Reserve the original scalar tail. The source index is live only at
+	// that tail, so compute its wrapping advance for the entire prefix.
+	f.a.SubImm32(counter, counter, 1)
+	f.a.Madd32(index, counter, X16, index)
+	// Addition modulo 2^32 allows each lane to accumulate independently.
+	// Reduce once before resuming the checked scalar tail.
+	f.a.NeonEor16b(sum, sum, sum)
+	write := func(local int, reg Reg) {
+		if dst, _, pinned := f.pinReg(local); pinned {
+			f.a.MovReg32(dst, reg)
+		} else {
+			f.st64(SP, f.localOff(local), reg)
+		}
+	}
+	packet := func(final bool) {
+		if vbHi != regNone {
+			f.a.LdpQ(va, vc, a, 0)
+			f.a.LdpQ(vb, vbHi, b, 0)
+		}
+		for off := int32(0); off < int32(4*p.lanes); off += 16 {
+			part, input := va, vb
+			if off != 0 {
+				part = vc
+				if vbHi != regNone {
+					input = vbHi
+				}
+			}
+			if vbHi == regNone {
+				f.a.LdrQ(part, a, off)
+				f.a.LdrQ(input, b, off)
+			}
+			f.a.NeonSubS(part, part, input)
+			if final {
+				for _, value := range p.exitValues[:p.exitN] {
+					lane := uint32(value.lane)
+					if value.sign && lane/4 == uint32(off)/16 {
+						f.a.NeonUmovS(X17, part, uint8(lane%4))
+						f.a.AsrImm(X17, X17, 31, true)
+						write(int(value.local), X17)
+					}
+				}
+			}
+			f.a.NeonAbsS(part, part)
+			if off != 0 {
+				f.a.NeonAddS(va, va, part)
+			}
+		}
+		f.a.NeonAddS(sum, sum, va)
+	}
+	loop := f.a.Len()
+	packet(false)
 	f.a.Add64(a, a, X16)
 	f.a.Add64(b, b, X16)
-	f.a.Add32(index, index, X16)
-	f.a.SubImm32(counter, counter, 1)
-	f.cmpImm(counter, 1, false)
+	f.a.SubsImm32(counter, counter, 1)
 	f.patchBranch19(f.a.Bcond(condNE), loop)
+	if vectorExit {
+		for _, value := range p.exitValues[:p.exitN] {
+			if !value.sign {
+				read(int(value.base), X17)
+				f.a.Add32(X17, X17, index)
+				if value.bias != 0 {
+					f.a.AddImm32(X17, X17, value.bias)
+				}
+				write(int(value.local), X17)
+			}
+		}
+		packet(true)
+		f.a.Add32(index, index, X16)
+	}
+	f.a.NeonAddvS(sum, sum)
+	f.a.FmovToGpr(X16, sum, false)
+	f.a.Add32(acc, acc, X16)
+	if vectorExit {
+		write(p.counter, counter)
+		write(p.index, index)
+		write(p.acc, acc)
+		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: f.a.Cbz32(counter), written: p.exitWrites}
+		f.stats.peep("abs-reduce-vector-exit")
+	} else {
+		f.a.MovImm32(counter, 1)
+	}
 	for _, site := range fallback[:nFallback] {
 		f.patchBranch19(site, f.a.Len())
 	}
@@ -480,6 +620,10 @@ func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
 		}
 		f.setFactsForLocal(state.local, 0)
 	}
+	if vbHi != regNone {
+		f.releaseF(vbHi)
+	}
+	f.releaseF(sum)
 	f.releaseF(va)
 	f.releaseF(vb)
 	if vc != regNone {

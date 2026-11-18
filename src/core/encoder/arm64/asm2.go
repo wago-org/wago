@@ -816,6 +816,34 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	a.ldStrQIndexed(0x3CA06800, src, base, disp)
 }
 
+// LdrQPost loads from base, then adds a signed byte displacement to base.
+func (a *Asm) LdrQPost(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, 0, true, 16)
+		a.regallocGPWrites(regallocGPMask(base, true))
+	}
+	a.ldStrQPost(0x3CC00400, dst, base, disp)
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
+// StrQPost stores to base, then adds a signed byte displacement to base.
+func (a *Asm) StrQPost(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, 0, src, true, 16)
+		a.regallocGPWrites(regallocGPMask(base, true))
+	}
+	a.ldStrQPost(0x3C800400, src, base, disp)
+}
+
+func (a *Asm) ldStrQPost(op uint32, rt, base Reg, disp int32) {
+	if disp < -256 || disp > 255 {
+		panic("arm64: Q-register post-index displacement out of range")
+	}
+	a.word(op | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(rt))
+}
+
 func (a *Asm) ldStrQIndexed(indexed uint32, rt, base Reg, disp int32) {
 	scratch := X16
 	if base == X16 {
@@ -1615,6 +1643,13 @@ func (a *Asm) NeonCmeqB(dst, n, m Reg) { a.neon3(0x6E208C00, 1, dst, n, m) }
 func (a *Asm) NeonCmeqH(dst, n, m Reg) { a.neon3(0x6E208C00, 2, dst, n, m) }
 func (a *Asm) NeonCmeqS(dst, n, m Reg) { a.neon3(0x6E208C00, 4, dst, n, m) }
 func (a *Asm) NeonCmeqD(dst, n, m Reg) { a.neon3(0x6E208C00, 8, dst, n, m) }
+
+func (a *Asm) NeonCmeqZeroS(dst, n Reg) {
+	a.word(0x4EA09800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonCmgtB(dst, n, m Reg) { a.neon3(0x4E203400, 1, dst, n, m) }
 func (a *Asm) NeonCmgtH(dst, n, m Reg) { a.neon3(0x4E203400, 2, dst, n, m) }
 func (a *Asm) NeonCmgtS(dst, n, m Reg) { a.neon3(0x4E203400, 4, dst, n, m) }
@@ -2050,6 +2085,7 @@ func (a *Asm) NeonRev32H(dst, n Reg) {
 }
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
+func (a *Asm) NeonUzp1S(dst, n, m Reg) { a.neon3(0x4E001800, 4, dst, n, m) }
 func (a *Asm) NeonUzp2S(dst, n, m Reg) { a.neon3(0x4E005800, 4, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }
 func (a *Asm) NeonZip1S(dst, n, m Reg) { a.neon3(0x4E003800, 4, dst, n, m) }
@@ -2151,6 +2187,15 @@ func (a *Asm) NeonDupGprH(dst, src Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 }
+
+// NeonMoviS broadcasts an unsigned eight-bit immediate to four 32-bit lanes.
+func (a *Asm) NeonMoviS(dst Reg, imm uint8) {
+	a.word(0x4F000400 | uint32(imm&0xe0)<<11 | uint32(imm&0x1f)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
 func (a *Asm) NeonDupGprS(dst, src Reg) {
 	a.word(0x4E040C00 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {
@@ -2471,12 +2516,36 @@ func (a *Asm) LdrF(rt, base Reg, disp int32, f64 bool) {
 		a.LdrS(rt, base, disp)
 	}
 }
+
 func (a *Asm) StrF(base Reg, disp int32, rt Reg, f64 bool) {
 	if f64 {
 		a.StrD(base, disp, rt)
 	} else {
 		a.StrS(base, disp, rt)
 	}
+}
+
+func neonLaneAddress(base Reg, lane uint8, wide bool) uint32 {
+	encoding := uint32(0x0D008000)
+	if wide {
+		encoding |= 1<<10 | uint32(lane&1)<<30
+	} else {
+		encoding |= uint32(lane&1)<<12 | uint32(lane&2)<<29
+	}
+	return encoding | r(base)<<5
+}
+
+// Ld1Lane loads one scalar element and preserves the other vector lanes.
+func (a *Asm) Ld1Lane(dst, base Reg, lane uint8, wide bool) {
+	a.word(1<<22 | neonLaneAddress(base, lane, wide) | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
+// St1Lane stores one scalar element from a vector lane.
+func (a *Asm) St1Lane(src, base Reg, lane uint8, wide bool) {
+	a.word(neonLaneAddress(base, lane, wide) | r(src))
 }
 
 // MovImm32 materializes a 32-bit constant into the low half of rd (upper zero).

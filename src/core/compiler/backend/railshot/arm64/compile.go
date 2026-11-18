@@ -204,7 +204,7 @@ type fn struct {
 	integerWordMapWork      uint16
 	integerLoadMapWork      uint16
 	integerLoadMapProbe     bool
-	pureReduce              *pureReduceJoin
+	vectorLoopExit          *vectorLoopJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
 
@@ -372,8 +372,9 @@ type fn struct {
 	// memLimitReg caches memBytes-memLimitExtent in call-free explicit-bounds
 	// functions. Exact matching accesses compare their canonical memory32 address
 	// directly with this inclusive limit, removing the per-access end-address ADD.
-	memLimitReg    Reg
-	memLimitExtent int32
+	memLimitReg       Reg
+	memLimitExtent    int32
+	memLimitLoopDepth int
 	// trapCellReg caches [linMemReg-offTrapCellPtr] in call-free interruptible
 	// loops. The pointer is fixed for an activation; calls are excluded because
 	// cross-instance entry can replace the active trap cell.
@@ -403,7 +404,9 @@ type fn struct {
 	// local/global address source and its largest checked extent. The fixed set
 	// retains independent proofs for interleaved arrays without per-local state.
 	boundsCerts       [8]boundsCert
+	boundsScanWork    uint32 // decoded straight-line bounds lookahead in this function
 	nextBoundsCert    uint8
+	modularBoundsLive bool // may remain true after source-specific invalidation
 	boundsCertsActive bool // may remain true after source-specific invalidation
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
@@ -782,6 +785,7 @@ type scratch struct {
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
+	localAddressBoundInline [64]uint32 // reused for the current fallback function
 	branchTargetInline      [64]uint64 // one bit per instruction; covers 16 KiB of native code
 	repeatedStoreOrigins    [64]uint64 // bounded Wasm-store origin bits for one candidate function
 	repeatedStoreOriginsSet bool

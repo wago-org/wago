@@ -173,3 +173,39 @@ func TestIntegerMapAffineLiveOut(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerMapSavedInductionLiveOut(t *testing.T) {
+	if !cpu.X86.HasSSE41 {
+		t.Skip("SSE4.1 required")
+	}
+	old, oldFast, oldExit := integerMapLoopEnabled, integerMapTestFast, integerMapAffineExit
+	defer func() { integerMapLoopEnabled, integerMapTestFast, integerMapAffineExit = old, oldFast, oldExit }()
+	body := []byte{1, 2, 0x7f, 0x03, 0x40,
+		0x20, 3, 0x21, 4,
+		0x20, 0, 0x20, 3, 0x6a,
+		0x20, 1, 0x20, 3, 0x6a, 0x28, 2, 0, 0x36, 2, 0,
+		0x20, 3, 0x41, 4, 0x6a, 0x22, 3, 0x20, 2, 0x47, 0x0d, 0, 0x0b,
+		0x20, 4, 0x0b}
+	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	const dst, src = 1024, 2048
+	for _, limit := range []uint64{64, 68} {
+		for mode := 0; mode < 3; mode++ {
+			integerMapLoopEnabled, integerMapTestFast, integerMapAffineExit = mode != 0, false, mode == 2
+			var stats ModuleStats
+			want := make([]byte, 65536)
+			for i := uint64(0); i < limit; i++ {
+				want[src+i] = byte(i*73 + 17)
+			}
+			got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: shared.AMD64ModernBaseline, Optimizations: map[string]bool{"interval-region-pins": false}}, func(mem []byte) {
+				copy(mem, want)
+			}, dst, src, limit)
+			copy(want[dst:dst+limit], want[src:src+limit])
+			if mode != 0 && diagnosticsEnabled && stats.Funcs[0].Peephole["integer-map-loop"] == 0 {
+				t.Fatalf("limit=%d mode=%d: integer map was not selected", limit, mode)
+			}
+			if got != limit-4 || !bytes.Equal(mem, want) || err != nil {
+				t.Fatalf("limit=%d mode=%d: got=%d want=%d memory=%v err=%v", limit, mode, got, limit-4, bytes.Equal(mem, want), err)
+			}
+		}
+	}
+}

@@ -170,6 +170,9 @@ func (f *fn) occupy(e *elem, r Reg) {
 	if e.isDeferred() {
 		f.s.removePendingDeferred()
 	}
+	if e.st.kind != stReg {
+		e.st.slot &^= capturedBoundsExtentBit
+	}
 	e.st.kind, e.st.reg = stReg, r
 	e.setElemKind(ekValue)
 }

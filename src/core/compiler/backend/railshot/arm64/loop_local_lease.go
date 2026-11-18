@@ -19,6 +19,8 @@ var loopLocalLeaseEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_LOCAL_LEASE") != "1"
 
 var temporaryLoopLeaseEnabled = os.Getenv("WAGO_ARM64_NO_TEMP_LOOP_LEASE") != "1"
 
+var freeLoopLeaseEnabled = os.Getenv("WAGO_ARM64_NO_FREE_LOOP_LEASE") != "1"
+
 // A lease belongs to one call-free loop. Classic leases remain flat. Temporary
 // leases may cross structured control while publishing local homes only on
 // branches that leave the leased region.
@@ -26,8 +28,11 @@ type loopLocalLease struct {
 	depth     uint32
 	count     uint8
 	temporary bool
+	free      bool
 	local     [4]uint16
 	reg       [4]Reg
+	parked    [4]uint16 // displaced local index plus one
+	idle      uint64
 }
 
 const loopLocalLeaseWorkLimit = 4096
@@ -35,9 +40,10 @@ const loopLocalLeaseWorkLimit = 4096
 func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 	var plan loopLocalLease
 	classic := f.nLocals > 64 && f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 && len(f.intervalLast) == 0
-	temporary := temporaryLoopLeaseEnabled && f.usesCalls && f.nLocals <= 64 && len(f.locals) == f.nLocals && f.intervalActive == 0 && f.depth() == 0
+	free := freeLoopLeaseEnabled && !f.usesCalls && f.pinnedLocalMask != 0
+	temporary := temporaryLoopLeaseEnabled && (f.usesCalls || free) && f.nLocals <= 64 && len(f.locals) == f.nLocals && f.intervalActive == 0 && f.depth() == 0
 	if !loopLocalLeaseEnabled || !callFreeLoopRegionEnabled || (!classic && !temporary) || f.loopLocalLease.depth != 0 ||
-		f.pureReduce != nil || f.dotLoop != nil || f.byteReduceLoop != nil ||
+		f.vectorLoopExit != nil || f.dotLoop != nil || f.byteReduceLoop != nil ||
 		f.interruptible || f.threadedMemory0 || f.moduleEH || f.preserveCallerPins ||
 		len(f.gcTypeLayouts) != 0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
 		f.inlineDepth != 0 || f.localBase != 0 ||
@@ -45,14 +51,29 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 		return plan, false
 	}
 	plan.temporary = temporary && !classic
+	plan.free = plan.temporary && free
+	if plan.free {
+		unpinned := false
+		for i, local := range f.locals {
+			if local.reg == regNone && (f.localType[i] == mtI32 || f.localType[i] == mtI64) {
+				unpinned = true
+				break
+			}
+		}
+		if !unpinned {
+			return plan, false
+		}
+	}
 	var cells [16]struct {
 		local uint16
 		refs  uint16
+		reads uint16
 	}
 	var lowSlots [64]uint8 // cell index plus one; zero is absent
 	count := 0
 	depth := 0
-	structured := false
+	structured, escapes := false, false
+	var mentioned uint64
 	peek := *r
 	start := peek.Offset()
 	var imm wasm.InstructionImmediate
@@ -74,9 +95,11 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 				return plan, false
 			}
 			if depth != 0 {
+				escapes = escapes || label > uint32(depth)
 				continue
 			}
 			if plan.temporary && label == 1 {
+				escapes = true
 				// The immediate enclosing void target gets current homes on its
 				// taken edge. The existing cold-edge path preserves hot residency.
 				if len(f.ctrl) == 0 || f.ctrl[len(f.ctrl)-1].branchArity() != 0 {
@@ -92,14 +115,29 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			if structured {
 				minimumRefs = 3
 			}
-			for slot := 0; slot < len(plan.local); slot++ {
+			maxPins := len(plan.local)
+			if plan.free {
+				// Reserve only two additional pins in leaf functions. A
+				// read avoided on every iteration is worth more than a store.
+				minimumRefs = 4
+				maxPins = 2
+			}
+			for slot := 0; slot < maxPins; slot++ {
 				best := -1
+				bestScore := uint16(0)
 				for i := 0; i < count; i++ {
 					if plan.temporary && f.locals[cells[i].local].reg != regNone {
 						continue
 					}
-					if cells[i].refs >= minimumRefs && (best < 0 || cells[i].refs > cells[best].refs) {
-						best = i
+					score := cells[i].refs
+					if plan.free {
+						if cells[i].reads == 0 {
+							continue
+						}
+						score += cells[i].reads
+					}
+					if score >= minimumRefs && score > bestScore {
+						best, bestScore = i, score
 					}
 				}
 				if best < 0 {
@@ -107,7 +145,10 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 				}
 				plan.local[plan.count] = cells[best].local
 				plan.count++
-				cells[best].refs = 0
+				cells[best].refs, cells[best].reads = 0, 0
+			}
+			if plan.free && !escapes {
+				plan.idle = ^mentioned
 			}
 			return plan, plan.count != 0
 		}
@@ -139,9 +180,11 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 			depth--
 			continue
 		case 0x0c: // br
-			if _, err := peek.U32(); err != nil || !plan.temporary || depth == 0 {
+			label, err := peek.U32()
+			if err != nil || !plan.temporary || depth == 0 {
 				return plan, false
 			}
+			escapes = escapes || label > uint32(depth)
 			continue
 		}
 		// These admitted operations have no immediates and neither access
@@ -201,6 +244,12 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 				count++
 			}
 			cells[i].refs++
+			if plan.free {
+				mentioned |= uint64(1) << x
+				if op == 0x20 {
+					cells[i].reads++
+				}
+			}
 		}
 	}
 	return plan, false
@@ -219,6 +268,7 @@ func (f *fn) beginLoopLocalLease(r *wasm.Reader, fr *ctrlFrame) {
 	n := 0
 	registers := [...]Reg{X19, X20, X21, X22, X9, X10, X11, X12, X13, X14, X15}
 	limit := 4
+	freeSlots := int(plan.count)
 	if plan.temporary {
 		limit = len(registers)
 		free := 0
@@ -227,22 +277,32 @@ func (f *fn) beginLoopLocalLease(r *wasm.Reader, fr *ctrlFrame) {
 				free++
 			}
 		}
-		if free <= 7 {
-			return
-		}
-		if int(plan.count) > free-7 {
-			plan.count = uint8(free - 7)
-		}
+		freeSlots = min(freeSlots, max(0, free-7))
 	}
 	for _, reg := range registers[:limit] {
+		if n == freeSlots {
+			break
+		}
 		if f.pinned.has(reg) || f.reserved.has(reg) || f.pinnedLocalMask.has(reg) || f.regUser[reg] != nil {
 			continue
 		}
 		plan.reg[n] = reg
 		n++
-		if n == int(plan.count) {
-			break
+	}
+	// When free registers would cut into the working set, reuse an idle
+	// whole-function pin. The bounded scan proved no access to its local and
+	// no edge around the lexical exit that restores it.
+	for x := 0; n < int(plan.count) && plan.idle != 0 && x < f.nLocals; x++ {
+		if plan.idle&(uint64(1)<<x) == 0 {
+			continue
 		}
+		l := &f.locals[x]
+		if l.isFloat || l.reg == regNone || l.state == lsConstZero ||
+			f.pinned.has(l.reg) || f.reserved.has(l.reg) || f.regUser[l.reg] != nil {
+			continue
+		}
+		plan.reg[n], plan.parked[n] = l.reg, uint16(x+1)
+		n++
 	}
 	if n == 0 {
 		return
@@ -251,6 +311,15 @@ func (f *fn) beginLoopLocalLease(r *wasm.Reader, fr *ctrlFrame) {
 	plan.depth = uint32(len(f.ctrl) + 1)
 	for i := 0; i < n; i++ {
 		x, reg := int(plan.local[i]), plan.reg[i]
+		if parked := plan.parked[i]; parked != 0 {
+			old := int(parked) - 1
+			if f.locals[old].state == lsReg {
+				f.storeLocalReg(old, reg, false)
+			}
+			f.locals[old].reg = regNone
+			f.locals[old].state = lsMem
+			f.stats.peep("loop-local-pin-exchange")
+		}
 		zero := f.locals[x].state == lsConstZero
 		f.locals[x].reg = reg
 		f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
@@ -263,7 +332,9 @@ func (f *fn) beginLoopLocalLease(r *wasm.Reader, fr *ctrlFrame) {
 	}
 	f.loopLocalLease = plan
 	fr.set(ctrlLoopCallFree, true)
-	if plan.temporary {
+	if plan.free {
+		f.stats.peep("free-loop-local-lease")
+	} else if plan.temporary {
 		f.stats.peep("temporary-loop-local-lease")
 	} else {
 		f.stats.peep("loop-local-lease")
@@ -282,7 +353,14 @@ func (f *fn) finishLoopLocalLease(depth int) {
 		f.storeLocalReg(x, reg, false)
 		f.locals[x].reg = regNone
 		f.locals[x].state = lsMem
-		f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
+		if parked := plan.parked[i]; parked != 0 {
+			old := int(parked) - 1
+			f.locals[old].reg = reg
+			f.loadLocalReg(old, reg, false)
+			f.locals[old].state = lsStackReg
+		} else {
+			f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
+		}
 	}
 	f.loopLocalLease = loopLocalLease{}
 }

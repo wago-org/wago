@@ -10,9 +10,12 @@
 package arm64
 
 import (
+	"math/bits"
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"os"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
@@ -31,7 +34,7 @@ var floatMapInvariantsEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_INVARIANTS") 
 var floatMapLatchEnabled = os.Getenv("WAGO_ARM64_NO_FLOAT_MAP_LATCH") != "1"
 var floatMapFourPacketsEnabled = os.Getenv("WAGO_ARM64_FLOAT_MAP_PACKET_COUNT") != "2"
 
-// A bounded symbolic proof admits only independent scalar floating-point maps.
+// A bounded symbolic proof admits independent scalar floating-point and integer maps.
 // The vector prefix preserves the expression tree and leaves an original scalar
 // packet to restore every observable local. All range/alias failures fall back.
 type floatMapNode struct {
@@ -40,8 +43,19 @@ type floatMapNode struct {
 	op   byte
 }
 
-func (n floatMapNode) left() int  { return int(n.a) }
-func (n floatMapNode) right() int { return int(n.b) }
+const integerMapImmediateShift = 1 << 32
+
+func (n floatMapNode) unary() bool {
+	return n.op == 0x45 || n.immediateShift()
+}
+
+func (n floatMapNode) immediateShift() bool {
+	return n.op >= 0x74 && n.op <= 0x76 && n.bits&integerMapImmediateShift != 0
+}
+
+func (n floatMapNode) left() int      { return int(n.a) }
+func (n floatMapNode) right() int     { return int(n.b) }
+func (n floatMapNode) condition() int { return int(n.bits) }
 
 type floatMapAddress struct {
 	offset    uint64 // widened memory immediate, added after dynamic i32 wrap
@@ -51,6 +65,11 @@ type floatMapAddress struct {
 	bias      uint32
 	invariant bool
 }
+type floatMapAdjacency struct {
+	left, right int
+	delta       uint32
+}
+
 type floatMapPlan struct {
 	nodes                        [128]floatMapNode
 	addresses                    [128]floatMapAddress
@@ -66,10 +85,20 @@ type floatMapPlan struct {
 	wide                         bool
 	integer                      bool
 	orderedStoreLoads            bool
+	invariantsBeforeStores       bool
+	interleaved                  bool
+	guardOnlyLoads               [4]uint8
+	guardOnlyLoadN               int
+	adjacent                     [4]floatMapAdjacency
+	adjacentN                    int
+	runtimeAdjacency             bool
+	extraStoreN                  int
+	extraStores                  [2]shared.LoopStore[int]
 	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
-	limitLocal                   int
+	limitTerms                   [2]integerMapLimitTerm
+	limitTermN                   int
 	byteIndices                  uint32
 	byteSteps                    [32]uint32
 }
@@ -85,16 +114,22 @@ func (p *floatMapPlan) localWritten(index int) bool {
 	return slot >= 0 && p.locals[slot].Written
 }
 
-const floatMapScatterWorkLimit = 4096
+const (
+	floatMapMaxBytes         = 512
+	floatMapScatterWorkLimit = 4096
+)
 
 func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
+	return f.inspectFloatMapCandidate(source, p, false)
+}
+
+func (f *fn) inspectFloatMapCandidate(source *wasm.Reader, p *floatMapPlan, runtimeAdjacency bool) bool {
 	*p = floatMapPlan{}
 	p.integer = f.integerLoadMapProbe
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.counterScale = 1
 	p.scatterBudget = floatMapScatterWorkLimit - int(f.floatMapScatterWork)
-	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
 	start := scan.Offset()
@@ -135,7 +170,7 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 		p.localN++
 		return slot
 	}
-	for scan.Offset()-start < 512 {
+	for scan.Offset()-start < floatMapMaxBytes {
 		if !p.spend() {
 			return false
 		}
@@ -145,6 +180,13 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			return false
 		}
 		switch op {
+		case 0x01, 0x1a: // nop and drop
+			if !p.integer || op == 0x1a && depth == 0 {
+				return false
+			}
+			if op == 0x1a {
+				depth--
+			}
 		case 0x20, 0x21, 0x22:
 			x, e := scan.U32()
 			if e != nil || x >= uint32(f.nLocals) {
@@ -195,6 +237,48 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			if !push(node(op, stack[depth], stack[depth+1], 0)) {
 				return false
 			}
+		case 0x74, 0x75, 0x76:
+			if !p.integer || depth < 2 {
+				return false
+			}
+			count := p.nodes[stack[depth-1]]
+			depth -= 2
+			a, b, bits := stack[depth], stack[depth+1], uint64(0)
+			if count.op == 0x41 {
+				b, bits = 0, integerMapImmediateShift|count.bits&31
+			}
+			if !push(node(op, a, b, bits)) {
+				return false
+			}
+		case 0x45:
+			if !p.integer || depth == 0 {
+				return false
+			}
+			depth--
+			if !push(node(op, stack[depth], 0, 0)) {
+				return false
+			}
+		case 0x46, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+			if !p.integer || depth < 2 {
+				return false
+			}
+			depth -= 2
+			if !push(node(op, stack[depth], stack[depth+1], 0)) {
+				return false
+			}
+		case 0x1b:
+			if !p.integer || depth < 3 {
+				return false
+			}
+			depth -= 3
+			a, b, cond := stack[depth], stack[depth+1], stack[depth+2]
+			kind, bits := byte(0x1b), uint64(cond)
+			if op, ok := integerMapMinMax(a, b, p.nodes[cond]); ok {
+				kind, bits = op, 0
+			}
+			if !push(node(kind, a, b, bits)) {
+				return false
+			}
 		case 0x28, 0x2a, 0x2b:
 			mem, off, e := f.readMemArg(&scan)
 			if e != nil || mem != 0 || (off > 1<<20 || off != 0 && !floatMapOffsetsEnabled) || depth == 0 {
@@ -232,7 +316,27 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				return false
 			}
 			if p.integer {
-				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
+				packetStores := ns
+				if ns > 1 && ns <= len(p.extraStores)+1 {
+					var bases [3]int
+					distinct := true
+					for i, store := range stores[:ns] {
+						if !distinct {
+							break
+						}
+						base := p.mapStoreBase(store.Address, 0)
+						distinct = distinct && base >= 0
+						for _, previous := range bases[:i] {
+							distinct = distinct && previous != base
+						}
+						bases[i] = base
+					}
+					if distinct {
+						p.extraStoreN = ns - 1
+						packetStores = 1
+					}
+				}
+				if !p.finishIntegerInduction(stack[0], packetStores, initialRead[:]) {
 					return false
 				}
 			} else if !p.finishFloatInduction(stack[0], ns, initialRead[:]) {
@@ -250,7 +354,10 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			p.count, p.dest, p.result = n, stores[0].Address, stores[0].Value
 			p.destOffset = stores[0].Offset
-			if !p.proveAddresses(f.localType) || p.addresses[p.dest].stride > 1 && p.counterScale <= 1 {
+			if !p.proveAddresses(f.localType) {
+				return false
+			}
+			if stride := p.addresses[p.dest].stride; stride > 1 && p.counterScale <= 1 && (!p.integer || stride != 2) {
 				return false
 			}
 			for i := 1; i < ns; i++ {
@@ -261,6 +368,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				a.offset = stores[i].Offset
 				p.addresses[stores[i].Address] = a
+				if p.extraStoreN != 0 {
+					if a.invariant || a.stride > 2 {
+						return false
+					}
+					p.extraStores[i-1] = stores[i]
+				}
 			}
 			if p.normalizedInduction && !p.integer {
 				strided := false
@@ -283,9 +396,14 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				used[x] |= storeMask
 				v := p.nodes[x]
-				if p.binary(v.op) {
+				if v.unary() {
+					mark(v.left())
+				} else if v.op == 0x1b || p.binary(v.op) {
 					mark(v.left())
 					mark(v.right())
+					if v.op == 0x1b {
+						mark(v.condition())
+					}
 				}
 			}
 			for i := 0; i < ns; i++ {
@@ -294,17 +412,52 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			for i := 0; i < n; i++ {
 				if (p.nodes[i].op == 0x28 || p.nodes[i].op == 0x2a || p.nodes[i].op == 0x2b) && used[i] == 0 {
-					return false
+					if !p.integer || p.nodes[i].op != 0x28 || p.guardOnlyLoadN == len(p.guardOnlyLoads) {
+						return false
+					}
+					p.guardOnlyLoads[p.guardOnlyLoadN] = uint8(i)
+					p.guardOnlyLoadN++
 				}
 			}
 			for i := 1; i < ns; i++ {
 				distance := uint32(i) * size
-				if !p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
+				if p.extraStoreN != 0 {
+					continue
+				}
+				if !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
 					return false
 				}
+				if p.sameMap(stores[0].Value, stores[i].Value, distance, 0) {
+					continue
+				}
+				if p.integer && integerMapAdjacentSLPEnabled && runtimeAdjacency && ns == 2 && p.addresses[p.dest].stride <= 1 {
+					// Prefer the original static packing proof. Guarded packing
+					// must retain the existing interleaved fallback.
+					work := p.work
+					p.runtimeAdjacency = true
+					matched := p.sameMap(stores[0].Value, stores[i].Value, distance, 0)
+					p.runtimeAdjacency = false
+					if matched {
+						p.extraStores[0] = stores[i]
+						continue
+					}
+					p.adjacentN = 0
+					p.work = work
+				}
+				if !p.integer || ns != 2 || p.addresses[p.dest].stride > 1 {
+					return false
+				}
+				p.extraStoreN, p.interleaved = 1, true
+				p.extraStores[i-1] = stores[i]
+				p.packet = 2 * floatMapVectorBytes
 			}
 			if !p.validExpression(p.result, 0) {
 				return false
+			}
+			for _, store := range p.extraStores[:p.extraStoreN] {
+				if !p.validExpression(store.Value, 0) {
+					return false
+				}
 			}
 			if floatMapInvariantsEnabled {
 				p.labelInvariants()
@@ -313,8 +466,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			// stage created it. Earlier captured values retain whole-range
 			// disambiguation; invariant loads already have separate guards.
 			p.orderedStoreLoads = true
+			p.invariantsBeforeStores = true
 			for i := 0; i < n; i++ {
-				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != uint8(1<<loadStage[i]) {
+				if p.load(p.nodes[i].op) && p.addresses[i].invariant && used[i] != 0 && loadStage[i] != 0 {
+					p.invariantsBeforeStores = false
+				}
+				if p.load(p.nodes[i].op) && !p.invariant[i] && used[i] != 0 && used[i] != uint8(1<<loadStage[i]) {
 					p.orderedStoreLoads = false
 				}
 			}
@@ -416,13 +573,22 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 	}
 	v := p.nodes[x]
 	if v.op == 0x20 {
+		if p.mapCounterValue(v) {
+			return true
+		}
 		return !p.localWritten(v.left()) && p.locals[p.localSlot(v.left())].Type == p.valueType()
 	}
 	if p.integer {
 		if v.op == 0x28 || v.op == 0x41 {
 			return true
 		}
-		if p.binary(v.op) {
+		if v.unary() {
+			return p.validExpression(v.left(), depth+1)
+		}
+		if v.op == 0x1b && !p.validExpression(v.condition(), depth+1) {
+			return false
+		}
+		if v.op == 0x1b || p.binary(v.op) {
 			return p.validExpression(v.left(), depth+1) && p.validExpression(v.right(), depth+1)
 		}
 		return false
@@ -452,8 +618,14 @@ func (p *floatMapPlan) labelInvariants() {
 			p.invariant[i] = !p.localWritten(v.left()) && p.locals[p.localSlot(v.left())].Type == p.valueType()
 		case 0x28, 0x2a, 0x2b:
 			p.invariant[i] = p.addresses[i].invariant
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
-			p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()]
+		case 0x1b:
+			p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()] && p.invariant[v.condition()]
+		default:
+			if v.unary() {
+				p.invariant[i] = p.invariant[v.left()]
+			} else if p.binary(v.op) {
+				p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()]
+			}
 		}
 	}
 }
@@ -463,7 +635,7 @@ func (p *floatMapPlan) nextAddress(x, y int, step uint32) bool {
 	if a.invariant || b.invariant {
 		return a.invariant && b.invariant && a.base == b.base && a.index == b.index && a.bias == b.bias && a.offset == b.offset
 	}
-	return a.base == b.base && a.index == b.index && a.stride == b.stride && a.offset == b.offset && uint64(a.bias)+uint64(step)*uint64(max(a.stride, 1)) == uint64(b.bias)
+	return a.base == b.base && a.index == b.index && a.stride == b.stride && a.offset == b.offset && int64(int32(a.bias))+int64(step)*int64(max(a.stride, 1)) == int64(int32(b.bias))
 }
 func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if depth > 8 || !p.spend() {
@@ -474,6 +646,34 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 		return false
 	}
 	if p.load(a.op) {
+		if p.integer && integerMapAdjacentSLPEnabled {
+			left, right := p.addresses[x], p.addresses[y]
+			if left.invariant || right.invariant {
+				return left.invariant && left == right
+			}
+			if left.base == right.base && left.index == right.index && left.stride == right.stride &&
+				left.bias == right.bias && left.offset+uint64(step)*uint64(max(left.stride, 1)) == right.offset {
+				return true
+			}
+			if p.runtimeAdjacency && left.base >= 0 && right.base >= 0 && left.base != right.base &&
+				left.index == right.index && left.stride == right.stride && left.offset == right.offset {
+				// Both accesses share the induction coefficient and memarg.
+				// This modular base relation makes the second address exactly
+				// the next packed lane, subject to the normal range guard.
+				delta := left.bias + step*max(left.stride, 1) - right.bias
+				relation := floatMapAdjacency{left.base, right.base, delta}
+				for _, existing := range p.adjacent[:p.adjacentN] {
+					if relation == existing {
+						return true
+					}
+				}
+				if p.adjacentN < len(p.adjacent) {
+					p.adjacent[p.adjacentN] = relation
+					p.adjacentN++
+					return true
+				}
+			}
+		}
 		return p.nextAddress(x, y, step)
 	}
 	if a.op == 0x20 {
@@ -482,7 +682,24 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if p.constant(a.op) {
 		return a.bits == b.bits
 	}
-	return p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1)
+	if a.unary() {
+		return a.bits == b.bits && p.sameMap(a.left(), b.left(), step, depth+1)
+	}
+	if a.op == 0x1b && !p.sameMap(a.condition(), b.condition(), step, depth+1) {
+		return false
+	}
+	checkpoint := p.adjacentN
+	if p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1) {
+		return true
+	}
+	if p.integer && integerMapAdjacentSLPEnabled {
+		switch a.op {
+		case 0x46, 0x47, 0x6a, 0x6c, 0x71, 0x72, 0x73, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
+			p.adjacentN = checkpoint
+			return p.sameMap(a.left(), b.right(), step, depth+1) && p.sameMap(a.right(), b.left(), step, depth+1)
+		}
+	}
+	return false
 }
 
 func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
@@ -503,7 +720,7 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 	floating := false
 	// These masks only reject; high local indices retain the full planner path.
 	var initialReads, written uint64
-	for scan.Offset()-start < 512 {
+	for scan.Offset()-start < floatMapMaxBytes {
 		op, e := scan.Byte()
 		if e != nil {
 			return false
@@ -568,7 +785,7 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 
 func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var p floatMapPlan
-	ok := f.inspectFloatMapLoop(source, &p)
+	ok := f.inspectFloatMapCandidate(source, &p, true)
 	defer func() {
 		if p.scatterCandidate {
 			// Share the bounded integer-analysis budget without adding another
@@ -579,14 +796,33 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
 		}
 	}()
-	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
+	if !ok {
+		return
+	}
+	inspectionWork := p.work
+	f.emitFloatMapPlan(&p)
+	if p.adjacentN != 0 {
+		// Keep the interleaved path available on a failed adjacency check.
+		// Give each emission its own remaining budget and charge both.
+		packedWork := p.work - inspectionWork
+		p.work = inspectionWork
+		p.adjacentN = 0
+		p.extraStoreN, p.interleaved = 1, true
+		p.packet = 2 * floatMapVectorBytes
+		f.emitFloatMapPlan(&p)
+		p.work += packedWork
+	}
+}
+
+func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
+	if p.counterScale > 1 && f.a.Len() > 64<<10 {
 		return
 	}
 	// Deeply nested copy-only loops often move a handful of words, and even
 	// the cheap runtime admission check can dominate them. Keep their original
 	// scalar path until a lower-overhead entry recipe is available. Arithmetic
 	// maps and shallow copies retain the normal guarded trip policy.
-	if p.integer && p.limitLocal >= 0 && p.nodes[p.result].op == 0x28 {
+	if p.integer && p.limitTermN != 0 && p.nodes[p.result].op == 0x28 {
 		parents := 0
 		for i := len(f.ctrl) - 1; i >= 0; i-- {
 			if !p.spend() {
@@ -602,11 +838,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 	minimumSpan := p.packet + p.step
+	if p.adjacentN != 0 {
+		minimumSpan = 8*p.packet + p.step
+	}
 	if p.normalizedInduction {
 		minimumSpan = max(minimumSpan, 128)
 		// The guarded positive-limit path requires counter < limit, so its
 		// span cannot exceed limit, even when the entry value is unknown.
-		if p.limitLocal < 0 && p.limit != 0 && uint64(p.limit)*uint64(p.spanScale) < uint64(minimumSpan) {
+		if p.limitTermN == 0 && p.limit != 0 && uint64(p.limit)*uint64(p.spanScale) < uint64(minimumSpan) {
 			return
 		}
 	}
@@ -614,35 +853,42 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		base   int
 		index  int
 		stride uint32
-		min    uint32
-		max    uint64
+		min    int32
+		max    int64
 		reg    Reg
 	}
-	var groups [3]group
+	var groups [4]group
+	groupLimit := 3
+	if p.extraStoreN != 0 {
+		groupLimit = len(groups)
+	}
 	ng := 0
 	add := func(a floatMapAddress) bool {
+		// Compare dynamic biases as signed offsets, then normalize the
+		// shared low address modulo i32 before checking the widened range.
+		bias := int32(a.bias)
+		end := int64(bias) + int64(a.offset)
 		for i := 0; i < ng; i++ {
 			g := &groups[i]
-			if g.base == a.base && g.index == a.index {
-				if a.bias < g.min {
-					g.min = a.bias
-				}
-				if end := uint64(a.bias) + a.offset; end > g.max {
-					g.max = end
-				}
+			if g.base == a.base && g.index == a.index && g.stride == a.stride {
+				g.min = min(g.min, bias)
+				g.max = max(g.max, end)
 				return true
 			}
 		}
-		if ng == len(groups) {
+		if ng == groupLimit {
 			return false
 		}
-		groups[ng] = group{base: a.base, index: a.index, stride: a.stride, min: a.bias, max: uint64(a.bias) + a.offset}
+		groups[ng] = group{base: a.base, index: a.index, stride: a.stride, min: bias, max: end}
 		ng++
 		return true
 	}
 	var loads [16]int
 	nl := 0
+	reusedLoad := -1
 	var coefficients uint32
+	usesCounterValue := false
+	variableShift := false
 	var invariant [2]int
 	nInvariant := 0
 	var collect func(int) bool
@@ -665,6 +911,16 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				nInvariant++
 				return true
 			}
+			if p.extraStoreN != 0 && !p.interleaved {
+				for _, seen := range loads[:nl] {
+					if seen == x {
+						if reusedLoad < 0 {
+							reusedLoad = x
+						}
+						return true
+					}
+				}
+			}
 			if nl == len(loads) || !add(p.addresses[x]) {
 				return false
 			}
@@ -673,15 +929,43 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return true
 		}
 		if v.op == 0x20 {
-			coefficients |= 1 << p.localSlot(v.left())
+			if p.mapCounterValue(v) {
+				usesCounterValue = true
+			} else {
+				coefficients |= 1 << p.localSlot(v.left())
+			}
 			return true
 		}
 		if p.constant(v.op) {
 			return true
 		}
-		return collect(v.left()) && collect(v.right())
+		if v.unary() {
+			return collect(v.left())
+		}
+		if v.op >= 0x74 && v.op <= 0x76 {
+			variableShift = true
+		}
+		return collect(v.left()) && collect(v.right()) && (v.op != 0x1b || collect(v.condition()))
 	}
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
+		return
+	}
+	// Each input has a disjointness check against both outputs.
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		if !add(p.addresses[store.Address]) || !collect(store.Value) {
+			return
+		}
+	}
+	// A discarded value needs a range proof, but cannot carry a dependence
+	// through memory. If the proof fails, the original loop preserves the
+	// location of the trap and any earlier stores.
+	for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+		address := p.addresses[load]
+		if !address.invariant && !add(address) {
+			return
+		}
+	}
+	if p.extraStoreN == 1 && nl > 8 || p.extraStoreN == 2 && nl > 4 {
 		return
 	}
 	// Each carried byte index must have a guarded stream from which its next
@@ -706,6 +990,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			return 1000
 		}
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return 0
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
@@ -715,9 +1002,20 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			return 0
 		}
-		return countConst(v.left()) + countConst(v.right())
+		if v.unary() {
+			return countConst(v.left())
+		}
+		count := countConst(v.left()) + countConst(v.right())
+		if v.op == 0x1b {
+			count += countConst(v.condition())
+		}
+		return count
 	}
-	if countConst(p.result) > 2 {
+	constantCount := countConst(p.result)
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		constantCount += countConst(store.Value)
+	}
+	if constantCount > 2 {
 		return
 	}
 	// Reserve enough FP scratch for the deepest expression before emitting code.
@@ -738,15 +1036,33 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if p.load(v.op) || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
-		a, b := pressure(v.left()), pressure(v.right())+1
-		if b > a {
-			return b
+		if v.unary() {
+			return pressure(v.left())
 		}
-		return a
+		peak := max(pressure(v.left()), pressure(v.right())+1)
+		if v.op == 0x1b {
+			peak = max(peak, pressure(v.condition())+2)
+		}
+		return peak
 	}
-	if available < countConst(p.result)+pressure(p.result)+1 || p.normalizedInduction && p.work > p.workLimit {
+	peakPressure := pressure(p.result)
+	for _, store := range p.extraStores[:p.extraStoreN] {
+		storePressure := pressure(store.Value)
+		if p.interleaved {
+			storePressure++ // the first result stays live until the ZIPs
+		}
+		peakPressure = max(peakPressure, storePressure)
+	}
+	if usesCounterValue {
+		constantCount += 2 // fixed lane offsets and the current block's counter
+	}
+	if reusedLoad >= 0 {
+		constantCount++ // shared across the independent outputs of one block
+	}
+	if available < constantCount+peakPressure+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
 	}
+	cacheShiftMask := variableShift && available > constantCount+peakPressure+1
 	read := func(local int, dst Reg) {
 		if local < 0 {
 			f.a.MovImm64(dst, 0)
@@ -762,6 +1078,43 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 
+	readLimit := func(dst, scratch Reg) {
+		if p.limitTermN == 0 {
+			f.a.MovImm64(dst, uint64(p.limit))
+			return
+		}
+		first := p.limitTerms[0]
+		read(int(first.local), dst)
+		if first.shift != 0 {
+			f.a.LslImm(dst, dst, first.shift, true)
+		}
+		if first.sub {
+			f.a.Sub32(dst, ZR, dst)
+		}
+		if p.limitTermN == 2 {
+			second := p.limitTerms[1]
+			read(int(second.local), scratch)
+			if second.sub {
+				f.a.SubShiftedReg(dst, dst, scratch, a64.RegShiftLSL, second.shift, true)
+			} else {
+				f.a.AddShifted(dst, dst, scratch, second.shift, true)
+			}
+		}
+		if p.limit != 0 {
+			f.floatMapOffset(dst, dst, uint64(p.limit), false, scratch)
+		}
+	}
+	// Keep a scalar iteration when the packed prefix continues into the
+	// interleaved path. That path can use the ordinary affine exit.
+	var exit integerMapExitPlan
+	if p.adjacentN == 0 {
+		exit = f.planIntegerMapExit(p)
+	}
+	storedLiveOuts := exit.fromStore[0] | exit.fromStore[1] | exit.fromStore[2]
+	for _, relation := range p.adjacent[:p.adjacentN] {
+		f.recoverLocal(relation.left)
+		f.recoverLocal(relation.right)
+	}
 	if p.normalizedInduction {
 		// Admission must not evict an original stack value merely to execute a
 		// scalar fallback. These are leases from the existing allocator's free
@@ -779,8 +1132,17 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		// Recover all borrowed pins on both paths before a check can skip setup.
 		f.recoverLocal(p.counter)
-		if p.limitLocal >= 0 {
-			f.recoverLocal(p.limitLocal)
+		for i := 0; i < p.localN; i++ {
+			bit := uint32(1) << i
+			if exit.extra&bit != 0 {
+				f.recoverLocal(int(p.locals[i].Index))
+			}
+			if exit.invariant&bit != 0 {
+				f.recoverLocal(int(exit.source[i].local))
+			}
+		}
+		for _, term := range p.limitTerms[:p.limitTermN] {
+			f.recoverLocal(int(term.local))
 		}
 		for slot, cell := range p.locals[:p.localN] {
 			if coefficients&(1<<slot) != 0 {
@@ -790,6 +1152,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		for _, x := range invariant[:nInvariant] {
 			if p.addresses[x].base >= 0 {
 				f.recoverLocal(p.addresses[x].base)
+			}
+		}
+		for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+			if address := p.addresses[load]; address.invariant && address.base >= 0 {
+				f.recoverLocal(address.base)
 			}
 		}
 		for _, g := range groups[:ng] {
@@ -803,11 +1170,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		// Compare in source-counter units before leasing/initializing streams,
 		// computing widened byte spans or checking ranges. A wrapped negative
 		// difference may pass here but is rejected by the full eligibility proof.
-		read(p.counter, X17)
-		if p.limitLocal >= 0 {
-			read(p.limitLocal, X16)
+		// A compound bound may need both scratch registers. Keep the
+		// established schedule for constant and single-local bounds.
+		if p.limitTermN == 2 || p.limitTermN == 1 && p.limit != 0 {
+			readLimit(X16, X17)
+			read(p.counter, X17)
 		} else {
-			f.a.MovImm64(X16, uint64(p.limit))
+			read(p.counter, X17)
+			readLimit(X16, X17)
 		}
 		f.a.Sub32(X17, X16, X17)
 		f.cmpImm(X17, (minimumSpan+p.spanScale-1)/p.spanScale, false)
@@ -816,7 +1186,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 
 	oldPinned, oldFPinned := f.pinned, f.fpinned
-	var regs [6]Reg
+	var regs [7]Reg
 	nr := 0
 	alloc := func() Reg {
 		x := f.allocRegOrNone(0)
@@ -848,9 +1218,6 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 
 	read(p.counter, counter)
-	if p.normalizedInduction && p.limitLocal >= 0 {
-		f.recoverLocal(p.limitLocal)
-	}
 	for slot, cell := range p.locals[:p.localN] {
 		if coefficients&(1<<slot) != 0 {
 			f.recoverLocal(int(cell.Index))
@@ -874,9 +1241,19 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			read(groups[i].base, groups[i].reg)
 		}
 	}
-	var guards [64]int
+	var guards [68]int
 	nGuards := 0
 	guard := func(cc Cond) { guards[nGuards] = f.a.Bcond(cc); nGuards++ }
+	for _, relation := range p.adjacent[:p.adjacentN] {
+		read(relation.left, size)
+		f.floatMapOffset(size, size, uint64(relation.delta), false, X17)
+		read(relation.right, X16)
+		f.cmpRR(size, X16, false)
+		guard(condNE)
+	}
+	if p.adjacentN != 0 {
+		f.stats.peep("integer-load-map-runtime-adjacent")
+	}
 	if p.counterScale > 1 {
 		// A source counter in another residue class must retain the original
 		// modular loop. Normalize only an exact multiple of the physical scale.
@@ -887,8 +1264,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condNE)
 		f.a.MovReg32(counter, span)
 	}
-	if p.normalizedInduction && p.limitLocal >= 0 {
-		read(p.limitLocal, X16)
+	if p.normalizedInduction && p.limitTermN != 0 {
+		readLimit(X16, X17)
 		f.cmpRR(counter, X16, false)
 		guard(condAE)
 		f.a.Sub32(span, X16, counter)
@@ -927,7 +1304,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	guard(condNE)
 	// Reject nonterminating modular trips: zero-limit countdowns must start
 	// negative; positive fixed limits must be ahead of the unsigned counter.
-	if p.normalizedInduction && p.limitLocal >= 0 {
+	if p.normalizedInduction && p.limitTermN != 0 {
 		// Dynamic limits were checked before computing their widened byte span.
 	} else if p.limit == 0 {
 		f.cmpImm(counter, 0, false)
@@ -938,11 +1315,28 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condAE)
 	}
 	f.ld64(size, linMemReg, -int32(bdCurBytes))
+	for _, load := range p.guardOnlyLoads[:p.guardOnlyLoadN] {
+		address := p.addresses[load]
+		if address.invariant {
+			read(address.base, X16)
+			f.floatMapOffset(X16, X16, uint64(address.bias), false, X17)
+			f.floatMapOffset(X16, X16, address.offset+4, true, X17)
+			f.cmpRR(X16, size, true)
+			guard(condA)
+		}
+	}
+
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
 		if !p.normalizedInduction || g.index == p.counter+1 {
-			if p.counterScale > 1 {
-				f.a.MovImm32(X17, int32(p.counterScale))
+			scale := p.counterScale
+			if p.normalizedInduction {
+				scale = p.spanScale * max(g.stride, 1)
+			}
+			if p.normalizedInduction && scale > 1 && scale&(scale-1) == 0 {
+				f.a.AddShifted(g.reg, g.reg, counter, uint8(bits.TrailingZeros32(scale)), true)
+			} else if scale > 1 {
+				f.a.MovImm32(X17, int32(scale))
 				f.a.Mul32(X16, counter, X17)
 				f.a.Add32(g.reg, g.reg, X16)
 			} else {
@@ -952,7 +1346,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			read(g.index-1, X16)
 			f.a.Add32(g.reg, g.reg, X16)
 		}
-		f.floatMapOffset(g.reg, g.reg, uint64(g.min), false, X16)
+		f.floatMapOffset(g.reg, g.reg, uint64(uint32(g.min)), false, X16)
 		if g.stride > 1 {
 			f.a.MovImm64(X17, uint64(g.stride))
 			f.a.Mul64(X16, span, X17)
@@ -960,7 +1354,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		} else {
 			f.a.Add64(X16, g.reg, span)
 		}
-		f.floatMapOffset(X16, X16, g.max-uint64(g.min), true, X17)
+		f.floatMapOffset(X16, X16, uint64(g.max-int64(g.min)), true, X17)
 		f.cmpRR(X16, size, true)
 		guard(condA)
 		f.a.MovImm64(X17, 1<<32)
@@ -969,41 +1363,131 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	locate := func(a floatMapAddress) (Reg, uint32) {
 		for i := 0; i < ng; i++ {
-			if groups[i].base == a.base && groups[i].index == a.index {
-				return groups[i].reg, uint32(uint64(a.bias) - uint64(groups[i].min) + a.offset)
+			if groups[i].base == a.base && groups[i].index == a.index && groups[i].stride == a.stride {
+				return groups[i].reg, uint32(int64(int32(a.bias)) - int64(groups[i].min) + int64(a.offset))
 			}
 		}
 		panic("arm64: missing float map address")
 	}
 	d, dOff := locate(p.addresses[p.dest])
-	// An invariant memory coefficient must stay unchanged for the whole map.
-	// Invalid words and even byte overlaps with the output retain scalar loads.
-	for i := 0; i < nInvariant; i++ {
-		iv := p.addresses[invariant[i]]
-		read(iv.base, X16)
-		f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
-		if iv.offset != 0 {
-			f.floatMapOffset(X16, X16, iv.offset, true, X17)
-		}
-		width := uint32(4)
-		if p.wide {
-			width = 8
-		}
-		f.a.AddImm64(X17, X16, width)
-		f.cmpRR(X17, size, true)
-		guard(condA)
-		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
-		f.a.Sub64(X16, X16, X17)
-		f.a.AddImm64(X16, X16, width-1)
-		if p.counterScale > 1 {
-			f.a.MovImm64(X17, uint64(p.counterScale))
+	outputStride := max(p.counterScale, p.addresses[p.dest].stride, 1)
+	type outputStream struct {
+		reg    Reg
+		offset uint32
+		stride uint32
+		value  int
+	}
+	outputs := [3]outputStream{{d, dOff, outputStride, p.result}}
+	outputCount := 1 + p.extraStoreN
+	for i, store := range p.extraStores[:p.extraStoreN] {
+		address := p.addresses[store.Address]
+		base, off := locate(address)
+		outputs[i+1] = outputStream{base, off, max(address.stride, 1), store.Value}
+	}
+	compareSpan := func(stride uint32) {
+		extent := span
+		if stride > 1 {
+			f.a.MovImm64(X17, uint64(stride))
 			f.a.Mul64(X17, span, X17)
-			f.a.AddImm64(X17, X17, width-1)
-		} else {
-			f.a.AddImm64(X17, span, width-1)
+			extent = X17
 		}
+		f.cmpRR(X16, extent, true)
+	}
+	guardDisjoint := func(a, b outputStream) {
+		f.floatMapOffset(X16, a.reg, uint64(a.offset), true, X16)
+		f.floatMapOffset(X17, b.reg, uint64(b.offset), true, X17)
 		f.cmpRR(X16, X17, true)
+		above := f.a.Bcond(condA)
+		f.a.Sub64(X16, X17, X16)
+		compareSpan(a.stride)
 		guard(condB)
+		skip := f.a.Branch()
+		f.patchBranch19(above, f.a.Len())
+		f.a.Sub64(X16, X16, X17)
+		compareSpan(b.stride)
+		guard(condB)
+		f.patchBranch26(skip, f.a.Len())
+	}
+	if !p.interleaved {
+		for i, output := range outputs[:outputCount] {
+			for _, previous := range outputs[:i] {
+				guardDisjoint(previous, output)
+			}
+		}
+	}
+	guardedOutputs := outputs[:outputCount]
+	if p.interleaved {
+		// The primary span covers both alternating words.
+		guardedOutputs = guardedOutputs[:1]
+	}
+	// The scalar suffix reloads the invariant before any original store
+	// can change it. Limit clipping to contiguous single-store packets.
+	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
+		nInvariant != 0 && p.extraStoreN == 0 && outputStride == 1
+	unitPacket := !p.interleaved && p.step == 4 && p.packet == floatMapVectorBytes
+	interleavedPacket := p.interleaved && p.step == 8 && p.packet == 2*floatMapVectorBytes
+	resumeInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && nInvariant != 0 &&
+		p.counterScale == 1 && (unitPacket || interleavedPacket) &&
+		(p.extraStoreN == 0 || p.invariantsBeforeStores)
+	for _, output := range guardedOutputs {
+		if output.stride != 1 {
+			resumeInvariantPrefix = false
+			break
+		}
+	}
+	// Check each invariant's memory extent once on the re-entry path.
+	// Legacy paths also need the overlap check against each output.
+	invariantGuardOutputs := guardedOutputs
+	if resumeInvariantPrefix {
+		invariantGuardOutputs = guardedOutputs[:1]
+	}
+	for _, output := range invariantGuardOutputs {
+		for i := 0; i < nInvariant; i++ {
+			iv := p.addresses[invariant[i]]
+			read(iv.base, X16)
+			f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
+			if iv.offset != 0 {
+				f.floatMapOffset(X16, X16, iv.offset, true, X17)
+			}
+			width := uint32(4)
+			if p.wide {
+				width = 8
+			}
+			f.a.AddImm64(X17, X16, width)
+			f.cmpRR(X17, size, true)
+			guard(condA)
+			if resumeInvariantPrefix {
+				continue
+			}
+			f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
+			if clipInvariantPrefix {
+				f.cmpRR(X16, X17, true)
+				beforeOutput := f.a.Bcond(condB)
+				f.a.Sub64(X16, X16, X17)
+				f.cmpRR(X16, span, true)
+				f.a.Csel64(span, X16, span, condB)
+				f.cmpImm(span, minimumSpan, false)
+				guard(condB)
+				done := f.a.Branch()
+				f.patchBranch19(beforeOutput, f.a.Len())
+				f.a.Sub64(X16, X17, X16)
+				f.cmpImm(X16, width, true)
+				guard(condB)
+				f.patchBranch26(done, f.a.Len())
+				continue
+			}
+			f.a.Sub64(X16, X16, X17)
+			f.a.AddImm64(X16, X16, width-1)
+			if output.stride > 1 {
+				f.a.MovImm64(X17, uint64(output.stride))
+				f.a.Mul64(X17, span, X17)
+				f.a.AddImm64(X17, X17, width-1)
+			} else {
+				f.a.AddImm64(X17, span, width-1)
+			}
+			f.cmpRR(X16, X17, true)
+			guard(condB)
+		}
 	}
 	// Packet-local dependence checks require source loads to follow the previous
 	// store. Captured multi-store values retain whole-range disambiguation.
@@ -1027,24 +1511,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.floatMapScatterAlias(d, s, dOff, off, span, size, p.counterScale, width, guard)
 			continue
 		}
-		if stride := p.addresses[loads[i]].stride; stride > 1 {
-			// A gather changes the lane address spacing. Require disjoint whole
-			// source/output ranges rather than reusing the unit-stride proof.
-			f.floatMapOffset(X16, d, uint64(dOff), true, X16)
-			f.floatMapOffset(X17, s, uint64(off), true, X17)
-			f.cmpRR(X16, X17, true)
-			above := f.a.Bcond(condA)
-			f.a.Sub64(X16, X17, X16)
-			f.cmpRR(X16, span, true)
-			guard(condB)
-			skip := f.a.Branch()
-			f.patchBranch19(above, f.a.Len())
-			f.a.Sub64(X16, X16, X17)
-			f.a.MovImm64(X17, uint64(stride))
-			f.a.Mul64(X17, span, X17)
-			f.cmpRR(X16, X17, true)
-			guard(condB)
-			f.patchBranch26(skip, f.a.Len())
+		stride := max(p.addresses[loads[i]].stride, 1)
+		if p.extraStoreN != 0 || stride > 1 || outputStride > 1 {
+			// Independent stores and non-unit spacing require disjoint whole
+			// ranges. The unit-stride packet dependence proof does not apply.
+			input := outputStream{reg: s, offset: off, stride: stride}
+			for _, output := range guardedOutputs {
+				guardDisjoint(output, input)
+			}
 			continue
 		}
 		if floatMapGuardSelectionEnabled {
@@ -1116,6 +1590,40 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	for i := 0; i < ng; i++ {
 		f.a.Add64(groups[i].reg, groups[i].reg, linMemReg)
 	}
+	reloadInvariant := 0
+	if resumeInvariantPrefix {
+		// Preserve the real output end across both vector and single-lane
+		// packets. The invariant is reloaded after each overlapping store.
+		f.a.Add64(size, d, span)
+		reloadInvariant = f.a.Len()
+		f.a.Sub64(span, size, d)
+		for _, load := range invariant[:nInvariant] {
+			iv := p.addresses[load]
+			for _, output := range guardedOutputs {
+				read(iv.base, X16)
+				f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
+				if iv.offset != 0 {
+					f.floatMapOffset(X16, X16, iv.offset, true, X17)
+				}
+				f.a.Add64(X16, X16, linMemReg)
+				f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
+				f.a.Subs64(X16, X16, X17)
+				behind := f.a.Bcond(condB)
+				f.cmpRR(X16, span, true)
+				f.a.Csel64(span, X16, span, condB)
+				clipped := f.a.Branch()
+				f.patchBranch19(behind, f.a.Len())
+				// The offset is negative modulo 2^64. An invariant ending at
+				// or before destination is disjoint from the remaining output.
+				f.a.AddImm64(X16, X16, 4)
+				f.cmpImm(X16, 0, true)
+				disjoint := f.a.Bcond(condLE)
+				f.a.MovImm64(span, 0)
+				f.patchBranch19(disjoint, f.a.Len())
+				f.patchBranch26(clipped, f.a.Len())
+			}
+		}
+	}
 	var constants [8]struct {
 		node int
 		reg  Reg
@@ -1123,9 +1631,32 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	nc := 0
 	var vectors [24]Reg
 	nv := 0
+	laneCounters := regNone
+	if usesCounterValue {
+		laneCounters = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(laneCounters)
+		vectors[nv] = laneCounters
+		nv++
+		f.a.NeonEor16b(laneCounters, laneCounters, laneCounters)
+		for lane := uint8(1); lane < 4; lane++ {
+			f.a.MovImm32(X16, int32(uint32(lane)*p.counterStep))
+			f.a.NeonInsS(laneCounters, X16, lane)
+		}
+	}
+
+	shiftMask := regNone
+	if cacheShiftMask {
+		shiftMask = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(shiftMask)
+		vectors[nv] = shiftMask
+		nv++
+		f.a.NeonMoviS(shiftMask, 31)
+	}
 
 	emitOp := func(op byte, out, a, b Reg) {
 		switch op {
+		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+			f.emitIntegerMapComparison(op, out, a, b)
 		case 0x6a:
 			f.a.NeonAddS(out, a, b)
 		case 0x6b:
@@ -1138,6 +1669,33 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.a.NeonOrr16b(out, a, b)
 		case 0x73:
 			f.a.NeonEor16b(out, a, b)
+		case 0x74, 0x75, 0x76:
+			// Wasm masks lane counts to five bits. NEON uses negative
+			// counts for right shifts.
+			count := f.allocFReg(0)
+			if shiftMask != regNone {
+				f.a.NeonAnd16b(count, b, shiftMask)
+			} else {
+				f.a.NeonShlS(count, b, 27)
+				f.a.NeonUshrS(count, count, 27)
+			}
+			if op != 0x74 {
+				f.a.NeonNegS(count, count)
+			}
+			if op == 0x75 {
+				f.a.NeonSshrvS(out, a, count)
+			} else {
+				f.a.NeonUshlS(out, a, count)
+			}
+			f.releaseF(count)
+		case integerMapMinS:
+			f.a.NeonSminS(out, a, b)
+		case integerMapMinU:
+			f.a.NeonUminS(out, a, b)
+		case integerMapMaxS:
+			f.a.NeonSmaxS(out, a, b)
+		case integerMapMaxU:
+			f.a.NeonUmaxS(out, a, b)
 		case 0x92, 0xa0:
 			f.a.NeonFadd(out, a, b, p.wide)
 		case 0x93, 0xa1:
@@ -1152,6 +1710,21 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var invariantValue func(int) Reg
 	invariantValue = func(x int) Reg {
 		v := p.nodes[x]
+		if v.unary() {
+			r := invariantValue(v.left())
+			f.emitIntegerMapUnary(v, r, r)
+			return r
+		}
+		if v.op == 0x1b {
+			a := invariantValue(v.left())
+			b := invariantValue(v.right())
+			mask := invariantValue(v.condition())
+			f.a.NeonCmeqZeroS(mask, mask)
+			f.a.NeonBsl16b(mask, b, a)
+			releaseTemp(a)
+			releaseTemp(b)
+			return mask
+		}
 		if p.binary(v.op) {
 			a := invariantValue(v.left())
 			b := invariantValue(v.right())
@@ -1198,6 +1771,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var preload func(int)
 	preload = func(x int) {
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
@@ -1214,16 +1790,28 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		if !p.load(v.op) {
 			preload(v.left())
-			preload(v.right())
+			if !v.unary() {
+				preload(v.right())
+			}
+			if v.op == 0x1b {
+				preload(v.condition())
+			}
 		}
 	}
 	// The bounded expression has at most eight levels. Count constants before
 	// emitting anything that would need an unbounded register reservation.
-	preload(p.result)
+	for _, output := range outputs[:outputCount] {
+		preload(output.value)
+	}
 	var block int32
+	singleLane := false
+	counterValue, cachedLoad := regNone, regNone
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
 		v := p.nodes[x]
+		if p.mapCounterValue(v) {
+			return counterValue, false
+		}
 		if p.invariant[x] || v.op == 0x20 || p.constant(v.op) || (p.load(v.op)) && p.addresses[x].invariant {
 			for i := 0; i < nc; i++ {
 				if constants[i].node == x {
@@ -1233,16 +1821,39 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			panic("arm64: missing float map constant")
 		}
 		if p.load(v.op) {
+			if x == reusedLoad && cachedLoad != regNone {
+				return cachedLoad, false
+			}
 			base, off := locate(p.addresses[x])
 			r := f.allocFReg(0)
 			f.fpinned = f.fpinned.add(r)
-			if stride := p.addresses[x].stride; stride > 1 {
+			stride := max(p.addresses[x].stride, 1)
+			if singleLane {
+				if off%4 == 0 && off/4 <= 0xfff {
+					f.a.LdrF(r, base, int32(off), false)
+				} else {
+					f.floatMapOffset(X17, base, uint64(off), true, X16)
+					f.a.LdrF(r, X17, 0, false)
+				}
+			} else if p.interleaved && stride == 1 {
+				// The whole-span guard also covers the skipped word after
+				// each selected lane, including the last one.
+				tmp := f.allocFReg(0)
+				f.a.LdrQ(r, base, int32(off)+block)
+				f.a.LdrQ(tmp, base, int32(off)+block+floatMapVectorBytes)
+				f.a.NeonUzp1S(r, r, tmp)
+				f.releaseF(tmp)
+			} else if stride > 1 || p.interleaved {
 				size := uint32(4)
 				if p.wide {
 					size = 8
 				}
+				laneStep := size
+				if p.interleaved {
+					laneStep = p.step
+				}
 				for lane := uint32(0); lane < 16/size; lane++ {
-					address := uint64(off) + (uint64(block)+uint64(lane*size))*uint64(stride)
+					address := uint64(off) + (uint64(block)+uint64(lane*laneStep))*uint64(stride)
 					if lane == 0 && floatMapLaneFPLoadsEnabled {
 						// The first scalar lane initializes the vector directly;
 						// later lane inserts never need its temporary GP copy.
@@ -1264,6 +1875,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 						}
 					} else {
 						f.floatMapOffset(X17, base, address, true, X16)
+						if lane != 0 && floatMapLaneFPLoadsEnabled {
+							f.a.Ld1Lane(r, X17, uint8(lane), p.wide)
+							continue
+						}
 						if p.wide {
 							f.ld64(X16, X17, 0)
 						} else {
@@ -1281,55 +1896,154 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			} else {
 				f.a.LdrQ(r, base, int32(off)+block)
 			}
+			if x == reusedLoad {
+				cachedLoad = r
+				return r, false
+			}
 			return r, true
 		}
 		a, ownA := emit(v.left())
-		b, ownB := emit(v.right())
+		var b Reg
+		var ownB bool
+		if !v.unary() {
+			b, ownB = emit(v.right())
+		}
+		if v.op == 0x1b {
+			cond, ownCond := emit(v.condition())
+			out := cond
+			if !ownCond {
+				out = f.allocFReg(0)
+				f.fpinned = f.fpinned.add(out)
+			}
+			f.a.NeonCmeqZeroS(out, cond)
+			f.a.NeonBsl16b(out, b, a)
+			if ownA {
+				releaseTemp(a)
+			}
+			if ownB {
+				releaseTemp(b)
+			}
+			return out, true
+		}
 		out := a
 		if !ownA {
 			out = f.allocFReg(0)
 			f.fpinned = f.fpinned.add(out)
 		}
-		emitOp(v.op, out, a, b)
+		if v.unary() {
+			f.emitIntegerMapUnary(v, out, a)
+		} else {
+			emitOp(v.op, out, a, b)
+		}
 		if ownB {
 			f.fpinned = f.fpinned.remove(b)
 			f.releaseF(b)
 		}
 		return out, true
 	}
-	packet := func(width uint32) {
-		for block = 0; block < int32(width); block += floatMapVectorBytes {
-			value, owned := emit(p.result)
-			if p.counterScale > 1 {
-				width := uint32(4)
-				if p.wide {
-					width = 8
+	blockBytes := int32(floatMapVectorBytes)
+	if p.interleaved {
+		blockBytes *= 2
+	}
+	packet := func(width uint32, final bool) {
+		for block = 0; block < int32(width); block += blockBytes {
+			if p.interleaved && !singleLane {
+				a, ownA := emit(outputs[0].value)
+				b, ownB := emit(outputs[1].value)
+				zipped := f.allocFReg(0)
+				f.a.NeonZip1S(zipped, a, b)
+				f.a.StrQ(d, int32(dOff)+block, zipped)
+				f.a.NeonZip2S(zipped, a, b)
+				f.a.StrQ(d, int32(dOff)+block+floatMapVectorBytes, zipped)
+				f.releaseF(zipped)
+				if ownA {
+					releaseTemp(a)
 				}
-				for lane := uint32(0); lane < 16/width; lane++ {
-					address := uint64(dOff) + (uint64(block)+uint64(lane*width))*uint64(p.counterScale)
-					base, disp := d, int32(0)
-					if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
-						disp = int32(address)
-					} else {
-						f.floatMapOffset(X17, d, address, true, X16)
-						base = X17
-					}
-					if lane == 0 {
-						f.a.StrF(base, disp, value, p.wide)
-					} else if p.wide {
-						f.a.NeonUmovD(X16, value, byte(lane))
-						f.a.Store64(X16, base, uint32(disp))
-					} else {
-						f.a.NeonUmovS(X16, value, byte(lane))
-						f.a.Store32(X16, base, uint32(disp))
-					}
+				if ownB {
+					releaseTemp(b)
 				}
-			} else {
-				f.a.StrQ(d, int32(dOff)+block, value)
+				continue
 			}
-			if owned {
-				f.fpinned = f.fpinned.remove(value)
-				f.releaseF(value)
+			if usesCounterValue {
+				counterValue = f.allocFReg(0)
+				f.fpinned = f.fpinned.add(counterValue)
+				source := counter
+				if block != 0 {
+					f.a.AddImm32(X16, counter, uint32(block)/p.spanScale)
+					source = X16
+				}
+				f.a.NeonDupGprS(counterValue, source)
+				f.a.NeonAddS(counterValue, counterValue, laneCounters)
+			}
+			for index, output := range outputs[:outputCount] {
+				value, owned := emit(output.value)
+				if singleLane {
+					if output.offset%4 == 0 && output.offset/4 <= 0xfff {
+						f.a.StrF(output.reg, int32(output.offset), value, false)
+					} else {
+						f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X16)
+						f.a.StrF(X17, 0, value, false)
+					}
+				} else if output.stride > 1 {
+					width := uint32(4)
+					if p.wide {
+						width = 8
+					}
+					for lane := uint32(0); lane < 16/width; lane++ {
+						address := uint64(output.offset) + (uint64(block)+uint64(lane*width))*uint64(output.stride)
+						base, disp := output.reg, int32(0)
+						if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
+							disp = int32(address)
+						} else {
+							f.floatMapOffset(X17, output.reg, address, true, X16)
+							if lane != 0 {
+								f.a.St1Lane(value, X17, uint8(lane), p.wide)
+								continue
+							}
+							base = X17
+						}
+						if lane == 0 {
+							f.a.StrF(base, disp, value, p.wide)
+						} else if p.wide {
+							f.a.NeonUmovD(X16, value, byte(lane))
+							f.a.Store64(X16, base, uint32(disp))
+						} else {
+							f.a.NeonUmovS(X16, value, byte(lane))
+							f.a.Store32(X16, base, uint32(disp))
+						}
+					}
+				} else {
+					f.a.StrQ(output.reg, int32(output.offset)+block, value)
+				}
+				mask := exit.fromStore[index]
+				if final && mask != 0 && block+floatMapVectorBytes == int32(width) {
+					f.a.NeonUmovS(X16, value, 3)
+					for i, cell := range p.locals[:p.localN] {
+						if mask&(uint32(1)<<i) == 0 {
+							continue
+						}
+						x := int(cell.Index)
+						if reg, _, pinned := f.pinReg(x); pinned {
+							f.a.MovReg32(reg, X16)
+							f.markLocalDirty(x)
+						} else {
+							f.st64(SP, f.localOff(x), X16)
+							f.locals[x].state = lsMem
+						}
+						f.setFactsForLocal(x, 0)
+					}
+				}
+				if owned {
+					f.fpinned = f.fpinned.remove(value)
+					f.releaseF(value)
+				}
+			}
+			if cachedLoad != regNone {
+				releaseTemp(cachedLoad)
+				cachedLoad = regNone
+			}
+			if usesCounterValue {
+				releaseTemp(counterValue)
 			}
 		}
 		for i := 0; i < ng; i++ {
@@ -1342,41 +2056,81 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.a.AddImm32(counter, counter, width/p.spanScale)
 		f.a.SubImm32(span, span, width)
 	}
+	scalarReserve := p.step
+	// Reserve one iteration so the ordinary packet loop stops on an exact
+	// final packet. A non-exact trip only needs its actual scalar remainder.
+	if storedLiveOuts == 0 && exit.written != 0 {
+		scalarReserve = 0
+	}
 	// Choose a small native packet menu independently of the source unroll.
 	// Larger source packets already have a bounded replicated body.
 	wideWidth := 2 * p.packet
 	if floatMapFourPacketsEnabled && p.packet == floatMapVectorBytes {
 		wideWidth = 4 * p.packet
 	}
-	f.cmpImm(span, 4*wideWidth+p.step, false)
-	short := f.a.Bcond(condB)
-	if floatMapLatchEnabled {
+	if p.adjacentN != 0 {
+		width := 2 * p.packet
+		f.cmpImm(span, width+scalarReserve, false)
+		short := f.a.Bcond(condB)
+		loop := f.a.Len()
+		packet(width, false)
+		f.cmpImm(span, width+scalarReserve, false)
+		f.patchBranch19(f.a.Bcond(condAE), loop)
+		f.patchBranch19(short, f.a.Len())
+	} else if floatMapLatchEnabled {
+		f.cmpImm(span, 4*wideWidth+scalarReserve, false)
+		short := f.a.Bcond(condB)
 		wideLoop := f.a.Len()
-		packet(wideWidth)
-		f.cmpImm(span, wideWidth+p.step, false)
+		packet(wideWidth, false)
+		f.cmpImm(span, wideWidth+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), wideLoop)
 		f.patchBranch19(short, f.a.Len())
-		f.cmpImm(span, p.packet+p.step, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
 		compactLoop := f.a.Len()
-		packet(p.packet)
-		f.cmpImm(span, p.packet+p.step, false)
+		packet(p.packet, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		f.patchBranch19(f.a.Bcond(condAE), compactLoop)
 		f.patchBranch19(done, f.a.Len())
 	} else {
+		f.cmpImm(span, 4*wideWidth+scalarReserve, false)
+		short := f.a.Bcond(condB)
 		wideLoop := f.a.Len()
-		f.cmpImm(span, wideWidth+p.step, false)
+		f.cmpImm(span, wideWidth+scalarReserve, false)
 		tail := f.a.Bcond(condB)
-		packet(wideWidth)
+		packet(wideWidth, false)
 		f.patchBranch26(f.a.Branch(), wideLoop)
 		f.patchBranch19(short, f.a.Len())
 		f.patchBranch19(tail, f.a.Len())
 		loop := f.a.Len()
-		f.cmpImm(span, p.packet+p.step, false)
+		f.cmpImm(span, p.packet+scalarReserve, false)
 		done := f.a.Bcond(condB)
-		packet(p.packet)
+		packet(p.packet, false)
 		f.patchBranch26(f.a.Branch(), loop)
 		f.patchBranch19(done, f.a.Len())
+	}
+	if storedLiveOuts != 0 {
+		// Capture load-derived live-outs only in the final vector packet.
+		// The normal packet body and the scalar remainder are unchanged.
+		f.cmpImm(span, p.packet, false)
+		remainder := f.a.Bcond(condNE)
+		packet(p.packet, true)
+		f.patchBranch19(remainder, f.a.Len())
+		f.stats.peep("integer-load-map-vector-live-out")
+	}
+	if resumeInvariantPrefix {
+		f.a.Sub64(X16, size, d)
+		f.cmpRR(X16, span, true)
+		unclipped := f.a.Bcond(condE)
+		f.cmpImm(X16, p.step, true)
+		last := f.a.Bcond(condBE)
+		singleLane = true
+		packet(p.step, false)
+		singleLane = false
+		f.patchBranch26(f.a.Branch(), reloadInvariant)
+		f.patchBranch19(unclipped, f.a.Len())
+		f.patchBranch19(last, f.a.Len())
+		f.stats.peep("integer-load-map-invariant-reentry")
 	}
 	f.stats.peep("float-map-loop-unroll")
 	if p.normalizedInduction {
@@ -1396,7 +2150,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			// Range guards excluded wrap during the prefix. Recover the exact
 			// modular source index before the original scalar packet resumes.
 			f.a.Sub64(X16, g.reg, linMemReg)
-			f.a.MovImm64(X17, uint64(g.min))
+			f.a.MovImm64(X17, uint64(uint32(g.min)))
 			f.a.Sub32(X16, X16, X17)
 			read(g.base, X17)
 			f.a.Sub32(X16, X16, X17)
@@ -1422,6 +2176,56 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		f.st64(SP, f.localOff(p.counter), counter)
 		f.locals[p.counter].state = lsMem
 	}
+	if exit.written != 0 {
+		for i := 0; i < p.localN; i++ {
+			cell := p.locals[i]
+			if (exit.extra&^storedLiveOuts)&(uint32(1)<<i) == 0 {
+				continue
+			}
+			x := int(cell.Index)
+			coefficient := exit.coeff[i]
+			bias := exit.bias[i] - p.counterStep*coefficient
+			switch coefficient {
+			case 0:
+				f.a.MovImm32(X16, int32(bias))
+			case 1:
+				f.floatMapOffset(X16, counter, uint64(bias), false, X17)
+			default:
+				f.a.MovImm32(X17, int32(coefficient))
+				f.a.MovImm32(X16, int32(bias))
+				f.a.Madd32(X16, counter, X17, X16)
+			}
+			if exit.invariant&(uint32(1)<<i) != 0 {
+				term := exit.source[i]
+				read(int(term.local), X17)
+				if term.sub {
+					f.a.SubShiftedReg(X16, X16, X17, a64.RegShiftLSL, term.shift, true)
+				} else {
+					f.a.AddShifted(X16, X16, X17, term.shift, true)
+				}
+			}
+			if reg, _, pinned := f.pinReg(x); pinned {
+				f.a.MovReg32(reg, X16)
+				f.markLocalDirty(x)
+			} else {
+				f.st64(SP, f.localOff(x), X16)
+				f.locals[x].state = lsMem
+			}
+			f.setFactsForLocal(x, 0)
+		}
+		var done int
+		if clipInvariantPrefix || resumeInvariantPrefix {
+			// A zero vector span can be the clipped limit. Only skip the
+			// original loop after reaching its actual source bound.
+			readLimit(X16, X17)
+			f.cmpRR(counter, X16, false)
+			done = f.a.Bcond(condE)
+		} else {
+			done = f.a.Cbz32(span)
+		}
+		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: done, written: exit.written}
+		f.stats.peep("integer-load-map-affine-exit")
+	}
 	for i := 0; i < nGuards; i++ {
 		f.patchBranch19(guards[i], f.a.Len())
 	}
@@ -1432,6 +2236,12 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	if p.integer {
+		if clipInvariantPrefix {
+			f.stats.peep("integer-load-map-invariant-prefix")
+		}
+		if p.step > 4 && p.extraStoreN == 0 {
+			f.stats.peep("integer-load-map-packed-adjacent")
+		}
 		f.stats.peep("integer-load-map-vector")
 	} else {
 		f.stats.peep("float-map-loop-vector")

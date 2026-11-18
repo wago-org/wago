@@ -1158,6 +1158,10 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 // stack holds a, then b, then cond on top. Lowered to compare + CSEL (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	// At least two deferred operations are needed to justify the branch.
+	if f.s.pendingDeferred >= pureSelectMinOps && f.tryPureExpensiveSelect() {
+		return
+	}
 	// Flags-select: when the condition is a deferred relational/eqz compare and both
 	// branches are integers, emit the compare's CMP and a CSEL on its flags directly
 	// — skipping the Cset + TEST that materializing the boolean costs. The compare is
@@ -1176,7 +1180,16 @@ func (f *fn) emitSelect() {
 		}
 	}
 	cond := f.popValue()
-	condReg := f.materialize(cond) // condition is i32
+	// popValue already copies any condition borrowed from an evictable
+	// regional register. A function-pinned local can be tested in place.
+	var condReg Reg
+	ownedCond := cond.st.kind != stLocalReg || !f.pinnedLocalMask.has(cond.st.reg)
+	if ownedCond {
+		condReg = f.materialize(cond)
+	} else {
+		condReg = cond.st.reg
+		f.stats.peep("select-condition-read-borrow")
+	}
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
@@ -1192,12 +1205,14 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeV128(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.NeonMov16b(aX, bX)      // cond == 0 → a = b (all 128 bits)
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
-		f.release(condReg)
+		if ownedCond {
+			f.release(condReg)
+		}
 		f.pushVReg(aX)
 		return
 	}
@@ -1214,12 +1229,14 @@ func (f *fn) emitSelect() {
 		f.fpinned = f.fpinned.add(aX)
 		bX := f.materializeF(b)
 		f.pinned = f.pinned.remove(condReg)
-		skip := f.a.Cbnz64(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
+		skip := f.a.Cbnz32(condReg) // cond != 0 → keep a (CBNZ fuses test+branch)
 		f.a.FmovReg(aX, bX, f64)    // cond == 0 → a = b
 		f.patchBranch19(skip, f.a.Len())
 		f.fpinned = f.fpinned.remove(aX)
 		f.releaseF(bX)
-		f.release(condReg)
+		if ownedCond {
+			f.release(condReg)
+		}
 		f.pushFReg(aX, typ)
 		return
 	}
@@ -1239,7 +1256,9 @@ func (f *fn) emitSelect() {
 	f.a.Csel(aReg, bReg, aReg, condE, w) // cond == 0 → a = b (both sources explicit)
 	f.pinned = f.pinned.remove(condReg)
 	f.pinned = f.pinned.remove(bReg)
-	f.release(condReg)
+	if ownedCond {
+		f.release(condReg)
+	}
 	if ownB {
 		f.release(bReg)
 	}
@@ -1288,7 +1307,14 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 		f.pinned = f.pinned.add(aReg)
 	}
 	bReg := ZR
-	if !bZero {
+	// A function-pinned local is stable while the predicate is lowered. If
+	// the true arm already owns the result register, CSEL can read it in place.
+	borrowB := !aZero && bRoot.st.kind == stLocalReg &&
+		f.pinnedLocalMask.has(bRoot.st.reg) && f.opt(optSelectSourceRead)
+	if borrowB {
+		bReg = bRoot.st.reg
+		f.stats.peep("select-source-read")
+	} else if !bZero {
 		bReg = f.materialize(bRoot)
 		f.pinned = f.pinned.add(bReg)
 	}
@@ -1305,13 +1331,13 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	if aReg != ZR {
 		f.pinned = f.pinned.remove(aReg)
 	}
-	if bReg != ZR {
+	if bReg != ZR && !borrowB {
 		f.pinned = f.pinned.remove(bReg)
 	}
 	if aReg != ZR && aReg != dest {
 		f.release(aReg)
 	}
-	if bReg != ZR && bReg != dest {
+	if bReg != ZR && bReg != dest && !borrowB {
 		f.release(bReg)
 	}
 	f.erase(bRoot)
@@ -1329,6 +1355,10 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
 // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
 func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+	f.realizeLocalRefsWithBounds(x, skipFrom, 0)
+}
+
+func (f *fn) realizeLocalRefsWithBounds(x int, skipFrom *elem, extent int32) {
 	// skipFrom (non-nil) marks the base of the value-being-set's valent block for
 	// an in-place self-update (`local.set $x (binop (local.get $x) …)`): refs to x
 	// inside that block are consumed directly into x's register by condenseInto, so
@@ -1349,7 +1379,14 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		}
 		switch {
 		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+			if captured := f.snapshotLocalBitfield(e); captured != nil {
+				e = f.s.next(captured)
+				continue
+			}
 			f.materializeByType(e)
+			if extent > 0 && e.st.typ == mtI32 {
+				e.st.slot = capturedBoundsExtentBit | uint32(extent)
+			}
 		case e.elemKind() == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.
 			// memBorrow covers an in-place pinned address; memAliasLocal also covers
@@ -1377,6 +1414,11 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+	// Save the proof for older stack operands before dropping facts for x.
+	var capturedExtent int32
+	if capturedBoundsEnabled && f.boundsCertsActive && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && f.localType[x] == mtI32 {
+		capturedExtent = f.boundsCertExtent(1, uint32(x))
+	}
 	f.invalidateLocalWriteFacts(x)
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
@@ -1415,7 +1457,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.stats.peep("local-memory-sink")
 	}
 
-	f.realizeLocalRefs(x, skipFrom)
+	f.realizeLocalRefsWithBounds(x, skipFrom, capturedExtent)
 	if reader != nil {
 		f.activateIntervalLocal(x, reader.Offset(), false)
 	}

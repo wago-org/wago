@@ -10,9 +10,9 @@
 package amd64
 
 import (
-	"math/bits"
 	"os"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -48,120 +48,17 @@ type modularLoadGroup struct {
 	valid, covered   bool
 }
 
-// scanModularLoadGroup looks only through effects that cannot mutate memory or
-// trap except for plain loads. It proves a dense set of adjacent word accesses
-// using the same unchanged local, with a strict per-function scan budget.
 func (f *fn) scanModularLoadGroup(r *wasm.Reader, local uint32, first uint8) modularLoadGroup {
-	const limit = 192
-	scan := *r
-	mask := uint64(1) << (first / 4)
-	stage := uint8(0)
-	var candidate uint32
-	for n := 0; n < limit && f.boundsScanWork < maxFunctionRangeOps && scan.HasNext(); n++ {
-		// Sparse probes rarely amortize their setup; stop before scanning a long
-		// unrelated expression unless another matching load appears nearby.
-		if n == 24 && bits.OnesCount64(mask) < 2 {
-			return modularLoadGroup{}
-		}
-		f.boundsScanWork++
-		op, err := scan.Byte()
-		if err != nil {
-			break
-		}
-		switch {
-		case op == 0x20:
-			x, err := scan.U32()
-			if err != nil {
-				return modularLoadGroup{}
-			}
-			if uint64(x)+uint64(f.localBase) == uint64(local) {
-				if stage == 4 {
-					stage = 2 // constant, local, add
-				} else {
-					stage = 1
-				}
-			} else {
-				stage = 0
-			}
-		case op == 0x21 || op == 0x22:
-			x, err := scan.U32()
-			if err != nil || uint64(x)+uint64(f.localBase) == uint64(local) {
-				return finishModularLoadGroup(local, first, mask)
-			}
-			stage = 0
-		case op == 0x41:
-			v, err := scan.I32()
-			if err != nil {
-				return modularLoadGroup{}
-			}
-			if uint32(v) < 256 && uint32(v)&3 == 0 {
-				candidate = uint32(v)
-				if stage == 1 {
-					stage = 2 // local, constant, add
-				} else {
-					stage = 4
-				}
-			} else {
-				stage = 0
-			}
-		case op == 0x6a:
-			if stage == 2 {
-				stage = 3
-			} else {
-				stage = 0
-			}
-		case op >= 0x28 && op <= 0x35:
-			align, err := scan.U32()
-			if err != nil {
-				return modularLoadGroup{}
-			}
-			mem := uint32(0)
-			if align >= 64 && align < 128 {
-				mem, err = scan.U32()
-				if err != nil {
-					return modularLoadGroup{}
-				}
-			}
-			off, err := scan.U32()
-			if err != nil || mem != 0 {
-				return finishModularLoadGroup(local, first, mask)
-			}
-			if op == 0x28 && off == 0 && (stage == 1 || stage == 3) {
-				if stage == 1 {
-					candidate = 0
-				}
-				mask |= uint64(1) << (candidate / 4)
-			}
-			stage = 0
-		case op == 0x01 || op == 0x1a || op == 0x1b,
-			op >= 0x45 && op <= 0x6c, op >= 0x71 && op <= 0x7e,
-			op >= 0x83 && op <= 0x8a, op == 0xa7 || op == 0xac || op == 0xad:
-			stage = 0
-		case op == 0x42:
-			if skipImmediates(&scan, op) != nil {
-				return modularLoadGroup{}
-			}
-			stage = 0
-		default:
-			return finishModularLoadGroup(local, first, mask)
-		}
-	}
+	mask := shared.ScanModularWordLoads(r, local, f.localBase, first, &f.boundsScanWork, maxFunctionRangeOps)
 	return finishModularLoadGroup(local, first, mask)
 }
 
 func finishModularLoadGroup(local uint32, first uint8, mask uint64) modularLoadGroup {
-	// Setup needs several checks to amortize; short groups keep the scalar checks.
-	if bits.OnesCount64(mask) < 5 {
+	low, high, ok := shared.DenseModularWordSpan(mask)
+	if !ok {
 		return modularLoadGroup{}
 	}
-	lo, hi := bits.TrailingZeros64(mask), bits.Len64(mask)-1
-	// Dense means that if the sequence crosses 2^32, one access ends in the
-	// final four bytes of memory; this makes the wrap case exactly testable.
-	count := hi - lo + 1
-	if count == 64 && mask != ^uint64(0) || count < 64 && mask>>lo != (uint64(1)<<count)-1 {
-		return modularLoadGroup{}
-	}
-	return modularLoadGroup{local: local, first: first, low: uint8(lo * 4), high: uint8(hi * 4), valid: true}
+	return modularLoadGroup{local: local, first: first, low: low, high: high, valid: true}
 }
 
 func (f *fn) modularLoadGroupCovers(local uint32, displacement uint8) bool {

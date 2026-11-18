@@ -117,3 +117,34 @@ func (f *fn) tryBitfieldPair(node *elem, dest Reg) Reg {
 	f.stats.peep("bitfield-pair")
 	return dest
 }
+
+// Materialize a pure extract from a local before an assignment replaces it.
+// The extract needs the same register as a copy of the full input.
+func (f *fn) snapshotLocalBitfield(src *elem) *elem {
+	if !f.hasLoop || src.st.kind != stLocalReg || src.st.typ != mtI32 {
+		return nil
+	}
+	shiftAmount := f.s.next(src)
+	if shiftAmount == f.s.head || shiftAmount.elemKind() != ekValue || shiftAmount.st.kind != stConst {
+		return nil
+	}
+	shift := f.s.next(shiftAmount)
+	if shift == f.s.head || !shift.isDeferred() || shift.deferredOp() != opShrU ||
+		f.s.arg0(shift) != src || f.s.arg1(shift) != shiftAmount {
+		return nil
+	}
+	mask := f.s.next(shift)
+	if mask == f.s.head || mask.elemKind() != ekValue || mask.st.kind != stConst {
+		return nil
+	}
+	root := f.s.next(mask)
+	if root == f.s.head || !root.isDeferred() || root.deferredOp() != opAnd ||
+		f.s.arg0(root) != shift || f.s.arg1(root) != mask {
+		return nil
+	}
+	if f.tryBitfieldPair(root, regNone) == regNone {
+		return nil
+	}
+	f.stats.peep("local-bitfield-snapshot")
+	return root
+}

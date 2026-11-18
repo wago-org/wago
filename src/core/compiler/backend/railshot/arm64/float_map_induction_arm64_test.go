@@ -144,3 +144,20 @@ func TestFloatMapStridedSpecialValues(t *testing.T) {
 		}
 	}
 }
+
+func TestFloatMapNormalizedInductionDoesNotReuseFailedLimit(t *testing.T) {
+	p := floatMapPlan{localN: 1, workLimit: floatMapScatterWorkLimit}
+	p.locals[0].Type, p.locals[0].Value, p.locals[0].Written = mtI32, 2, true
+	p.nodes[0] = floatMapNode{op: 0x20}
+	p.nodes[1] = floatMapNode{op: 0x41, bits: 1}
+	p.nodes[2] = floatMapNode{op: 0x6a, a: 0, b: 1}
+	p.nodes[3] = floatMapNode{op: 0x41, bits: 960}
+	p.nodes[4] = floatMapNode{op: 0x47, a: 2, b: 3}
+	if p.finishFloatInduction(4, 1, []bool{false}) || p.limit != 960 {
+		t.Fatal("expected the fixed-byte probe to reject after reading the limit")
+	}
+	p.normalizedInduction = true
+	if !p.finishIntegerInduction(4, 1, []bool{false}) || p.limit != 960 {
+		t.Fatalf("normalized planner retained stale limit state, got %d want 960", p.limit)
+	}
+}

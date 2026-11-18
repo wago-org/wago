@@ -134,3 +134,62 @@ func TestPureSelectRawConditionI64(t *testing.T) {
 		}
 	}
 }
+
+func TestPureSelectStackResult(t *testing.T) {
+	old := pureSelectEnabled
+	defer func() { pureSelectEnabled = old }()
+	for _, wide := range []bool{false, true} {
+		typ := wasm.I32
+		xor, mul, cnst, add := byte(0x73), byte(0x6c), byte(0x41), byte(0x6a)
+		if wide {
+			typ = wasm.I64
+			xor, mul, cnst, add = 0x85, 0x7e, 0x42, 0x7c
+		}
+		for _, expensive := range []bool{false, true} {
+			for _, workOnTrue := range []bool{false, true} {
+				body := []byte{0}
+				work := []byte{0x20, 0, 0x20, 1, xor, cnst, 19, mul}
+				if expensive {
+					work = append(work, cnst, 7, add, cnst, 29, mul)
+				}
+				cheap := []byte{0x20, 2}
+				if workOnTrue {
+					body = append(body, work...)
+					body = append(body, cheap...)
+				} else {
+					body = append(body, cheap...)
+					body = append(body, work...)
+				}
+				body = append(body, 0x20, 3, 0x1b, cnst, 7, add, 0x0b)
+				m := modMem(t, 1, []wasm.ValType{typ, typ, typ, wasm.I32}, []wasm.ValType{typ}, body)
+				for _, enabled := range []bool{false, true} {
+					pureSelectEnabled = enabled
+					for _, flag := range []uint64{0, 0x80000000, 1 << 32} {
+						x, y, fallback := uint64(0xe71ac9307318cd56), uint64(0x10131e8fa43d69e4), uint64(0xfdb97531)
+						want := fallback
+						if (uint32(flag) != 0) == workOnTrue {
+							want = (x ^ y) * 19
+							if expensive {
+								want = (want + 7) * 29
+							}
+						}
+						want += 7
+						got := runArm64u(t, m, x, y, fallback, flag)
+						if !wide {
+							want, got = uint64(uint32(want)), uint64(uint32(got))
+						}
+						if got != want {
+							t.Fatalf("wide=%v workOnTrue=%v enabled=%v flag=%x: got %x, want %x", wide, workOnTrue, enabled, flag, got, want)
+						}
+					}
+					if diagnosticsEnabled {
+						hits := compileWithStats(t, m, false).Funcs[0].Peephole["pure-select-branch"]
+						if (hits != 0) != (enabled && expensive) {
+							t.Fatalf("wide=%v expensive=%v workOnTrue=%v enabled=%v: pure select hits=%d", wide, expensive, workOnTrue, enabled, hits)
+						}
+					}
+				}
+			}
+		}
+	}
+}

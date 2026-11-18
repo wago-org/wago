@@ -11,6 +11,10 @@ import (
 )
 
 func minPlusModule(t testing.TB, dst, src, pivot, start, limit uint32) *wasm.Module {
+	return minPlusModuleWithStack(t, dst, src, pivot, start, limit, true)
+}
+
+func minPlusModuleWithStack(t testing.TB, dst, src, pivot, start, limit uint32, carried bool) *wasm.Module {
 	body := []byte{1, 7, 0x7f}
 	constant := func(x uint32) { body = append(body, 0x41); body = append(body, wasmtest.SLEB32(int32(x))...) }
 	for local, x := range []uint32{dst, src, pivot, start} {
@@ -18,7 +22,9 @@ func minPlusModule(t testing.TB, dst, src, pivot, start, limit uint32) *wasm.Mod
 		body = append(body, 0x21, byte(local))
 	}
 	// Keep a carried operand below the loop, as real calling functions do.
-	constant(123)
+	if carried {
+		constant(123)
+	}
 	body = append(body, 0x03, 0x40)
 	for i := uint32(0); i < 2; i++ {
 		body = append(body, 0x20, 0, 0x20, 3, 0x6a)
@@ -39,7 +45,10 @@ func minPlusModule(t testing.TB, dst, src, pivot, start, limit uint32) *wasm.Mod
 	constant(limit)
 	body = append(body, 0x47, 0x0d, 0, 0x0b)
 	// Observe final source temporaries and every updated word in the result.
-	body = append(body, 0x20, 3, 0x20, 4, 0x73, 0x20, 5, 0x73, 0x20, 6, 0x73, 0x73)
+	body = append(body, 0x20, 3, 0x20, 4, 0x73, 0x20, 5, 0x73, 0x20, 6, 0x73)
+	if carried {
+		body = append(body, 0x73)
+	}
 	if uint64(dst)+uint64(limit) <= 65536 {
 		for i := start; i < limit; i += 4 {
 			constant(dst + i)
@@ -158,5 +167,30 @@ func TestMinPlusLoopRejectsEffects(t *testing.T) {
 				t.Fatal("unsafe loop admitted")
 			}
 		})
+	}
+}
+
+func TestMinPlusLoopCheckedTail(t *testing.T) {
+	for _, c := range [][3]uint32{
+		{64, 8192, 4}, {64, 8192, 64 + 712}, {64, 8192, 64 + 713},
+		{64, 64, 4}, {64, 65, 4}, {65511, 0, 8192},
+	} {
+		for _, carried := range []bool{false, true} {
+			for _, limit := range []uint32{24, 32, 40, 64, 72, 264, 720} {
+				mem := make([]byte, 65536)
+				for i := 0; i < len(mem)/4; i++ {
+					binary.LittleEndian.PutUint32(mem[i*4:], uint32(i)*0x9e3779b9+0x80000001)
+				}
+				m := minPlusModuleWithStack(t, c[0], c[1], c[2], 0, limit, carried)
+				want, wantMem, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, mem)
+				got, gotMem, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, mem, "minplus-loop-checked-tail")
+				if (err != nil) != (wantErr != nil) || got != want || string(gotMem) != string(wantMem) {
+					t.Fatalf("bases=%v limit=%d: got %x/%v, want %x/%v, memory equal=%v", c, limit, got, err, want, wantErr, string(gotMem) == string(wantMem))
+				}
+				if diagnosticsEnabled && hits != 1 {
+					t.Fatalf("bases=%v limit=%d: checked tail was not emitted", c, limit)
+				}
+			}
+		}
 	}
 }

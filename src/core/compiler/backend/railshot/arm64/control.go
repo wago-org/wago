@@ -1877,7 +1877,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if !fr.has(ctrlCallFreeRegion) {
 			f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
 		}
-		if isFusableCondition(f.s.back()) {
+		if isFusableBranchPredicate(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
 			if f.opt(optZeroBranch) {
@@ -1966,14 +1966,20 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				if f.loopMemory {
 					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
-					f.emitMinPlusLoop(r)
-					f.emitFloatMapLoop(r)
-					f.emitIntegerLoadMap(r)
-					f.emitIntegerWordMap(r)
-					f.emitAbsReduceLoop(r)
+					minPlus := f.emitMinPlusLoop(r)
+					// The specialized prefix leaves the original scalar tail.
+					// Probing other map and reduction grammars there repeats
+					// work against the same source body.
+					if !minPlus || integerMapAfterMinPlusEnabled {
+						f.emitFloatMapLoop(r)
+						f.emitIntegerLoadMap(r)
+						f.emitIntegerWordMap(r)
+						f.emitAbsReduceLoop(r)
+					}
 				}
 			}
 			f.beginLoopLocalLease(r, &fr)
+			f.beginLoopMemoryLimit(r, &fr)
 			f.preloadScopedLoopConsts(&fr)
 			f.preloadScopedFloatConsts(r)
 			if !f.alignCountedLoopBody(r, &fr) {
@@ -3029,8 +3035,9 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 	f.finishDotLoop(last + 1)
 	f.finishByteReduceLoop(last + 1)
-	f.finishPureReduce(last + 1)
+	f.finishVectorLoopExit(last + 1)
 	f.finishLoopLocalLease(last + 1)
+	f.endLoopMemoryLimit(last + 1)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
@@ -3104,7 +3111,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 	}
 	// Fuse `<compare> br_if L` into CMP + conditional jump. (Local convergence is
 	// per-target and happens after the label frame is resolved.)
-	if conditional && isFusableCondition(f.s.back()) {
+	if conditional && isFusableBranchPredicate(f.s.back()) {
 		top := f.s.back()
 		idx, err := r.U32()
 		if err != nil {
@@ -3150,7 +3157,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		f.truncateNativeCode(reconcileMark)
 		f.restoreLocalStates(saved)
 	}
-	if f.conditionalBoundsEligible() {
+	if f.conditionalBoundsEligible(fi) {
 		defer f.restoreConditionalBounds(f.conditionalBoundsSnapshot(-1))
 	}
 	a, d := fr.branchArity(), f.depth()
@@ -3445,13 +3452,16 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.recordPCRelative(adrSite)
 		if compactIDs {
 			f.stats.peep("br-table-compact")
-			f.a.LoadIdx(X17, X16, ireg, 0, 1, false, true) // X17 = target ID
+			f.a.LdrIdxUXTW(X17, X16, ireg, 1, false, false) // X17 = target ID
 			f.a.AddImm64(X16, X16, uint32(align4(len(labels))))
 			f.a.AddShifted(X17, X16, X17, 2, false) // X17 = &branchVector[ID]
 		} else {
-			f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
-			f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
-			f.a.Add64(X17, X16, X17)                      // target = table base + entry
+			// The Wasm index is i32, even when its native carrier is wider.
+			if !f.a.AddExtUXTWShift(X17, X16, ireg, 2) {
+				panic("invalid jump-table scale")
+			}
+			f.a.LdrIdx(X17, X17, ZR, 4, true, true) // X17 = (i32)table[idx]
+			f.a.Add64(X17, X16, X17)                // target = table base + entry
 		}
 		f.a.Br(X17)
 		tablePos := f.a.Len()
@@ -3555,6 +3565,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return nil
 	}
 	for i, lbl := range labels {
+		if lbl == def {
+			continue
+		}
 		fi := len(f.ctrl) - 1 - int(lbl)
 		fr := &f.ctrl[fi]
 		if f.opt(optBranchFold) && !f.moduleEH && f.gcFrameRoots == nil && len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&

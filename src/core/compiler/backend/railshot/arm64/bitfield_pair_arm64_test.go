@@ -122,3 +122,38 @@ func TestBitfieldUnaryFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestBitfieldSnapshotPreservesOldLocal(t *testing.T) {
+	// Keep two extracts of the old value on the stack while replacing its
+	// local. Consume them beside the updated value after the assignment.
+	body := []byte{
+		0, 0x3f, 0, 0x1a,
+		0x03, 0x7f,
+		0x20, 0, 0x41, 2, 0x76, 0x41, 15, 0x71,
+		0x20, 0, 0x41, 5, 0x76, 0x41, 63, 0x71,
+		0x20, 0, 0x41, 7, 0x6c, 0x21, 0,
+		0x6c, 0x20, 0, 0x6a,
+		0x0b, 0x0b,
+	}
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	m.Memories = []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}
+
+	if diagnosticsEnabled {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cm.CodeImage.Close()
+		if got := stats.Funcs[0].Peephole["local-bitfield-snapshot"]; got != 2 {
+			t.Fatalf("selected %d snapshots, want 2", got)
+		}
+	}
+	for _, x := range []uint32{0, 1, 0x7e, 0xfff1, 0x87654321, 0xffffffff} {
+		want := ((x>>2)&15)*((x>>5)&63) + x*7
+		got, err := runArm64WrapperWithOptions(t, m, CompileOptions{}, uint64(x))
+		if err != nil || uint32(got) != want {
+			t.Fatalf("input %#x: got %#x (%v), want %#x", x, got, err, want)
+		}
+	}
+}

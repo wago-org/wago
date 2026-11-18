@@ -33,7 +33,7 @@ type pureReducePlan struct {
 	reductions                    [4]pureReduction
 	nReductions                   int
 }
-type pureReduceJoin struct {
+type vectorLoopJoin struct {
 	depth, site int
 	written     uint32
 }
@@ -430,7 +430,7 @@ func (f *fn) planPureVectors(p *pureReducePlan) (v pureVectorLayout, ok bool) {
 // scalar local. Up to three remaining iterations enter the unchanged scalar
 // body. Scalar backedges skip the vector prefix and its initialization.
 func (f *fn) emitPureReduce(r *wasm.Reader) {
-	if !f.opt(optPureReduceVector) || f.pureReduce != nil || f.dotLoop != nil || f.usesCalls || f.interruptible || f.moduleEH || f.preserveCallerPins || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.depth() != 0 {
+	if !f.opt(optPureReduceVector) || f.vectorLoopExit != nil || f.dotLoop != nil || f.usesCalls || f.interruptible || f.moduleEH || f.preserveCallerPins || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.depth() != 0 {
 		return
 	}
 	if f.nLocals > 32 {
@@ -645,14 +645,14 @@ func (f *fn) emitPureReduceBody(r *wasm.Reader) {
 			}
 		}
 	}
-	f.pureReduce = &pureReduceJoin{depth: len(f.ctrl) + 1, site: finished, written: p.written}
+	f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: finished, written: p.written}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	f.stats.peep("pure-reduce-vector")
 }
 
-func (f *fn) finishPureReduce(depth int) {
-	state := f.pureReduce
+func (f *fn) finishVectorLoopExit(depth int) {
+	state := f.vectorLoopExit
 	if state == nil || state.depth != depth {
 		return
 	}
@@ -664,5 +664,5 @@ func (f *fn) finishPureReduce(depth int) {
 	}
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
-	f.pureReduce = nil
+	f.vectorLoopExit = nil
 }
