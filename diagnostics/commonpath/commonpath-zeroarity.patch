@@ -1,0 +1,71 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index fc644bcd..da46add3 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -943,6 +943,10 @@ func frameGCRootFlags(base, suffix []bool) []bool {
+ }
+ 
+ func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
++	// Empty payloads neither move slots nor propagate result GC roots.
++	if a == 0 {
++		return
++	}
+ 	roots := f.rootsBottomToTop()
+ 	if fr.kind != cfLoop && a != 0 && f.s.hasGCRoots {
+ 		f.recordGCBranchResultRoots(fr, a, roots)
+@@ -2807,7 +2811,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
+ 	if f.usesCalls {
+ 		f.convergeBranchLocals(fr)
+ 	}
+-	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)
++	allTypes := f.currentLogicalTypes()
+ 	d := len(allTypes)
+ 	refSlot := slotsOfTypes(allTypes) - 1
+ 	f.flush()
+diff --git a/src/core/compiler/backend/railshot/amd64/zeroarity_branch_test.go b/src/core/compiler/backend/railshot/amd64/zeroarity_branch_test.go
+new file mode 100644
+index 00000000..0bb114b6
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/zeroarity_branch_test.go
+@@ -0,0 +1,41 @@
++//go:build linux && amd64
++
++package amd64
++
++import (
++	"reflect"
++	"testing"
++)
++
++func TestZeroarityBranchLeavesMixedStateUntouched(t *testing.T) {
++	for _, loop := range []bool{false, true} {
++		f := fn{s: newStack()}
++		for i, typ := range []machineType{mtI32, mtI64, mtF64, mtV128} {
++			e := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(i)})
++			if i == 1 {
++				f.setStackGCRoot(e, true)
++			}
++		}
++		f.tmpRoots = []*elem{nil}
++		f.tmpTypes = []machineType{mtF32}
++		before := append([]machineType(nil), f.tmpTypes...)
++		root := f.s.back()
++		depth := f.s.logicalDepth
++		fr := ctrlFrame{kind: cfBlock}
++		if loop {
++			fr.kind = cfLoop
++		}
++		// No assembler: any attempted emission is a test failure, not a silent no-op.
++		f.moveBranchValues(&fr, 4, 0)
++		if f.s.back() != root || f.s.logicalDepth != depth || len(f.tmpRoots) != 1 || f.tmpRoots[0] != nil || !reflect.DeepEqual(f.tmpTypes, before) || fr.has(ctrlHasResultGCRoots) {
++			t.Fatal("zero payload mutated stack, scratch or target")
++		}
++	}
++}
++func TestZeroarityBranchNoSourceRead(t *testing.T) {
++	f := fn{}
++	f.moveBranchValues(&ctrlFrame{}, 0, 0)
++	if f.tmpRoots != nil || f.tmpTypes != nil {
++		t.Fatal("zero source walked")
++	}
++}

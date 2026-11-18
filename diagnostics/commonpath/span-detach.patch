@@ -1,0 +1,266 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index 5c69c461..553346b1 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -1362,16 +1362,40 @@ func (f *fn) cmpRR(x, y Reg, w bool) {
+ // that sits below node (its operand sub-trees), leaving node as the top.
+ func (f *fn) consumeBlockBelow(node *elem) {
+ 	base := baseOfValentBlock(node)
+-	e := node.prev
+-	for {
++	before := base.prev
++	s := f.s
++	s.canonicalSlots = false
++	// The entire contiguous operand span is dead. Preserve erase's per-node
++	// bookkeeping, but splice its two outer links only once rather than
++	// repeatedly relinking neighbors that are themselves about to be removed.
++	// Keep this cleanup synchronized with fn.erase and stack.erase.
++	for e := node.prev; ; {
+ 		prev := e.prev
+-		isBase := e == base
+-		f.erase(e)
+-		if isBase {
++		if regallocCheckEnabled {
++			f.checkConsumeMemRef(e)
++		}
++		s.clearElemCold(e)
++		if s.pendingPrefix == e {
++			s.pendingPrefix = prev
++		}
++		// forgetSpill requires the node's links to still be non-nil.
++		s.forgetSpill(e)
++		if e.st.hasLogicalRoot() {
++			e.st.setLogicalRoot(false)
++			if s.logicalDepth == 0 {
++				panic("amd64: negative logical operand depth")
++			}
++			s.logicalDepth--
++		}
++		e.prev, e.next = nil, nil
++		if e == base {
+ 			break
+ 		}
+ 		e = prev
+ 	}
++	before.next, node.prev = node, before
++	// node remains linked, so this operation cannot empty the physical stack
++	// and must not clear pendingLocalRef as a whole-stack erase would.
+ }
+ 
+ func fitsImm32(v int64) bool { return v >= -1<<31 && v < 1<<31 }
+diff --git a/src/core/compiler/backend/railshot/amd64/span_detach_test.go b/src/core/compiler/backend/railshot/amd64/span_detach_test.go
+new file mode 100644
+index 00000000..cbcce53b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/span_detach_test.go
+@@ -0,0 +1,210 @@
++//go:build amd64
++
++package amd64
++
++import (
++	"fmt"
++	"reflect"
++	"testing"
++)
++
++// Preserve the pre-change algorithm as a separate state oracle.
++func spanDetachOriginal(f *fn, node *elem) {
++	base := baseOfValentBlock(node)
++	for e := node.prev; ; {
++		prev, last := e.prev, e == base
++		f.erase(e)
++		if last {
++			break
++		}
++		e = prev
++	}
++}
++
++type spanDetachFixture struct {
++	f       fn
++	nodes   []elem
++	removed []*elem
++	parent  *elem
++}
++
++func newSpanDetachFixture(n int, mixed bool, cursor int) *spanDetachFixture {
++	x := &spanDetachFixture{nodes: make([]elem, n+3)}
++	x.f.s = newStack()
++	x.reset(mixed, cursor)
++	return x
++}
++
++func (x *spanDetachFixture) reset(mixed bool, cursor int) {
++	s := x.f.s
++	for i := range x.nodes {
++		x.nodes[i] = elem{st: storage{kind: stConst, typ: mtI32, cval: int64(i)}}
++	}
++	// Sentinel, lower outer root, n removed nodes, surviving parent and upper root.
++	h := s.head
++	h.next, h.prev = &x.nodes[0], &x.nodes[len(x.nodes)-1]
++	for i := range x.nodes {
++		e := &x.nodes[i]
++		if i == 0 {
++			e.prev = h
++		} else {
++			e.prev = &x.nodes[i-1]
++		}
++		if i == len(x.nodes)-1 {
++			e.next = h
++		} else {
++			e.next = &x.nodes[i+1]
++		}
++		e.st.setLogicalRoot(i%2 == 0)
++	}
++	x.parent = &x.nodes[len(x.nodes)-2]
++	x.parent.setElemKind(ekDeferred)
++	x.parent.arg0 = &x.nodes[1]
++	x.parent.arg1 = &x.nodes[len(x.nodes)-3]
++	x.parent.st.setLogicalRoot(true)
++	x.removed = x.removed[:0]
++	for i := 1; i < len(x.nodes)-2; i++ {
++		x.removed = append(x.removed, &x.nodes[i])
++	}
++	s.logicalDepth = 0
++	for i := range x.nodes {
++		if x.nodes[i].st.hasLogicalRoot() {
++			s.logicalDepth++
++		}
++	}
++	s.canonicalSlots = true
++	s.pendingEffects = pendingLocalRef | pendingLoad | pendingTrap
++	s.pendingPrefixLoads = true
++	s.pendingPrefix = h
++	if cursor >= 0 {
++		s.pendingPrefix = &x.nodes[cursor]
++	}
++	s.spilledPrefix = &x.nodes[0]
++	s.spillExtent = 100
++	s.spillExtentValid = true
++	s.cold = s.cold[:0]
++	if mixed {
++		// Tail spill must invalidate extent while links are still live.
++		x.removed[0].st.kind = stSlot
++		x.removed[0].st.slot = 99
++		s.setElemCold(x.removed[0], nil, []Reg{1, 2})
++		if len(x.removed) > 1 {
++			e := x.removed[len(x.removed)-1]
++			e.st.kind = stMemRef
++			e.st.reg = Reg(3)
++			// Seed the checker liveness bit without installing an assembler observer.
++			// Disabled builds retain it; enabled erase must retire it per node.
++			e.st.meta |= 1 << 7
++			s.setElemCold(e, nil, []Reg{4, 5})
++		}
++	}
++}
++
++func spanDetachSnapshot(x *spanDetachFixture) any {
++	index := func(p *elem) int {
++		if p == nil {
++			return -1
++		}
++		if p == x.f.s.head {
++			return -2
++		}
++		for i := range x.nodes {
++			if p == &x.nodes[i] {
++				return i
++			}
++		}
++		panic("foreign node")
++	}
++	type node struct {
++		St               storage
++		Prev, Next, A, B int
++	}
++	ns := make([]node, len(x.nodes))
++	for i := range x.nodes {
++		e := &x.nodes[i]
++		ns[i] = node{e.st, index(e.prev), index(e.next), index(e.arg0), index(e.arg1)}
++	}
++	s := x.f.s
++	return struct {
++		Nodes                               []node
++		HeadNext, HeadPrev, Prefix, Spilled int
++		Depth                               int
++		Canonical, ExtentValid, Loads       bool
++		Extent                              uint32
++		Effects                             uint8
++		Cold                                []elemCold
++	}{ns, index(s.head.next), index(s.head.prev), index(s.pendingPrefix), index(s.spilledPrefix), int(s.logicalDepth), s.canonicalSlots, s.spillExtentValid, s.pendingPrefixLoads, s.spillExtent, s.pendingEffects, s.cold}
++}
++
++func TestSpanDetachStateParity(t *testing.T) {
++	for _, n := range []int{1, 2, 4, 16, 64} {
++		for _, mixed := range []bool{false, true} {
++			for cursor := -1; cursor < n+3; cursor++ {
++				t.Run(fmt.Sprintf("n%d/mixed%t/cursor%d", n, mixed, cursor), func(t *testing.T) {
++					a, b := newSpanDetachFixture(n, mixed, cursor), newSpanDetachFixture(n, mixed, cursor)
++					spanDetachOriginal(&a.f, a.parent)
++					b.f.consumeBlockBelow(b.parent)
++					if !reflect.DeepEqual(spanDetachSnapshot(a), spanDetachSnapshot(b)) {
++						t.Fatalf("state differs from original reverse erase\nold=%#v\nnew=%#v", spanDetachSnapshot(a), spanDetachSnapshot(b))
++					}
++					for _, e := range b.removed {
++						if e.prev != nil || e.next != nil {
++							t.Fatal("stale physical links")
++						}
++						if e.st.hasLogicalRoot() {
++							t.Fatal("removed logical root")
++						}
++						if regallocCheckEnabled && e.st.meta&(1<<7) != 0 {
++							t.Fatal("checker reference remained live")
++						}
++					}
++					if b.parent.prev.next != b.parent || b.parent.next.prev != b.parent {
++						t.Fatal("surviving links not reciprocal")
++					}
++					if b.f.s.pendingEffects&pendingLocalRef == 0 {
++						t.Fatal("outer live roots lost pending-local summary")
++					}
++					for _, c := range b.f.s.cold {
++						if c.custom != nil || c.vregs != nil {
++							t.Fatal("cold references retained")
++						}
++					}
++					// Reuse the same allocations, then compare a different prefix position.
++					a.reset(mixed, 0)
++					b.reset(mixed, 0)
++					spanDetachOriginal(&a.f, a.parent)
++					b.f.consumeBlockBelow(b.parent)
++					if !reflect.DeepEqual(spanDetachSnapshot(a), spanDetachSnapshot(b)) {
++						t.Fatal("reuse parity")
++					}
++				})
++			}
++		}
++	}
++}
++
++// Run with a fixed iteration count, e.g. -benchtime=10000x -count=5.
++// Fixture setup is outside timed intervals; this is not public Compile timing.
++func BenchmarkSpanDetach(b *testing.B) {
++	for _, n := range []int{1, 2, 4, 8, 16, 64} {
++		for _, mixed := range []bool{false, true} {
++			for _, original := range []bool{true, false} {
++				b.Run(fmt.Sprintf("n%d/mixed%t/original%t", n, mixed, original), func(b *testing.B) {
++					x := newSpanDetachFixture(n, mixed, n/2+1)
++					b.ReportAllocs()
++					b.ResetTimer()
++					for i := 0; i < b.N; i++ {
++						b.StopTimer()
++						x.reset(mixed, n/2+1)
++						b.StartTimer()
++						if original {
++							spanDetachOriginal(&x.f, x.parent)
++						} else {
++							x.f.consumeBlockBelow(x.parent)
++						}
++					}
++				})
++			}
++		}
++	}
++}
