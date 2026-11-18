@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The Azure mirror has stalled CI for over 40 minutes. Use the signed Ubuntu
-# archive over HTTPS and bound failed network transfers instead.
+# Cloud mirrors have stalled CI downloads. Use the signed Ubuntu archive over
+# HTTPS and bound failed network transfers instead.
 sources=(
   /etc/apt/sources.list
   /etc/apt/sources.list.d/*.list
@@ -12,7 +12,7 @@ sources=(
 for source in "${sources[@]}"; do
   [[ -f "$source" ]] || continue
   sudo sed -E -i \
-    's|https?://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+    's#https?://(azure|[a-z0-9-]+\.ec2)\.archive\.ubuntu\.com/ubuntu#https://archive.ubuntu.com/ubuntu#g' \
     "$source"
 done
 
