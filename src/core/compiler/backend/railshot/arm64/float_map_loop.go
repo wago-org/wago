@@ -77,6 +77,8 @@ type floatMapPlan struct {
 	wide                         bool
 	integer                      bool
 	orderedStoreLoads            bool
+	secondStore                  bool
+	secondDest, secondResult     int
 	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
@@ -288,7 +290,16 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				return false
 			}
 			if p.integer {
-				if !p.finishIntegerInduction(stack[0], ns, initialRead[:]) {
+				packetStores := ns
+				if ns == 2 {
+					first := p.mapStoreBase(stores[0].Address, 0)
+					second := p.mapStoreBase(stores[1].Address, 0)
+					p.secondStore = first >= 0 && second >= 0 && first != second
+					if p.secondStore {
+						packetStores = 1
+					}
+				}
+				if !p.finishIntegerInduction(stack[0], packetStores, initialRead[:]) {
 					return false
 				}
 			} else if !p.finishFloatInduction(stack[0], ns, initialRead[:]) {
@@ -320,6 +331,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				a.offset = stores[i].Offset
 				p.addresses[stores[i].Address] = a
+				if p.secondStore {
+					if a.invariant || a.stride > 2 {
+						return false
+					}
+					p.secondDest, p.secondResult = stores[i].Address, stores[i].Value
+				}
 			}
 			if p.normalizedInduction && !p.integer {
 				strided := false
@@ -363,11 +380,11 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			}
 			for i := 1; i < ns; i++ {
 				distance := uint32(i) * size
-				if !p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance) {
+				if !p.secondStore && (!p.sameMap(stores[0].Value, stores[i].Value, distance, 0) || !p.nextAddress(stores[0].Address, stores[i].Address, distance)) {
 					return false
 				}
 			}
-			if !p.validExpression(p.result, 0) {
+			if !p.validExpression(p.result, 0) || p.secondStore && !p.validExpression(p.secondResult, 0) {
 				return false
 			}
 			if floatMapInvariantsEnabled {
@@ -700,7 +717,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		max    uint64
 		reg    Reg
 	}
-	var groups [3]group
+	var groups [4]group
+	groupLimit := 3
+	if p.secondStore {
+		groupLimit = len(groups)
+	}
 	ng := 0
 	add := func(a floatMapAddress) bool {
 		for i := 0; i < ng; i++ {
@@ -715,7 +736,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				return true
 			}
 		}
-		if ng == len(groups) {
+		if ng == groupLimit {
 			return false
 		}
 		groups[ng] = group{base: a.base, index: a.index, stride: a.stride, min: a.bias, max: uint64(a.bias) + a.offset}
@@ -769,6 +790,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
 		return
 	}
+	// Each input has a disjointness check against both outputs.
+	if p.secondStore && (!add(p.addresses[p.secondDest]) || !collect(p.secondResult) || nl > 8) {
+		return
+	}
 	// Each carried byte index must have a guarded stream from which its next
 	// source value can be recovered. Other carried state stays on scalar code.
 	if p.normalizedInduction {
@@ -809,7 +834,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		return count
 	}
-	if countConst(p.result) > 2 {
+	constantCount := countConst(p.result)
+	if p.secondStore {
+		constantCount += countConst(p.secondResult)
+	}
+	if constantCount > 2 {
 		return
 	}
 	// Reserve enough FP scratch for the deepest expression before emitting code.
@@ -839,7 +868,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		return peak
 	}
-	if available < countConst(p.result)+pressure(p.result)+1 || p.normalizedInduction && p.work > p.workLimit {
+	peakPressure := pressure(p.result)
+	if p.secondStore {
+		peakPressure = max(peakPressure, pressure(p.secondResult))
+	}
+	if available < constantCount+peakPressure+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
 	}
 	read := func(local int, dst Reg) {
@@ -911,7 +944,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 
 	oldPinned, oldFPinned := f.pinned, f.fpinned
-	var regs [6]Reg
+	var regs [7]Reg
 	nr := 0
 	alloc := func() Reg {
 		x := f.allocRegOrNone(0)
@@ -1072,34 +1105,76 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	d, dOff := locate(p.addresses[p.dest])
 	outputStride := max(p.counterScale, p.addresses[p.dest].stride, 1)
+	type outputStream struct {
+		reg    Reg
+		offset uint32
+		stride uint32
+		value  int
+	}
+	outputs := [2]outputStream{{d, dOff, outputStride, p.result}}
+	outputCount := 1
+	if p.secondStore {
+		base, off := locate(p.addresses[p.secondDest])
+		outputs[1] = outputStream{base, off, max(p.addresses[p.secondDest].stride, 1), p.secondResult}
+		outputCount++
+	}
+	compareSpan := func(stride uint32) {
+		extent := span
+		if stride > 1 {
+			f.a.MovImm64(X17, uint64(stride))
+			f.a.Mul64(X17, span, X17)
+			extent = X17
+		}
+		f.cmpRR(X16, extent, true)
+	}
+	guardDisjoint := func(a, b outputStream) {
+		f.floatMapOffset(X16, a.reg, uint64(a.offset), true, X16)
+		f.floatMapOffset(X17, b.reg, uint64(b.offset), true, X17)
+		f.cmpRR(X16, X17, true)
+		above := f.a.Bcond(condA)
+		f.a.Sub64(X16, X17, X16)
+		compareSpan(a.stride)
+		guard(condB)
+		skip := f.a.Branch()
+		f.patchBranch19(above, f.a.Len())
+		f.a.Sub64(X16, X16, X17)
+		compareSpan(b.stride)
+		guard(condB)
+		f.patchBranch26(skip, f.a.Len())
+	}
+	if p.secondStore {
+		guardDisjoint(outputs[0], outputs[1])
+	}
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
-	for i := 0; i < nInvariant; i++ {
-		iv := p.addresses[invariant[i]]
-		read(iv.base, X16)
-		f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
-		if iv.offset != 0 {
-			f.floatMapOffset(X16, X16, iv.offset, true, X17)
+	for _, output := range outputs[:outputCount] {
+		for i := 0; i < nInvariant; i++ {
+			iv := p.addresses[invariant[i]]
+			read(iv.base, X16)
+			f.floatMapOffset(X16, X16, uint64(iv.bias), false, X17)
+			if iv.offset != 0 {
+				f.floatMapOffset(X16, X16, iv.offset, true, X17)
+			}
+			width := uint32(4)
+			if p.wide {
+				width = 8
+			}
+			f.a.AddImm64(X17, X16, width)
+			f.cmpRR(X17, size, true)
+			guard(condA)
+			f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
+			f.a.Sub64(X16, X16, X17)
+			f.a.AddImm64(X16, X16, width-1)
+			if output.stride > 1 {
+				f.a.MovImm64(X17, uint64(output.stride))
+				f.a.Mul64(X17, span, X17)
+				f.a.AddImm64(X17, X17, width-1)
+			} else {
+				f.a.AddImm64(X17, span, width-1)
+			}
+			f.cmpRR(X16, X17, true)
+			guard(condB)
 		}
-		width := uint32(4)
-		if p.wide {
-			width = 8
-		}
-		f.a.AddImm64(X17, X16, width)
-		f.cmpRR(X17, size, true)
-		guard(condA)
-		f.floatMapOffset(X17, d, uint64(dOff), true, X17)
-		f.a.Sub64(X16, X16, X17)
-		f.a.AddImm64(X16, X16, width-1)
-		if outputStride > 1 {
-			f.a.MovImm64(X17, uint64(outputStride))
-			f.a.Mul64(X17, span, X17)
-			f.a.AddImm64(X17, X17, width-1)
-		} else {
-			f.a.AddImm64(X17, span, width-1)
-		}
-		f.cmpRR(X16, X17, true)
-		guard(condB)
 	}
 	// Packet-local dependence checks require source loads to follow the previous
 	// store. Captured multi-store values retain whole-range disambiguation.
@@ -1123,31 +1198,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.floatMapScatterAlias(d, s, dOff, off, span, size, p.counterScale, width, guard)
 			continue
 		}
-		if stride := max(p.addresses[loads[i]].stride, 1); stride > 1 || outputStride > 1 {
-			// Non-unit spacing requires disjoint whole source and output
+		stride := max(p.addresses[loads[i]].stride, 1)
+		if p.secondStore || stride > 1 || outputStride > 1 {
+			// Independent stores and non-unit spacing require disjoint whole
 			// ranges. The unit-stride packet dependence proof does not apply.
-			f.floatMapOffset(X16, d, uint64(dOff), true, X16)
-			f.floatMapOffset(X17, s, uint64(off), true, X17)
-			f.cmpRR(X16, X17, true)
-			above := f.a.Bcond(condA)
-			f.a.Sub64(X16, X17, X16)
-			compareSpan := func(stride uint32) {
-				extent := span
-				if stride > 1 {
-					f.a.MovImm64(X17, uint64(stride))
-					f.a.Mul64(X17, span, X17)
-					extent = X17
-				}
-				f.cmpRR(X16, extent, true)
+			input := outputStream{reg: s, offset: off, stride: stride}
+			for _, output := range outputs[:outputCount] {
+				guardDisjoint(output, input)
 			}
-			compareSpan(outputStride)
-			guard(condB)
-			skip := f.a.Branch()
-			f.patchBranch19(above, f.a.Len())
-			f.a.Sub64(X16, X16, X17)
-			compareSpan(stride)
-			guard(condB)
-			f.patchBranch26(skip, f.a.Len())
 			continue
 		}
 		if floatMapGuardSelectionEnabled {
@@ -1367,7 +1425,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	// The bounded expression has at most eight levels. Count constants before
 	// emitting anything that would need an unbounded register reservation.
-	preload(p.result)
+	for _, output := range outputs[:outputCount] {
+		preload(output.value)
+	}
 	var block int32
 	var emit func(int) (Reg, bool)
 	emit = func(x int) (Reg, bool) {
@@ -1476,41 +1536,43 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	packet := func(width uint32) {
 		for block = 0; block < int32(width); block += floatMapVectorBytes {
-			value, owned := emit(p.result)
-			if outputStride > 1 {
-				width := uint32(4)
-				if p.wide {
-					width = 8
-				}
-				for lane := uint32(0); lane < 16/width; lane++ {
-					address := uint64(dOff) + (uint64(block)+uint64(lane*width))*uint64(outputStride)
-					base, disp := d, int32(0)
-					if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
-						disp = int32(address)
-					} else {
-						f.floatMapOffset(X17, d, address, true, X16)
-						if lane != 0 {
-							f.a.St1Lane(value, X17, uint8(lane), p.wide)
-							continue
+			for _, output := range outputs[:outputCount] {
+				value, owned := emit(output.value)
+				if output.stride > 1 {
+					width := uint32(4)
+					if p.wide {
+						width = 8
+					}
+					for lane := uint32(0); lane < 16/width; lane++ {
+						address := uint64(output.offset) + (uint64(block)+uint64(lane*width))*uint64(output.stride)
+						base, disp := output.reg, int32(0)
+						if address%uint64(width) == 0 && address/uint64(width) <= 0xfff {
+							disp = int32(address)
+						} else {
+							f.floatMapOffset(X17, output.reg, address, true, X16)
+							if lane != 0 {
+								f.a.St1Lane(value, X17, uint8(lane), p.wide)
+								continue
+							}
+							base = X17
 						}
-						base = X17
+						if lane == 0 {
+							f.a.StrF(base, disp, value, p.wide)
+						} else if p.wide {
+							f.a.NeonUmovD(X16, value, byte(lane))
+							f.a.Store64(X16, base, uint32(disp))
+						} else {
+							f.a.NeonUmovS(X16, value, byte(lane))
+							f.a.Store32(X16, base, uint32(disp))
+						}
 					}
-					if lane == 0 {
-						f.a.StrF(base, disp, value, p.wide)
-					} else if p.wide {
-						f.a.NeonUmovD(X16, value, byte(lane))
-						f.a.Store64(X16, base, uint32(disp))
-					} else {
-						f.a.NeonUmovS(X16, value, byte(lane))
-						f.a.Store32(X16, base, uint32(disp))
-					}
+				} else {
+					f.a.StrQ(output.reg, int32(output.offset)+block, value)
 				}
-			} else {
-				f.a.StrQ(d, int32(dOff)+block, value)
-			}
-			if owned {
-				f.fpinned = f.fpinned.remove(value)
-				f.releaseF(value)
+				if owned {
+					f.fpinned = f.fpinned.remove(value)
+					f.releaseF(value)
+				}
 			}
 		}
 		for i := 0; i < ng; i++ {

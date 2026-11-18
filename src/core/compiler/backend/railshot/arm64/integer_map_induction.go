@@ -157,3 +157,24 @@ func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 	}
 	return floatMapAddress{base: base, index: index + 1, bias: bias, invariant: index < 0, stride: stride}, true
 }
+
+// mapStoreBase identifies a candidate immutable base, leaving address
+// legality and disjointness to the existing normalized proof and guards.
+func (p *floatMapPlan) mapStoreBase(root, depth int) int {
+	if depth > 8 || !p.spend() {
+		return -1
+	}
+	n := p.nodes[root]
+	switch n.op {
+	case 0x20:
+		if !p.localWritten(n.left()) {
+			return n.left()
+		}
+	case 0x6a:
+		if left := p.mapStoreBase(n.left(), depth+1); left >= 0 {
+			return left
+		}
+		return p.mapStoreBase(n.right(), depth+1)
+	}
+	return -1
+}
