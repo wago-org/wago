@@ -154,3 +154,25 @@ all 38 in 0.094 seconds, with no failures or skips. Production runtime oracles
 and performance measurements for this batch remain pending. Historical negative
 results above apply to the previous checkpoint; this update does not establish
 a compilation, execution or RSS improvement or justify promotion.
+
+### Completed immediate/lifetime diagnostic
+
+The unchanged 9e6edb5c checkpoint passed all 145 production runtime oracles.
+The public path selected 477 functions, with 1,280 last-read transfers across
+nine workloads and 908 immediate rotates across three workloads. Across 314
+event-bearing functions, event storage totaled 9,940 used bytes and 13,528
+capacity bytes, with a maximum 5,376 bytes per function. These sums are not
+simultaneous RSS and exclude discarded admission arrays.
+
+One affected-kernel screen completed 600 verified runtime oracles:
+
+- Compilation ON/OFF ratio 0.97045, 95% interval [0.88987, 1.06652];
+  A/A ratio 0.93959 failed the control agreement check.
+- Steady execution ratio 1.46979, 95% interval [1.32159, 1.72159];
+  A/A ratio 1.06498 also failed. First-call A/A ratio 0.96669 failed.
+- Aho was 4.5179× OFF. BLAKE3 was 1.1532×, but its A/A ratio 1.1119
+  failed, so that individual estimate is not qualified.
+
+No precise performance improvement or satisfaction of the ≤5% execution limit
+is established. Failed controls preclude treating these estimates as qualified
+performance results. The screen was not repeated; no promotion or PR is proposed.
