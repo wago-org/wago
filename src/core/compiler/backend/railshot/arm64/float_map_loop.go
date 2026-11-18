@@ -1212,6 +1212,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		// The primary span covers both alternating words.
 		guardedOutputs = guardedOutputs[:1]
 	}
+	// The scalar suffix reloads the invariant before any original store
+	// can change it. Limit clipping to contiguous single-store packets.
+	clipInvariantPrefix := integerMapInvariantPrefixEnabled && p.integer && p.step == 4 &&
+		nInvariant != 0 && !p.secondStore && outputStride == 1
 	// An invariant memory coefficient must stay unchanged for the whole map.
 	// Invalid words and even byte overlaps with the output retain scalar loads.
 	for _, output := range guardedOutputs {
@@ -1230,6 +1234,22 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			f.cmpRR(X17, size, true)
 			guard(condA)
 			f.floatMapOffset(X17, output.reg, uint64(output.offset), true, X17)
+			if clipInvariantPrefix {
+				f.cmpRR(X16, X17, true)
+				beforeOutput := f.a.Bcond(condB)
+				f.a.Sub64(X16, X16, X17)
+				f.cmpRR(X16, span, true)
+				f.a.Csel64(span, X16, span, condB)
+				f.cmpImm(span, minimumSpan, false)
+				guard(condB)
+				done := f.a.Branch()
+				f.patchBranch19(beforeOutput, f.a.Len())
+				f.a.Sub64(X16, X17, X16)
+				f.cmpImm(X16, width, true)
+				guard(condB)
+				f.patchBranch26(done, f.a.Len())
+				continue
+			}
 			f.a.Sub64(X16, X16, X17)
 			f.a.AddImm64(X16, X16, width-1)
 			if output.stride > 1 {
@@ -1827,7 +1847,17 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			f.setFactsForLocal(x, 0)
 		}
-		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: f.a.Cbz32(span), written: exit.written}
+		var done int
+		if clipInvariantPrefix {
+			// A zero vector span can be the clipped limit. Only skip the
+			// original loop after reaching its actual source bound.
+			readLimit(X16, X17)
+			f.cmpRR(counter, X16, false)
+			done = f.a.Bcond(condE)
+		} else {
+			done = f.a.Cbz32(span)
+		}
+		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: done, written: exit.written}
 		f.stats.peep("integer-load-map-affine-exit")
 	}
 	for i := 0; i < nGuards; i++ {
@@ -1840,6 +1870,9 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	f.invalidateBoundsCert()
 	f.invalidateStoreForward()
 	if p.integer {
+		if clipInvariantPrefix {
+			f.stats.peep("integer-load-map-invariant-prefix")
+		}
 		f.stats.peep("integer-load-map-vector")
 	} else {
 		f.stats.peep("float-map-loop-vector")
