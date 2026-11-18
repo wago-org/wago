@@ -163,3 +163,38 @@ and memory-growth coherence. The production adapter also passed all 145 frozen c
 Performance/memory qualification for this revision remains pending. Earlier
 negative results above remain applicable to their stated revisions; this
 checkpoint makes no improvement claim and is not proposed for promotion.
+
+### Completed call/global diagnostic (f320c628)
+
+All 900 timing records and 435 memory-profile runtime oracles verified. The
+predeclared five-trial screen contains 15 distinct workloads: the original
+cohort, a cost-ranked newly admitted top eight, and two zero-selected controls.
+The original affected eight and new top eight overlap; they are not independent
+replications. OFF is the same binary with the previous eight streaming options
+on and the new call/global option off. This is not full-corpus timing qualification.
+
+For the original affected eight, steady ON/OFF was 0.97453 (95% bootstrap
+interval [0.81705, 1.10553]) and ON/main 1.03050 ([0.92450, 1.56923]).
+For the new top eight, steady ON/OFF was 1.19121 ([0.96170, 1.91830]) and
+ON/main 1.17456 ([0.96743, 1.76628]). These are arithmetic means of per-workload
+median-time ratios, not ratios of aggregate execution times. Zero-selected
+control steady A/A was 1.03298, failing the 2% agreement gate; individual
+workload controls also vary substantially. The broad intervals do not establish
+an execution improvement or compliance with the 5% regression limit.
+
+Compilation uses ratios of arithmetic mean workload medians. Original-eight
+ON/OFF was 1.01344 ([0.76066, 1.33415]); new-top-eight ON/OFF was 1.01357
+([0.75295, 1.39076]). Their A/A controls were 0.97462 and 0.97352, both failing.
+First-call A/A also failed for both groups (1.06705 and 1.10269). No compilation
+or first-call improvement is established. Intervals resample paired trials;
+compilation intervals additionally resample workloads.
+
+The public coverage diagnostic selected 575 functions in 120 workloads, versus
+477 in 105 previously. Those functions account for 20.46% of frozen baseline
+public compilation cost, not a measured saving or evidence for a 40% reduction.
+The OFF native images matched the previous checkpoint for all 145 modules.
+
+Mean absolute compiled-barrier VmHWM was 11.989709 / 11.972710 / 11.972037 MiB
+for main / prior streaming / joint ON in the matched fixed-slot memory run.
+Memory is effectively unchanged and the absolute 5 MiB goal remains unmet.
+Source is unchanged. No promotion or PR is proposed.
