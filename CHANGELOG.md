@@ -28,6 +28,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   trapping or rejecting the module at compile time.
 - Allow `elem.drop` of declarative and passive element segments in AMD64 GC
   modules that use array helpers.
+- Use 8-byte entries for `exnref`, `nullexnref`, and `nullexternref` tables in
+  AMD64 and ARM64 code. Growing or filling such a table wrote 32-byte entries
+  past its storage, corrupting adjacent tables or crashing, and non-null
+  `exnref` values could not be read back from a table.
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
