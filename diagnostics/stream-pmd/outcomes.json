@@ -1,0 +1,532 @@
+{
+  "scope": "Supported linker flag experiment on unchangedb5ab,notcompiler source40%redesign/notpristine-main qualification",
+  "verified": {
+    "recovered_long": 540,
+    "first_complete_cold": 2900,
+    "first_complete_rss": 435,
+    "first_complete_pages": 435
+  },
+  "recovery": "One infrastructure recovery explicitly authorized afterenvironmentloss. Original275partialtimingrows preservedUNANALYZED/excluded; full540restart separateoutputs, output-only durableJSONL/fsyncpatch, compressedaftercompletion. No outcome-based retry oraddresssearch.",
+  "cold": {
+    "ratios": {
+      "defaultA_B": 0.9937364538027782,
+      "shifted_aligned": 1.0407516591160615,
+      "shifted_default": 1.052615490166961,
+      "aligned_default": 1.011399291028732
+    },
+    "paired95": {
+      "defaultA_B": [
+        0.9368096101515891,
+        1.0353325765957497
+      ],
+      "shifted_aligned": [
+        0.9907379077564561,
+        1.139954796546524
+      ],
+      "shifted_default": [
+        1.0099798492481065,
+        1.1481346399263128
+      ],
+      "aligned_default": [
+        0.9722656400259592,
+        1.0436927805468832
+      ]
+    },
+    "control_pass": false,
+    "mean_medians_ns": {
+      "mainA": 721612.9517241379,
+      "mainB": 726161.2965517241,
+      "qualityOFF": 732138.9241379311,
+      "qualityON": 761974.8
+    }
+  },
+  "execution_all15": [
+    {
+      "id": "wago/blake3/hash",
+      "ratios": {
+        "defaultA_B": 1.0174073682805862,
+        "shifted_default": 1.0005932452721247,
+        "aligned_default": 1.0000034450944955,
+        "shifted_aligned": 1.0005897981457188
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9911076511480011,
+          1.0236731486499855
+        ],
+        "shifted_default": [
+          0.9786561418409008,
+          1.0574192557851971
+        ],
+        "aligned_default": [
+          0.9579833039958682,
+          1.0407079255776908
+        ],
+        "shifted_aligned": [
+          0.9774339797334102,
+          1.0561605514555201
+        ]
+      },
+      "control_pass": true,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": true
+    },
+    {
+      "id": "wago/monocypher/aead-blake2b",
+      "ratios": {
+        "defaultA_B": 0.9976128225531431,
+        "shifted_default": 1.0089341603596427,
+        "aligned_default": 0.9981221191600751,
+        "shifted_aligned": 1.0108323831242874
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.7040852347485639,
+          1.4174991466605984
+        ],
+        "shifted_default": [
+          0.8409659012754412,
+          1.1740165855587037
+        ],
+        "aligned_default": [
+          0.8256916140327758,
+          1.00132007192116
+        ],
+        "shifted_aligned": [
+          0.9984089101034208,
+          1.3851604233532868
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "wago/pcre2/compile-match",
+      "ratios": {
+        "defaultA_B": 1.0051641460715603,
+        "shifted_default": 0.9985283296541575,
+        "aligned_default": 1.001140544518028,
+        "shifted_aligned": 0.9973907610892654
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9809215262778977,
+          1.0230085216746942
+        ],
+        "shifted_default": [
+          0.9807202619134231,
+          1.003108429328945
+        ],
+        "aligned_default": [
+          0.9821389596216806,
+          1.0168296733714708
+        ],
+        "shifted_aligned": [
+          0.9843925810315415,
+          1.0059237319511292
+        ]
+      },
+      "control_pass": true,
+      "shifted_guard_pass": true,
+      "aligned_guard_pass": true
+    },
+    {
+      "id": "wago/yyjson/parse-edit-write",
+      "ratios": {
+        "defaultA_B": 1.0153385708941265,
+        "shifted_default": 1.0488212363096343,
+        "aligned_default": 1.0224614813439763,
+        "shifted_aligned": 1.0257806826434277
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9966329966329966,
+          1.0412912912912913
+        ],
+        "shifted_default": [
+          1.0332845647403073,
+          1.1018826135105204
+        ],
+        "aligned_default": [
+          0.9744897959183674,
+          1.0320404721753795
+        ],
+        "shifted_aligned": [
+          1.0072358900144718,
+          1.1059001512859303
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/search-aho-corasick",
+      "ratios": {
+        "defaultA_B": 1.059869334989287,
+        "shifted_default": 1.003303550151714,
+        "aligned_default": 0.9846464531216809,
+        "shifted_aligned": 1.0189480162863367
+      },
+      "paired95": {
+        "defaultA_B": [
+          1.0122326425807526,
+          1.1035039394014141
+        ],
+        "shifted_default": [
+          0.9725434688703487,
+          1.0467724476592224
+        ],
+        "aligned_default": [
+          0.9529914217777172,
+          1.023482361951323
+        ],
+        "shifted_aligned": [
+          0.984177709320586,
+          1.0466559748129913
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "wago/nanosvg/parse-structure",
+      "ratios": {
+        "defaultA_B": 0.9963064458477302,
+        "shifted_default": 1.0148612354521038,
+        "aligned_default": 0.9981498060280514,
+        "shifted_aligned": 1.016742406122937
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9814234296992917,
+          1.0194363459669582
+        ],
+        "shifted_default": [
+          1.001118634088902,
+          1.0321372477950947
+        ],
+        "aligned_default": [
+          0.9779887273805993,
+          1.012775702060986
+        ],
+        "shifted_aligned": [
+          1.0047270148900969,
+          1.031584062196307
+        ]
+      },
+      "control_pass": true,
+      "shifted_guard_pass": true,
+      "aligned_guard_pass": true
+    },
+    {
+      "id": "wago/libtommath/modular-arithmetic",
+      "ratios": {
+        "defaultA_B": 0.9903343650109088,
+        "shifted_default": 1.0053661334522974,
+        "aligned_default": 1.008450704225352,
+        "shifted_aligned": 0.9969412775853788
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9763654419066534,
+          1.0
+        ],
+        "shifted_default": [
+          0.987475647091567,
+          1.0142756365035592
+        ],
+        "aligned_default": [
+          0.9931043273213944,
+          1.0730341369040042
+        ],
+        "shifted_aligned": [
+          0.9318181818181818,
+          1.0144820939433905
+        ]
+      },
+      "control_pass": true,
+      "shifted_guard_pass": true,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "wago/drwav/pcm-decode-seek",
+      "ratios": {
+        "defaultA_B": 0.9965924243172503,
+        "shifted_default": 0.9963145267011304,
+        "aligned_default": 0.9958198322985975,
+        "shifted_aligned": 1.0004967709885744
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.992133726647001,
+          1.0040001975406192
+        ],
+        "shifted_default": [
+          0.9915597235932873,
+          1.0066980898040188
+        ],
+        "aligned_default": [
+          0.989398773006135,
+          1.0019930244145492
+        ],
+        "shifted_aligned": [
+          0.9989557434112382,
+          1.0099354197714854
+        ]
+      },
+      "control_pass": true,
+      "shifted_guard_pass": true,
+      "aligned_guard_pass": true
+    },
+    {
+      "id": "applications/bio-global-alignment",
+      "ratios": {
+        "defaultA_B": 1.023215813361102,
+        "shifted_default": 0.998711759185271,
+        "aligned_default": 0.9988733062606027,
+        "shifted_aligned": 0.9998382707052844
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9776523996281847,
+          1.0946378116602566
+        ],
+        "shifted_default": [
+          0.9762240186820728,
+          1.0415743190803424
+        ],
+        "aligned_default": [
+          0.9617339655313966,
+          1.067203365099266
+        ],
+        "shifted_aligned": [
+          0.9496456945272427,
+          1.083344919385051
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "wago/fastfloat/decimal-parse",
+      "ratios": {
+        "defaultA_B": 1.0005740528128588,
+        "shifted_default": 1.017503586800574,
+        "aligned_default": 0.999713055954089,
+        "shifted_aligned": 1.0177956371986223
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9942922374429224,
+          1.0351872871736663
+        ],
+        "shifted_default": [
+          1.0028457598178713,
+          1.0399543378995433
+        ],
+        "aligned_default": [
+          0.9726715002788623,
+          1.0182648401826484
+        ],
+        "shifted_aligned": [
+          0.9876681614349776,
+          1.0464576074332173
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/ml-kmeans",
+      "ratios": {
+        "defaultA_B": 1.0032954938407024,
+        "shifted_default": 0.9724330255615922,
+        "aligned_default": 0.9790321852519556,
+        "shifted_aligned": 0.9932595068989839
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9590804139926383,
+          1.0394058988730637
+        ],
+        "shifted_default": [
+          0.956789845849864,
+          1.0108203440265797
+        ],
+        "aligned_default": [
+          0.9391981650793026,
+          1.0197833213185414
+        ],
+        "shifted_aligned": [
+          0.9643939516611412,
+          1.0383661794483665
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/crypto-aes128",
+      "ratios": {
+        "defaultA_B": 0.9770403160178598,
+        "shifted_default": 0.9826247236638919,
+        "aligned_default": 0.9805536849360962,
+        "shifted_aligned": 1.0021121115137421
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9089315899477239,
+          1.0492577703526187
+        ],
+        "shifted_default": [
+          0.9425730391288735,
+          1.0292245485160554
+        ],
+        "aligned_default": [
+          0.9504946117050306,
+          1.0404221886913874
+        ],
+        "shifted_aligned": [
+          0.9466033761844062,
+          1.0390109278947501
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/search-rabin-karp",
+      "ratios": {
+        "defaultA_B": 1.011219357195928,
+        "shifted_default": 1.0210691396967386,
+        "aligned_default": 1.0020617584119276,
+        "shifted_aligned": 1.0189682732878
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9775885794845094,
+          1.0741032249016433
+        ],
+        "shifted_default": [
+          0.9882980400526565,
+          1.0895890604899983
+        ],
+        "aligned_default": [
+          0.9698646888692224,
+          1.1008417626461575
+        ],
+        "shifted_aligned": [
+          0.9179431335970349,
+          1.106144384390945
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/document-kerning",
+      "ratios": {
+        "defaultA_B": 1.0197811073879388,
+        "shifted_default": 0.9913943133287113,
+        "aligned_default": 1.0017800772835794,
+        "shifted_aligned": 0.9896326906569852
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.909921001446797,
+          1.0602710348287117
+        ],
+        "shifted_default": [
+          0.9332030526778476,
+          1.0400606460523287
+        ],
+        "aligned_default": [
+          0.941691801702462,
+          1.0226390225629682
+        ],
+        "shifted_aligned": [
+          0.9624404277384516,
+          1.03834817225859
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    },
+    {
+      "id": "applications/files-path-normalize",
+      "ratios": {
+        "defaultA_B": 1.0251711271242097,
+        "shifted_default": 0.9559308300735155,
+        "aligned_default": 1.0085608870873668,
+        "shifted_aligned": 0.9478166785092746
+      },
+      "paired95": {
+        "defaultA_B": [
+          0.9498183012725806,
+          1.0756696637049539
+        ],
+        "shifted_default": [
+          0.9220343372720782,
+          1.1058588084024155
+        ],
+        "aligned_default": [
+          0.9337990860174366,
+          1.0550013957453783
+        ],
+        "shifted_aligned": [
+          0.9221399081261251,
+          1.072989986234077
+        ]
+      },
+      "control_pass": false,
+      "shifted_guard_pass": false,
+      "aligned_guard_pass": false
+    }
+  ],
+  "independent_rss": {
+    "verified": 435,
+    "scope": "Independent compiled-barrier absolute VmHWM, onefreshprocess/workload/arm,145workloads; baselineb5ab explicit401000,notpristine main",
+    "arms": {
+      "default401000": {
+        "mean_MiB": 12.097413793103449,
+        "min_MiB": 11.8671875,
+        "max_MiB": 14.19140625,
+        "count_strictly_below5MiB": 0,
+        "VmRSS_mean_MiB": 12.096578663793103,
+        "RssFile_mean_MiB": 10.513793103448275,
+        "RssAnon_mean_MiB": 1.5827855603448275,
+        "max_workload": "wago/pcre2/compile-match"
+      },
+      "aligned601000": {
+        "mean_MiB": 12.097521551724139,
+        "min_MiB": 11.87109375,
+        "max_MiB": 14.08203125,
+        "count_strictly_below5MiB": 0,
+        "VmRSS_mean_MiB": 12.096713362068966,
+        "RssFile_mean_MiB": 10.513362068965517,
+        "RssAnon_mean_MiB": 1.5833512931034484,
+        "max_workload": "wago/pcre2/compile-match"
+      },
+      "shifted402000": {
+        "mean_MiB": 9.441163793103449,
+        "min_MiB": 8.83203125,
+        "max_MiB": 12.046875,
+        "count_strictly_below5MiB": 0,
+        "VmRSS_mean_MiB": 9.441163793103449,
+        "RssFile_mean_MiB": 7.858620689655172,
+        "RssAnon_mean_MiB": 1.5825431034482758,
+        "max_workload": "wago/pcre2/compile-match"
+      }
+    }
+  },
+  "rss_shifted_reduction_fraction": 0.21957172379391432
+}
