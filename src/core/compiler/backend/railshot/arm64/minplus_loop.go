@@ -343,9 +343,25 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	f.a.Add64(size, d, X16)
 	f.a.AddImm64(X16, pivot, 3)
 	f.cmpRR(X16, d, true)
-	f.a.Csel64(X17, pivot, size, condAE)
-	f.cmpRR(X17, size, true)
-	f.a.Csel64(size, X17, size, condB)
+	pivotBehind := f.a.Bcond(condB)
+	f.cmpRR(pivot, size, true)
+	pivotAhead := f.a.Bcond(condAE)
+	// A word-aligned overlap can stay vectorized if the scalar signed-min
+	// update leaves the pivot unchanged. The row guards make its source word
+	// stable until that update, even when the two rows are identical.
+	f.a.Sub64(X16, pivot, d)
+	f.a.TstImm32(X16, 3)
+	partialPivot := f.a.Bcond(condNE)
+	f.a.LdrIdx(X16, s, X16, 4, false, false)
+	f.a.Load32(X17, pivot, 0)
+	f.a.Add32(X16, X16, X17)
+	f.cmpRR(X16, X17, false)
+	stablePivot := f.a.Bcond(condGE)
+	f.patchBranch19(partialPivot, f.a.Len())
+	f.a.MovReg64(size, pivot)
+	for _, branch := range []int{pivotBehind, pivotAhead, stablePivot} {
+		f.patchBranch19(branch, f.a.Len())
+	}
 	// Compare the destination directly against the last legal packet start.
 	// Materialize the bound once per packet width.
 	comparePacket := func() {
