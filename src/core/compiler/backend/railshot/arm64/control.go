@@ -3450,13 +3450,16 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		f.recordPCRelative(adrSite)
 		if compactIDs {
 			f.stats.peep("br-table-compact")
-			f.a.LoadIdx(X17, X16, ireg, 0, 1, false, true) // X17 = target ID
+			f.a.LdrIdxUXTW(X17, X16, ireg, 1, false, false) // X17 = target ID
 			f.a.AddImm64(X16, X16, uint32(align4(len(labels))))
 			f.a.AddShifted(X17, X16, X17, 2, false) // X17 = &branchVector[ID]
 		} else {
-			f.a.LslImm(ireg, ireg, 2, false)              // idx *= 4 (u32 entries)
-			f.a.LoadIdx(X17, X16, ireg, 0, 4, true, true) // X17 = (i32)table[idx]
-			f.a.Add64(X17, X16, X17)                      // target = table base + entry
+			// The Wasm index is i32, even when its native carrier is wider.
+			if !f.a.AddExtUXTWShift(X17, X16, ireg, 2) {
+				panic("invalid jump-table scale")
+			}
+			f.a.LdrIdx(X17, X17, ZR, 4, true, true) // X17 = (i32)table[idx]
+			f.a.Add64(X17, X16, X17)                 // target = table base + entry
 		}
 		f.a.Br(X17)
 		tablePos := f.a.Len()
