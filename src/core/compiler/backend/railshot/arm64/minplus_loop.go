@@ -17,6 +17,10 @@ type minPlusPlan struct {
 	counter, dst, src, pivot int
 	limit                    uint32
 	scalarReloadPivot        bool
+	tailWritten              uint32
+	tailCapture              [2][4]uint32 // destination, source, old destination, candidate sum
+	tailSourceOffset         [2]uint32
+	tailSafe                 bool
 }
 
 func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
@@ -174,6 +178,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				return p, false
 			}
 			var usedLoads [128]bool
+			var tailValues [2][4]int
 			for i := 0; i < 2; i++ {
 				dst, off, yes := affineDotAddress(nodes[:n], stores[i][0], p.counter)
 				if !yes || off != uint32(i*4) {
@@ -215,6 +220,8 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 					// after the first store, as the generated scalar packet does.
 					p.scalarReloadPivot = add.b >= storeAfter[0]
 				}
+				tailValues[i] = [4]int{stores[i][0], srcLoad.a, old, sum}
+				p.tailSourceOffset[i] = srcLoad.v
 				pivot := nodes[pivotLoad.a]
 				if pivot.op != 0x20 {
 					return p, false
@@ -228,7 +235,23 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 			if written[p.dst] || written[p.src] || written[p.pivot] {
 				return p, false
 			}
+			p.tailSafe = p.scalarReloadPivot
 			for i := 0; i < f.nLocals; i++ {
+				if written[i] {
+					p.tailWritten |= uint32(1) << uint(i)
+					if i != p.counter {
+						known := false
+						for word, captures := range tailValues {
+							for expr, id := range captures {
+								if values[i] == id {
+									p.tailCapture[word][expr] |= uint32(1) << uint(i)
+									known = true
+								}
+							}
+						}
+						p.tailSafe = p.tailSafe && known
+					}
+				}
 				if written[i] && initialRead[i] && i != p.counter {
 					return p, false
 				}
@@ -252,6 +275,7 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	if !ok {
 		return false
 	}
+	fastTail := p.tailSafe && f.vectorLoopExit == nil && !f.preserveCallerPins
 	oldPinned, oldFPinned := f.pinned, f.fpinned
 	alloc := func() Reg {
 		x := f.allocRegOrNone(0)
@@ -430,11 +454,82 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) bool {
 	if p.scalarReloadPivot {
 		f.patchBranch19(done, f.a.Len())
 	}
-	if reg, _, pin := f.pinReg(p.counter); pin {
-		f.a.MovReg32(reg, counter)
-	} else {
-		f.st64(SP, f.localOff(p.counter), counter)
+	publish := func(local int, value Reg) {
+		if reg, _, pin := f.pinReg(local); pin {
+			f.a.MovReg32(reg, value)
+		} else {
+			f.st64(SP, f.localOff(local), value)
+		}
 	}
+	if fastTail {
+		publishTail := func(local int, value Reg) {
+			publish(local, value)
+			if _, _, pin := f.pinReg(local); pin && f.usesCalls {
+				// The scalar exit may retain the canonical slot or the pin.
+				f.st64(SP, f.localOff(local), value)
+			}
+		}
+		// The full row range is proved on this path. Preserve the original
+		// load/store order, and publish the final iteration's source locals.
+		compare(p.limit - 16)
+		scalar := f.a.Bcond(condB)
+		compare(p.limit - 8)
+		last := f.a.Bcond(condE)
+		tailWord := func(off uint32, capture [4]uint32, srcOffset uint32) {
+			publishMask := func(mask uint32, value Reg) {
+				for i := 0; i < f.nLocals; i++ {
+					if mask&(uint32(1)<<uint(i)) != 0 {
+						publishTail(i, value)
+					}
+				}
+			}
+			if capture[0] != 0 {
+				f.a.Sub32(X16, d, linMemReg)
+				if off != 0 {
+					f.a.AddImm32(X16, X16, off)
+				}
+				publishMask(capture[0], X16)
+			}
+			if capture[1] != 0 {
+				f.a.Sub32(X16, s, linMemReg)
+				if off != srcOffset {
+					f.floatMapOffset(X16, X16, uint64(off-srcOffset), false, X17)
+				}
+				publishMask(capture[1], X16)
+			}
+			f.a.Load32(X16, s, off)
+			f.a.Load32(X17, pivot, 0)
+			f.a.Add32(X16, X16, X17)
+			f.a.Load32(X17, d, off)
+			publishMask(capture[2], X17)
+			publishMask(capture[3], X16)
+			f.cmpRR(X16, X17, false)
+			f.a.Csel32(X16, X16, X17, condL)
+			f.a.Store32(X16, d, off)
+		}
+		// The same stable-pivot bound admits one two-lane packet at the
+		// end of a row. A clipped bound takes the original ordered tail.
+		f.a.AddImm64(X16, size, 8)
+		f.cmpRR(d, X16, true)
+		clippedTail := f.a.Bcond(condA)
+		f.a.LdrD(vd, d, 0)
+		f.a.LdrD(vs, s, 0)
+		f.a.NeonAddS(vs, vs, vp)
+		f.a.NeonSminS(vd, vd, vs)
+		f.a.StrD(d, 0, vd)
+		f.a.AddImm64(d, d, 8)
+		f.a.AddImm64(s, s, 8)
+		f.patchBranch19(last, f.a.Len())
+		tailWord(0, p.tailCapture[0], p.tailSourceOffset[0])
+		tailWord(4, p.tailCapture[1], p.tailSourceOffset[1])
+		f.a.MovImm64(counter, uint64(p.limit))
+		publishTail(p.counter, counter)
+		f.vectorLoopExit = &vectorLoopJoin{depth: len(f.ctrl) + 1, site: f.a.Cbz32(ZR), written: p.tailWritten}
+		f.stats.peep("minplus-loop-checked-tail")
+		f.patchBranch19(scalar, f.a.Len())
+		f.patchBranch19(clippedTail, f.a.Len())
+	}
+	publish(p.counter, counter)
 	for i := 0; i < ng; i++ {
 		f.patchBranch19(guards[i], f.a.Len())
 	}
