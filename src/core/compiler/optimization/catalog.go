@@ -146,19 +146,23 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 				panic(fmt.Sprintf("%s optimization binding %q is duplicated", arch, spec.Name))
 			}
 		}
-		if _, ok := Lookup(arch, spec.Name); !ok {
+		if !Exists(arch, spec.Name) {
 			panic(fmt.Sprintf("%s optimization binding %q is not registered", arch, spec.Name))
 		}
 	}
-	definitions := ForArch(arch)
+	// Internal entries borrow the immutable catalog. Public Definition APIs
+	// still return defensive copies of their architecture slices.
 	bindings := &Bindings{
 		arch:     arch,
-		entries:  make([]binding, 0, len(definitions)),
-		before:   make([]bool, len(definitions)),
-		changed:  make([]int, len(definitions)),
+		entries:  make([]binding, 0, len(specs)),
+		before:   make([]bool, len(specs)),
+		changed:  make([]int, len(specs)),
 		revision: 1,
 	}
-	for _, definition := range definitions {
+	for _, definition := range catalog {
+		if !supports(definition, arch) {
+			continue
+		}
 		var spec BindingSpec
 		found := false
 		for _, candidate := range specs {
