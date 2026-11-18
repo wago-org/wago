@@ -3512,6 +3512,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			}
 			for i, lbl := range labels {
 				p := f.a.Len()
+				f.a.NoteBranchTarget(p)
 				f.a.PatchU32(tablePos+4*i, uint32(p-tablePos))
 				if i == defIdx {
 					f.patchBranch19(defSite, p)
@@ -3551,6 +3552,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			return p
 		}
 		for i, lbl := range labels {
+			f.a.NoteBranchTarget(stub(lbl))
 			f.a.PatchU32(tablePos+4*i, uint32(stub(lbl)-tablePos))
 		}
 		if p := stubAt[def]; p >= 0 {
