@@ -135,6 +135,9 @@ The required `CI` check verifies every expected job even when an earlier job
 fails. Cancelled workflow runs skip the aggregate and corpus-verification jobs
 so superseded runs can release their concurrency slot for the latest commit.
 
+macOS ARM64 native, corpus, conformance, and TinyGo CI jobs use the `macos-15`
+hosted pool. Preserve ARM64 coverage and the required checks when changing pools.
+
 Use the smallest fixture that proves new behavior. Prefer readable WAT in a
 test or a small checked-in `.wasm` file under `tests/fixtures/wasm`. See
 [tests/README.md](tests/README.md) for the complete test layout and fixture
