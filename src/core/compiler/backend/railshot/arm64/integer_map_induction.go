@@ -9,41 +9,31 @@
 
 package arm64
 
+import "math/bits"
+
 // Summarize the entry-to-exit updates of one source packet. A trip counter can
 // count elements while independent address locals advance in bytes. Only small
 // exact power-of-two ratios are admitted; no local histories escape the plan.
 func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead []bool) bool {
 	increment := condition
 	limitNode := -1
-	p.limitLocal = -1
 	if c := p.nodes[condition]; c.op == 0x47 {
 		increment, limitNode = c.left(), c.right()
-		if p.nodes[increment].op != 0x6a {
+		if _, _, ok := p.integerMapIncrement(increment); !ok {
 			increment, limitNode = limitNode, increment
 		}
 	}
-	inc := p.nodes[increment]
-	if inc.op != 0x6a {
+	counter, step, ok := p.integerMapIncrement(increment)
+	if !ok {
 		return false
 	}
-	local, stride := p.nodes[inc.left()], p.nodes[inc.right()]
-	if local.op != 0x20 {
-		local, stride = stride, local
-	}
-	if local.op != 0x20 || stride.op != 0x41 || stride.bits == 0 || stride.bits > 32 {
-		return false
-	}
-	slot := p.localSlot(local.left())
-	if slot < 0 || p.locals[slot].Type != mtI32 || p.locals[slot].Value != increment {
-		return false
-	}
-	p.counter = local.left()
+	p.counter = counter
 	size := uint32(4)
 	if p.wide {
 		size = 8
 	}
 	p.step = uint32(stores) * size
-	p.counterStep = uint32(stride.bits)
+	p.counterStep = step
 	if p.step%p.counterStep != 0 {
 		return false
 	}
@@ -56,17 +46,8 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 		return false
 	}
 	if limitNode >= 0 {
-		limit := p.nodes[limitNode]
-		switch limit.op {
-		case 0x41:
-			p.limit = uint32(limit.bits)
-		case 0x20:
-			s := p.localSlot(limit.left())
-			if s < 0 || p.locals[s].Type != mtI32 || p.locals[s].Written {
-				return false
-			}
-			p.limitLocal = limit.left()
-		default:
+		op := p.nodes[limitNode].op
+		if !p.integer && op != 0x41 && op != 0x20 || !p.collectIntegerMapLimit(limitNode, 1, 0) {
 			return false
 		}
 	}
@@ -105,6 +86,84 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 		p.byteIndices |= 1 << i
 	}
 	return true
+}
+
+func (p *floatMapPlan) integerMapIncrement(root int) (int, uint32, bool) {
+	inc := p.nodes[root]
+	if inc.op != 0x6a {
+		return 0, 0, false
+	}
+	local, stride := p.nodes[inc.left()], p.nodes[inc.right()]
+	if local.op != 0x20 {
+		local, stride = stride, local
+	}
+	if local.op != 0x20 || stride.op != 0x41 || stride.bits == 0 || stride.bits > 32 {
+		return 0, 0, false
+	}
+	slot := p.localSlot(local.left())
+	if slot < 0 || p.locals[slot].Type != mtI32 || p.locals[slot].Value != root {
+		return 0, 0, false
+	}
+	return local.left(), uint32(stride.bits), true
+}
+
+type integerMapLimitTerm struct {
+	local uint32
+	shift uint8
+	sub   bool
+}
+
+// Collect a modular affine limit whose immutable operands can be read with
+// two GP scratch registers. The runtime trip guard still checks the final value.
+func (p *floatMapPlan) collectIntegerMapLimit(x int, scale uint32, depth int) bool {
+	if depth > 8 || !p.spend() {
+		return false
+	}
+	n := p.nodes[x]
+	switch n.op {
+	case 0x41:
+		p.limit += uint32(n.bits) * scale
+		return true
+	case 0x20:
+		i := p.localSlot(n.left())
+		if i < 0 || p.locals[i].Written || p.locals[i].Type != mtI32 ||
+			p.limitTermN == len(p.limitTerms) {
+			return false
+		}
+		term := integerMapLimitTerm{local: uint32(n.left())}
+		if int32(scale) < 0 {
+			term.sub, scale = true, -scale
+		}
+		if scale == 0 || scale&(scale-1) != 0 {
+			return false
+		}
+		term.shift = uint8(bits.TrailingZeros32(scale))
+		p.limitTerms[p.limitTermN] = term
+		p.limitTermN++
+		return true
+	case 0x6a:
+		return p.collectIntegerMapLimit(n.left(), scale, depth+1) &&
+			p.collectIntegerMapLimit(n.right(), scale, depth+1)
+	case 0x6b:
+		return p.integer && p.collectIntegerMapLimit(n.left(), scale, depth+1) &&
+			p.collectIntegerMapLimit(n.right(), -scale, depth+1)
+	case 0x6c:
+		if !p.integer {
+			return false
+		}
+		left, right := n.left(), n.right()
+		if p.nodes[left].op == 0x41 {
+			left, right = right, left
+		}
+		if constant := p.nodes[right]; constant.op == 0x41 {
+			return p.collectIntegerMapLimit(left, scale*uint32(constant.bits), depth+1)
+		}
+	case 0x74:
+		if p.integer && n.immediateShift() {
+			return p.collectIntegerMapLimit(n.left(), scale<<uint32(n.bits&31), depth+1)
+		}
+	}
+	return false
 }
 
 // An address has at most one advancing byte index, one unchanged base and a

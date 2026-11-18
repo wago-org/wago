@@ -15,6 +15,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
@@ -84,7 +85,8 @@ type floatMapPlan struct {
 	normalizedInduction          bool
 	work, workLimit              int
 	counterStep, spanScale       uint32
-	limitLocal                   int
+	limitTerms                   [2]integerMapLimitTerm
+	limitTermN                   int
 	byteIndices                  uint32
 	byteSteps                    [32]uint32
 }
@@ -112,7 +114,6 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 	p.spanScale = 1
 	p.counterScale = 1
 	p.scatterBudget = floatMapScatterWorkLimit - int(f.floatMapScatterWork)
-	p.limitLocal = -1
 	p.workLimit = integerLoadMapWorkLimit - int(f.integerLoadMapWork)
 	scan := *source
 	start := scan.Offset()
@@ -702,7 +703,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	// the cheap runtime admission check can dominate them. Keep their original
 	// scalar path until a lower-overhead entry recipe is available. Arithmetic
 	// maps and shallow copies retain the normal guarded trip policy.
-	if p.integer && p.limitLocal >= 0 && p.nodes[p.result].op == 0x28 {
+	if p.integer && p.limitTermN != 0 && p.nodes[p.result].op == 0x28 {
 		parents := 0
 		for i := len(f.ctrl) - 1; i >= 0; i-- {
 			if !p.spend() {
@@ -722,7 +723,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		minimumSpan = max(minimumSpan, 128)
 		// The guarded positive-limit path requires counter < limit, so its
 		// span cannot exceed limit, even when the entry value is unknown.
-		if p.limitLocal < 0 && p.limit != 0 && uint64(p.limit)*uint64(p.spanScale) < uint64(minimumSpan) {
+		if p.limitTermN == 0 && p.limit != 0 && uint64(p.limit)*uint64(p.spanScale) < uint64(minimumSpan) {
 			return
 		}
 	}
@@ -922,6 +923,30 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 	}
 
+	readLimit := func(dst, scratch Reg) {
+		if p.limitTermN == 0 {
+			f.a.MovImm64(dst, uint64(p.limit))
+			return
+		}
+		first := p.limitTerms[0]
+		read(int(first.local), dst)
+		if first.shift != 0 {
+			f.a.LslImm(dst, dst, first.shift, true)
+		}
+		if first.sub {
+			f.a.Sub32(dst, ZR, dst)
+		}
+		if p.limitTermN == 2 {
+			second := p.limitTerms[1]
+			read(int(second.local), scratch)
+			if second.sub {
+				f.a.SubShiftedReg(dst, dst, scratch, a64.RegShiftLSL, second.shift, true)
+			} else {
+				f.a.AddShifted(dst, dst, scratch, second.shift, true)
+			}
+		}
+		f.floatMapOffset(dst, dst, uint64(p.limit), false, scratch)
+	}
 	exit := f.planIntegerMapExit(&p)
 	if p.normalizedInduction {
 		// Admission must not evict an original stack value merely to execute a
@@ -945,8 +970,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 				f.recoverLocal(int(p.locals[i].Index))
 			}
 		}
-		if p.limitLocal >= 0 {
-			f.recoverLocal(p.limitLocal)
+		for _, term := range p.limitTerms[:p.limitTermN] {
+			f.recoverLocal(int(term.local))
 		}
 		for slot, cell := range p.locals[:p.localN] {
 			if coefficients&(1<<slot) != 0 {
@@ -969,12 +994,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		// Compare in source-counter units before leasing/initializing streams,
 		// computing widened byte spans or checking ranges. A wrapped negative
 		// difference may pass here but is rejected by the full eligibility proof.
+		readLimit(X16, X17)
 		read(p.counter, X17)
-		if p.limitLocal >= 0 {
-			read(p.limitLocal, X16)
-		} else {
-			f.a.MovImm64(X16, uint64(p.limit))
-		}
 		f.a.Sub32(X17, X16, X17)
 		f.cmpImm(X17, (minimumSpan+p.spanScale-1)/p.spanScale, false)
 		scalar := f.a.Bcond(condB)
@@ -1014,9 +1035,6 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 
 	read(p.counter, counter)
-	if p.normalizedInduction && p.limitLocal >= 0 {
-		f.recoverLocal(p.limitLocal)
-	}
 	for slot, cell := range p.locals[:p.localN] {
 		if coefficients&(1<<slot) != 0 {
 			f.recoverLocal(int(cell.Index))
@@ -1053,8 +1071,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		guard(condNE)
 		f.a.MovReg32(counter, span)
 	}
-	if p.normalizedInduction && p.limitLocal >= 0 {
-		read(p.limitLocal, X16)
+	if p.normalizedInduction && p.limitTermN != 0 {
+		readLimit(X16, X17)
 		f.cmpRR(counter, X16, false)
 		guard(condAE)
 		f.a.Sub32(span, X16, counter)
@@ -1093,7 +1111,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	guard(condNE)
 	// Reject nonterminating modular trips: zero-limit countdowns must start
 	// negative; positive fixed limits must be ahead of the unsigned counter.
-	if p.normalizedInduction && p.limitLocal >= 0 {
+	if p.normalizedInduction && p.limitTermN != 0 {
 		// Dynamic limits were checked before computing their widened byte span.
 	} else if p.limit == 0 {
 		f.cmpImm(counter, 0, false)
