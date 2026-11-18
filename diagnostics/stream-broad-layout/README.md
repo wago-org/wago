@@ -65,7 +65,7 @@ and mutual serialized-metadata comparisons, 22 HostCall callbacks per arm, and
 trap/recovery plus PC-symbol checks. Private/debug metadata outside the
 serializer is not covered. Full measurement records completed first attempt
 (540 long, 2,900 cold, 435 RSS, 435 page runs), all oracle-verified; outcome
-analysis is pending. No performance qualification is implied here. No PR or promotion is
+analysis is complete and negative for the targets (see RESULTS.md). No PR or promotion is
 proposed; existing negative experiments remain documented separately.
 
 ## Reproduction package
@@ -98,3 +98,24 @@ invariants, trusted official Go compilation and subsequent API/runtime gates
 are the correctness boundary; no blanket instruction or executable-byte
 identity claim is made. Any performance outcome is a combined source-
 organization effect, not isolated pure layout.
+
+
+## Final result
+
+The fixed broad grouping did not improve absolute RSS or establish a compile
+latency benefit. Independent compiled-barrier RSS means were 9.444073 MiB
+baseline, 9.471821 early and 9.621686 late; none of 145 workloads was below
+5 MiB in any arm. Cold compilation controls failed. Four of 15 cases qualified
+for the early execution guard and three for the late guard; overall execution
+qualification is unmet. No promotion or further layout sweep follows.
+
+The separate 435-process page census observed zero FilePmdMapped in all arms
+through all 2,175 phase observations. Expanded source-owned 448-symbol resident
+coverage at compiled shrank from 293.814 pages to 173 early / 171 late, but
+total compiled text residency grew from 1,196.228 pages to 1,212.669 / 1,244.890.
+Early pclntab coverage fell from 444.800 to 435.545 pages without offsetting
+the total increase. These overlapping page sets are not additive; residency
+is neither proof of execution nor proof of fault-around causality. Page-run
+HWM values are separate from the independent RSS estimand. Static packing
+succeeded, but the proposed whole-process memory benefit was falsified in
+this bounded experiment. No universal layout impossibility claim is made.
