@@ -20,6 +20,14 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   host callback uses a foreign control frame, including under profiling.
 - Preserve required ARM64 memory-bounds traps after fused conditional local
   assignments replace a previously boolean value.
+- Accept exception-handling functions whose blocks or `try_table`s produce typed
+  references such as `(ref null $t)`; they were rejected with spurious decode
+  errors or sized with the wrong number of handler records.
+- Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
+  `exn` hierarchies (including `noextern`, `nofunc`, and `noexn`) instead of
+  trapping or rejecting the module at compile time.
+- Allow `elem.drop` of declarative and passive element segments in AMD64 GC
+  modules that use array helpers.
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
