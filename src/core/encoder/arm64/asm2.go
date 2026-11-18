@@ -1603,6 +1603,13 @@ func (a *Asm) NeonCmeqB(dst, n, m Reg) { a.neon3(0x6E208C00, 1, dst, n, m) }
 func (a *Asm) NeonCmeqH(dst, n, m Reg) { a.neon3(0x6E208C00, 2, dst, n, m) }
 func (a *Asm) NeonCmeqS(dst, n, m Reg) { a.neon3(0x6E208C00, 4, dst, n, m) }
 func (a *Asm) NeonCmeqD(dst, n, m Reg) { a.neon3(0x6E208C00, 8, dst, n, m) }
+
+func (a *Asm) NeonCmeqZeroS(dst, n Reg) {
+	a.word(0x4EA09800 | r(n)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
 func (a *Asm) NeonCmgtB(dst, n, m Reg) { a.neon3(0x4E203400, 1, dst, n, m) }
 func (a *Asm) NeonCmgtH(dst, n, m Reg) { a.neon3(0x4E203400, 2, dst, n, m) }
 func (a *Asm) NeonCmgtS(dst, n, m Reg) { a.neon3(0x4E203400, 4, dst, n, m) }

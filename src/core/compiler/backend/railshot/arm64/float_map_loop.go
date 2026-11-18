@@ -42,12 +42,17 @@ type floatMapNode struct {
 
 const integerMapImmediateShift = 1 << 32
 
-func (n floatMapNode) shift() bool {
+func (n floatMapNode) unary() bool {
+	return n.op == 0x45 || n.immediateShift()
+}
+
+func (n floatMapNode) immediateShift() bool {
 	return n.op >= 0x74 && n.op <= 0x76 && n.bits&integerMapImmediateShift != 0
 }
 
-func (n floatMapNode) left() int  { return int(n.a) }
-func (n floatMapNode) right() int { return int(n.b) }
+func (n floatMapNode) left() int      { return int(n.a) }
+func (n floatMapNode) right() int     { return int(n.b) }
+func (n floatMapNode) condition() int { return int(n.bits) }
 
 type floatMapAddress struct {
 	offset    uint64 // widened memory immediate, added after dynamic i32 wrap
@@ -217,7 +222,15 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 			if !push(node(op, a, b, bits)) {
 				return false
 			}
-		case 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+		case 0x45:
+			if !p.integer || depth == 0 {
+				return false
+			}
+			depth--
+			if !push(node(op, stack[depth], 0, 0)) {
+				return false
+			}
+		case 0x46, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
 			if !p.integer || depth < 2 {
 				return false
 			}
@@ -230,9 +243,12 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				return false
 			}
 			depth -= 3
-			a, b, cmp := stack[depth], stack[depth+1], p.nodes[stack[depth+2]]
-			kind, ok := integerMapMinMax(a, b, cmp)
-			if !ok || !push(node(kind, a, b, 0)) {
+			a, b, cond := stack[depth], stack[depth+1], stack[depth+2]
+			kind, bits := byte(0x1b), uint64(cond)
+			if op, ok := integerMapMinMax(a, b, p.nodes[cond]); ok {
+				kind, bits = op, 0
+			}
+			if !push(node(kind, a, b, bits)) {
 				return false
 			}
 		case 0x28, 0x2a, 0x2b:
@@ -323,11 +339,14 @@ func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
 				}
 				used[x] |= storeMask
 				v := p.nodes[x]
-				if v.shift() {
+				if v.unary() {
 					mark(v.left())
-				} else if p.binary(v.op) {
+				} else if v.op == 0x1b || p.binary(v.op) {
 					mark(v.left())
 					mark(v.right())
+					if v.op == 0x1b {
+						mark(v.condition())
+					}
 				}
 			}
 			for i := 0; i < ns; i++ {
@@ -464,10 +483,13 @@ func (p *floatMapPlan) validExpression(x, depth int) bool {
 		if v.op == 0x28 || v.op == 0x41 {
 			return true
 		}
-		if v.shift() {
+		if v.unary() {
 			return p.validExpression(v.left(), depth+1)
 		}
-		if p.binary(v.op) {
+		if v.op == 0x1b && !p.validExpression(v.condition(), depth+1) {
+			return false
+		}
+		if v.op == 0x1b || p.binary(v.op) {
 			return p.validExpression(v.left(), depth+1) && p.validExpression(v.right(), depth+1)
 		}
 		return false
@@ -497,8 +519,10 @@ func (p *floatMapPlan) labelInvariants() {
 			p.invariant[i] = !p.localWritten(v.left()) && p.locals[p.localSlot(v.left())].Type == p.valueType()
 		case 0x28, 0x2a, 0x2b:
 			p.invariant[i] = p.addresses[i].invariant
+		case 0x1b:
+			p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()] && p.invariant[v.condition()]
 		default:
-			if v.shift() {
+			if v.unary() {
 				p.invariant[i] = p.invariant[v.left()]
 			} else if p.binary(v.op) {
 				p.invariant[i] = p.invariant[v.left()] && p.invariant[v.right()]
@@ -531,8 +555,11 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 	if p.constant(a.op) {
 		return a.bits == b.bits
 	}
-	if a.shift() {
+	if a.unary() {
 		return a.bits == b.bits && p.sameMap(a.left(), b.left(), step, depth+1)
+	}
+	if a.op == 0x1b && !p.sameMap(a.condition(), b.condition(), step, depth+1) {
+		return false
 	}
 	return p.sameMap(a.left(), b.left(), step, depth+1) && p.sameMap(a.right(), b.right(), step, depth+1)
 }
@@ -731,10 +758,10 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if p.constant(v.op) {
 			return true
 		}
-		if v.shift() {
+		if v.unary() {
 			return collect(v.left())
 		}
-		return collect(v.left()) && collect(v.right())
+		return collect(v.left()) && collect(v.right()) && (v.op != 0x1b || collect(v.condition()))
 	}
 	if !add(p.addresses[p.dest]) || !collect(p.result) {
 		return
@@ -770,10 +797,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 			}
 			return 0
 		}
-		if v.shift() {
+		if v.unary() {
 			return countConst(v.left())
 		}
-		return countConst(v.left()) + countConst(v.right())
+		count := countConst(v.left()) + countConst(v.right())
+		if v.op == 0x1b {
+			count += countConst(v.condition())
+		}
+		return count
 	}
 	if countConst(p.result) > 2 {
 		return
@@ -796,14 +827,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		if p.load(v.op) || v.op == 0x20 || p.constant(v.op) {
 			return 1
 		}
-		if v.shift() {
+		if v.unary() {
 			return pressure(v.left())
 		}
-		a, b := pressure(v.left()), pressure(v.right())+1
-		if b > a {
-			return b
+		peak := max(pressure(v.left()), pressure(v.right())+1)
+		if v.op == 0x1b {
+			peak = max(peak, pressure(v.condition())+2)
 		}
-		return a
+		return peak
 	}
 	if available < countConst(p.result)+pressure(p.result)+1 || p.normalizedInduction && p.work > p.workLimit {
 		return
@@ -1187,6 +1218,8 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 
 	emitOp := func(op byte, out, a, b Reg) {
 		switch op {
+		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f:
+			f.emitIntegerMapComparison(op, out, a, b)
 		case 0x6a:
 			f.a.NeonAddS(out, a, b)
 		case 0x6b:
@@ -1236,10 +1269,20 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	var invariantValue func(int) Reg
 	invariantValue = func(x int) Reg {
 		v := p.nodes[x]
-		if v.shift() {
+		if v.unary() {
 			r := invariantValue(v.left())
-			f.emitIntegerMapShift(v, r, r)
+			f.emitIntegerMapUnary(v, r, r)
 			return r
+		}
+		if v.op == 0x1b {
+			a := invariantValue(v.left())
+			b := invariantValue(v.right())
+			mask := invariantValue(v.condition())
+			f.a.NeonCmeqZeroS(mask, mask)
+			f.a.NeonBsl16b(mask, b, a)
+			releaseTemp(a)
+			releaseTemp(b)
+			return mask
 		}
 		if p.binary(v.op) {
 			a := invariantValue(v.left())
@@ -1303,8 +1346,11 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		}
 		if !p.load(v.op) {
 			preload(v.left())
-			if !v.shift() {
+			if !v.unary() {
 				preload(v.right())
+			}
+			if v.op == 0x1b {
+				preload(v.condition())
 			}
 		}
 	}
@@ -1377,16 +1423,33 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 		a, ownA := emit(v.left())
 		var b Reg
 		var ownB bool
-		if !v.shift() {
+		if !v.unary() {
 			b, ownB = emit(v.right())
+		}
+		if v.op == 0x1b {
+			cond, ownCond := emit(v.condition())
+			out := cond
+			if !ownCond {
+				out = f.allocFReg(0)
+				f.fpinned = f.fpinned.add(out)
+			}
+			f.a.NeonCmeqZeroS(out, cond)
+			f.a.NeonBsl16b(out, b, a)
+			if ownA {
+				releaseTemp(a)
+			}
+			if ownB {
+				releaseTemp(b)
+			}
+			return out, true
 		}
 		out := a
 		if !ownA {
 			out = f.allocFReg(0)
 			f.fpinned = f.fpinned.add(out)
 		}
-		if v.shift() {
-			f.emitIntegerMapShift(v, out, a)
+		if v.unary() {
+			f.emitIntegerMapUnary(v, out, a)
 		} else {
 			emitOp(v.op, out, a, b)
 		}

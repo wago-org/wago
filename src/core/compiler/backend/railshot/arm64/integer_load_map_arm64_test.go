@@ -209,12 +209,26 @@ func TestIntegerLoadMapRejectedCandidateAllocatesZero(t *testing.T) {
 	}
 }
 
-func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
+func TestIntegerLoadMapSelect(t *testing.T) {
 	initial := make([]byte, 65536)
 	for i := range initial {
 		initial[i] = byte(i*197 + i/17)
 	}
-	for _, compare := range []byte{0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f} {
+	clear(initial[80:92])
+	type comparison struct {
+		op   byte
+		bias bool
+	}
+	cases := []comparison{{op: 0}}
+	for op := byte(0x45); op <= 0x4f; op++ {
+		cases = append(cases, comparison{op: op})
+		if op >= 0x48 {
+			// A different comparison operand prevents min/max recognition.
+			cases = append(cases, comparison{op: op, bias: true})
+		}
+	}
+	for _, tc := range cases {
+		compare := tc.op
 		for _, swapped := range []bool{false, true} {
 			for _, dst := range []uint32{8192, 68, 65532} {
 				body := []byte{1, 5, 0x7f}
@@ -224,7 +238,7 @@ func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
 					body = append(body, 0x21, byte(i))
 				}
 				body = append(body, 0x03, 0x40)
-				// Store min/max of two adjacent input words to a third stream.
+				// Select between adjacent input words with either a raw or compared condition.
 				body = append(body, 0x20, 1, 0x20, 2, 0x6a)
 				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 0, 0x22, 3)
 				body = append(body, 0x20, 0, 0x20, 2, 0x6a, 0x28, 2, 4, 0x22, 4)
@@ -232,7 +246,17 @@ func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
 				if swapped {
 					left, right = right, left
 				}
-				body = append(body, 0x20, left, 0x20, right, compare, 0x1b, 0x36, 2, 0)
+				body = append(body, 0x20, left)
+				if tc.bias {
+					body = append(body, 0x41, 1, 0x6a)
+				}
+				if compare >= 0x46 {
+					body = append(body, 0x20, right)
+				}
+				if compare != 0 {
+					body = append(body, compare)
+				}
+				body = append(body, 0x1b, 0x36, 2, 0)
 				body = append(body, 0x20, 2, 0x41, 4, 0x6a, 0x22, 2)
 				constant(132)
 				body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 3, 0x20, 4, 0x73, 0x0b)
@@ -240,10 +264,10 @@ func TestIntegerLoadMapMinMaxSelect(t *testing.T) {
 				want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial, "integer-load-map-vector")
 				got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
 				if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
-					t.Fatalf("cmp=%x swapped=%v dst=%d: got %x/%v, want %x/%v, memory equal=%v", compare, swapped, dst, got, err, want, wantErr, bytes.Equal(actual, expected))
+					t.Fatalf("cmp=%x biased=%v swapped=%v dst=%d: got %x/%v, want %x/%v, memory equal=%v", compare, tc.bias, swapped, dst, got, err, want, wantErr, bytes.Equal(actual, expected))
 				}
 				if diagnosticsEnabled && dst == 8192 && hits == 0 {
-					t.Fatalf("cmp=%x swapped=%v: min/max map was not emitted", compare, swapped)
+					t.Fatalf("cmp=%x biased=%v swapped=%v: select map was not emitted", compare, tc.bias, swapped)
 				}
 			}
 		}

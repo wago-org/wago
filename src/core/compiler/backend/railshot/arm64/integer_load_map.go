@@ -67,7 +67,7 @@ func (p *floatMapPlan) constant(op byte) bool {
 func (p *floatMapPlan) binary(op byte) bool {
 	if p.integer {
 		switch op {
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
+		case 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, integerMapMinS, integerMapMinU, integerMapMaxS, integerMapMaxU:
 			return true
 		}
 		return false
@@ -119,7 +119,7 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			if _, e := scan.I32(); e != nil {
 				return
 			}
-		case 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
+		case 0x1b, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x6a, 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76:
 			// These fixed-width operators have no immediates. Keeping the
 			// tiny screen concrete avoids making its copied reader escape
 			// through the generic classifier on every rejected loop.
@@ -138,9 +138,14 @@ func (f *fn) emitIntegerLoadMapCandidate(source *wasm.Reader) {
 	f.emitFloatMapBody(source)
 }
 
-// Shift immediates are stored modulo 32 by the planner. NEON right shifts
-// cannot encode zero, so keep the identity exact for a zero effective count.
-func (f *fn) emitIntegerMapShift(node floatMapNode, out, input Reg) {
+func (f *fn) emitIntegerMapUnary(node floatMapNode, out, input Reg) {
+	if node.op == 0x45 {
+		f.a.NeonCmeqZeroS(out, input)
+		f.a.NeonUshrS(out, out, 31)
+		return
+	}
+	// Shift immediates are stored modulo 32. NEON right shifts cannot
+	// encode zero, so preserve the zero-count identity explicitly.
 	count := uint8(node.bits)
 	if count == 0 {
 		if out != input {
@@ -156,4 +161,32 @@ func (f *fn) emitIntegerMapShift(node floatMapNode, out, input Reg) {
 	case 0x76:
 		f.a.NeonUshrS(out, input, count)
 	}
+}
+
+func (f *fn) emitIntegerMapComparison(op byte, out, a, b Reg) {
+	switch op {
+	case 0x46, 0x47:
+		f.a.NeonCmeqS(out, a, b)
+		if op == 0x47 {
+			f.a.NeonNot16b(out, out)
+		}
+	case 0x48:
+		f.a.NeonCmgtS(out, b, a)
+	case 0x49:
+		f.a.NeonCmhiS(out, b, a)
+	case 0x4a:
+		f.a.NeonCmgtS(out, a, b)
+	case 0x4b:
+		f.a.NeonCmhiS(out, a, b)
+	case 0x4c:
+		f.a.NeonCmgeS(out, b, a)
+	case 0x4d:
+		f.a.NeonCmhsS(out, b, a)
+	case 0x4e:
+		f.a.NeonCmgeS(out, a, b)
+	case 0x4f:
+		f.a.NeonCmhsS(out, a, b)
+	}
+	// A comparison used as an i32 value produces 0 or 1.
+	f.a.NeonUshrS(out, out, 31)
 }
