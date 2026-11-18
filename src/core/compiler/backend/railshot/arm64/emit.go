@@ -159,6 +159,11 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	if r := f.tryLinearIntegerTree(node, dest); r != regNone {
 		return r
 	}
+	if node.deferredOp() == opAdd {
+		if r := f.tryAddTree(node, dest); r != regNone {
+			return r
+		}
+	}
 	if node.deferredOp() == opAnd {
 		if r := f.tryBitfieldPair(node, dest); r != regNone {
 			return r
