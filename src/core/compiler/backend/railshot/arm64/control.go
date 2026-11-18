@@ -3150,7 +3150,7 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 		f.truncateNativeCode(reconcileMark)
 		f.restoreLocalStates(saved)
 	}
-	if f.conditionalBoundsEligible() {
+	if f.conditionalBoundsEligible(fi) {
 		defer f.restoreConditionalBounds(f.conditionalBoundsSnapshot(-1))
 	}
 	a, d := fr.branchArity(), f.depth()

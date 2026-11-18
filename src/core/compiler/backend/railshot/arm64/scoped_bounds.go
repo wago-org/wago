@@ -17,8 +17,12 @@ import "os"
 // The usual control-boundary invalidation still applies at the eventual join.
 var conditionalBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CONDITIONAL_BOUNDS") != "1"
 
-func (f *fn) conditionalBoundsEligible() bool {
-	return f.opt(optConditionalBounds) && f.conditionalBoundsSized && f.boundsFacts && !f.moduleEH && !f.threadedMemory0 && !f.interruptible && len(f.customInstructions) == 0
+func (f *fn) conditionalBoundsEligible(target int) bool {
+	if !f.boundsCertsActive || !f.boundsFacts || !f.opt(optConditionalBounds) ||
+		f.moduleEH || f.threadedMemory0 || f.interruptible || len(f.customInstructions) != 0 {
+		return false
+	}
+	return f.conditionalBoundsSized || target < len(f.ctrl)-1 && f.ctrl[target].kind == cfBlock
 }
 
 func (f *fn) conditionalBoundsSnapshot(setLocal int) [8]boundsCert {
