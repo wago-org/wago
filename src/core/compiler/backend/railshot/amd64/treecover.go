@@ -248,6 +248,9 @@ func treeUsesReg(e *elem, reg Reg) bool {
 // be condensed while the accumulator is live. Variable shifts are excluded
 // because their fixed RCX role can evict an accumulator that landed in RCX.
 func treeAccumulatorSafe(e *elem) bool {
+	if e.isPackedTerminal() {
+		return true
+	}
 	if e == nil {
 		return false
 	}

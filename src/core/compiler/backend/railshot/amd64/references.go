@@ -39,6 +39,9 @@ func (f *fn) setStackGCRoot(e *elem, root bool) {
 // every push/pop/replace with no reader on the other side.
 
 func (f *fn) replaceStorage(e *elem, st storage) {
+	if e.isPackedTerminal() {
+		f.s.packedCount--
+	}
 	f.s.forgetSpill(e)
 	f.s.canonicalSlots = false
 	// Replacements move the same semantic value between registers, locals, and

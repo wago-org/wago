@@ -88,6 +88,9 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	if e.isPackedTerminal() {
+		f.s.packedCount--
+	}
 	f.s.forgetSpill(e)
 	if regallocCheckEnabled {
 		f.checkOccupy(e, r, false)

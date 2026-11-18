@@ -26,6 +26,9 @@ func (f *fn) dropValue() {
 }
 
 func (f *fn) treeDiscardable(e *elem) bool {
+	if e.isPackedTerminal() {
+		return true
+	}
 	if e == nil {
 		return false
 	}
@@ -49,6 +52,10 @@ func deferredOpDiscardable(op wOp) bool {
 }
 
 func (f *fn) discardTree(e *elem) {
+	if e.isPackedTerminal() {
+		f.erase(e)
+		return
+	}
 	if e.isDeferred() {
 		if e.arg1 != nil {
 			f.discardTree(e.arg1)

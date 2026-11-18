@@ -70,6 +70,9 @@ func storedTreeLabels(e *elem) (depth, need int16) {
 // stMemRef is excluded even though its bounds check may already have run: in
 // guard mode the deferred native load itself remains the trapping operation.
 func treeReorderSafe(e *elem) bool {
+	if e.isPackedTerminal() {
+		return true
+	}
 	if e == nil {
 		return false
 	}

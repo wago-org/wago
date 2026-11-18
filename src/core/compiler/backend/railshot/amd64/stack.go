@@ -21,6 +21,9 @@ import (
 var repeatedLocalEarly = os.Getenv("WAGO_AMD64_NO_REPEATED_LOCAL_EARLY") != "1"
 
 func treeUsesBorrowedLocal(e *elem, kind storageKind, idx uint32) bool {
+	if e.isPackedTerminal() {
+		return e.packedLocalMatches(int(idx), int(idx)+1)
+	}
 	if e == nil {
 		return false
 	}
@@ -207,7 +210,7 @@ type elem struct {
 const deferredStorageKind storageKind = 1 << 6
 
 func (e *elem) elemKind() elemKind {
-	if e.st.kind == deferredStorageKind {
+	if e.st.kind&deferredStorageKind != 0 {
 		return ekDeferred
 	}
 	return ekValue
@@ -220,7 +223,9 @@ func (e *elem) setElemKind(kind elemKind) {
 	e.st.kind = stInvalid
 }
 
-func (e *elem) isValue() bool { return e.st.kind != deferredStorageKind }
+func (e *elem) isValue() bool {
+	return e.st.kind&deferredStorageKind == 0
+}
 
 func (e *elem) deferredOp() wOp { return wOp(e.st.slot) }
 func (e *elem) setDeferredOp(op wOp) {
@@ -261,7 +266,9 @@ func deferDepthOf(e *elem) int16 {
 const maxDeferDepth = 6
 
 // isDeferred reports whether e is an un-emitted operation.
-func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
+func (e *elem) isDeferred() bool {
+	return e.st.kind&deferredStorageKind != 0
+}
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
@@ -281,6 +288,7 @@ type stack struct {
 	head               *elem
 	cur                uint32
 	logicalDepth       uint32
+	packedCount        uint32
 	canonicalSlots     bool
 	hasGCRoots         bool
 	nextChunkCap       uint16
@@ -344,6 +352,7 @@ func (s *stack) initSentinel() {
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = s.head, s.head
 	s.logicalDepth = 0
+	s.packedCount = 0
 	s.canonicalSlots = true
 	s.hasGCRoots = false
 	s.pendingEffects = 0
@@ -591,6 +600,9 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	if e.isPackedTerminal() {
+		s.packedCount--
+	}
 	if s.pendingPrefix == e {
 		s.pendingPrefix = e.prev
 	}
@@ -628,7 +640,7 @@ func (s *stack) exposeLogicalRoot(e *elem) {
 // findBaseOfValentBlock.
 func baseOfValentBlock(root *elem) *elem {
 	top := root
-	for top.isDeferred() {
+	for top.isDeferred() && !top.isPackedTerminal() {
 		top = top.arg0
 	}
 	return top
@@ -638,8 +650,21 @@ func baseOfValentBlock(root *elem) *elem {
 // the right operand is the current top block, the left is the block below it.
 // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
+	// Internal producers do not supply a trustworthy next source opcode.
+	f.pushBinOpWithPacking(op, typ, false)
+}
+
+func (f *fn) pushBinOpWithPacking(op wOp, typ machineType, allowPacking bool) {
 	right := f.s.back()
+	if right.isPackedTerminal() {
+		f.notePackedExpansion("packed-expand-binary", 1)
+		f.expandPackedTerminal(right)
+	}
 	left := baseOfValentBlock(right).prev
+	if left.isPackedTerminal() {
+		f.notePackedExpansion("packed-expand-binary", 1)
+		f.expandPackedTerminal(left)
+	}
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
 	if right.isValue() && right.st.kind == stConst &&
 		left.isValue() && left.st.kind == stConst {
@@ -691,6 +716,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	if deferDepthOf(right) >= maxDeferDepth {
 		f.materialize(right)
+	}
+	if allowPacking && packedTerminalEnabled && f.tryPackTerminal(op, typ, left, right) {
+		return
 	}
 	node := f.s.tryAlloc()
 	if node == nil {
@@ -872,6 +900,10 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
+	if operand.isPackedTerminal() {
+		f.notePackedExpansion("packed-expand-unary", 1)
+		f.expandPackedTerminal(operand)
+	}
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
 	if operand.isValue() && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {

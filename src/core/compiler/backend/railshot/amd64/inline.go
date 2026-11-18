@@ -1460,6 +1460,12 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 	}
 	inRange := func(idx int) bool { return idx >= lo && idx < hi }
 	for e := f.s.head.next; e != f.s.head; {
+		if e.isPackedTerminal() {
+			f.notePackedExpansion("packed-expand-inline-range", 1)
+			f.expandPackedTerminal(e)
+			e = e.arg0
+			continue
+		}
 		next := e.next
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
@@ -1476,6 +1482,9 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 // subtreeRefsLocalRange reports whether the valent block rooted at e reads any
 // local in [lo, hi).
 func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
+	if e.isPackedTerminal() {
+		return e.packedLocalMatches(lo, hi)
+	}
 	if e == nil {
 		return false
 	}

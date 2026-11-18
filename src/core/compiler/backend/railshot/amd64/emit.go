@@ -75,6 +75,9 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		defer f.switchProfileOrigin(previous)
 	}
 	f.stats.addCondense()
+	if node.isPackedTerminal() {
+		return f.condensePackedTerminal(node, dest)
+	}
 	switch {
 	case isBinALU(node.deferredOp()):
 		return f.condenseBinary(node, dest)
@@ -1361,6 +1364,9 @@ func (f *fn) cmpRR(x, y Reg, w bool) {
 // consumeBlockBelow unlinks every physical stack element of node's valent block
 // that sits below node (its operand sub-trees), leaving node as the top.
 func (f *fn) consumeBlockBelow(node *elem) {
+	if node.isPackedTerminal() {
+		return
+	}
 	base := baseOfValentBlock(node)
 	e := node.prev
 	for {

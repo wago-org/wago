@@ -1699,6 +1699,9 @@ func (f *fn) keepBlockOperands() bool {
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+	if f.s.packedCount != 0 {
+		f.expandAllPacked()
+	}
 	if op == 0x04 {
 		if done, err := f.tryInlineTailConstantIf(r); done || err != nil {
 			return err
@@ -1714,6 +1717,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+	if f.s.packedCount != 0 {
+		f.expandAllPacked()
+	}
 	signature := *r
 	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {

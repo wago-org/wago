@@ -82,6 +82,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		if f.s.packedCount != 0 {
+			f.packedOpcodeBoundary(op)
+		}
 		if regallocCheckEnabled {
 			checkNativeSourceBefore(f, r.Offset()-1, op)
 		}
@@ -158,7 +161,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			if f.unreachable {
 				err = f.classifier.SkipImmediate(r, op)
 			} else {
-				err = f.emitPlain(r, op)
+				err = f.emitPlainWithProducer(r, op, true)
 			}
 		}
 		if profileEnabled && f.stats != nil && f.stats.RecordSources {
@@ -219,6 +222,12 @@ var integerBinaryOps = [...]wOp{opAdd, opSub, opMul, opDivS, opDivU, opRemS, opR
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+	// Replay/sliced Readers can carry source-PC provenance outside Reader offsets.
+	// Only bodyLoop supplies the full-body source contract used by the macro.
+	return f.emitPlainWithProducer(r, op, false)
+}
+
+func (f *fn) emitPlainWithProducer(r *wasm.Reader, op byte, allowProducer bool) error {
 	switch op {
 	case 0x08: // throw
 		return f.opThrow(r)
@@ -262,6 +271,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		if !skipDroppedLiteral(r) {
+			if allowProducer && packedProducerEnabled && packedTerminalEnabled && f.tryPackedProducer(r, packedProducerLeaf{kind: uint8(terminalConstant), typ: mtI32, value: int64(v)}) {
+				break
+			}
 			f.s.pushIntegerConstant(mtI32, int64(v))
 		}
 	case 0x42: // i64.const
@@ -270,6 +282,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		if !skipDroppedLiteral(r) {
+			if allowProducer && packedProducerEnabled && packedTerminalEnabled && f.tryPackedProducer(r, packedProducerLeaf{kind: uint8(terminalConstant), typ: mtI64, value: v}) {
+				break
+			}
 			f.s.pushIntegerConstant(mtI64, v)
 		}
 
@@ -282,6 +297,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		forwarded := x32 < f.inlineForwardN
 		if forwarded {
 			x = f.inlineForward[x32]
+		}
+		if f.s.packedCount != 0 {
+			f.packedLocalGetBoundary(x)
 		}
 		if regallocCheckEnabled {
 			checkNativeSourceGet(f, x)
@@ -311,6 +329,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 					f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
 					break
 				}
+			}
+		}
+		if allowProducer && packedProducerEnabled && packedTerminalEnabled {
+			if first, ok := f.packedProducerLocal(x); ok && f.tryPackedProducer(r, first) {
+				break
 			}
 		}
 		f.pushPlainLocalGet(x)
@@ -390,7 +413,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		operation := integerBinaryOps[op-first]
 		if (operation != opDivS && operation != opDivU) || !f.tryDivRemPair(r, op, operation, typ) {
-			f.pushBinOp(operation, typ)
+			f.pushBinOpNext(r, operation, typ)
 		}
 
 	// linear memory: loads
@@ -979,6 +1002,9 @@ func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
 // stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	if f.s.packedCount != 0 {
+		f.expandAllPacked()
+	}
 	// Wasm evaluates a, b, and cond in that order, including the unselected
 	// branch. Force earlier traps before either select path evaluates cond;
 	// otherwise a condition's divide-by-zero can hide a branch's overflow.
@@ -1234,6 +1260,12 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		if e == skipFrom {
 			break
 		}
+		if e.isPackedTerminal() {
+			f.notePackedExpansion("packed-expand-local-overwrite", 1)
+			f.expandPackedTerminal(e)
+			e = e.arg0
+			continue
+		}
 		next := e.next
 		switch {
 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
@@ -1266,6 +1298,9 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 
 // subtreeRefsLocal reports whether the valent block rooted at e reads local x.
 func subtreeRefsLocal(e *elem, x int) bool {
+	if e.isPackedTerminal() {
+		return e.packedLocalMatches(x, x+1)
+	}
 	if e == nil {
 		return false
 	}
@@ -1543,6 +1578,9 @@ func skipDroppedLiteral(r *wasm.Reader) bool {
 
 // pushPlainLocalGet shares ordinary local reads with proved bulk expressions.
 func (f *fn) pushPlainLocalGet(x uint32) {
+	if f.s.packedCount != 0 {
+		f.packedLocalGetBoundary(x)
+	}
 	var value *elem
 	if f.localConstZero(int(x)) {
 		if pr, _, ok := f.pinReg(int(x)); ok {
@@ -1558,4 +1596,15 @@ func (f *fn) pushPlainLocalGet(x uint32) {
 		value = f.s.pushLocalRead(stLocalRef, f.localType[x], 0, x)
 	}
 	f.setStackGCRoot(value, f.gcFrameLocal(int(x)))
+}
+
+// Avoid constructing a packed node that the very next source opcode must
+// immediately expand. This does not skip existing folds or change selectors.
+func (f *fn) pushBinOpNext(r *wasm.Reader, op wOp, typ machineType) {
+	allow := true
+	if packedTerminalEnabled {
+		next, ok := r.Peek()
+		allow = ok && packedSuccessorMayConsumeDirectly(next)
+	}
+	f.pushBinOpWithPacking(op, typ, allow)
 }
