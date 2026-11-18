@@ -1967,15 +1967,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
 					minPlus := f.emitMinPlusLoop(r)
-					f.emitFloatMapLoop(r)
-					// Min-plus already emits a vector prefix and resumes in
-					// the checked scalar body. A second map usually just
-					// rechecks eligibility on the short tail.
+					// The specialized prefix leaves the original scalar tail.
+					// Probing other map and reduction grammars there repeats
+					// work against the same source body.
 					if !minPlus || integerMapAfterMinPlusEnabled {
+						f.emitFloatMapLoop(r)
 						f.emitIntegerLoadMap(r)
+						f.emitIntegerWordMap(r)
+						f.emitAbsReduceLoop(r)
 					}
-					f.emitIntegerWordMap(r)
-					f.emitAbsReduceLoop(r)
 				}
 			}
 			f.beginLoopLocalLease(r, &fr)
