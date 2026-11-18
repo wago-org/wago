@@ -111,46 +111,63 @@ func (p *floatMapPlan) finishIntegerInduction(condition, stores int, initialRead
 // modular constant. Memory immediates remain separate widened additions.
 func (p *floatMapPlan) integerAffine(root int) (floatMapAddress, bool) {
 	base, index := -1, -1
-	var bias uint32
-	var walk func(int) bool
-	walk = func(x int) bool {
+	var bias, stride uint32
+	var walk func(int, uint32) bool
+	walk = func(x int, scale uint32) bool {
 		if !p.spend() {
 			return false
 		}
 		n := p.nodes[x]
 		switch n.op {
 		case 0x41:
-			bias += uint32(n.bits)
+			bias += scale * uint32(n.bits)
 			return true
 		case 0x20:
 			slot := p.localSlot(n.left())
 			if slot < 0 || p.locals[slot].Type != mtI32 {
 				return false
 			}
-			advancing := p.byteIndices&(1<<slot) != 0 || n.left() == p.counter && p.spanScale == 1
-			if advancing {
-				if index >= 0 {
+			if n.left() == p.counter {
+				if index >= 0 || scale == 0 || scale%p.spanScale != 0 || scale/p.spanScale > 256 {
 					return false
 				}
-				index = n.left()
+				index, stride = n.left(), scale/p.spanScale
 				return true
 			}
-			if p.locals[slot].Written || base >= 0 {
+			if p.byteIndices&(1<<slot) != 0 {
+				if index >= 0 || scale != 1 {
+					return false
+				}
+				index, stride = n.left(), p.byteSteps[slot]/p.step
+				return true
+			}
+			if p.locals[slot].Written || base >= 0 || scale != 1 {
 				return false
 			}
 			base = n.left()
 			return true
 		case 0x6a:
-			return walk(n.left()) && walk(n.right())
+			return walk(n.left(), scale) && walk(n.right(), scale)
+		case 0x6c:
+			if !p.integer {
+				return false
+			}
+			left, right := n.left(), n.right()
+			if p.nodes[left].op == 0x41 {
+				left, right = right, left
+			}
+			if constant := p.nodes[right]; constant.op == 0x41 {
+				return walk(left, scale*uint32(constant.bits))
+			}
+		case 0x74:
+			if p.integer && n.immediateShift() {
+				return walk(n.left(), scale<<uint32(n.bits&31))
+			}
 		}
 		return false
 	}
-	if !walk(root) || bias > 1<<20 {
+	if !walk(root, 1) || bias > 1<<20 {
 		return floatMapAddress{}, false
-	}
-	stride := uint32(0)
-	if index >= 0 && index != p.counter {
-		stride = p.byteSteps[p.localSlot(index)] / p.step
 	}
 	if stride == 1 {
 		stride = 0

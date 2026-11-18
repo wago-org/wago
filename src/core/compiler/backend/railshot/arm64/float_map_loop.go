@@ -10,9 +10,11 @@
 package arm64
 
 import (
+	"math/bits"
+	"os"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"os"
 )
 
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
@@ -741,7 +743,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	add := func(a floatMapAddress) bool {
 		for i := 0; i < ng; i++ {
 			g := &groups[i]
-			if g.base == a.base && g.index == a.index {
+			if g.base == a.base && g.index == a.index && g.stride == a.stride {
 				if a.bias < g.min {
 					g.min = a.bias
 				}
@@ -1105,8 +1107,14 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	for i := 0; i < ng; i++ {
 		g := &groups[i]
 		if !p.normalizedInduction || g.index == p.counter+1 {
-			if p.counterScale > 1 {
-				f.a.MovImm32(X17, int32(p.counterScale))
+			scale := p.counterScale
+			if p.normalizedInduction {
+				scale = p.spanScale * max(g.stride, 1)
+			}
+			if p.normalizedInduction && scale > 1 && scale&(scale-1) == 0 {
+				f.a.AddShifted(g.reg, g.reg, counter, uint8(bits.TrailingZeros32(scale)), true)
+			} else if scale > 1 {
+				f.a.MovImm32(X17, int32(scale))
 				f.a.Mul32(X16, counter, X17)
 				f.a.Add32(g.reg, g.reg, X16)
 			} else {
@@ -1133,7 +1141,7 @@ func (f *fn) emitFloatMapBody(source *wasm.Reader) {
 	}
 	locate := func(a floatMapAddress) (Reg, uint32) {
 		for i := 0; i < ng; i++ {
-			if groups[i].base == a.base && groups[i].index == a.index {
+			if groups[i].base == a.base && groups[i].index == a.index && groups[i].stride == a.stride {
 				return groups[i].reg, uint32(uint64(a.bias) - uint64(groups[i].min) + a.offset)
 			}
 		}

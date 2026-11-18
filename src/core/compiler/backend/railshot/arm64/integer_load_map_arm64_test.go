@@ -548,3 +548,50 @@ func TestIntegerLoadMapAffineExit(t *testing.T) {
 		}
 	}
 }
+
+func TestIntegerLoadMapScaledCounterAddress(t *testing.T) {
+	initial := make([]byte, 65536)
+	for i := range initial {
+		initial[i] = byte(i*197 + i/17)
+	}
+	for _, tc := range []struct {
+		src, dst, start, shift, count int32
+		mixed                         bool
+	}{
+		{64, 8192, 0, 2, 64, false}, {64, 8192, 7, 3, 67, false},
+		{64, 8192, 7, 3, 67, true},
+		{64, 8192, 1 << 30, 2, 67, false}, {64, 65, 0, 2, 67, false},
+		{64, 65532, 0, 2, 67, false}, {65532, 8192, 0, 2, 67, false},
+	} {
+		body := []byte{1, 3, 0x7f}
+		constant := func(v int32) {
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(v)...)
+		}
+		for i, v := range []int32{tc.src, tc.dst, tc.start} {
+			constant(v)
+			body = append(body, 0x21, byte(i))
+		}
+		body = append(body, 0x03, 0x40, 0x20, 1, 0x20, 2, 0x41, 4, 0x6c, 0x6a,
+			0x20, 0, 0x20, 2)
+		constant(tc.shift)
+		body = append(body, 0x74, 0x6a, 0x28, 2, 0)
+		if tc.mixed {
+			// Distinct coefficients with identical base/index need distinct streams.
+			body = append(body, 0x20, 0, 0x20, 2, 0x41, 2, 0x74, 0x6a, 0x28, 2, 0, 0x73)
+		}
+		body = append(body, 0x36, 2, 0,
+			0x20, 2, 0x41, 1, 0x6a, 0x22, 2)
+		constant(tc.start + tc.count)
+		body = append(body, 0x47, 0x0d, 0, 0x0b, 0x20, 2, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+		want, expected, wantErr, _ := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": false}, initial)
+		got, actual, err, hits := runFloatMapMemoryWith(t, m, map[string]bool{"dot-loop-vector": true}, initial, "integer-load-map-vector")
+		if (err != nil) != (wantErr != nil) || got != want || !bytes.Equal(actual, expected) {
+			t.Fatalf("case=%+v: got %x/%v, want %x/%v, memory equal=%v", tc, got, err, want, wantErr, bytes.Equal(actual, expected))
+		}
+		if diagnosticsEnabled && hits == 0 {
+			t.Fatalf("case=%+v: scaled addresses were not vectorized", tc)
+		}
+	}
+}
