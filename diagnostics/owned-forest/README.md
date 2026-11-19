@@ -885,3 +885,30 @@ timing, or speed. No rebuild, repair test, or promotion followed.
 
 Summary SHA-256: `ddb29ebd8a5ea22263e5d2b9a82f058d2d02308e74e7879f15e5e8d3a9fdf47c`.
 Rows SHA-256: `b985f4a09393b00b249f0207227fba10604ed243e8cd329a0341aa43143e6acc`.
+
+## Focused cold-prefix and predicate ownership
+
+Apply cold-predicate-focused.patch on top of 8061dbbb. The experimental
+cold path captures immutable typed prefixes in a slab, released in LIFO
+order and reset with the fixture. Hot 64-entry and list paths are unchanged.
+The select guard recognizes deferred i64 comparisons and eqz as semantic
+i32 predicates; a prelaunch review prompted 4a8d6819 to preserve that
+semantic width in cold-prefix snapshots.
+
+Attempt 1 (57a9b19b) exited 1 because the optimizer folded the pure IF:
+serial captures did not demonstrate nested cold activation. The predicate
+tests passed separately in that attempt (16 images, 64 calls, eight exact
+native and encoder-JSON pairs, plus three direct checks) and were not rerun.
+The fixture-only correction e2c1a2d7 added observable memory effects without
+disabling the optimization. Cold-only attempt 2 passed four images and
+16 ordinary calls with two exact native and encoder-JSON pairs. Each forest
+image recorded four captures, 290 type copies, peak 146 and capacity 160;
+the slab was empty following release. Whole memory and the retained
+predicate oracle matched.
+
+These fixtures are not replays of the original workloads. All five census
+errors remain classified as before and unresolved by execution. No public
+codec, corpus, timing or promotion claim. Compiler defaults are unchanged.
+
+Focused summary SHA-256:
+`56c8ea602a3a328335ec2b5046aa4fb28b656f538468a586dc17f352fa2aa8f0`.

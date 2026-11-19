@@ -1,0 +1,389 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 3cc87d4b..494a5bb1 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1172,6 +1172,9 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
+ }
+ 
+ func (sc *scratch) reset() {
++	if forest := sc.stack.forest; forest != nil {
++		forest.coldControlTypes = forest.coldControlTypes[:0]
++	}
+ 	sc.usedAMD64Features = 0
+ 	if len(sc.stack.chunks) != 0 {
+ 		sc.stack.reset()
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 3494c9e3..d2f8fe76 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -652,8 +652,29 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
+ 		f.controlBaseTypeN += uint8(height)
+ 		return
+ 	}
+-	if f.s.forest != nil {
+-		panic("amd64: forest fixture does not support cold control prefixes")
++	if v := f.s.forest; v != nil {
++		// The vector can be overwritten or rebuilt by control agreement.
++		// Keep an immutable, frame-owned type snapshot instead of root IDs.
++		n := len(v.coldControlTypes)
++		if height > int(^uint16(0))-n {
++			panic("fixture forest: cold control type snapshot exceeds bound")
++		}
++		v.coldControlTypes = append(v.coldControlTypes, make([]machineType, height)...)
++		for i, root := range f.rootsBottomToTop()[:height] {
++			typ := rootMachineType(root)
++			// The legacy cold handle is read after compare materialization,
++			// when this predicate's operand-width tag has become i32.
++			if fixtureDeferredI64Predicate(root) {
++				typ = mtI32
++			}
++			v.coldControlTypes[n+i] = typ
++		}
++		fr.baseTypes = uint16(n)
++		fr.set(ctrlColdBaseTypes, true)
++		v.coldControlCaptures++
++		v.coldControlTypeCopies += uint64(height)
++		v.coldControlPeak = max(v.coldControlPeak, len(v.coldControlTypes))
++		return
+ 	}
+ 	// Large prefixes are immutable below their control frame. Retain the existing
+ 	// operand-root handle instead of hashing and copying the whole type prefix for
+@@ -681,8 +702,10 @@ func (f *fn) logicalStackRootAtDepth(height int) *elem {
+ 
+ func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
+ 	if fr.has(ctrlColdBaseTypes) {
+-		if f.s.forest != nil {
+-			panic("amd64: forest fixture does not support cold control prefixes")
++		if v := f.s.forest; v != nil {
++			start := int(fr.baseTypes)
++			end := start + fr.height
++			return v.coldControlTypes[start:end:end]
+ 		}
+ 		out := f.tmpTypes[:0]
+ 		if cap(out) < fr.height {
+@@ -714,6 +737,13 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
+ 		return
+ 	}
+ 	if fr.has(ctrlColdBaseTypes) {
++		if v := f.s.forest; v != nil {
++			start := int(fr.baseTypes)
++			if start+fr.height != len(v.coldControlTypes) {
++				panic("fixture forest: cold control type snapshot released out of order")
++			}
++			v.coldControlTypes = v.coldControlTypes[:start]
++		}
+ 		return
+ 	}
+ 	start := fr.baseTypeStart()
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index db2cd5ee..f5b56514 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -254,6 +254,17 @@ func (f *fn) fixtureScalarFPSelectEnabled() bool {
+ 	return f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPSelect
+ }
+ 
++// A deferred i64 comparison retains its input width until lowering, but
++// its Wasm result is i32. Do not change the encoder's width interpretation.
++func fixtureDeferredI64Predicate(c *elem) bool {
++	return c != nil && c.isDeferred() && rootMachineType(c) == mtI64 &&
++		(isCompare(c.deferredOp()) || c.deferredOp() == opEqz)
++}
++
++func fixtureI32SelectCondition(c *elem) bool {
++	return c != nil && (rootMachineType(c) == mtI32 || fixtureDeferredI64Predicate(c))
++}
++
+ // Preflight the typed immediate and logical operands without consuming the
+ // emitter reader or changing effect/ownership state.
+ func (f *fn) checkFixtureSelect(op byte, probe wasm.Reader) error {
+@@ -291,7 +302,7 @@ func (f *fn) checkFixtureSelect(op byte, probe wasm.Reader) error {
+ 		return fmt.Errorf("fixture forest: unsupported float select")
+ 	}
+ 	c := f.s.forestLast(0)
+-	if a == nil || b == nil || c == nil || rootMachineType(c) != mtI32 {
++	if a == nil || b == nil || !fixtureI32SelectCondition(c) {
+ 		return fmt.Errorf("fixture forest: unsupported float select operands")
+ 	}
+ 	if typ == mtNone {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_cold_prefix_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_cold_prefix_independent_test.go
+new file mode 100644
+index 00000000..76a1ae45
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_cold_prefix_independent_test.go
+@@ -0,0 +1,141 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedColdPrefixModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	// Keep original local0 and 70 exact distinct i64 operands under two
++	// sequential nested scalar control frames. Each result then extends to i64.
++	b := []byte{0, 0x20, 0}
++	for i := int64(1); i <= 70; i++ {
++		b = append(b, 0x42)
++		b = append(b, wasmtest.SLEB64(i)...)
++	}
++	// Retain a semantic i32 result from a deferred i64 unsigned comparison.
++	b = append(b, 0x20, 0, 0x42)
++	b = append(b, wasmtest.SLEB64(256)...)
++	b = append(b, 0x54)
++	for _, condition := range []byte{1, 2} {
++		b = append(b, 0x02, 0x7f, 0x20, condition, 0x04, 0x7f,
++			0x41, 24, 0x41, 17, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x05,
++			0x41, 24, 0x41, 29, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x0b, 0x0c, 0, 0x0b)
++	}
++	b = append(b, 0x6a, 0x6a, 0xad)
++	for range 71 {
++		b = append(b, 0x7c)
++	}
++	b = append(b, 0x42, 23, 0x21, 0, 0x20, 0, 0x7c, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestColdPrefixOrdinary(t *testing.T) {
++	m := ownedColdPrefixModule(t)
++	for _, intr := range []bool{false, true} {
++		var native, metaOracle []byte
++		for _, candidate := range []bool{false, true} {
++			work := &fixtureModuleWork{Forest: candidate}
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				defer cm.CodeImage.Close()
++			}
++			if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 {
++				t.Fatalf("inactive cold-prefix fixture: %+v", work)
++			}
++			if candidate && (work.Vector.coldControlCaptures < 3 || work.Vector.coldControlPeak <= 64 || uint64(work.Vector.coldControlPeak) >= work.Vector.coldControlTypeCopies || work.Vector.coldControlCapacity < work.Vector.coldControlPeak) {
++				t.Fatalf("cold prefix capture/live slab reuse not reached: %+v", work.Vector)
++			}
++			for _, args := range [][3]uint64{{17, 0, 0}, {0xfffffffffffffff0, 1, 0}, {23, 0, 1}, {0x123456789abcdef0, 1, 1}} {
++				want := args[0] + 70*71/2 + 23
++				if args[0] < 256 {
++					want++
++				}
++				for _, cond := range args[1:] {
++					if cond == 0 {
++						want += 29
++					} else {
++						want += 17
++					}
++				}
++				got, err := ownedColdPrefixRun(t, cm, args)
++				if err != nil || got != want {
++					t.Fatalf("args=%x got=%x want=%x err=%v", args, got, want, err)
++				}
++			}
++			meta := *cm
++			meta.Code, meta.CodeImage = nil, nil
++			encoded, err := json.Marshal(meta)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if !candidate {
++				native = append([]byte(nil), cm.Code...)
++				metaOracle = encoded
++			} else {
++				t.Logf("cold pair intr=%v nativeExact=%v encoderExact=%v listBytes=%d forestBytes=%d", intr, bytes.Equal(native, cm.Code), bytes.Equal(metaOracle, encoded), len(native), len(cm.Code))
++			}
++			t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++		}
++	}
++}
++
++func ownedColdPrefixRun(t *testing.T, cm *encoder.CompiledModule, args [3]uint64) (uint64, error) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(in[8*i:], v)
++	}
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	want := append([]byte(nil), mem...)
++	want[24] = 29
++	if args[2] != 0 {
++		want[24] = 17
++	}
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if err == nil && !bytes.Equal(mem, want) {
++		t.Fatalf("unexpected full memory after second branch: marker=%d want=%d", mem[24], want[24])
++	}
++	return binary.LittleEndian.Uint64(out), err
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 4dc76f02..a75bb977 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -10,6 +10,9 @@ type fixtureListWork struct {
+ }
+ 
+ type fixtureForest struct {
++	coldControlTypes                                                []machineType
++	coldControlCaptures, coldControlTypeCopies                      uint64
++	coldControlPeak, coldControlCapacity                            int
+ 	spills                                                          uint64
+ 	cursorWrites, visits, lostPrefixOpportunities, flagsTransitions uint64
+ 	peakCursor                                                      int
+@@ -322,6 +325,8 @@ func (w *fixtureModuleWork) releaseRoots() {
+ 	w.Vector.stores += uint64(len(w.Vector.roots))
+ 	clear(w.Vector.roots)
+ 	w.Vector.roots = nil
++	w.Vector.coldControlCapacity = cap(w.Vector.coldControlTypes)
++	w.Vector.coldControlTypes = nil
+ }
+ 
+ func (s *stack) selectorPrevious(node *elem, depth int) *elem {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_integer_predicate_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_integer_predicate_independent_test.go
+new file mode 100644
+index 00000000..b447a42b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_integer_predicate_independent_test.go
+@@ -0,0 +1,105 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestIntegerPredicateFPSelectOrdinary(t *testing.T) {
++	for _, wide := range []bool{false, true} {
++		for _, eqz := range []bool{false, true} {
++			t.Run(fmt.Sprintf("wide=%v/eqz=%v", wide, eqz), func(t *testing.T) {
++				it, raw, into, from, xor := wasm.I32, byte(0x7d), byte(0xbe), byte(0xbc), byte(0x73)
++				sign, quiet, old := uint64(0x80000000), uint64(0x7fc01234), uint64(0x42345678)
++				if wide {
++					it, raw, into, from, xor = wasm.I64, 0x7c, 0xbf, 0xbd, 0x85
++					sign, quiet, old = 0x8000000000000000, 0x7ff8000000001234, 0x423456789abcdef0
++				}
++				// Two private FP locals: old local5 stays under the selected alternatives.
++				b := []byte{1, 2, raw, 0x20, 0, into, 0x21, 5, 0x20, 5, 0x20, 1, into, 0x20, 2, into, 0x20, 3}
++				if eqz {
++					b = append(b, 0x50, 0x1c, 1, raw)
++				} else {
++					b = append(b, 0x20, 4, 0x54, 0x1b)
++				}
++				b = append(b, 0x21, 6, 0x20, 2, into, 0x21, 5, from, 0x20, 6, from, xor, 0x0b)
++				m := mod1(t, []wasm.ValType{it, it, it, wasm.I64, wasm.I64}, []wasm.ValType{it}, b)
++				if err := wasm.ValidateModule(m); err != nil {
++					t.Fatal(err)
++				}
++				for _, intr := range []bool{false, true} {
++					var native, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPSelect: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.FPSelectEmissions != 1 {
++							t.Fatalf("inactive select lane: %+v", work)
++						}
++						for _, tc := range []struct{ a, b, x, y uint64 }{
++							{0, sign, 0, 1}, {quiet, 0, 1 << 32, 1}, {sign, quiet, 0, 1 << 32}, {quiet, sign, ^uint64(0), 0},
++						} {
++							choose := tc.x < tc.y
++							if eqz {
++								choose = tc.x == 0
++							}
++							want := old ^ tc.b
++							if choose {
++								want = old ^ tc.a
++							}
++							got, err := ownedRunModule(t, cm, []uint64{old, tc.a, tc.b, tc.x, tc.y})
++							if err != nil || got != want {
++								t.Fatalf("got=%x want=%x err=%v", got, want, err)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							native = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++					}
++				}
++			})
++		}
++	}
++}
++
++func TestOwnedForestIntegerPredicateClassification(t *testing.T) {
++	for _, op := range []wOp{opLtU, opEqz, opAdd} {
++		f := closureStart(true)
++		f.pushReg(RAX, mtI64)
++		if op == opEqz {
++			f.pushUnOp(op, mtI64)
++		} else {
++			f.pushReg(RCX, mtI64)
++			f.pushBinOp(op, mtI64)
++		}
++		p := f.s.back()
++		if p == nil || !p.isDeferred() || p.deferredOp() != op || rootMachineType(p) != mtI64 {
++			t.Fatalf("not a width-retaining deferred op %v", op)
++		}
++		if fixtureI32SelectCondition(p) != (op != opAdd) {
++			t.Fatalf("wrong predicate semantic type for %v", op)
++		}
++	}
++}
