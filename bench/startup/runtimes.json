@@ -6,8 +6,8 @@
     "wazero",
     "wasmtime",
     "v8",
-    "wasm3",
-    "wasmi",
+    "wasmer",
+    "wasmer-singlepass",
     "wavm"
   ],
   "runtimes": {
@@ -66,19 +66,26 @@
         "{wasm}"
       ]
     },
-    "wasm3": {
-      "tag": "interpreter",
-      "bin": "wasm3",
-      "env": "WASM3_BIN",
+    "wasmer": {
+      "tag": "cranelift",
+      "bin": "wasmer",
+      "env": "WASMER_BIN",
       "args": [
+        "run",
+        "--cranelift",
+        "--disable-cache",
         "{wasm}"
       ]
     },
-    "wasmi": {
-      "tag": "interpreter",
-      "bin": "wasmi_cli",
-      "env": "WASMI_BIN",
+    "wasmer-singlepass": {
+      "label": "wasmer",
+      "tag": "singlepass",
+      "bin": "wasmer",
+      "env": "WASMER_BIN",
       "args": [
+        "run",
+        "--singlepass",
+        "--disable-cache",
         "{wasm}"
       ]
     },

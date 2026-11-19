@@ -17,15 +17,15 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasm3", "wasmi", "wavm"];
+const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasmer", "wasmer-singlepass", "wavm"];
 const REQUIRED_TAGS = {
   wago: "single-pass",
   wazy: "compiler",
   wazero: "compiler",
   wasmtime: "cranelift",
   v8: "turboshaft",
-  wasm3: "interpreter",
-  wasmi: "interpreter",
+  wasmer: "cranelift",
+  "wasmer-singlepass": "singlepass",
   wavm: "llvm",
 };
 const dataPaths = {

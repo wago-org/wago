@@ -24,7 +24,7 @@ the current captures with
 
 - `runtimes.json` lists runtimes, their command shape, engine `tag`, and
   workloads. Each runtime's binary is `bin` on `PATH`. Set the named `env`
-  variable to override it, such as `WASM3_BIN=/path/to/wasm3`.
+  variable to override it, such as `WASMER_BIN=/path/to/wasmer`.
 - `twins/*.wasm` are committed work twins. Each runs its full workload from
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
