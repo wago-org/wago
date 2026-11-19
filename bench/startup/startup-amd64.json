@@ -1,6 +1,6 @@
 {
-  "generated": "2026-11-18",
-  "sourceCommit": "991ceac43feaee0c524c94b6678e93968bbb07d5",
+  "generated": "2026-11-19",
+  "sourceCommit": "525b9b469a5455c7eba7ce6648a450c9596e6ef2",
   "machine": "AMD Ryzen 7 7800X3D 8-Core Processor, linux/amd64",
   "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
   "unit": "ms",
@@ -9,7 +9,7 @@
     "wago": {
       "label": "wago",
       "tag": "single-pass",
-      "version": "release      main-1a7d8e4f4"
+      "version": "release      startup-525b9b469"
     },
     "wazy": {
       "label": "wazy",
@@ -53,14 +53,14 @@
       "label": "nbody",
       "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
       "results": {
-        "wago": 2.281,
-        "wazy": 2.607,
-        "wazero": 2.745,
-        "wasmtime": 4.91,
-        "v8": 10.847,
-        "wasm3": 4.198,
-        "wasmi": 5.097,
-        "wavm": 24.57
+        "wago": 1.919,
+        "wazy": 2.643,
+        "wazero": 3.032,
+        "wasmtime": 6.717,
+        "v8": 12.056,
+        "wasm3": 4.309,
+        "wasmi": 5.159,
+        "wavm": 26.299
       }
     },
     {
@@ -68,14 +68,14 @@
       "label": "fib",
       "desc": "recursive Fibonacci (call/return)",
       "results": {
-        "wago": 3.32,
-        "wazy": 3.962,
-        "wazero": 3.986,
-        "wasmtime": 5.692,
-        "v8": 10.99,
-        "wasm3": 12.846,
-        "wasmi": 18.914,
-        "wavm": 11.348
+        "wago": 3.115,
+        "wazy": 4.193,
+        "wazero": 4.293,
+        "wasmtime": 6.232,
+        "v8": 11.592,
+        "wasm3": 13.18,
+        "wasmi": 19.318,
+        "wavm": 11.612
       }
     },
     {
@@ -83,14 +83,14 @@
       "label": "sha256",
       "desc": "SHA-256 of an 8 KiB buffer (i32 rotate/xor)",
       "results": {
-        "wago": 2.191,
-        "wazy": 2.454,
-        "wazero": 2.568,
-        "wasmtime": 4.756,
-        "v8": 9.844,
-        "wasm3": 1.952,
-        "wasmi": 2.372,
-        "wavm": 34.215
+        "wago": 1.902,
+        "wazy": 2.585,
+        "wazero": 2.769,
+        "wasmtime": 5.342,
+        "v8": 10.445,
+        "wasm3": 2.009,
+        "wasmi": 2.434,
+        "wavm": 35.005
       }
     },
     {
@@ -98,14 +98,14 @@
       "label": "raytrace",
       "desc": "recursive Whitted ray tracer, 48×48 frame (f64)",
       "results": {
-        "wago": 2.68,
-        "wazy": 3.519,
-        "wazero": 3.917,
-        "wasmtime": 6.373,
-        "v8": 11.254,
-        "wasm3": 3.904,
-        "wasmi": 5.671,
-        "wavm": 36.762
+        "wago": 2.402,
+        "wazy": 3.867,
+        "wazero": 4.165,
+        "wasmtime": 7.042,
+        "v8": 11.81,
+        "wasm3": 4.011,
+        "wasmi": 5.76,
+        "wavm": 36.534
       }
     },
     {
@@ -113,14 +113,14 @@
       "label": "coremark",
       "desc": "CoreMark 2K performance run",
       "results": {
-        "wago": 31.529,
-        "wazy": 42.29,
-        "wazero": 55.085,
-        "wasmtime": 32.685,
-        "v8": 35.192,
-        "wasm3": 458.894,
-        "wasmi": 571.957,
-        "wavm": 218.761
+        "wago": 31.787,
+        "wazy": 42.909,
+        "wazero": 56.122,
+        "wasmtime": 33.317,
+        "v8": 35.513,
+        "wasm3": 467.967,
+        "wasmi": 584.099,
+        "wavm": 217.662
       }
     },
     {
@@ -128,14 +128,14 @@
       "label": "fannkuch",
       "desc": "Benchmarks-Game fannkuch-redux (permute + flip)",
       "results": {
-        "wago": 3.398,
-        "wazy": 4.11,
-        "wazero": 4.409,
-        "wasmtime": 6.62,
-        "v8": 11.552,
-        "wasm3": 9.422,
-        "wasmi": 13.136,
-        "wavm": 36.822
+        "wago": 3.029,
+        "wazy": 4.194,
+        "wazero": 4.57,
+        "wasmtime": 6.926,
+        "v8": 11.945,
+        "wasm3": 9.541,
+        "wasmi": 13.322,
+        "wavm": 37.104
       }
     }
   ]
