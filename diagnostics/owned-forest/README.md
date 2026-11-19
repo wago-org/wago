@@ -1014,3 +1014,11 @@ Apply `v128-binary-focused.patch` after `d7033a22`. The alternative ends at `7ab
 The focused run passed 64 images and 128 ordinary calls with 32 exact native and encoder-JSON pairs. The 60 routine images (12 equality, 16 narrowing, 32 saturation) each emitted the intended operation and added one local pin. Each of the four pressure images emitted equality, recorded one slot-floor raise, and spilled six full-width vectors. Independent expectations covered signed-source unsigned narrowing, concatenation and subtraction order, and old/current/output values across whole memory.
 
 Focused summary SHA-256: `10763dcb12010c9060b1dc7d37fdc8c2dc7f80bbe2976ebd47731bb7003c95d3`. No extra FD admission, default change, historical repair, corpus, public serialization, or timing claim.
+
+### V128 integer comparisons and masks
+
+Apply `v128-compare-mask-focused.patch` after `7ab5e01a`. The alternative ends at `bf231ffb54db46195a03f201201493dba5e77420` (tree `db3dc4439658952f039616cc1bbad51600886791`). The opt-in covers FD37/40/48/50/52/54/100/132 only; equality and defaults are unchanged.
+
+The first executed gate passed 40 images and 80 ordinary calls, with 20 exact native and encoder-JSON pairs. The 32 routine images each added one local pin. The eight pressure images each recorded one slot-floor raise and six full-width spills. Every mask image recorded one source-protection event; the word-mask cases observed the current local home after packing. Full-memory old/current values and asymmetric lane masks matched. The earlier staged observation was corrected before launch and never ran. Source-protection counters do not show nested GP-to-FP activity.
+
+Focused summary SHA-256: `44878fdfb4f90a03461156df96afae8362ebda906844a0dc9f3be30f07513041`. No default-helper comparison, corpus, public serialization, historical repair, or timing claim.
