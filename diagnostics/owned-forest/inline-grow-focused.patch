@@ -1,0 +1,174 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index aa3e5217..95ffe5f3 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1923,6 +1923,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPUnsignedF64ToI32Saturation: work.ScalarFPUnsignedF64ToI32Saturation,
+ 			IntegerControlInline:               work.IntegerControlInline,
+ 			IntegerControlInlineComposition:    work.IntegerControlInlineComposition,
++			IntegerControlInlineMemoryGrow:     work.IntegerControlInlineMemoryGrow,
+ 			PrivateMemory32Grow:                work.PrivateMemory32Grow,
+ 			ScalarFPSixArgABI:                  work.ScalarFPSixArgABI,
+ 			TemporaryV128SIMD:                  work.TemporaryV128SIMD,
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 106e5356..cab32311 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1276,6 +1276,8 @@ func (f *fn) fixtureInlineStraightBody(t *inlineTarget, integerOnly bool) bool {
+ 		switch op {
+ 		case 0x0b:
+ 			return !r.HasNext()
++		case 0x40:
++			return false // Selected grow is only supported through the control driver.
+ 		case 0x3f:
+ 			x, err := r.U32()
+ 			if err != nil || f.checkFixtureMemorySize(x) != nil {
+@@ -1313,9 +1315,11 @@ func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
+ 	var emptyFrames uint64
+ 	compose := !t.recursive() && f.sc != nil && f.sc.fixtureWork != nil &&
+ 		f.sc.fixtureWork.IntegerControlInlineComposition
++	grow := !t.recursive() && f.sc != nil && f.sc.fixtureWork != nil &&
++		f.sc.fixtureWork.IntegerControlInlineMemoryGrow
+ 	for r.HasNext() {
+ 		op, err := r.Byte()
+-		if err != nil || !fixtureScalarOpcode(op) {
++		if err != nil || (!fixtureScalarOpcode(op) && !(op == 0x40 && grow)) {
+ 			return false
+ 		}
+ 		switch op {
+@@ -1354,6 +1358,14 @@ func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
+ 			if depth == 0 {
+ 				return !r.HasNext()
+ 			}
++		case 0x40:
++			index, err := r.U32()
++			// The callee's live delta does not exist yet. The nested driver
++			// validates the i32 operand again at the actual instruction.
++			if err != nil || f.checkFixtureMemoryGrowShape(index) != nil {
++				return false
++			}
++			continue
+ 		case 0x3f:
+ 			x, err := r.U32()
+ 			if err != nil || f.checkFixtureMemorySize(x) != nil {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 065b60fd..55272313 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1836,10 +1836,17 @@ func (f *fn) fixturePrivateMemoryGrowEnabled() bool {
+ 	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.PrivateMemory32Grow
+ }
+ 
+-func (f *fn) checkFixtureMemoryGrow(index uint32) error {
++func (f *fn) checkFixtureMemoryGrowShape(index uint32) error {
+ 	if !f.fixturePrivateMemoryGrowEnabled() || f.checkFixtureMemorySize(index) != nil {
+ 		return fmt.Errorf("fixture forest: unsupported memory.grow state")
+ 	}
++	return nil
++}
++
++func (f *fn) checkFixtureMemoryGrow(index uint32) error {
++	if err := f.checkFixtureMemoryGrowShape(index); err != nil {
++		return err
++	}
+ 	if !f.unreachable {
+ 		if delta := f.s.back(); delta == nil || rootMachineType(delta) != mtI32 {
+ 			return fmt.Errorf("fixture forest: unsupported memory.grow delta")
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 9a08d6d7..84c99479 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	IntegerControlInlineMemoryGrow                                                                  bool
+ 	TemporaryV128SIMD                                                                               bool
+ 	TemporaryV128Bodies, TemporaryV128Spills                                                        uint64
+ 	ScalarFPSixArgABI                                                                               bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_inline_grow_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_grow_independent_test.go
+new file mode 100644
+index 00000000..b766b0d6
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_grow_independent_test.go
+@@ -0,0 +1,80 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedInlineGrowModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	// Retain old param, pre-grow byte and page count across a naturally selected
++	// private synthetic control leaf. The returned old page count is independent.
++	caller := []byte{0, 0x20, 2, 0x41, 0, 0x2d, 0, 0, 0x3f, 0, 0x20, 0, 0x10, 1,
++		0x6a, 0x6a, 0x6a, 0x3f, 0, 0x6a, 0x41, 23, 0x21, 2, 0x20, 2, 0x6a,
++		0x20, 1, 0x41, 37, 0x36, 2, 0, 0x20, 1, 0x28, 2, 0, 0x6a, 0x0b}
++	leaf := []byte{0, 0x20, 0, 0x04, 0x7f, 0x20, 0, 0x40, 0, 0x05, 0x41, 0, 0x40, 0, 0x0b, 0x0b}
++	i := wasm.I32
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i, i, i}, []wasm.ValType{i}), wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 2})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(leaf))), leaf...))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestInlineGrowOrdinary(t *testing.T) {
++	m := ownedInlineGrowModule(t)
++	for _, intr := range []bool{false, true} {
++		var native, metaOracle []byte
++		for _, candidate := range []bool{false, true} {
++			work := &fixtureModuleWork{Forest: candidate, IntegerControlInline: true, IntegerControlInlineMemoryGrow: true, PrivateMemory32Grow: true}
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				defer cm.CodeImage.Close()
++			}
++			if work.LegacyBodies == 0 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 || work.IntegerControlInlineLeaves != 1 || work.IntegerControlInlineRecursive != 0 || work.MemoryGrowEmissions != 4 || work.MemorySizeEmissions != 2 {
++				t.Fatalf("inactive control leaf: %+v", work)
++			}
++			st := stats.Funcs[0]
++			if st.Calls["inline"] != 1 || st.Calls["regabi"] != 0 || st.Calls["wrapper"] != 0 || st.Calls["mixed"] != 0 {
++				t.Fatalf("wrong inline strategy: %v", st.Calls)
++			}
++			for _, delta := range []uint32{0, 1} {
++				for _, old := range []uint32{19, 0xfffffff0} {
++					ownedMemoryGrowRun(t, cm, delta, old, 1)
++				}
++			}
++			meta := *cm
++			meta.Code, meta.CodeImage = nil, nil
++			encoded, err := json.Marshal(meta)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if !candidate {
++				native = append([]byte(nil), cm.Code...)
++				metaOracle = encoded
++			} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++				t.Fatal("staged list/forest native or encoder metadata differs")
++			}
++			t.Logf("intr=%v forest=%v bytes=%d calls=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, work)
++		}
++	}
++}

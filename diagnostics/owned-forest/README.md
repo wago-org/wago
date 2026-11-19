@@ -796,3 +796,21 @@ or closure of the two earlier specialized-state census gaps. Admission
 scans the whole body without disabling optimizers; that classification
 has a cost, and abandoned work matters if fallback is later introduced.
 No public artifact codec, corpus, timing or speed claim. Defaults unchanged.
+
+## Focused inline memory growth
+
+Apply inline-grow-focused.patch on top of 2921e4a6. At f7fffd12 the
+focused gate passed four images and 16 ordinary zero-delta or successful
+one-page growth calls, with two exact native and encoder-metadata pairs.
+Each image emitted one actual inline splice with no residual call, four
+static grow sites across the standalone callee and splice, and two
+size sites. Exactly one grow operation ran per call. Full memory, page
+counts, and old aliases matched. No pre-split spill was observed; the
+top-level pressure proof is separate.
+
+The scoped shape is checked before binding. There is no default-helper,
+growth failure, public artifact codec, original five workloads, corpus,
+or timing result. Defaults remain unchanged.
+
+Focused summary SHA-256:
+`560ae472f74a20c3b892531d8401c8747869245c8e3bd66d1fc5634e70de551f`.
