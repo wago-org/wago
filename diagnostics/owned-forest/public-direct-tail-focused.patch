@@ -1,0 +1,271 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index b4b48989..18f5cbf6 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -703,13 +703,47 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType)
+ 	return nil
+ }
+ 
++func (f *fn) fixtureDirectIntegerTail() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.DirectIntegerTail
++}
++
++// Do not change the tail selector. The exact two-argument RegABI shape has
++// neither a wrapper route nor the one-argument local-entry threading recipe.
++func (f *fn) checkFixtureDirectIntegerTail(idx uint32) error {
++	ft, ok := f.functionSignature(idx)
++	if !ok || int(idx) < f.importedFunctionCount() || idx == f.traceFuncIdx ||
++		f.inlineDepth != 0 || f.inlineRetFrame != 0 || f.inlineTailLoopFrame != 0 || f.selfTailLoop ||
++		f.moduleEH || f.ehTryDepth != 0 || f.gcFrameRoots != nil || f.s.hasGCRoots ||
++		f.fpinned != 0 || f.fpinnedLocalMask != 0 || f.intervalActive != 0 || f.vectorRegion.enabled ||
++		f.moduleHasSIMD || f.guardMode || f.threadedMemory0 || len(f.customInstructions) != 0 ||
++		!f.opt(optRegABI) || !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) ||
++		len(f.ft.Params) != 2 || len(ft.Params) != 2 || len(f.ft.Results) != 1 || len(ft.Results) != 1 ||
++		!sigIsIntOnly(f.ft) || !sigIsIntOnly(ft) || !tailResultABICompatible(f.ft.Results, ft.Results) {
++		return fmt.Errorf("fixture forest: unsupported same-module integer tail")
++	}
++	roots := f.rootsBottomToTop()
++	base := len(roots) - len(ft.Params)
++	if base < 0 {
++		return fmt.Errorf("fixture forest: insufficient integer tail operands")
++	}
++	for i, root := range roots {
++		f.sc.fixtureWork.DirectIntegerTailRootChecks++
++		typ := rootMachineType(root)
++		if typ != mtI32 && typ != mtI64 ||
++			i >= base && (fixtureDeferredI64Predicate(root) || typ != mtOf(ft.Params[i-base])) {
++			return fmt.Errorf("fixture forest: unsupported integer tail operand type")
++		}
++	}
++	return nil
++}
++
+ // returnCall lowers the bounded direct-tail-call milestone. A validated local
+ // target whose caller and callee fit the internal register ABI reuses the current
+ // activation: arguments are staged in the callee's GP/XMM banks, the current
+ // frame is released, and control jumps (rather than calls) to the callee's
+ // internal entry. A host import executes through the ordinary bounded host-call
+-// bridge and immediately returns from the current function; cross-instance imports
+-// remain explicit backend rejections. The public tail-call feature gate stays disabled.
++// bridge and immediately returns from the current function. Platform feature
++// requirements are checked by the public frontend.
+ func (f *fn) returnCall(r *wasm.Reader) error {
+ 	// Tail transfer discards the operand prefix; preserve its traps first.
+ 	f.materializePendingTraps()
+@@ -821,6 +855,9 @@ func (f *fn) returnCallIndex(idx uint32) error {
+ 			f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, true))
+ 		})
+ 		f.unreachable = true
++		if f.fixtureDirectIntegerTail() {
++			f.sc.fixtureWork.DirectIntegerTailInternalRelocs++
++		}
+ 		return nil
+ 	}
+ 	if !f.opt(optRegABI) || !callerRegisterABI || len(ft.Results) == 0 {
+@@ -1190,11 +1227,16 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+ 	f.storePinnedGlobals(false)
+ 
+ 	var roots [16]*elem // sigFitsRegABI caps params at 8 GP + 8 FP
+-	cur := f.s.back()
+-	for i := p - 1; i >= 0; i-- {
+-		roots[i] = cur
+-		if i > 0 {
+-			cur = baseOfValentBlock(cur).prevLink()
++	if f.s.forest != nil {
++		all := f.s.forest.roots
++		copy(roots[:p], all[len(all)-p:])
++	} else {
++		cur := f.s.back()
++		for i := p - 1; i >= 0; i-- {
++			roots[i] = cur
++			if i > 0 {
++				cur = baseOfValentBlock(cur).prevLink()
++			}
+ 		}
+ 	}
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 68b75ecf..04c72d19 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1973,6 +1973,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			DynamicIntegerHostImports:   work.DynamicIntegerHostImports,
+ 			DescriptorI32VoidImports:    work.DescriptorI32VoidImports,
++			DirectIntegerTail:           work.DirectIntegerTail,
+ 			RecordOperandLayout:         work.RecordOperandLayout,
+ 			FuseNoncanonicalFlushPlan:   work.FuseNoncanonicalFlushPlan,
+ 			RecordNoncanonicalFlushPlan: work.RecordNoncanonicalFlushPlan,
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 05979e78..ea758218 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -93,6 +93,16 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 				return err
+ 			}
+ 		}
++		if op == 0x12 && !f.unreachable && f.fixtureDirectIntegerTail() {
++			probe := *r
++			idx, err := probe.U32()
++			if err != nil {
++				return err
++			}
++			if err := f.checkFixtureDirectIntegerTail(idx); err != nil {
++				return err
++			}
++		}
+ 		if f.s.forest != nil {
+ 			if err := f.checkFixtureScalarOpcode(op); err != nil {
+ 				return err
+@@ -332,6 +342,7 @@ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
+ 		!(op == 0x1c && (f.fixtureScalarFPSelectEnabled() || f.fixtureV128SelectEnabled())) &&
+ 		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) &&
++		!(op == 0x12 && f.fixtureDirectIntegerTail()) &&
+ 		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) && !(op == 0xfd && f.fixtureTemporarySIMD) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 6d979dfe..48ff2a3a 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -307,6 +307,8 @@ type fixtureFinalizedTrimWork struct {
+ }
+ 
+ type fixtureModuleWork struct {
++	DirectIntegerTail                                                                                                                                         bool
++	DirectIntegerTailInternalRelocs, DirectIntegerTailRootChecks                                                                                              uint64
+ 	DescriptorI32VoidImports                                                                                                                                  bool
+ 	DescriptorI32VoidSites, DescriptorI32VoidTypeChecks, DescriptorI32VoidRootChecks                                                                          uint64
+ 	DynamicIntegerHostImports                                                                                                                                 bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+index 28b4df59..023a9071 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+@@ -46,6 +46,20 @@ func (f *OwnedForestPublicFixture) DescriptorImportRootChecks() uint64 {
+ 	return f.work.DescriptorI32VoidRootChecks
+ }
+ 
++// NewOwnedForestPublicDirectTailFixture enables the isolated same-module
++// integer register-ABI tail witness.
++func NewOwnedForestPublicDirectTailFixture(forest bool) *OwnedForestPublicFixture {
++	return &OwnedForestPublicFixture{work: fixtureModuleWork{Forest: forest, DirectIntegerTail: true}}
++}
++
++func (f *OwnedForestPublicFixture) DirectTailInternalRelocs() uint64 {
++	return f.work.DirectIntegerTailInternalRelocs
++}
++
++func (f *OwnedForestPublicFixture) DirectTailRootChecks() uint64 {
++	return f.work.DirectIntegerTailRootChecks
++}
++
+ // NewOwnedForestPublicTrimFixture observes the real serial compile boundary
+ // after the first function finalizes. It does not call GC or alter codegen.
+ func NewOwnedForestPublicTrimFixture() *OwnedForestPublicFixture {
+diff --git a/src/wago/owned_forest_public_direct_tail_ordinary_test.go b/src/wago/owned_forest_public_direct_tail_ordinary_test.go
+new file mode 100644
+index 00000000..9ee7d4ae
+--- /dev/null
++++ b/src/wago/owned_forest_public_direct_tail_ordinary_test.go
+@@ -0,0 +1,100 @@
++//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++
++	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ordinaryDirectTailModule() []byte {
++	i, j := wasm.I32, wasm.I64
++	caller := wasmtest.FuncType([]wasm.ValType{i, j}, []wasm.ValType{j})
++	target := wasmtest.FuncType([]wasm.ValType{j, i}, []wasm.ValType{j})
++	// Keep old y live across overwriting its home; send y then unsigned x^95.
++	prepare := []byte{0x20, 1, 0x20, 1, 0x42, 23, 0x85, 0x21, 1, 0x20, 0, 0x41, 0xdf, 0, 0x73, 0x21, 0, 0x20, 0}
++	tail := append(bytes.Clone(prepare), 0x12, 2, 0x0b)
++	ordinary := append(bytes.Clone(prepare), 0x10, 2, 0x0f, 0x0b)
++	// Scalar loop is a natural noninline target. Starting acc=y, execute
++	// acc=3*acc-z twice. One i32 count local, followed by the function body.
++	callee := []byte{1, 1, 0x7f, 0x41, 2, 0x21, 2, 0x03, 0x40,
++		0x20, 0, 0x42, 3, 0x7e, 0x20, 1, 0xad, 0x7d, 0x21, 0,
++		0x20, 2, 0x41, 1, 0x6b, 0x22, 2, 0x0d, 0, 0x0b, 0x20, 0, 0x0b}
++	code := append(wasmtest.ULEB(uint32(len(callee))), callee...)
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(caller, target)),
++		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0}, []byte{1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("tail", 0, 0), wasmtest.ExportEntry("ordinary", 0, 1))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tail), wasmtest.Code(ordinary), code)),
++	)
++}
++
++func TestScopedPublicDirectIntegerReturnCall(t *testing.T) {
++	arm := os.Getenv("WAGO_ORDINARY_DIRECT_TAIL_ARM")
++	if arm != "wide" && arm != "compact" {
++		t.Fatal("run only within predeclared public gate")
++	}
++	emit := func(kind string, v any) {
++		q, e := json.Marshal(v)
++		if e != nil {
++			t.Fatal(e)
++		}
++		t.Logf("PUBLIC_DIRECT_TAIL_%s %s", kind, q)
++	}
++	body := ordinaryDirectTailModule()
++	cfg := NewRuntimeConfig().WithFunctionWorkers(1).WithMaxModuleBytes(uint64(len(body)))
++	proof := railshot.NewOwnedForestPublicDirectTailFixture(arm == "compact")
++	cfg.ownedForestPublicFixture = proof
++	c, err := Compile(cfg, body)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := c.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	if !c.requiredFeatures.IsEnabled(CoreFeatureTailCall) || c.NumImports != 0 || len(c.InternalEntry) != 3 || len(c.Entry) != 3 {
++		t.Fatalf("wrong required tail/module/entry metadata: %x %d %d %d", c.requiredFeatures, c.NumImports, len(c.InternalEntry), len(c.Entry))
++	}
++	if proof.DirectTailInternalRelocs() != 1 || proof.DirectTailRootChecks() == 0 {
++		t.Fatalf("terminal internal-reloc/root receipts=%d/%d", proof.DirectTailInternalRelocs(), proof.DirectTailRootChecks())
++	}
++	var code bytes.Buffer
++	if _, err = c.WriteCodeTo(&code); err != nil {
++		t.Fatal(err)
++	}
++	meta, err := compiledMetadataBytes(c, true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	emit("ARTIFACT", map[string]any{"arm": arm, "body": fmt.Sprintf("%x", sha256.Sum256(body)), "native": fmt.Sprintf("%x", sha256.Sum256(code.Bytes())), "metadata": fmt.Sprintf("%x", sha256.Sum256(meta)), "nativeBytes": code.Len(), "metadataBytes": len(meta), "requiredTailCall": true, "internalRelocs": proof.DirectTailInternalRelocs(), "rootChecks": proof.DirectTailRootChecks()})
++	in, err := Instantiate(c, InstantiateOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := in.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	for _, entry := range []string{"tail", "ordinary"} {
++		for _, p := range [][2]uint64{{0, 0}, {0x80000007, 0x8000000187654321}, {0xffffffff, 0xfedcba9876543210}} {
++			x, y := uint32(p[0]), p[1]
++			expected := 9*y - 4*uint64(x^95)
++			got, e := in.Invoke(entry, uint64(x), y)
++			if e != nil || len(got) != 1 || got[0] != expected {
++				t.Fatalf("%s(%x,%x)=%v err=%v want %x", entry, x, y, got, e, expected)
++			}
++		}
++		emit("RUNTIME", map[string]any{"entry": entry, "invokes": 3})
++	}
++}

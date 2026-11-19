@@ -1156,3 +1156,11 @@ Apply `public-buffered-event-focused.patch` after `37c520a7` to reach `c9b1d23f8
 The focused gate passed two public compiles and 12 invocations with 16 callbacks across eight nonzero invocations and four zero-event invocations. Both arms recorded two descriptor sites, zero synchronous splits, one signature check and four root checks. Native code and publicly serialized metadata matched exactly (791 and 182 bytes respectively).
 
 Summary SHA-256: `6a1654e9be24676439e80ece416d74dab6c21169449daa6f7a2bfd49349a05b7`. No reentry, transitive cross-instance, overflow, default-path, full-API, timing or RSS claim.
+
+### Scoped public same-module direct tail calls
+
+Apply `public-direct-tail-focused.patch` after `c9b1d23f` to reach `c84da8cd`. This opt-in lane covers a distinct same-module RegABI target with exactly two integer arguments and one matching result.
+
+The first scoped gate passed two public compiles and 12 ordinary invocations (six tail calls and six explicit call-and-return controls). Native code and publicly serialized metadata matched across representations (423 and 191 bytes). Each arm recorded the required tail-call marker, one terminal internal relocation and two root checks.
+
+Summary SHA-256: `32ba2ac12c1743617555e4ec1382276762e156ebba3de8e3fb0c6e2014d0726b`. No self/imported/indirect targets, FP/EH/GC/tuple/wrapper cases, outer edges, cycles, timing, RSS or default change.
