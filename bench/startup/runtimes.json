@@ -99,32 +99,39 @@
   },
   "workloads": [
     {
-      "id": "nbody",
-      "label": "nbody",
-      "twin": "nbody.wasm",
-      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
-      "wasmfyi": "wago/nbody/step"
+      "id": "pcre2",
+      "label": "pcre2",
+      "twin": "pcre2.wasm",
+      "desc": "PCRE2: compile regular expressions and match them over text (303 KB module)",
+      "wasmfyi": "wago/pcre2/compile-match"
     },
     {
-      "id": "fib",
-      "label": "fib",
-      "twin": "fib.wasm",
-      "desc": "recursive Fibonacci (call/return)",
-      "wasmfyi": "wago/fib_rec/fib"
+      "id": "yyjson",
+      "label": "yyjson",
+      "twin": "yyjson.wasm",
+      "desc": "yyjson: parse, edit and re-serialize JSON documents",
+      "wasmfyi": "wago/yyjson/parse-edit-write"
     },
     {
-      "id": "sha256",
-      "label": "sha256",
-      "twin": "sha256.wasm",
-      "desc": "SHA-256 of an 8 KiB buffer (i32 rotate/xor)",
-      "wasmfyi": "wago/sha256/hashN"
+      "id": "utf8proc",
+      "label": "utf8proc",
+      "twin": "utf8proc.wasm",
+      "desc": "utf8proc: Unicode normalization and case folding (324 KB module)",
+      "wasmfyi": "wago/utf8proc/normalize-casefold"
     },
     {
-      "id": "raytrace",
-      "label": "raytrace",
-      "twin": "raytrace.wasm",
-      "desc": "recursive Whitted ray tracer, 48\u00d748 frame (f64)",
-      "wasmfyi": "wago/raytrace/render"
+      "id": "nanosvg",
+      "label": "nanosvg",
+      "twin": "nanosvg.wasm",
+      "desc": "NanoSVG: parse SVG documents into shapes and paths",
+      "wasmfyi": "wago/nanosvg/parse-structure"
+    },
+    {
+      "id": "libtommath",
+      "label": "libtommath",
+      "twin": "libtommath.wasm",
+      "desc": "LibTomMath: big-integer modular arithmetic",
+      "wasmfyi": "wago/libtommath/modular-arithmetic"
     },
     {
       "id": "coremark",
@@ -132,13 +139,6 @@
       "twin": "coremark.wasm",
       "desc": "CoreMark 2K performance run",
       "wasmfyi": "wago/coremark/2k-performance"
-    },
-    {
-      "id": "fannkuch",
-      "label": "fannkuch",
-      "twin": "fannkuch.wasm",
-      "desc": "Benchmarks-Game fannkuch-redux (permute + flip)",
-      "wasmfyi": "wago/fannkuch/run"
     }
   ]
 }

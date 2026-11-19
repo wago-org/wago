@@ -14,7 +14,8 @@
 import json,subprocess,sys,re,os
 C=sys.argv[1]
 m={w['id']:w for w in json.load(open(C+'/manifest.json'))['workloads']}
-PICK=[('nbody','wago/nbody/step'),('fib','wago/fib_rec/fib'),('sha256','wago/sha256/hashN'),('raytrace','wago/raytrace/render'),('coremark','wago/coremark/2k-performance'),('fannkuch','wago/fannkuch/run')]
+PICK=[('pcre2','wago/pcre2/compile-match'),('yyjson','wago/yyjson/parse-edit-write'),('utf8proc','wago/utf8proc/normalize-casefold'),
+      ('nanosvg','wago/nanosvg/parse-structure'),('libtommath','wago/libtommath/modular-arithmetic'),('coremark','wago/coremark/2k-performance')]
 out=sys.argv[2]; meta=[]
 for name,i in PICK:
   w=m[i]; wat=subprocess.check_output(['wasm-tools','print',C+'/'+w['artifact']],text=True)

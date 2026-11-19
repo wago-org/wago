@@ -1,79 +1,78 @@
 [
  {
-  "name": "nbody",
-  "id": "wago/nbody/step",
-  "export": "step",
-  "args": [
-   "2000"
-  ],
+  "name": "pcre2",
+  "id": "wago/pcre2/compile-match",
+  "export": "pcre2_run",
+  "args": [],
   "expected": [
-   "4125895690"
+   "9576845034281016351"
   ],
-  "sha256": "dd42fb59fbd230e9b72a6a2ac08e616f4bf98c01f35b2581e5c2652889fca7a7",
-  "params": [
-   "i32"
-  ],
-  "results": [
-   "i32"
-  ],
-  "desc": "Benchmarks-Game N-body: leapfrog solar-system integration (f64 mul/add/div/sqrt)"
- },
- {
-  "name": "fib",
-  "id": "wago/fib_rec/fib",
-  "export": "fib",
-  "args": [
-   "28"
-  ],
-  "expected": [
-   "317811"
-  ],
-  "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14",
-  "params": [
-   "i32"
-  ],
+  "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+  "params": [],
   "results": [
    "i64"
   ],
-  "desc": "recursion; call/return heavy"
+  "desc": ""
  },
  {
-  "name": "sha256",
-  "id": "wago/sha256/hashN",
-  "export": "hashN",
-  "args": [
-   "8"
-  ],
+  "name": "yyjson",
+  "id": "wago/yyjson/parse-edit-write",
+  "export": "yyjson_run",
+  "args": [],
   "expected": [
-   "3825852647"
+   "59814107826475500"
   ],
-  "sha256": "8978d6906ee899589170cca1d0c2d33d74a7296683fc9e7d48e4a6b78b449c98",
-  "params": [
-   "i32"
-  ],
+  "sha256": "56874b0102785568fa02478e4d109ecc328419cc05fcc2654062d02df7a2c48b",
+  "params": [],
   "results": [
-   "i32"
+   "i64"
   ],
-  "desc": "standards-correct SHA-256 of an n-KiB buffer (i32 rotate/shift/xor/add, 64-round)"
+  "desc": ""
  },
  {
-  "name": "raytrace",
-  "id": "wago/raytrace/render",
-  "export": "render",
-  "args": [
-   "48"
-  ],
+  "name": "utf8proc",
+  "id": "wago/utf8proc/normalize-casefold",
+  "export": "utf8proc_run",
+  "args": [],
   "expected": [
-   "1021273579"
+   "16479292168540697159"
   ],
-  "sha256": "cdc7200a9a4794b0d48459f2ceb4cfce1a2308d72026cec81b2c87daecb9d66f",
-  "params": [
-   "i32"
-  ],
+  "sha256": "1f1a3e18f5adee7732e3e338e3b455f147757ba35a1e6c49c5d5f6abbcd005e7",
+  "params": [],
   "results": [
-   "i32"
+   "i64"
   ],
-  "desc": "recursive Whitted ray tracer: n x n frame, 4 spheres + checker plane, depth-4 mirrors (heavy f64 vector math)"
+  "desc": ""
+ },
+ {
+  "name": "nanosvg",
+  "id": "wago/nanosvg/parse-structure",
+  "export": "nanosvg_run",
+  "args": [],
+  "expected": [
+   "4789067689214705683"
+  ],
+  "sha256": "78b2553b244d43441d4d92a71397be695bb4fd0d8ca9cda57614ef5f20945eb9",
+  "params": [],
+  "results": [
+   "i64"
+  ],
+  "desc": ""
+ },
+ {
+  "name": "libtommath",
+  "id": "wago/libtommath/modular-arithmetic",
+  "export": "libtommath_run",
+  "args": [],
+  "expected": [
+   "16776717578849132612"
+  ],
+  "sha256": "a59c88869766c6f6fe1e35c9505b3fd9f83d347499e3b674b1c8abae15b59fd1",
+  "params": [],
+  "results": [
+   "i64"
+  ],
+  "desc": ""
  },
  {
   "name": "coremark",
@@ -95,24 +94,5 @@
    "i32"
   ],
   "desc": ""
- },
- {
-  "name": "fannkuch",
-  "id": "wago/fannkuch/run",
-  "export": "run",
-  "args": [
-   "8"
-  ],
-  "expected": [
-   "22"
-  ],
-  "sha256": "31925e0d86d0bb743e2b643b958d304d42ef23734ecf871885fc51845b543f08",
-  "params": [
-   "i32"
-  ],
-  "results": [
-   "i32"
-  ],
-  "desc": "Benchmarks-Game fannkuch-redux: permute + pancake-flip (branch/array churn, no f64)"
  }
 ]

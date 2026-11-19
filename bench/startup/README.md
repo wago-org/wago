@@ -28,7 +28,11 @@ the current captures with
 - `twins/*.wasm` are committed work twins. Each runs its full workload from
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
-- The twins are [wasm.fyi](https://wasm.fyi) workloads. `make-twins.py` takes
+- The twins are [wasm.fyi](https://wasm.fyi) workloads built from real C
+  libraries (PCRE2, yyjson, utf8proc, NanoSVG, LibTomMath) plus CoreMark, so
+  each run exercises compiling a 8–324 KB module as well as executing it.
+  Workloads that need input bytes written into memory first (such as zstd)
+  can't be driven from a plain `_start` and are left out. `make-twins.py` takes
   each wasm.fyi artifact unchanged and adds a `_start` that calls the workload
   export with wasm.fyi's arguments and traps unless the result matches
   wasm.fyi's oracle, so the run.mjs preflight also checks correctness.
