@@ -1086,3 +1086,11 @@ Apply `hint-facts-focused.patch` after `5da3216e` to reach `62794c20d8f8c0d2c81f
 The focused gate passed 36 images, 114 ordinary calls and 24 strict comparisons, plus ten fact/native-hint comparisons and three valid fence attempts. On the mixed fixture, four standalone body scans (592 counted bytes and 545 dispatches) were replaced by 545 observer hooks over 589 already-mandatory bytes, five extra probe bytes, six type visits and 96 bytes of transient requested fact capacity. Eight ABI type visits remained. The inline scan (6 bytes, 4 opcodes) and vector preflight (45 bytes, 12 opcodes) remained. The other five fixtures had the observer off; the valid unknown-advisory control recorded one fallback.
 
 Summary SHA-256: `eeaeabb3ba09b981579c90ebacc203c75411bd7b80e2689cd678cb8c92b88049`. These are distinct operations and storage units, not evidence of general throughput, timing, RSS, corpus or default changes.
+
+### Byte-state and sparse hint errors
+
+Apply `sparse-hint-facts-focused.patch` after `62794c20` to reach `fd61962a6ebe8e0cd5355f083beb8d18cfd1cc5f` (tree `e9e7a541682a0fd60a0b349fe6aad282aa9d0277`). The first focused gate passed 36 images, 114 ordinary calls and 24 strict comparisons, plus ten fact comparisons, three valid fences, four state/error checks and two fresh compile-only images.
+
+On the mixed fixture, requested backing fell from 96 to 4 bytes. The table header grew from 24 to 48 bytes, so the charged footprint fell from 120 to 52 bytes. The 96-function error-free fixture recorded 96 state bytes, no error backing, and a 48-byte header; the old 2,304-byte dense backing is derived, not measured on that fixture. Seven sparse errors used eight reserved records (192 bytes) plus 24 state bytes and the 48-byte header, with four grows and seven copies. These totals exclude error objects, transient overlap, allocator rounding, timing and RSS.
+
+Summary SHA-256: `3788ed1ba7a67713e6a3d2f210f5a079e973918e36fb953e0e68fca126e65bb7`. No public serializer, corpus, historical replay, or default change.
