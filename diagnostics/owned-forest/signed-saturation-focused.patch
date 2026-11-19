@@ -1,0 +1,207 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index f0a9f51b..cf5a1378 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1917,6 +1917,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 			ImmutableIntegerIndirect: work.ImmutableIntegerIndirect,
+ 			ScalarFPMixedDirectCalls: work.ScalarFPMixedDirectCalls,
++			ScalarFPSignedSaturation: work.ScalarFPSignedSaturation,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 36236042..4052ae96 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -118,7 +118,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 				if err != nil {
+ 					return err
+ 				}
+-				if err := f.checkFixtureBulkMemory(sub, probe); err != nil {
++				if err := f.checkFixtureFC(sub, probe); err != nil {
+ 					return err
+ 				}
+ 			}
+@@ -872,6 +872,31 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ 	return nil
+ }
+ 
++func signedSaturationFC(sub uint32) bool {
++	return sub <= 6 && sub&1 == 0
++}
++
++// checkFixtureFC separates scalar numeric conversions from memory-index
++// immediates. For dead code the polymorphic stack has no concrete input.
++func (f *fn) checkFixtureFC(sub uint32, probe wasm.Reader) error {
++	if !signedSaturationFC(sub) {
++		return f.checkFixtureBulkMemory(sub, probe)
++	}
++	if !f.fixtureScalarFPEnabled() || !f.sc.fixtureWork.ScalarFPSignedSaturation {
++		return fmt.Errorf("fixture forest: unsupported opcode 0xfc subopcode %d", sub)
++	}
++	if !f.unreachable {
++		typ := mtF32
++		if sub&2 != 0 {
++			typ = mtF64
++		}
++		if x := f.s.back(); x == nil || rootMachineType(x) != typ {
++			return fmt.Errorf("fixture forest: unsupported signed saturation operand")
++		}
++	}
++	return nil
++}
++
+ // checkFixtureBulkMemory validates the closed fixture subset without consuming
+ // the emitter reader or changing stack, region, or memory-forwarding state.
+ func (f *fn) checkFixtureBulkMemory(sub uint32, probe wasm.Reader) error {
+@@ -910,7 +935,7 @@ func (f *fn) emitFC(r *wasm.Reader) error {
+ 		return err
+ 	}
+ 	if f.s.forest != nil {
+-		if err := f.checkFixtureBulkMemory(sub, *r); err != nil {
++		if err := f.checkFixtureFC(sub, *r); err != nil {
+ 			return err
+ 		}
+ 	}
+@@ -956,6 +981,9 @@ func (f *fn) emitFC(r *wasm.Reader) error {
+ 	default:
+ 		return fmt.Errorf("amd64: unsupported 0xFC opcode %d", sub)
+ 	}
++	if signedSaturationFC(sub) && f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFPSignedSaturation {
++		f.sc.fixtureWork.FPSignedSaturationEmissions[sub]++
++	}
+ 	return nil
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index d1c13fc6..e308bd13 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	ScalarFPSignedSaturation                                                                        bool
++	FPSignedSaturationEmissions                                                                     [8]uint64
+ 	ScalarFPMixedDirectCalls                                                                        bool
+ 	FPMixedDirectCalls, FPMixedDeferredConstants                                                    uint64
+ 	ImmutableIntegerIndirect                                                                        bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_signed_sat_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_signed_sat_independent_test.go
+new file mode 100644
+index 00000000..00da765c
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_signed_sat_independent_test.go
+@@ -0,0 +1,112 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"math"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestSignedSaturationOrdinary(t *testing.T) {
++	for _, in := range []struct {
++		raw  wasm.ValType
++		into byte
++		wide bool
++		bits func(float64) uint64
++	}{
++		{wasm.I32, 0xbe, false, func(v float64) uint64 { return uint64(math.Float32bits(float32(v))) }},
++		{wasm.I64, 0xbf, true, math.Float64bits},
++	} {
++		for _, out := range []struct {
++			raw                             wasm.ValType
++			sub, xor, narrow                byte
++			width, minusStep32, minusStep64 int
++		}{
++			{wasm.I32, 0, 0x73, 1, 32, 7, 0},
++			{wasm.I64, 4, 0x85, 0, 64, 39, 10},
++		} {
++			sub := out.sub
++			if in.wide {
++				sub += 2
++			}
++			t.Run(fmt.Sprintf("FC%d", sub), func(t *testing.T) {
++				// Preserve old parameter 1 below the conversion; overwrite its
++				// canonical binding after saturation, then consume the old alias.
++				b := []byte{0, 0x20, 1, 0x20, 0, in.into, 0xfc, sub}
++				if out.narrow != 0 {
++					b = append(b, 0x41, 23)
++				} else {
++					b = append(b, 0x42, 23)
++				}
++				b = append(b, 0x21, 1, out.xor, 0x0b)
++				m := mod1(t, []wasm.ValType{in.raw, out.raw}, []wasm.ValType{out.raw}, b)
++				limit := math.Ldexp(1, out.width-1)
++				sign := uint64(1) << (out.width - 1)
++				mask := sign | (sign - 1)
++				step := out.minusStep32
++				if in.wide {
++					step = out.minusStep64
++				}
++				prev := sign - (uint64(1) << step)
++				cases := []struct {
++					value float64
++					sat   uint64
++				}{
++					{-1.5 * limit, sign}, {-limit, sign}, {-37.875, mask - 36}, {-0.75, 0}, {math.Copysign(0, -1), 0}, {0, 0}, {37.875, 37},
++					{limit - math.Ldexp(1, step), prev}, {limit, sign - 1}, {1.5 * limit, sign - 1},
++				}
++				for _, intr := range []bool{false, true} {
++					var native, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPSignedSaturation: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++							t.Fatalf("inactive legacy forest: %+v", work)
++						}
++						wantEmissions := [8]uint64{}
++						wantEmissions[sub] = 1
++						if work.FPSignedSaturationEmissions != wantEmissions {
++							t.Fatalf("wrong FC activation: %v", work.FPSignedSaturationEmissions)
++						}
++						for i, tc := range cases {
++							old := uint64(0x3141592671828182) & mask
++							if i%2 == 0 {
++								old ^= sign
++							}
++							want := old ^ tc.sat
++							got, err := ownedRunModule(t, cm, []uint64{in.bits(tc.value), old})
++							if err != nil || got != want {
++								t.Fatalf("intr=%v forest=%v input=%g got=%x want=%x err=%v", intr, candidate, tc.value, got, want, err)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							native = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("sub=%d intr=%v candidate=%v bytes=%d work=%+v", sub, intr, candidate, len(cm.Code), work)
++					}
++				}
++			})
++		}
++	}
++}

@@ -513,3 +513,20 @@ census remains unchanged, and the 31 held inputs were untouched.
 
 Focused summary SHA-256:
 `9c6677773f7feacf5c3022bd2160bb032946bb14445767e7971397c96dbbf367`.
+
+## Focused signed FP saturation
+
+Apply signed-saturation-focused.patch on top of 34099c74. At 1c803c57
+the focused gate passed 16 images and 160 finite ordinary calls with
+eight exact native and encoder-exported JSON pairs. The explicit
+ScalarFPSignedSaturation option admits only signed FC0/2/4/6 with
+the existing emitter; every image recorded its expected subopcode
+once. The finite tests covered lower and upper saturation boundaries,
+fractional truncation, signed zero, and a retained old alias.
+
+No unsigned conversion, NaN, infinity, pressure, public artifact
+codec, corpus, or timing claim. The prior 83-of-114 exit-1 census
+is unchanged; the 31 held inputs were untouched.
+
+Focused summary SHA-256:
+`1efc99f207d708a0399756c7022c2d197a638eac092acccecb4d2a7b15501b1a`.
