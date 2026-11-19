@@ -1,0 +1,358 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index bdaefe50..08bea898 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -359,6 +359,38 @@ func (f *fn) selectedInlineTarget(idx uint32) *inlineTarget {
+ 	return nil
+ }
+ 
++// fixtureScalarFPMixedSignature admits both numeric banks, but restricts FP
++// entry to XMM0–3, disjoint from the extended float-local pin pool.
++func fixtureScalarFPMixedSignature(ft *wasm.CompType) bool {
++	if len(ft.Results) > 1 {
++		return false
++	}
++	gp, fp := 0, 0
++	for _, t := range ft.Params {
++		if isIntValType(t) {
++			gp++
++		} else if isFloatValType(t) {
++			fp++
++		} else {
++			return false
++		}
++	}
++	if gp > len(intArgRegs) || fp > 4 {
++		return false
++	}
++	hasGP, hasFP := gp != 0, fp != 0
++	for _, t := range ft.Results {
++		if isIntValType(t) {
++			hasGP = true
++		} else if isFloatValType(t) {
++			hasFP = true
++		} else {
++			return false
++		}
++	}
++	return hasGP && hasFP
++}
++
+ func (f *fn) callOp(r *wasm.Reader) error {
+ 	idx, err := r.U32()
+ 	if err != nil {
+@@ -382,7 +414,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 				panic("fixture forest: selected inline call ownership is not ported")
+ 			}
+ 		} else {
+-			if int(idx) < imported || !f.opt(optRegABI) || !sigIsIntOnly(ft) ||
++			mixed := f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPMixedDirectCalls &&
++				fixtureScalarFPMixedSignature(ft) && len(f.customInstructions) == 0 && !f.s.hasGCRoots
++			if int(idx) < imported || !f.opt(optRegABI) || (!sigIsIntOnly(ft) && !mixed) ||
+ 				len(ft.Results) > 1 || f.gcFrameRoots != nil {
+ 				panic("fixture forest: only internal scalar integer calls with at most one integer result are ported")
+ 			}
+@@ -2651,21 +2685,30 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 	f.materializeCallExpressions(allRoots)
+ 
+ 	// Identify the p argument roots (top of stack), deepest first.
+-	argRoots := f.tmpRoots[:0]
+-	if cap(argRoots) < p {
+-		argRoots = make([]*elem, 0, p)
+-	}
+-	argRoots = argRoots[:p]
+-	f.tmpRoots = argRoots
+-	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
+-	cur := f.s.back()
+-	for i := p - 1; i >= 0; i-- {
+-		argRoots[i] = cur
+-		if i > 0 {
+-			cur = baseOfValentBlock(cur).prev
++	var argRoots []*elem
++	if f.s.forest != nil {
++		// Capture and indexed prefix flush do not resize the vector.
++		argRoots = allRoots[d-p : d : d]
++	} else {
++		argRoots = f.tmpRoots[:0]
++		if cap(argRoots) < p {
++			argRoots = make([]*elem, 0, p)
++		}
++		argRoots = argRoots[:p]
++		f.tmpRoots = argRoots
++		f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
++		cur := f.s.back()
++		for i := p - 1; i >= 0; i-- {
++			argRoots[i] = cur
++			if i > 0 {
++				cur = baseOfValentBlock(cur).prev
++			}
+ 		}
+ 	}
+ 
++	fixtureReceipt := f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFP &&
++		f.sc.fixtureWork.ScalarFPMixedDirectCalls && fixtureScalarFPMixedSignature(ft)
++
+ 	// Register-resident args are materialized into owned, pinned registers now
+ 	// (per bank), so the flush below cannot spill them; const/slot/local-ref args
+ 	// are deferred and loaded straight into their target register afterward.
+@@ -2704,7 +2747,11 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 		}
+ 	}
+ 	if p > 0 {
+-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
++		if f.s.forest != nil {
++			f.flushBelowRoot(d - p)
++		} else {
++			f.flushBelow(argRoots[0])
++		} // operands below the args → canonical slots
+ 	} else {
+ 		f.flush()
+ 	}
+@@ -2761,6 +2808,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 			switch da.root.st.kind {
+ 			case stConst:
+ 				f.loadFConst(da.target, da.root.st)
++				if fixtureReceipt {
++					f.sc.fixtureWork.FPMixedDeferredConstants++
++				}
+ 			case stSlot:
+ 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
+ 			case stLocalRef:
+@@ -2786,6 +2836,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 	}
+ 	site := f.a.CallRel32()
+ 	f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
++	if fixtureReceipt {
++		f.sc.fixtureWork.FPMixedDirectCalls++
++	}
+ 
+ 	// Capture integer results out of RAX/RDX before the reload below reuses them as
+ 	// scratch. A float result stays in XMM0 (never a pin target, so reload-safe).
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 978115a9..f0a9f51b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1916,6 +1916,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 			ImmutableIntegerIndirect: work.ImmutableIntegerIndirect,
++			ScalarFPMixedDirectCalls: work.ScalarFPMixedDirectCalls,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+@@ -3694,7 +3695,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	c := &m.Code[funcIdx]
+ 	if work := sc.fixtureWork; work != nil && work.Forest {
+ 		fixtureFPABI := work.ScalarFP && work.ScalarFPFunctionABI && fixtureScalarFPFunctionSignature(ft)
+-		if !sigIsIntOnly(ft) && !fixtureFPABI {
++		fixtureMixedABI := work.ScalarFP && work.ScalarFPMixedDirectCalls && sc.policy.EnabledOption(optRegABI) &&
++			fixtureScalarFPMixedSignature(ft)
++		if !sigIsIntOnly(ft) && !fixtureFPABI && !fixtureMixedABI {
+ 			return nil, nil, 0, fmt.Errorf("fixture forest: unsupported noninteger function ABI")
+ 		}
+ 		for _, run := range c.Locals.Runs {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 8637589c..d1c13fc6 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	ScalarFPMixedDirectCalls                                                                        bool
++	FPMixedDirectCalls, FPMixedDeferredConstants                                                    uint64
+ 	ImmutableIntegerIndirect                                                                        bool
+ 	FPSelectEmissions                                                                               uint64
+ 	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                                uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_independent_test.go
+new file mode 100644
+index 00000000..90038635
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_independent_test.go
+@@ -0,0 +1,186 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedMixedDirectModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	// Keep the exported integer ABI independent of the private mixed call.
++	// GP1 is a deferred XOR, FP0 eagerly reinterprets a raw input, GP2
++	// reads the old parameter, FP1 is deliberately a late literal.
++	caller := []byte{0, 0x20, 0, 0x20, 1, 0x20, 0, 0x85, 0x20, 2, 0xbf, 0x20, 0, 0x44}
++	caller = binary.LittleEndian.AppendUint64(caller, 0x4004000000000000)
++	caller = append(caller, 0x10, 1, 0x42, 23, 0x21, 0)
++	// The old parameter survives below the call. Combine it with the selected
++	// result and the updated local; for void use the callee's observed effect.
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee,
++		0x20, 0, 0x42, 3, 0x7e, 0x20, 2, 0x7d,
++		0x20, 1, 0xbd, 0x7c, 0x20, 3, 0xbd, 0x85)
++	results := []wasm.ValType{wasm.I64}
++	if lane == "fp-result" {
++		callee = append(callee, 0xbf)
++		results[0] = wasm.F64
++		caller = append(caller, 0xbd)
++	} else if lane == "void" {
++		callee = append(callee, 0x24, 0)
++		caller = append(caller, 0x23, 0)
++		results = nil
++	}
++	caller = append(caller, 0x7c, 0x20, 0, 0x7c, 0x0b)
++	callee = append(callee, 0x0b)
++	sections := [][]byte{
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}), wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.F64, wasm.I64, wasm.F64}, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++	}
++	if lane == "void" {
++		sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0, 0x0b}))))
++	}
++	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(callee))), callee...))))
++	m, err := wasm.DecodeModule(wasmtest.Module(sections...))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestMixedDirectOrdinary(t *testing.T) {
++	for _, lane := range []string{"int-result", "fp-result", "void"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedMixedDirectModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPMixedDirectCalls: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 2 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive legacy forest: %+v", work)
++					}
++					if work.FPMixedDirectCalls != 1 || work.FPMixedDeferredConstants != 1 {
++						t.Fatalf("mixed call/late FP literal inactive: %+v", work)
++					}
++					st := stats.Funcs[0]
++					if st.Calls["mixed"] != 1 || st.Calls["regabi"] != 0 || st.Calls["wrapper"] != 0 || st.Calls["inline"] != 0 || st.Peephole["mixed-call-reg-arg"] == 0 {
++						t.Fatalf("wrong strategy: %v %v", st.Calls, st.Peephole)
++					}
++					if len(cm.Entry) != 2 || len(cm.InternalEntry) != 2 || cm.Entry[0] >= cm.InternalEntry[0] || st.NativeSize.HostAdapterBytes <= 0 {
++						t.Fatal("exported caller adapter absent")
++					}
++					inputs := [][3]uint64{{19, 47, 0x8000000000000000}, {0xfffffffffffffff0, 11, 0x7ff8000000001234}, {0x100000001, 0x200000003, 0x401a000000000000}}
++					if lane == "fp-result" {
++						inputs = nil
++						for _, raw := range []uint64{0, 0x8000000000000000, 0x7ff8000000001234, 0x401a000000000000} {
++							// Solve the integer formula so the FP boundary moves
++							// each exact requested carrier; no FP arithmetic on it.
++							a, b := uint64(19), uint64(47)
++							bits := (raw ^ 0x4004000000000000) - ((a^b)*3 - a)
++							inputs = append(inputs, [3]uint64{a, b, bits})
++						}
++					}
++					for _, args := range inputs {
++						want := args[0] + 23 + (((args[0]^args[1])*3 - args[0] + args[2]) ^ 0x4004000000000000)
++						got, err := ownedRunModule(t, cm, args[:])
++						if err != nil || got != want {
++							t.Fatalf("intr=%v forest=%v args=%x got=%x want=%x err=%v", intr, candidate, args, got, want, err)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d calls=%v peeps=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, st.Peephole, work)
++				}
++			}
++		})
++	}
++}
++
++// Exercise a legal two-cycle in each register bank directly. This fixture
++// uses the same mixed caller emitter, then executes an ordinary rel32 callee.
++func TestOwnedForestMixedDirectCycles(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPMixedDirectCalls: true}
++		f.sc = &scratch{fixtureWork: work}
++		ft := &wasm.CompType{Params: []wasm.ValType{wasm.I64, wasm.F64, wasm.I64, wasm.F64}, Results: []wasm.ValType{wasm.I64}}
++		f.pushValue(storage{kind: stConst, typ: mtI64, cval: 13})
++		f.a.MovImm64(RCX, 17)
++		f.pushReg(RCX, mtI64)
++		f.a.MovImm64(R11, 41)
++		f.a.MovGprToXmm(1, R11, true)
++		f.pushFReg(1, mtF64)
++		f.a.MovImm64(RAX, 5)
++		f.pushReg(RAX, mtI64)
++		f.a.MovImm64(R11, 29)
++		f.a.MovGprToXmm(0, R11, true)
++		f.pushFReg(0, mtF64)
++		start := f.a.Len()
++		f.emitMixedRegisterCall(1, ft)
++		lowering := f.a.B[start:]
++		gp := &encoder.Asm{}
++		gp.Xchg64(RAX, RCX)
++		gpReverse := &encoder.Asm{}
++		gpReverse.Xchg64(RCX, RAX)
++		if !bytes.Contains(lowering, gp.B) && !bytes.Contains(lowering, gpReverse.B) {
++			t.Fatal("GP cycle did not emit swap")
++		}
++		fpCycle := false
++		for _, r := range []Reg{0, 1} {
++			x := &encoder.Asm{}
++			off := f.spillOff(1)
++			x.FStoreDisp(RSP, off, r, true)
++			x.FMov(r, 1-r, true)
++			x.FLoadDisp(1-r, RSP, off, true)
++			fpCycle = fpCycle || bytes.Contains(lowering, x.B)
++		}
++		if !fpCycle || len(f.relocs) != 1 || f.depth() != 2 || work.FPMixedDirectCalls != 1 {
++			t.Fatalf("FP cycle/ABI ownership missing: %x", lowering)
++		}
++		f.pushBinOp(opAdd, mtI64)
++		closureFinish(t, f, 37)
++		f.a.PatchRel32(int(f.relocs[0].at), f.a.Len())
++		// Callee observes argument ordering independently in each bank.
++		f.a.AluRR(0x29, RAX, RCX, true)
++		f.a.MovXmmToGpr(RDX, 0, true)
++		f.a.MovXmmToGpr(R8, 1, true)
++		f.a.AluRR(0x29, RDX, R8, true)
++		f.a.AluRR(0x01, RAX, RDX, true)
++		f.a.Ret()
++		closureRun(t, f, 37)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("paired cycle native code differs")
++		}
++	}
++}

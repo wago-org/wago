@@ -493,3 +493,23 @@ census still exited 1; the 31 held inputs were untouched.
 
 Focused summary SHA-256:
 `54083b69a8b8c06315918282f1e003e8f8bf006194fd2a0a4869a8e6ef949c58`.
+
+## Focused mixed scalar register-ABI calls
+
+Apply mixed-call-focused.patch on top of 3be9b35c. At 34099c74 the
+focused gate passed 12 module images and 40 ordinary calls with six
+exact native and encoder-exported JSON pairs. Each image recorded
+one mixed direct relocation, one deferred FP constant and three
+register arguments. The integer-ABI caller used private same-module
+mixed callees with integer, FP or void results.
+
+A separate paired direct-emitter fixture activated GP XCHG and XMM
+spill-slot permutation cycles, preserved the live prefix, called a
+real rel32 callee, and returned 37 in both arms with exact native
+parity. This does not show natural module cycles or literal-pool
+scratch fallback. No wider ABI, public artifact codec, held-input,
+corpus, timing or performance claim. The prior 83-of-114 exit-1
+census remains unchanged, and the 31 held inputs were untouched.
+
+Focused summary SHA-256:
+`9c6677773f7feacf5c3022bd2160bb032946bb14445767e7971397c96dbbf367`.
