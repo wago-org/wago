@@ -851,3 +851,37 @@ corpus, or timing result.
 
 Focused summary SHA-256:
 `c33ca46ea64afbbc11df0103cea0a1538dd5b6051b4a79996864143f3b5469ad`.
+
+## Eighteen-capability censored compile census
+
+At 8061dbbb all 228 ordered records were retained and accounted for,
+with the same 31 modules held out before reads in both arms. Of 114
+eligible workloads, 109 candidate completions matched same-configuration
+native code and public serialized metadata. The run exited 1. All five
+unexpected backend errors retain their original classification.
+
+Read-only source audit: JSON-AS and UTF-AS first reached the deliberate
+whole-body SIMD preflight in scalar functions, where it rejected
+global.get and call respectively under the module SIMD flag. NanoSVG
+function 34 reached the FP-select guard; the record lacks a PC and root
+state, so a missing versus differently typed root is unresolved. PCRE2
+function 60 at offset 1236 and yyjson function 18 at offset 3220 hit
+unsupported cold control-prefix ownership when the 64-entry arena
+was exhausted; the exact allocation sites are not proven.
+
+Historical pristine reference matched 112 of 114, with native-only
+drift in raytrace and NanoSVG. NanoSVG had six staged FC1 emissions
+with zero counted pressure; bound motion is source-consistent but not
+established at instruction level by hashes. NanoSVG failed in the
+candidate and has no candidate pair. No reference waiver or relabeling.
+
+Completed candidate work: 275 legacy and 309 shared bodies, 155,050
+opcodes, maximum root capacity 64. Abandoned work: 117 attempts,
+112 completed functions, five rejections, 115 legacy bodies and
+78,471 opcodes, maximum root capacity 16. Candidate V128 body,
+owned-copy and full-width spill counters were all zero. This census
+does not establish SIMD workload closure, guest execution coverage,
+timing, or speed. No rebuild, repair test, or promotion followed.
+
+Summary SHA-256: `ddb29ebd8a5ea22263e5d2b9a82f058d2d02308e74e7879f15e5e8d3a9fdf47c`.
+Rows SHA-256: `b985f4a09393b00b249f0207227fba10604ed243e8cd329a0341aa43143e6acc`.
