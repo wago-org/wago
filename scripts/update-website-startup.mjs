@@ -6,8 +6,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-// Regenerate ../website's end-to-end latency section from matched ARM64 and
-// AMD64 captures produced by bench/startup/run.mjs.
+// Regenerate ../website's end-to-end latency section from the AMD64 capture
+// produced by bench/startup/run.mjs.
 
 import { access, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -17,19 +17,17 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasm3", "wasmi", "wavm"];
+const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasmer", "wasmer-singlepass"];
 const REQUIRED_TAGS = {
   wago: "single-pass",
   wazy: "compiler",
   wazero: "compiler",
   wasmtime: "cranelift",
   v8: "turboshaft",
-  wasm3: "interpreter",
-  wasmi: "interpreter",
-  wavm: "llvm",
+  wasmer: "cranelift",
+  "wasmer-singlepass": "singlepass",
 };
 const dataPaths = {
-  arm64: resolve(process.env.WAGO_STARTUP_JSON_ARM64 || join(ROOT, "bench", "startup", "startup-arm64.json")),
   amd64: resolve(process.env.WAGO_STARTUP_JSON_AMD64 || join(ROOT, "bench", "startup", "startup-amd64.json")),
 };
 const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(ROOT, "..", "website"));
@@ -41,7 +39,6 @@ for (const [architecture, path] of Object.entries(dataPaths)) {
   validateDataset(data, architecture, path);
   datasets[architecture] = data;
 }
-validatePair(datasets.arm64, datasets.amd64);
 
 const html = await readFile(indexPath, "utf8");
 const startAnchor = "            <!-- ░░░ END-TO-END LATENCY ░░░ -->";
@@ -52,7 +49,7 @@ if (from < 0 || to < 0) throw new Error("could not find the website end-to-end s
 
 const updated = `${html.slice(0, from)}${startAnchor}\n${renderSection(datasets)}${html.slice(to)}`;
 await writeFile(indexPath, updated);
-console.log(`wago: updated website end-to-end numbers for ARM64 and AMD64 (${datasets.arm64.workloads.length} workloads)`);
+console.log(`wago: updated website end-to-end numbers for AMD64 (${datasets.amd64.workloads.length} workloads)`);
 
 if (!process.env.WAGO_SITE_NOBUILD && (await exists(join(websiteDir, "package.json")))) {
   run("npm", ["run", "sync"], websiteDir);
@@ -76,22 +73,6 @@ function validateDataset(data, architecture, path) {
     assertKeys(workload.results ?? {}, REQUIRED_RUNTIMES, `${path}: ${workload.id} results`);
     for (const [name, value] of Object.entries(workload.results)) {
       if (!Number.isFinite(value) || value <= 0) throw new Error(`${path}: ${workload.id}/${name} must be a positive number`);
-    }
-  }
-}
-
-function validatePair(arm64, amd64) {
-  if (arm64.sourceCommit !== amd64.sourceCommit) {
-    throw new Error(`sourceCommit mismatch: ARM64 ${arm64.sourceCommit}, AMD64 ${amd64.sourceCommit}`);
-  }
-  const armIds = arm64.workloads.map((workload) => workload.id);
-  const amdIds = amd64.workloads.map((workload) => workload.id);
-  if (JSON.stringify(armIds) !== JSON.stringify(amdIds)) throw new Error("ARM64 and AMD64 workload sets differ");
-  for (const name of REQUIRED_RUNTIMES) {
-    const armMeta = arm64.runtimes[name];
-    const amdMeta = amd64.runtimes[name];
-    if (armMeta.label !== amdMeta.label || armMeta.tag !== amdMeta.tag) {
-      throw new Error(`ARM64 and AMD64 runtime metadata differ for ${name}`);
     }
   }
 }
@@ -162,18 +143,12 @@ function renderSection(all) {
                         </h2>
                         <p class="split__body">
                             The whole process, from spawn to exit, timed
-                            end-to-end across ${numberWord(all.arm64.workloads.length)} real workloads. Compare
-                            process startup and execution together on the
-                            architecture that matches your machine.
+                            end-to-end across ${numberWord(all.amd64.workloads.length)} real workloads. Process
+                            startup and execution are measured together.
                         </p>
                     </div>
                     <div class="chartcard">
-                        <div class="chart__architectures" role="tablist" aria-label="End-to-end benchmark architecture" data-startup-arch-toggle>
-                            <button class="chart__archtab" type="button" role="tab" aria-selected="true" aria-controls="startup-arch-panel-arm64" data-startup-arch-target="arm64">ARM64</button>
-                            <button class="chart__archtab" type="button" role="tab" aria-selected="false" aria-controls="startup-arch-panel-amd64" data-startup-arch-target="amd64" tabindex="-1">AMD64</button>
-                        </div>
-${renderArchitecture(all.arm64, "arm64", false)}
-${renderArchitecture(all.amd64, "amd64", true)}
+${renderArchitecture(all.amd64, "amd64", false)}
                     </div>
                 </div>
             </section>
