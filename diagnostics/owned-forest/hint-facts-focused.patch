@@ -1,0 +1,607 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index bc163a49..6fc90752 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1964,6 +1964,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128Loops:                 work.TemporaryV128Loops,
+ 			TemporaryV128BlockResults:          work.TemporaryV128BlockResults,
+ 			TemporaryV128PerFunction:           work.TemporaryV128PerFunction,
++			TemporaryV128HintClassification:    work.TemporaryV128HintClassification,
+ 			TemporaryV128BytePermutes:          work.TemporaryV128BytePermutes,
+ 			TemporaryV128UnsignedShifts:        work.TemporaryV128UnsignedShifts,
+ 			TemporaryV128IntegerBinary:         work.TemporaryV128IntegerBinary,
+@@ -1982,6 +1983,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			}
+ 		}
+ 		defer work.releaseRoots()
++		if work.TemporaryV128HintClassification && work.TemporaryV128PerFunction && work.TemporaryV128SIMD {
++			work.fixtureVectorHintFacts = make([]fixtureVectorHintFact, len(m.Code))
++			work.TemporaryV128HintFactBackingBytes = uintptr(cap(work.fixtureVectorHintFacts)) * unsafe.Sizeof(fixtureVectorHintFact{})
++			defer func() { work.fixtureVectorHintFacts = nil }()
++		}
+ 	}
+ 	relocs := make([][]callReloc, n)
+ 	var literalWords []uint64
+@@ -1996,7 +2002,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 	if diagnosticsEnabled && (opts.Stats != nil || explainEnabled) {
+ 		hintStart = time.Now()
+ 	}
+-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, diagnosticsEnabled && (opts.Stats != nil || explainEnabled), true)
++	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, diagnosticsEnabled && (opts.Stats != nil || explainEnabled), true, opts.fixtureWork)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("amd64: %w", err)
+ 	}
+@@ -2924,7 +2930,7 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
+ 	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, gcTypeLayouts, gcStructHelpers, policy, false, true)
+ }
+ 
+-func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency, collectInlineCalls bool) ([]funcHints, funcHintSidecar, []int64, error) {
++func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency, collectInlineCalls bool, fixture ...*fixtureModuleWork) ([]funcHints, funcHintSidecar, []int64, error) {
+ 	n := len(m.Code)
+ 	allHints := make([]funcHints, n)
+ 	totalScores := 0
+@@ -3039,7 +3045,13 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
+ 			var err error
+ 			var loopBits [2]int64
+ 			var loopCount uint8
+-			h, loopBits, loopCount, err = scanFuncBodyWithLoopIntConsts(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum, collectLoopIntConsts)
++			var vectorScan *fixtureHintVectorScan
++			if len(fixture) != 0 && fixture[0] != nil && len(fixture[0].fixtureVectorHintFacts) != 0 {
++				vectorScan = &fixtureHintVectorScan{
++					work: fixture[0], fact: &fixture[0].fixtureVectorHintFacts[i],
++				}
++			}
++			h, loopBits, loopCount, err = scanFuncBodyWithLoopIntConsts(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum, collectLoopIntConsts, vectorScan)
+ 			if err != nil {
+ 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
+ 			}
+@@ -3772,7 +3784,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 			return nil, nil, 0, fmt.Errorf("fixture forest: per-function SIMD classification requires temporary SIMD")
+ 		}
+ 		classified = true
+-		vectorBody, err = classifyFixtureVectorBody(m, &sc.classifier, c.BodyBytes, &work.TemporaryV128Classifier)
++		if funcIdx < len(work.fixtureVectorHintFacts) && work.fixtureVectorHintFacts[funcIdx].ready {
++			fact := &work.fixtureVectorHintFacts[funcIdx]
++			vectorBody, err = fact.vector, fact.err
++			work.TemporaryV128HintFactsUsed++
++		} else {
++			if work.TemporaryV128HintClassification {
++				work.TemporaryV128HintFallbacks++
++			}
++			vectorBody, err = classifyFixtureVectorBody(m, &sc.classifier, c.BodyBytes, &work.TemporaryV128Classifier)
++		}
+ 		if err != nil {
+ 			return nil, nil, 0, err
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/hints.go b/src/core/compiler/backend/railshot/amd64/hints.go
+index 06954b40..55526e39 100644
+--- a/src/core/compiler/backend/railshot/amd64/hints.go
++++ b/src/core/compiler/backend/railshot/amd64/hints.go
+@@ -451,12 +451,12 @@ func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int
+ 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers, globalHints), nil
+ }
+ 
+-func scanFuncBodyWithLoopIntConsts(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
++func scanFuncBodyWithLoopIntConsts(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool, vectorScan *fixtureHintVectorScan) (funcHintView, [2]int64, uint8, error) {
+ 	if len(fn.BodyBytes) == 0 {
+ 		view := scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers, globalHints)
+ 		return view, [2]int64{}, 0, nil
+ 	}
+-	return scanBodyBytesWithLoopIntConsts(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, nil, importedFuncs, globalHints, collect)
++	return scanBodyBytesWithLoopIntConsts(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, nil, importedFuncs, globalHints, collect, vectorScan)
+ }
+ 
+ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind, gcStructHelpers bool) bool {
+@@ -894,7 +894,7 @@ func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals
+ 	return view, err
+ }
+ 
+-func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
++func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool, vector ...*fixtureHintVectorScan) (funcHintView, [2]int64, uint8, error) {
+ 	elig.reset()
+ 	r := wasm.ReaderFrom(body)
+ 	var cached wasm.ModuleInstructionClassifier
+@@ -904,7 +904,15 @@ func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, self
+ 		cached = wasm.NewModuleInstructionClassifier(m, true)
+ 	}
+ 	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, globalHints: globalHints, entryPrefix: true, memory64: memory64, m: m, classifier: cached, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, collectLoopIntConsts: collect}
++	if len(vector) != 0 && vector[0] != nil {
++		s.fixtureVectorScan = vector[0]
++		s.fixtureVectorScan.depth = 1
++		s.fixtureVectorScan.work.TemporaryV128HintClassifier.Bodies++
++	}
+ 	called, term, err := s.scanExpr(0, 0, -1, false)
++	if s.fixtureVectorScan != nil {
++		s.fixtureVectorScan.work.TemporaryV128HintSharedBytes += uint64(s.r.off())
++	}
+ 	if err != nil {
+ 		return s.h, s.selectedLoopIntConsts, s.selectedLoopIntConstN, err
+ 	}
+@@ -914,6 +922,12 @@ func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, self
+ 	if term != 0x0b || s.r.has() {
+ 		return s.h, s.selectedLoopIntConsts, s.selectedLoopIntConstN, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
+ 	}
++	if s.fixtureVectorScan != nil {
++		proof := s.fixtureVectorScan
++		// An unexpected structural difference is incomplete proof; the old
++		// classifier remains the counted attempt-local fallback.
++		proof.fact.ready = proof.terminal || proof.fact.err != nil
++	}
+ 	if s.loopIntConstN != 0 {
+ 		s.finishLoopIntConsts()
+ 	}
+@@ -979,13 +993,14 @@ func (s *byteBodyScanner) finishLoopIntConsts() {
+ }
+ 
+ type byteBodyScanner struct {
+-	r           byteScanReader
+-	h           funcHintView
+-	nLocals     int
+-	nGlobals    int
+-	selfIdx     uint32
+-	elig        *globalEligibilityTracker
+-	globalHints *shared.GlobalHintAccumulator
++	fixtureVectorScan *fixtureHintVectorScan
++	r                 byteScanReader
++	h                 funcHintView
++	nLocals           int
++	nGlobals          int
++	selfIdx           uint32
++	elig              *globalEligibilityTracker
++	globalHints       *shared.GlobalHintAccumulator
+ 
+ 	entryPrefix           bool
+ 	entrySeen             uint64
+@@ -1055,6 +1070,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
+ 		if err != nil {
+ 			return true, 0, err
+ 		}
++		if s.fixtureVectorScan != nil {
++			s.fixtureVectorScan.observe(s.m, op, &s.r.Reader)
++		}
+ 		s.notePhysicalEvent(op, depth)
+ 		switch op {
+ 		case 0x0b: // end
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index fcf89b0f..79b1c138 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -9,6 +9,8 @@ import (
+ 	"encoding/json"
+ 	"fmt"
+ 	"os"
++	"reflect"
++	"strings"
+ 	"testing"
+ 	"unsafe"
+ 
+@@ -56,7 +58,7 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 				case "v128-dot-pressure":
+ 					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128WideningArithmetic = true, true, true
+ 				case "mixed-simd":
+-					w.TemporaryV128SIMD, w.TemporaryV128PerFunction = true, true
++					w.TemporaryV128SIMD, w.TemporaryV128PerFunction, w.TemporaryV128HintClassification = true, true, true
+ 				}
+ 				cm, err := CompileModuleWith(tc.m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
+ 				if err != nil {
+@@ -84,6 +86,15 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 					t.Fatal(err)
+ 				}
+ 				receipt := map[string]any{"arm": arm, "case": tc.name, "intr": intr, "nativeSHA": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoderSHA": fmt.Sprintf("%x", sha256.Sum256(enc)), "codeBytes": len(cm.Code), "bodyBytes": bytesTotal, "bodyHashes": bodyHashes, "layout": l, "caps": w.OperandCapacities, "forestHeaderBytes": unsafe.Sizeof(fixtureForest{}), "coldSidecarElemBytes": unsafe.Sizeof(elemCold{}), "attempts": w.Attempts, "legacy": w.LegacyBodies, "opcodes": w.Opcodes, "rootStores": w.Vector.stores, "rootRetirements": w.Vector.retirements, "cursorVisits": w.Vector.visits, "listLinkWrites": w.List.linkWrites, "listEffectVisits": w.List.effectVisits, "classifier": w.TemporaryV128Classifier, "inlineClassifier": w.TemporaryV128InlineClassifier, "vectorPreflightBytes": w.TemporaryV128PreflightBytes, "vectorPreflightOpcodes": w.TemporaryV128PreflightOpcodes}
++				receipt["hintClassifier"] = w.TemporaryV128HintClassifier
++				receipt["hintSharedBytes"] = w.TemporaryV128HintSharedBytes
++				receipt["hintFactsUsed"] = w.TemporaryV128HintFactsUsed
++				receipt["hintFallbacks"] = w.TemporaryV128HintFallbacks
++				receipt["hintBackingBytes"] = w.TemporaryV128HintFactBackingBytes
++				receipt["hintFactElemBytes"] = unsafe.Sizeof(fixtureVectorHintFact{})
++				if tc.name != "mixed-simd" && (w.TemporaryV128HintClassifier != (fixtureVectorClassificationWork{}) || w.TemporaryV128HintSharedBytes != 0 || w.TemporaryV128HintFactsUsed != 0 || w.TemporaryV128HintFallbacks != 0 || w.TemporaryV128HintFactBackingBytes != 0) {
++					t.Fatalf("unrequested hint classification overhead: %+v", w)
++				}
+ 				layoutEmit(t, "COMPILE", receipt)
+ 				calls := 0
+ 				switch tc.name {
+@@ -143,7 +154,7 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 					}
+ 				case "mixed-simd":
+ 					c, in := w.TemporaryV128Classifier, w.TemporaryV128InlineClassifier
+-					if w.TemporaryV128Bodies != 1 || w.TemporaryV128ScalarSiblings != 3 || c.Bodies != 4 || c.TypeVisits != 14 || c.Bytes == 0 || c.Opcodes == 0 || w.TemporaryV128PreflightBytes == 0 || forest && (in.Bodies != 1 || in.Opcodes == 0 || in.Bytes == 0 || in.TypeVisits != 0) || !forest && in != (fixtureVectorClassificationWork{}) {
++					if w.TemporaryV128Bodies != 1 || w.TemporaryV128ScalarSiblings != 3 || c != (fixtureVectorClassificationWork{TypeVisits: 8}) || w.TemporaryV128HintClassifier.Bodies != 4 || w.TemporaryV128HintClassifier.Opcodes == 0 || w.TemporaryV128HintClassifier.TypeVisits != 6 || w.TemporaryV128HintSharedBytes != uint64(bytesTotal) || w.TemporaryV128HintFactsUsed != 4 || w.TemporaryV128HintFallbacks != 0 || w.TemporaryV128HintFactBackingBytes != 4*unsafe.Sizeof(fixtureVectorHintFact{}) || w.TemporaryV128PreflightBytes == 0 || forest && (in.Bodies != 1 || in.Opcodes == 0 || in.Bytes == 0 || in.TypeVisits != 0) || !forest && in != (fixtureVectorClassificationWork{}) {
+ 						t.Fatalf("classification not reached: %+v", w)
+ 					}
+ 					layoutProbeOwnedMixedSIMDClassifierRun(t, cm)
+@@ -873,3 +884,146 @@ func checkLayoutReadyRoot(t *testing.T, roots, want []*elem, ready map[int]bool,
+ 		t.Fatal("cursor failed exact exhaustion")
+ 	}
+ }
++
++// Appended only to the dedicated named-file fixture after the source API freezes.
++type layoutFactCase struct {
++	name           string
++	module         *wasm.Module
++	bodyIndex      int
++	bodyVector     bool // old body classifier, before ABI or local declaration facts
++	functionVector bool
++}
++
++func layoutFactCases(t *testing.T) []layoutFactCase {
++	t.Helper()
++	i, v := wasm.I32, wasm.V128
++	mem := func(params, results []wasm.ValType, b []byte) *wasm.Module {
++		return layoutProbeModMem(t, 1, params, results, b)
++	}
++	cases := []layoutFactCase{
++		{"fd-byte-in-scalar-leb", mem(nil, []wasm.ValType{i}, []byte{0, 0x41, 0xfd, 0x01, 0x0b}), 0, false, false},
++		{"vector-local-without-fd", mem(nil, nil, []byte{1, 1, 0x7b, 0x20, 0, 0x1a, 0x0b}), 0, false, true},
++		{"vector-signature-without-fd", mem([]wasm.ValType{v}, []wasm.ValType{v}, []byte{0, 0x20, 0, 0x0b}), 0, false, true},
++		{"indexed-vector-block", layoutProbeModFuncs(t,
++			layoutProbeFuncDef{nil, nil, []byte{1, 1, 0x7b, 0x02, 1, 0x20, 0, 0x0b, 0x1a, 0x0b}},
++			layoutProbeFuncDef{nil, []wasm.ValType{v}, []byte{1, 1, 0x7b, 0x20, 0, 0x0b}}), 0, true, true},
++		{"typed-v128-select", mem([]wasm.ValType{i, v, v}, []wasm.ValType{v}, []byte{0, 0x20, 1, 0x20, 2, 0x20, 0, 0x1c, 1, 0x7b, 0x0b}), 0, true, true},
++		{"vector-signature-call-site", layoutProbeModFuncs(t,
++			layoutProbeFuncDef{nil, nil, []byte{1, 1, 0x7b, 0x20, 0, 0x10, 1, 0x1a, 0x0b}},
++			layoutProbeFuncDef{[]wasm.ValType{v}, []wasm.ValType{v}, []byte{0, 0x20, 0, 0x0b}}), 0, true, true},
++	}
++	mixed := layoutProbeOwnedMixedSIMDClassifierModule(t)
++	for f := range mixed.Code {
++		cases = append(cases, layoutFactCase{fmt.Sprintf("mixed-func-%d", f), mixed, f, f == 3, f == 3})
++	}
++	return cases
++}
++
++func layoutOldVectorFacts(t *testing.T, c layoutFactCase) (bool, bool) {
++	t.Helper()
++	m := c.module
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatalf("recipe %s validation: %v", c.name, err)
++	}
++	body := m.Code[c.bodyIndex]
++	cc := wasm.NewModuleInstructionClassifier(m, true)
++	var work fixtureVectorClassificationWork
++	hasVector, err := classifyFixtureVectorBody(m, &cc, body.BodyBytes, &work)
++	if err != nil {
++		t.Fatalf("recipe %s old classifier: %v", c.name, err)
++	}
++	ft, ok := m.LocalFuncType(c.bodyIndex)
++	if !ok {
++		t.Fatalf("recipe %s missing signature", c.name)
++	}
++	total := work.signatureHasVector(ft) || hasVector
++	for _, l := range body.Locals.Runs {
++		total = wasm.EqualValType(l.Type, wasm.V128) || total
++	}
++	if hasVector != c.bodyVector || total != c.functionVector {
++		t.Fatalf("recipe %s old body/whole=%t/%t want %t/%t", c.name, hasVector, total, c.bodyVector, c.functionVector)
++	}
++	return hasVector, total
++}
++
++func TestOwnedForestHintVectorFactsOrdinary(t *testing.T) {
++	for _, c := range layoutFactCases(t) {
++		t.Run(c.name, func(t *testing.T) {
++			oldBody, oldWhole := layoutOldVectorFacts(t, c)
++			m, f := c.module, c.bodyIndex
++			body := m.Code[f]
++			ft, _ := m.LocalFuncType(f)
++			n := len(ft.Params)
++			for _, l := range body.Locals.Runs {
++				n += int(l.Count)
++			}
++			scan := func(vector *fixtureHintVectorScan) (funcHintView, [2]int64, uint8, error) {
++				ng := len(m.Globals)
++				elig := newGlobalEligibilityTracker(ng)
++				var accum shared.GlobalHintAccumulator
++				accum.Reset(ng)
++				classifier := wasm.NewModuleInstructionClassifier(m, true)
++				h, bits, nconst, e := scanBodyBytesWithLoopIntConsts(body.BodyBytes, n, ng, uint32(f), newFuncHints(n, ng), &elig, false, m, &classifier, nil, false, nil, nil, 0, &accum, false, vector)
++				return finishGlobalHints(h, &accum), bits, nconst, e
++			}
++			old, oldBits, oldN, oldErr := scan(nil)
++			var w fixtureModuleWork
++			var fact fixtureVectorHintFact
++			got, bits, nconst, e := scan(&fixtureHintVectorScan{work: &w, fact: &fact})
++			if oldErr != nil || e != nil || !reflect.DeepEqual(got, old) || bits != oldBits || nconst != oldN {
++				t.Fatalf("mandatory native hints changed: old=%+v new=%+v oldErr=%v err=%v", old, got, oldErr, e)
++			}
++			if !fact.ready || fact.err != nil || fact.vector != oldBody {
++				t.Fatalf("hint body fact=%+v oldVector=%t", fact, oldBody)
++			}
++			var meta fixtureVectorClassificationWork
++			whole := meta.signatureHasVector(ft) || fact.vector
++			for _, l := range body.Locals.Runs {
++				whole = wasm.EqualValType(l.Type, wasm.V128) || whole
++			}
++			if whole != oldWhole || w.TemporaryV128HintClassifier.Bodies != 1 || w.TemporaryV128HintClassifier.Opcodes == 0 || w.TemporaryV128HintSharedBytes != uint64(len(body.BodyBytes)) {
++				t.Fatalf("incomplete fact accounting: whole=%t old=%t work=%+v", whole, oldWhole, w)
++			}
++			layoutEmit(t, "FACT", map[string]any{"recipe": c.name, "bodyVector": fact.vector, "wholeVector": whole, "sharedBytes": w.TemporaryV128HintSharedBytes, "probe": w.TemporaryV128HintClassifier})
++		})
++	}
++	t.Run("ready-vs-unknown-order-with-valid-fences", func(t *testing.T) {
++		// Both functions are valid Wasm. Function0's unsupported V128 ABI
++		// fence precedes its V128 locals and function1's V128 local fence.
++		v := wasm.V128
++		m := layoutProbeModFuncs(t, layoutProbeFuncDef{[]wasm.ValType{v}, []wasm.ValType{v}, []byte{1, 1, 0x7b, 0x20, 0, 0x0b}}, layoutProbeFuncDef{nil, nil, []byte{1, 1, 0x7b, 0x0b}})
++		if e := wasm.ValidateModule(m); e != nil {
++			t.Fatal(e)
++		}
++		var original string
++		for _, on := range []bool{false, true} {
++			w := &fixtureModuleWork{Forest: true, TemporaryV128SIMD: true, TemporaryV128PerFunction: true, TemporaryV128HintClassification: on}
++			cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, fixtureWork: w})
++			if cm != nil || e == nil || !strings.Contains(e.Error(), "unsupported noninteger function ABI") || w.Attempts != 1 || w.Rejected != 1 || w.Completed != 0 || w.TemporaryV128HintFallbacks != 0 {
++				t.Fatalf("unexpected first ordinary scope rejection: %v work=%+v", e, w)
++			}
++			if on {
++				if e.Error() != original || w.TemporaryV128HintFactsUsed != 1 || w.TemporaryV128HintClassifier.Bodies != 2 || w.TemporaryV128Classifier.Bodies != 0 {
++					t.Fatalf("ready fact changed rejection/order: old=%q new=%v work=%+v", original, e, w)
++				}
++			} else {
++				original = e.Error()
++				if w.TemporaryV128Classifier.Bodies != 1 {
++					t.Fatal("old classification did not run")
++				}
++			}
++		}
++		// Exercise an unknown advisory entry on that same valid body. The
++		// existing ABI fence returns before any emitter state or guest path.
++		w := &fixtureModuleWork{Forest: true, TemporaryV128SIMD: true, TemporaryV128PerFunction: true, TemporaryV128HintClassification: true, fixtureVectorHintFacts: make([]fixtureVectorHintFact, 2)}
++		sc := newCompileScratch(0)
++		sc.fixtureWork = w
++		sc.classifier = wasm.NewModuleInstructionClassifier(m, true)
++		h := funcHintView{}
++		_, _, _, e := compileFuncAttempt(m, nil, 0, false, false, false, false, true, nil, &h, nil, nil, false, 0, false, false, false, false, nil, nil, nil, false, inlineTargetTable{}, sc, nil)
++		if e == nil || !strings.Contains(e.Error(), "unsupported noninteger function ABI") || w.TemporaryV128HintFallbacks != 1 || w.TemporaryV128HintFactsUsed != 0 || w.TemporaryV128Classifier.Bodies != 1 || w.Attempts != 1 || w.Rejected != 1 {
++			t.Fatalf("unknown fact did not use old fallback before same fence: %v work=%+v", e, w)
++		}
++		layoutEmit(t, "FALLBACK", map[string]any{"unknownFallbacks": w.TemporaryV128HintFallbacks, "oldBodyScans": w.TemporaryV128Classifier.Bodies, "firstRejection": e.Error(), "allBodyFactsBeforeFirstRejection": 2})
++	})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index bc3f0ef0..a7bdbadf 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -291,6 +291,11 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128HintClassification                                                                                                                           bool
++	TemporaryV128HintClassifier                                                                                                                               fixtureVectorClassificationWork
++	TemporaryV128HintSharedBytes, TemporaryV128HintFactsUsed, TemporaryV128HintFallbacks                                                                      uint64
++	TemporaryV128HintFactBackingBytes                                                                                                                         uintptr
++	fixtureVectorHintFacts                                                                                                                                    []fixtureVectorHintFact
+ 	RecordOperandLayout                                                                                                                                       bool
+ 	OperandLayout                                                                                                                                             fixtureOperandLayout
+ 	OperandCapacities                                                                                                                                         []fixtureOperandCapacity
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 6bf97f2d..825c896e 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -411,6 +411,50 @@ func (w *fixtureVectorClassificationWork) signatureHasVector(ft *wasm.CompType)
+ 	return vector
+ }
+ 
++type fixtureVectorHintFact struct {
++	ready, vector bool
++	err           error
++}
++
++type fixtureHintVectorScan struct {
++	work     *fixtureModuleWork
++	fact     *fixtureVectorHintFact
++	depth    int
++	terminal bool
++}
++
++// Observe boundaries from the ordinary hint reader without changing it. A
++// metadata proof error belongs to the later fixture admission, not hinting.
++func (s *fixtureHintVectorScan) observe(m *wasm.Module, op byte, r *wasm.Reader) {
++	work := &s.work.TemporaryV128HintClassifier
++	work.Opcodes++
++	if s.fact.err != nil || s.terminal {
++		return
++	}
++	vector, _, err := fixtureVectorOpcode(m, op, r, work, true)
++	if err != nil {
++		s.fact.vector = false
++		s.fact.err = err
++		return
++	}
++	s.fact.vector = vector || s.fact.vector
++	// Preserve the standalone classifier's structural termination even
++	// when the mandatory hint reader has a different opcode policy.
++	switch op {
++	case 0x02, 0x03, 0x04, 0x1f:
++		s.depth++
++	case 0x0b:
++		s.depth--
++		if s.depth == 0 {
++			s.terminal = true
++			if r.HasNext() {
++				s.fact.vector = false
++				s.fact.err = fmt.Errorf("fixture forest: trailing SIMD classification bytes")
++			}
++		}
++	}
++}
++
+ // The body has already passed Wasm validation. Decode instruction boundaries,
+ // including unreachable instructions, rather than searching for raw bytes.
+ // Metadata can expose vector state even when the body contains no FD opcode.
+@@ -426,73 +470,14 @@ func classifyFixtureVectorBody(m *wasm.Module, classifier *wasm.ModuleInstructio
+ 			return false, err
+ 		}
+ 		work.Opcodes++
+-		start := r.Offset()
+-		probe := *r
++		vec, consumed, err := fixtureVectorOpcode(m, op, r, work, false)
++		if err != nil {
++			return false, err
++		}
++		vector = vec || vector
+ 		switch op {
+ 		case 0x02, 0x03, 0x04, 0x1f:
+ 			depth++
+-			b, ok := probe.Peek()
+-			if !ok {
+-				return false, fmt.Errorf("fixture forest: missing SIMD classification block type")
+-			}
+-			work.Bytes++ // peek
+-			switch {
+-			case isValByte(b) || b == 0x63 || b == 0x64:
+-				vector = b == 0x7b || vector
+-				work.TypeVisits++
+-			case b != 0x40:
+-				idx, err := probe.S33()
+-				work.Bytes += uint64(probe.Offset() - start)
+-				if err != nil || idx < 0 {
+-					return false, fmt.Errorf("fixture forest: unknown SIMD classification block type")
+-				}
+-				ft, ok := m.TypeFunc(uint32(idx))
+-				if !ok {
+-					return false, fmt.Errorf("fixture forest: unresolved SIMD classification block type")
+-				}
+-				vector = work.signatureHasVector(ft) || vector
+-			}
+-		case 0x1c:
+-			n, err := probe.U32()
+-			b, ok := probe.Peek()
+-			work.Bytes += uint64(probe.Offset() - start)
+-			if err != nil || n != 1 || !ok {
+-				return false, fmt.Errorf("fixture forest: unknown SIMD classification select type")
+-			}
+-			work.Bytes++ // peek
+-			work.TypeVisits++
+-			vector = b == 0x7b || vector
+-		case 0x23, 0x24:
+-			idx, err := r.U32()
+-			if err != nil {
+-				return false, err
+-			}
+-			g, ok := m.GlobalTypeByIndex(idx)
+-			if !ok {
+-				return false, fmt.Errorf("fixture forest: unresolved SIMD classification global")
+-			}
+-			work.TypeVisits++
+-			vector = wasm.EqualValType(wasm.GlobalValueType(g), wasm.V128) || vector
+-			continue
+-		case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+-			idx, err := probe.U32()
+-			work.Bytes += uint64(probe.Offset() - start)
+-			if err != nil {
+-				return false, err
+-			}
+-			var ft *wasm.CompType
+-			var ok bool
+-			if op == 0x10 || op == 0x12 {
+-				ft, ok = m.FuncSignature(idx)
+-			} else {
+-				ft, ok = m.TypeFunc(idx)
+-			}
+-			if !ok {
+-				return false, fmt.Errorf("fixture forest: unresolved SIMD classification call type")
+-			}
+-			vector = work.signatureHasVector(ft) || vector
+-		case 0xfd:
+-			vector = true
+ 		case 0x0b:
+ 			depth--
+ 			if depth == 0 {
+@@ -502,9 +487,96 @@ func classifyFixtureVectorBody(m *wasm.Module, classifier *wasm.ModuleInstructio
+ 				return vector, nil
+ 			}
+ 		}
+-		if err := classifier.SkipImmediate(r, op); err != nil {
+-			return false, err
++		if !consumed {
++			if err := classifier.SkipImmediate(r, op); err != nil {
++				return false, err
++			}
+ 		}
+ 	}
+ 	return false, fmt.Errorf("fixture forest: missing SIMD classification body end")
+ }
++
++// Metadata probes are shared by the standalone and hint-driven classifiers.
++// Only the standalone global case can consume from the supplied reader. In
++// hint mode every probe is counted as added work and remains on a copy.
++func fixtureVectorOpcode(m *wasm.Module, op byte, r *wasm.Reader, work *fixtureVectorClassificationWork, observing bool) (vector, consumed bool, err error) {
++	switch op {
++	case 0xfd:
++		return true, false, nil
++	case 0x02, 0x03, 0x04, 0x1f, 0x1c, 0x23, 0x24, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
++	default:
++		return false, false, nil
++	}
++	start := r.Offset()
++	probe := *r
++	switch op {
++	case 0x02, 0x03, 0x04, 0x1f:
++		b, ok := probe.Peek()
++		if !ok {
++			return false, false, fmt.Errorf("fixture forest: missing SIMD classification block type")
++		}
++		work.Bytes++
++		switch {
++		case isValByte(b) || b == 0x63 || b == 0x64:
++			work.TypeVisits++
++			return b == 0x7b, false, nil
++		case b != 0x40:
++			idx, err := probe.S33()
++			work.Bytes += uint64(probe.Offset() - start)
++			if err != nil || idx < 0 {
++				return false, false, fmt.Errorf("fixture forest: unknown SIMD classification block type")
++			}
++			ft, ok := m.TypeFunc(uint32(idx))
++			if !ok {
++				return false, false, fmt.Errorf("fixture forest: unresolved SIMD classification block type")
++			}
++			return work.signatureHasVector(ft), false, nil
++		}
++	case 0x1c:
++		n, err := probe.U32()
++		b, ok := probe.Peek()
++		work.Bytes += uint64(probe.Offset() - start)
++		if err != nil || n != 1 || !ok {
++			return false, false, fmt.Errorf("fixture forest: unknown SIMD classification select type")
++		}
++		work.Bytes++
++		work.TypeVisits++
++		return b == 0x7b, false, nil
++	case 0x23, 0x24:
++		reader := r
++		if observing {
++			reader = &probe
++		}
++		idx, err := reader.U32()
++		if observing {
++			work.Bytes += uint64(probe.Offset() - start)
++		}
++		if err != nil {
++			return false, false, err
++		}
++		g, ok := m.GlobalTypeByIndex(idx)
++		if !ok {
++			return false, false, fmt.Errorf("fixture forest: unresolved SIMD classification global")
++		}
++		work.TypeVisits++
++		return wasm.EqualValType(wasm.GlobalValueType(g), wasm.V128), !observing, nil
++	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
++		idx, err := probe.U32()
++		work.Bytes += uint64(probe.Offset() - start)
++		if err != nil {
++			return false, false, err
++		}
++		var ft *wasm.CompType
++		var ok bool
++		if op == 0x10 || op == 0x12 {
++			ft, ok = m.FuncSignature(idx)
++		} else {
++			ft, ok = m.TypeFunc(idx)
++		}
++		if !ok {
++			return false, false, fmt.Errorf("fixture forest: unresolved SIMD classification call type")
++		}
++		return work.signatureHasVector(ft), false, nil
++	}
++	return false, false, nil
++}

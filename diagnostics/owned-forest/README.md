@@ -1078,3 +1078,11 @@ Apply `ready-root-focused.patch` after `d192d3cd` to reach `5da3216e76868eba8f9c
 The focused proof passed 36 images, 114 ordinary calls, 24 strict body/native/encoder-JSON comparisons and three direct cursor-oracle cases. Per mode, 711 observed bypasses removed 1,422 of 1,436 frame writes, leaving 14. The cold case accounted for 666 bypasses and went from 1,346 writes to 14. Visit counts and matched capacities stayed exact. Diagnostic counters raised the forest header from 168 to 176 bytes and the receipt row from 136 to 144 bytes; the cursor stayed at 200 bytes.
 
 Summary SHA-256: `32e0700c137a4d5040842c12892996b41707e64856ae15da1f17873217e00b83`. This is a bounded operation count, not a timing, RSS, public serialization, or corpus result. Active source and defaults are unchanged.
+
+### Function classification facts from the mandatory hint scan
+
+Apply `hint-facts-focused.patch` after `5da3216e` to reach `62794c20d8f8c0d2c81fea6e8bc7f5d0973ae01f` (tree `4962f781e6156518f3858f8d81600102fd6f94de`). The initial source was held before building; the reviewed correction retains an independent terminal-depth check and standalone fallback. The ordinary scanner pays an added nil check per opcode even when the observer is off.
+
+The focused gate passed 36 images, 114 ordinary calls and 24 strict comparisons, plus ten fact/native-hint comparisons and three valid fence attempts. On the mixed fixture, four standalone body scans (592 counted bytes and 545 dispatches) were replaced by 545 observer hooks over 589 already-mandatory bytes, five extra probe bytes, six type visits and 96 bytes of transient requested fact capacity. Eight ABI type visits remained. The inline scan (6 bytes, 4 opcodes) and vector preflight (45 bytes, 12 opcodes) remained. The other five fixtures had the observer off; the valid unknown-advisory control recorded one fallback.
+
+Summary SHA-256: `eeaeabb3ba09b981579c90ebacc203c75411bd7b80e2689cd678cb8c92b88049`. These are distinct operations and storage units, not evidence of general throughput, timing, RSS, corpus or default changes.
