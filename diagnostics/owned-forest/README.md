@@ -732,3 +732,23 @@ census outcomes remain unchanged.
 
 Focused summary SHA-256:
 `dde725dfc4f76e5cf3e58c54a1238f8cea28c3ffdf95e36878924c0a87de2b37`.
+
+## Focused six-FP entry overlap
+
+Apply six-fp-focused.patch on top of 7e560893. At a1a6f488, both
+ownership arms used the same private six-FP capability. The focused
+gate passed 16 images and 96 ordinary calls, with eight exact native
+and encoder-exported JSON pairs. Cases covered all-f64 and mixed-width
+FP parameters including f32.
+
+Each of the eight overlap images recorded one actual forward overlap,
+one staged function and six extra typed stores. The eight controls
+recorded zero for all three counters. The experiment stages all FP
+inputs to typed slots when the forward entry overlap is detected;
+the no-overlap path is unchanged. The original overlap path was
+not executed. This is not a seven- or eight-argument, public codec,
+corpus, or timing result. Defaults and prior census outcomes remain
+unchanged.
+
+Focused summary SHA-256:
+`45d232ac2100bd16855255ed2a2e6e7e80bd21ded14356cd62778ca795454a49`.
