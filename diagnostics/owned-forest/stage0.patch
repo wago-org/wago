@@ -1,0 +1,369 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 0597bf24..71b203e8 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -78,6 +78,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 			f.recycleEmptyOperandArena()
+ 		}
+ 		f.wasmPC = f.tracePCBase + uint32(r.Offset())
++		if ownedForestCensusEnabled {
++			f.observeOwnedForest("opcode-entry")
++		}
+ 		op, err := r.Byte()
+ 		if err != nil {
+ 			return err
+@@ -171,6 +174,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 		if regallocCheckEnabled {
+ 			checkNativeSourceAfter(f, r.Offset())
+ 		}
++		if ownedForestCensusEnabled {
++			f.observeOwnedForest("opcode-exit")
++		}
+ 	}
+ 	if f.representationLimit != functionRepresentationOK {
+ 		return f.representationError()
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index d640b414..d56bbd48 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -88,6 +88,9 @@ func (f *fn) freeFReg(avoid regMask) Reg {
+ // allocFReg returns a free XMM register, spilling the deepest float-resident stack
+ // value if none is free.
+ func (f *fn) allocFReg(avoid regMask) Reg {
++	if ownedForestCensusEnabled {
++		f.observeOwnedForest("fp-allocation")
++	}
+ 	if r := f.freeFReg(avoid); r != regNone {
+ 		return r
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+new file mode 100644
+index 00000000..7204d592
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+@@ -0,0 +1,204 @@
++//go:build amd64 && wago_owned_forest_census
++
++package amd64
++
++import "sync"
++
++const ownedForestCensusEnabled = true
++
++type OwnedForestWitness struct {
++	Boundary, Reason           string
++	Function, PC               uint32
++	Ordinal                    uint64
++	Physical, Projected, Roots int
++}
++
++type OwnedForestCensus struct {
++	Checks, Matching, Divergent, Reasons map[string]uint64
++	Work                                 map[string]uint64
++	Samples                              []OwnedForestWitness
++}
++
++var ownedForestState struct {
++	sync.Mutex
++	OwnedForestCensus
++	ordinal   uint64
++	witnesses map[string]int
++}
++
++func newOwnedForestCensus() OwnedForestCensus {
++	return OwnedForestCensus{
++		Checks: make(map[string]uint64), Matching: make(map[string]uint64),
++		Divergent: make(map[string]uint64), Reasons: make(map[string]uint64),
++		Work: make(map[string]uint64),
++	}
++}
++
++// TakeOwnedForestCensus returns and resets the test-tagged counters. Call only
++// when no module is compiling. Returned data never references operand nodes.
++func TakeOwnedForestCensus() OwnedForestCensus {
++	s := &ownedForestState
++	s.Lock()
++	defer s.Unlock()
++	out := s.OwnedForestCensus
++	s.OwnedForestCensus = newOwnedForestCensus()
++	s.ordinal = 0
++	s.witnesses = make(map[string]int)
++	return out
++}
++
++func observeOwnedForestLinks(operation string, stores uint64) {
++	s := &ownedForestState
++	s.Lock()
++	defer s.Unlock()
++	if s.Work == nil {
++		s.OwnedForestCensus = newOwnedForestCensus()
++	}
++	s.Work["legacy."+operation+".link_assignments"] += stores
++	s.Work["legacy."+operation+".calls"]++
++}
++
++type ownedForestImage struct {
++	reason                                             string
++	physical, projected, roots, childEdges, peakFrames int
++}
++
++// compareOwnedForest has no effect on the compiler state. Roots come only
++// from logical flags in list order, not from a bottom-to-top helper that uses
++// the same tree argument links as the proposed representation.
++func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
++	if head == nil || head.next == nil || head.prev == nil {
++		out.reason = "invalid-list-sentinel"
++		return
++	}
++	const maxNodes, maxFrames = 1 << 16, 64
++	list := make([]*elem, 0, 16)
++	roots := make([]*elem, 0, 8)
++	seen := make(map[*elem]uint8)
++	prev := head
++	for e := head.next; e != head; e = e.next {
++		if e == nil || e.prev != prev || len(list) == maxNodes {
++			out.reason = "malformed-or-oversize-list"
++			return
++		}
++		if seen[e] != 0 {
++			out.reason = "list-cycle"
++			return
++		}
++		seen[e] = 1
++		list = append(list, e)
++		out.physical++
++		if e.st.hasLogicalRoot() {
++			roots = append(roots, e)
++			out.roots++
++		}
++		prev = e
++	}
++	if prev != head.prev {
++		out.reason = "inconsistent-list-tail"
++		return
++	}
++	if out.roots != logicalDepth {
++		out.reason = "root-depth-mismatch"
++		return
++	}
++	type frame struct {
++		node  *elem
++		phase uint8
++	}
++	var frames [maxFrames]frame
++	orderMismatch := false
++	for _, root := range roots {
++		frames[0] = frame{node: root}
++		n := 1
++		for n != 0 {
++			out.peakFrames = max(out.peakFrames, n)
++			top := &frames[n-1]
++			e := top.node
++			var child *elem
++			switch top.phase {
++			case 0:
++				switch seen[e] {
++				case 0:
++					out.reason = "child-missing-from-list"
++				case 2:
++					out.reason = "child-cycle"
++				case 3:
++					out.reason = "duplicate-owner"
++				}
++				if out.reason != "" {
++					return
++				}
++				seen[e] = 2
++				top.phase++
++				if e.isDeferred() {
++					child = e.arg0
++					if child == nil {
++						out.reason = "missing-first-child"
++						return
++					}
++				}
++			case 1:
++				top.phase++
++				if e.isDeferred() {
++					child = e.arg1
++				}
++			default:
++				seen[e] = 3
++				if out.projected >= len(list) || list[out.projected] != e {
++					orderMismatch = true
++				}
++				out.projected++
++				n--
++			}
++			if child != nil {
++				out.childEdges++
++				if n == len(frames) {
++					out.reason = "depth-bound-exceeded"
++					return
++				}
++				frames[n] = frame{node: child}
++				n++
++			}
++		}
++	}
++	switch {
++	case out.projected != out.physical:
++		out.reason = "list-node-without-owner"
++	case orderMismatch:
++		out.reason = "postorder-mismatch"
++	}
++	return
++}
++
++func (f *fn) observeOwnedForest(boundary string) {
++	if f.s == nil {
++		return
++	}
++	out := compareOwnedForest(f.s.head, int(f.s.logicalDepth))
++	s := &ownedForestState
++	s.Lock()
++	defer s.Unlock()
++	if s.Checks == nil {
++		s.OwnedForestCensus = newOwnedForestCensus()
++	}
++	if s.witnesses == nil {
++		s.witnesses = make(map[string]int)
++	}
++	s.ordinal++
++	s.Checks[boundary]++
++	if out.reason == "" {
++		s.Matching[boundary]++
++		s.Work["matching.snapshot_physical_items"] += uint64(out.physical)
++		s.Work["matching.snapshot_root_entries"] += uint64(out.roots)
++		s.Work["matching.modeled_full_walk_child_edge_visits"] += uint64(out.childEdges)
++		s.Work["matching.modeled_full_walk_peak_cursor_frames"] = max(s.Work["matching.modeled_full_walk_peak_cursor_frames"], uint64(out.peakFrames))
++		return
++	}
++	s.Divergent[boundary]++
++	s.Reasons[out.reason]++
++	if s.witnesses[out.reason] < 8 {
++		s.witnesses[out.reason]++
++		s.Samples = append(s.Samples, OwnedForestWitness{Boundary: boundary, Reason: out.reason, Function: f.traceFuncIdx, PC: f.wasmPC, Ordinal: s.ordinal, Physical: out.physical, Projected: out.projected, Roots: out.roots})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go
+new file mode 100644
+index 00000000..a63294b0
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go
+@@ -0,0 +1,8 @@
++//go:build amd64 && !wago_owned_forest_census
++
++package amd64
++
++const ownedForestCensusEnabled = false
++
++func (*fn) observeOwnedForest(string)        {}
++func observeOwnedForestLinks(string, uint64) {}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census_test.go
+new file mode 100644
+index 00000000..c0b19860
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census_test.go
+@@ -0,0 +1,53 @@
++//go:build amd64 && wago_owned_forest_census
++
++package amd64
++
++import "testing"
++
++func TestOwnedForestImage(t *testing.T) {
++	for _, tc := range []struct{ mode, want string }{
++		{"valid", ""},
++		{"stale-value-edge", ""},
++		{"duplicate", "duplicate-owner"},
++		{"cycle", "child-cycle"},
++		{"missing", "child-missing-from-list"},
++		{"reordered", "postorder-mismatch"},
++		{"unowned", "list-node-without-owner"},
++		{"depth", "root-depth-mismatch"},
++	} {
++		t.Run(tc.mode, func(t *testing.T) {
++			h, a, b, r := new(elem), new(elem), new(elem), new(elem)
++			h.next, h.prev = a, r
++			a.prev, a.next = h, b
++			b.prev, b.next = a, r
++			r.prev, r.next = b, h
++			r.setElemKind(ekDeferred)
++			r.st.setLogicalRoot(true)
++			r.arg0, r.arg1 = a, b
++			depth := 1
++			switch tc.mode {
++			case "stale-value-edge":
++				a.arg0 = r
++			case "duplicate":
++				r.arg1 = a
++			case "cycle":
++				r.arg0 = r
++			case "missing":
++				r.arg0 = new(elem)
++			case "reordered":
++				r.arg0, r.arg1 = b, a
++			case "unowned":
++				r.arg1 = nil
++			case "depth":
++				depth = 0
++			}
++			got := compareOwnedForest(h, depth)
++			if got.reason != tc.want {
++				t.Fatalf("got %+v; want reason %q", got, tc.want)
++			}
++			if tc.want == "" && (got.physical != 3 || got.projected != 3 || got.roots != 1 || got.childEdges != 2 || got.peakFrames != 2) {
++				t.Fatalf("unexpected matched image: %+v", got)
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
+index aad053d5..ab54edb3 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
+@@ -144,6 +144,9 @@ func (f *fn) allocReg(avoid regMask) Reg {
+ // fallback (condenseBinary's RHS relocation) use it to degrade to a spill slot
+ // instead of failing under extreme pressure.
+ func (f *fn) allocRegOrNone(avoid regMask) Reg {
++	if ownedForestCensusEnabled {
++		f.observeOwnedForest("gp-allocation")
++	}
+ 	block := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+ 	for _, r := range gpAlloc {
+ 		if f.regUser[r] == nil && !block.has(r) {
+@@ -486,6 +489,9 @@ func (f *fn) materializePendingEffects(loads bool) {
+ }
+ 
+ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
++	if ownedForestCensusEnabled {
++		f.observeOwnedForest("effect-barrier")
++	}
+ 	mask := pendingTrap
+ 	if loads {
+ 		mask |= pendingLoad
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 302f12f1..dc1e92b4 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -493,6 +493,9 @@ func (s *stack) push(e *elem) *elem {
+ 	last := s.head.prev
+ 	e.prev, e.next = last, s.head
+ 	last.next, s.head.prev = e, e
++	if ownedForestCensusEnabled {
++		observeOwnedForestLinks("push", 4)
++	}
+ 	return e
+ }
+ 
+@@ -605,6 +608,9 @@ func (s *stack) erase(e *elem) {
+ 	}
+ 	e.prev.next, e.next.prev = e.next, e.prev
+ 	e.prev, e.next = nil, nil
++	if ownedForestCensusEnabled {
++		observeOwnedForestLinks("erase", 4)
++	}
+ 	if s.head.next == s.head {
+ 		s.pendingEffects &^= pendingLocalRef
+ 	}

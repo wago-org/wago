@@ -1,0 +1,98 @@
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+@@ -2,11 +2,22 @@
+ 
+ package amd64
+ 
+-import "sync"
++import (
++	"runtime"
++	"sync"
++)
+ 
+ const ownedForestCensusEnabled = true
+ 
++type OwnedForestMissDetails struct {
++	ParentOp, MissingKind                                                 uint8
++	MissingIsDeferred, MissingPrevNil, MissingNextNil, MissingLogicalRoot bool
++	GPUsers, FPUsers, ParentGPUsers, ParentFPUsers                        int
++	Callers                                                               []string
++}
++
+ type OwnedForestWitness struct {
++	Miss                       *OwnedForestMissDetails `json:",omitempty"`
+ 	Boundary, Reason           string
+ 	Function, PC               uint32
+ 	Ordinal                    uint64
+@@ -59,6 +70,7 @@
+ }
+ 
+ type ownedForestImage struct {
++	missing, missingParent                             *elem
+ 	reason                                             string
+ 	physical, projected, roots, childEdges, peakFrames int
+ }
+@@ -121,6 +133,10 @@
+ 				switch seen[e] {
+ 				case 0:
+ 					out.reason = "child-missing-from-list"
++					out.missing = e
++					if n > 1 {
++						out.missingParent = frames[n-2].node
++					}
+ 				case 2:
+ 					out.reason = "child-cycle"
+ 				case 3:
+@@ -197,8 +213,48 @@
+ 	}
+ 	s.Divergent[boundary]++
+ 	s.Reasons[out.reason]++
+-	if s.witnesses[out.reason] < 8 {
++	limit := 8
++	if out.missing != nil {
++		limit = 64
++	} // prior largest module had 29 misses
++	if s.witnesses[out.reason] < limit {
+ 		s.witnesses[out.reason]++
+-		s.Samples = append(s.Samples, OwnedForestWitness{Boundary: boundary, Reason: out.reason, Function: f.traceFuncIdx, PC: f.wasmPC, Ordinal: s.ordinal, Physical: out.physical, Projected: out.projected, Roots: out.roots})
+-	}
+-}
++		var miss *OwnedForestMissDetails
++		if e := out.missing; e != nil {
++			miss = &OwnedForestMissDetails{MissingKind: uint8(e.st.kind), MissingIsDeferred: e.isDeferred(), MissingPrevNil: e.prev == nil, MissingNextNil: e.next == nil, MissingLogicalRoot: e.st.hasLogicalRoot()}
++			if p := out.missingParent; p != nil {
++				miss.ParentOp = uint8(p.deferredOp())
++				for _, u := range f.regUser {
++					if u == p {
++						miss.ParentGPUsers++
++					}
++				}
++				for _, u := range f.fregUser {
++					if u == p {
++						miss.ParentFPUsers++
++					}
++				}
++			}
++			for _, u := range f.regUser {
++				if u == e {
++					miss.GPUsers++
++				}
++			}
++			for _, u := range f.fregUser {
++				if u == e {
++					miss.FPUsers++
++				}
++			}
++			var pcs [20]uintptr
++			frames := runtime.CallersFrames(pcs[:runtime.Callers(2, pcs[:])])
++			for {
++				caller, more := frames.Next()
++				miss.Callers = append(miss.Callers, caller.Function)
++				if !more {
++					break
++				}
++			}
++		}
++		s.Samples = append(s.Samples, OwnedForestWitness{Miss: miss, Boundary: boundary, Reason: out.reason, Function: f.traceFuncIdx, PC: f.wasmPC, Ordinal: s.ordinal, Physical: out.physical, Projected: out.projected, Roots: out.roots})
++	}
++}

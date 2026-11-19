@@ -1,0 +1,442 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index e20bd2f2..1cd36d62 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -317,6 +317,7 @@ const (
+ // fn holds the per-function code-generation state — the port's equivalent of
+ // WARP's Compiler/backend working set. One is created per compiled function.
+ type fn struct {
++	ownedForestTransitions
+ 	byteReduceLoop    *byteReduceState
+ 	filledCopyEnd     uint32
+ 	filledCopyByte    byte
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index 5c69c461..a7333ce2 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -771,11 +771,18 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+ // producing a 0/1 i32 result. (Fusing compares directly into branches is a later
+ // optimization; Phase 1 materializes the boolean.)
+ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
++	var pending ownedForestPending
++	if ownedForestCensusEnabled {
++		pending = f.captureOwnedForestPending(node)
++	}
+ 	foldedCC, folded := f.tryMemoryCompareToFlags(node)
+ 	if !folded {
+ 		foldedCC, folded = f.tryMaskedPredicateToFlags(node)
+ 	}
+ 	if folded {
++		if ownedForestCensusEnabled {
++			f.beginOwnedForestPending(&pending, node, foldedCC)
++		}
+ 		result := dest
+ 		if result == regNone {
+ 			result = f.allocReg(0)
+@@ -785,6 +792,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		f.occupy(node, result)
+ 		node.st.typ = mtI32
+ 		node.setDeferredOp(opNone)
++		if ownedForestCensusEnabled {
++			f.endOwnedForestPending(&pending, node, result)
++		}
+ 		return result
+ 	}
+ 	w := node.valueType().is64()
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+index 7204d592..1eb6521a 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+@@ -59,14 +59,18 @@ func observeOwnedForestLinks(operation string, stores uint64) {
+ }
+ 
+ type ownedForestImage struct {
+-	reason                                             string
+-	physical, projected, roots, childEdges, peakFrames int
++	reason                                                      string
++	physical, projected, roots, childEdges, peakFrames, pending int
+ }
+ 
+ // compareOwnedForest has no effect on the compiler state. Roots come only
+ // from logical flags in list order, not from a bottom-to-top helper that uses
+ // the same tree argument links as the proposed representation.
+ func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
++	return compareOwnedForestWithPending(head, logicalDepth, nil)
++}
++
++func compareOwnedForestWithPending(head *elem, logicalDepth int, f *fn) (out ownedForestImage) {
+ 	if head == nil || head.next == nil || head.prev == nil {
+ 		out.reason = "invalid-list-sentinel"
+ 		return
+@@ -102,9 +106,20 @@ func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
+ 		out.reason = "root-depth-mismatch"
+ 		return
+ 	}
++	if f != nil {
++		seenPending := make(map[*elem]bool)
++		for token := f.pendingForest; token != nil; token = token.outer {
++			if seenPending[token.parent] || token.invalid || seen[token.parent] != 1 || !f.checkOwnedForestPending(token) {
++				out.reason = "invalid-flags-pending"
++				return
++			}
++			seenPending[token.parent] = true
++		}
++	}
+ 	type frame struct {
+-		node  *elem
+-		phase uint8
++		node         *elem
++		flagsPending bool
++		phase        uint8
+ 	}
+ 	var frames [maxFrames]frame
+ 	orderMismatch := false
+@@ -130,8 +145,17 @@ func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
+ 					return
+ 				}
+ 				seen[e] = 2
++				if f != nil {
++					for token := f.pendingForest; token != nil; token = token.outer {
++						if token.parent == e {
++							top.flagsPending = true
++							out.pending++
++							break
++						}
++					}
++				}
+ 				top.phase++
+-				if e.isDeferred() {
++				if e.isDeferred() && !top.flagsPending {
+ 					child = e.arg0
+ 					if child == nil {
+ 						out.reason = "missing-first-child"
+@@ -140,7 +164,7 @@ func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
+ 				}
+ 			case 1:
+ 				top.phase++
+-				if e.isDeferred() {
++				if e.isDeferred() && !top.flagsPending {
+ 					child = e.arg1
+ 				}
+ 			default:
+@@ -175,7 +199,10 @@ func (f *fn) observeOwnedForest(boundary string) {
+ 	if f.s == nil {
+ 		return
+ 	}
+-	out := compareOwnedForest(f.s.head, int(f.s.logicalDepth))
++	out := compareOwnedForestWithPending(f.s.head, int(f.s.logicalDepth), f)
++	if f.pendingForest != nil && boundary != "flags-pending-begin" && boundary != "gp-allocation" && boundary != "fp-allocation" {
++		out.reason = "flags-pending-outside-allocator-phase"
++	}
+ 	s := &ownedForestState
+ 	s.Lock()
+ 	defer s.Unlock()
+@@ -186,9 +213,23 @@ func (f *fn) observeOwnedForest(boundary string) {
+ 		s.witnesses = make(map[string]int)
+ 	}
+ 	s.ordinal++
++	if boundary != "flags-pending-begin" && boundary != "flags-pending-end" {
++		strict := out
++		if f.pendingForest != nil {
++			strict = compareOwnedForest(f.s.head, int(f.s.logicalDepth))
++		}
++		s.Work["strict."+boundary+".checks"]++
++		if strict.reason == "" {
++			s.Work["strict."+boundary+".matching"]++
++		} else {
++			s.Work["strict."+boundary+".divergent"]++
++			s.Work["strict."+boundary+".reason."+strict.reason]++
++		}
++	}
+ 	s.Checks[boundary]++
+ 	if out.reason == "" {
+ 		s.Matching[boundary]++
++		s.Work["matching.valid_flags_pending_visits"] += uint64(out.pending)
+ 		s.Work["matching.snapshot_physical_items"] += uint64(out.physical)
+ 		s.Work["matching.snapshot_root_entries"] += uint64(out.roots)
+ 		s.Work["matching.modeled_full_walk_child_edge_visits"] += uint64(out.childEdges)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go
+index a63294b0..f1cb5dc8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census_disabled.go
+@@ -6,3 +6,10 @@ const ownedForestCensusEnabled = false
+ 
+ func (*fn) observeOwnedForest(string)        {}
+ func observeOwnedForestLinks(string, uint64) {}
++
++type ownedForestTransitions struct{}
++type ownedForestPending struct{}
++
++func (*fn) captureOwnedForestPending(*elem) ownedForestPending       { return ownedForestPending{} }
++func (*fn) beginOwnedForestPending(*ownedForestPending, *elem, Cond) {}
++func (*fn) endOwnedForestPending(*ownedForestPending, *elem, Reg)    {}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+new file mode 100644
+index 00000000..aac6899a
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+@@ -0,0 +1,111 @@
++//go:build amd64 && wago_owned_forest_census
++
++package amd64
++
++type ownedForestTransitions struct {
++	pendingForest *ownedForestPending
++}
++
++type ownedForestPending struct {
++	root               bool
++	outer              *ownedForestPending
++	parent, arg0, arg1 *elem
++	op                 wOp
++	cc                 Cond
++	retired            []*elem
++	active, invalid    bool
++}
++
++// Track only the exact emitted-compare transition. The compiler continues to
++// use its original list and has no dependency on this observed phase.
++func (f *fn) captureOwnedForestPending(node *elem) ownedForestPending {
++	t := ownedForestPending{parent: node, arg0: node.arg0, arg1: node.arg1, op: node.deferredOp(), root: node.st.hasLogicalRoot()}
++	seen := map[*elem]bool{node: true}
++	if !node.isDeferred() || node.arg0 == nil {
++		t.invalid = true
++	}
++	var capture func(*elem)
++	capture = func(e *elem) {
++		if e == nil || t.invalid {
++			return
++		}
++		if seen[e] || e.prev == nil || e.next == nil || e.st.hasLogicalRoot() || len(seen) >= 256 {
++			t.invalid = true
++			return
++		}
++		seen[e] = true
++		t.retired = append(t.retired, e)
++		if e.isDeferred() {
++			if e.arg0 == nil {
++				t.invalid = true
++				return
++			}
++			capture(e.arg0)
++			capture(e.arg1)
++		}
++	}
++	capture(t.arg0)
++	capture(t.arg1)
++	return t
++}
++
++func (f *fn) checkOwnedForestPending(t *ownedForestPending) bool {
++	p := t.parent
++	if !t.active || p == nil || p.prev == nil || p.next == nil || !p.isDeferred() ||
++		p.st.hasLogicalRoot() != t.root || p.deferredOp() != t.op || p.arg0 != t.arg0 || p.arg1 != t.arg1 || len(t.retired) == 0 {
++		return false
++	}
++	if t.op != opEqz && !isCompare(t.op) {
++		return false
++	}
++	for _, e := range t.retired {
++		if e.prev != nil || e.next != nil || e.st.hasLogicalRoot() {
++			return false
++		}
++	}
++	for _, users := range [][16]*elem{f.regUser, f.fregUser} {
++		for _, e := range users {
++			if e == nil {
++				continue
++			}
++			if e == p {
++				return false
++			}
++			for _, retired := range t.retired {
++				if retired == e {
++					return false
++				}
++			}
++		}
++	}
++	return true
++}
++
++func (f *fn) beginOwnedForestPending(t *ownedForestPending, node *elem, cc Cond) {
++	t.outer = f.pendingForest
++	t.cc = cc
++	t.active = true
++	if t.parent != node || !f.checkOwnedForestPending(t) {
++		t.invalid = true
++	}
++	f.pendingForest = t
++	f.observeOwnedForest("flags-pending-begin")
++}
++
++func (f *fn) endOwnedForestPending(t *ownedForestPending, node *elem, result Reg) {
++	ok := f.pendingForest == t && t.active && !t.invalid && t.parent == node &&
++		node.isValue() && node.st.kind == stReg && node.st.typ == mtI32 &&
++		node.st.hasLogicalRoot() == t.root && node.st.reg == result && uint(result) < uint(len(f.regUser)) && f.regUser[result] == node
++	f.pendingForest = t.outer
++	t.active = false
++	if !ok {
++		s := &ownedForestState
++		s.Lock()
++		if s.Work == nil {
++			s.OwnedForestCensus = newOwnedForestCensus()
++		}
++		s.Work["invalid_flags_pending_end"]++
++		s.Unlock()
++	}
++	f.observeOwnedForest("flags-pending-end")
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_transition_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_transition_independent_test.go
+new file mode 100644
+index 00000000..616eb85b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_transition_independent_test.go
+@@ -0,0 +1,147 @@
++//go:build amd64 && wago_owned_forest_census
++
++package amd64
++
++import (
++	"errors"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"testing"
++)
++
++func pendingFixture() (*fn, *elem, *elem, *elem, ownedForestPending) {
++	f := &fn{}
++	h, a, p := new(elem), new(elem), new(elem)
++	h.next, h.prev = a, p
++	a.prev, a.next = h, p
++	p.prev, p.next = a, h
++	p.setElemKind(ekDeferred)
++	p.setDeferredOp(opEqz)
++	p.arg0 = a
++	p.st.setLogicalRoot(true)
++	token := f.captureOwnedForestPending(p)
++	h.next = p
++	p.prev = h
++	a.prev = nil
++	a.next = nil
++	token.active = true
++	f.pendingForest = &token
++	return f, h, a, p, token
++}
++func TestOwnedForestTransitionRejects(t *testing.T) {
++	for _, mode := range []string{"valid", "live-child", "stale", "wrong-parent", "wrong-op", "changed-child", "child-gp", "child-fp", "parent-gp", "invalid-token"} {
++		t.Run(mode, func(t *testing.T) {
++			f, h, a, p, token := pendingFixture()
++			f.pendingForest = &token
++			switch mode {
++			case "live-child":
++				a.next = p
++			case "stale":
++				token.active = false
++			case "wrong-parent":
++				token.parent = new(elem)
++			case "wrong-op":
++				p.setDeferredOp(opAdd)
++			case "changed-child":
++				p.arg0 = new(elem)
++			case "child-gp":
++				f.regUser[0] = a
++			case "child-fp":
++				f.fregUser[0] = a
++			case "parent-gp":
++				f.regUser[0] = p
++			case "invalid-token":
++				token.invalid = true
++			}
++			got := compareOwnedForestWithPending(h, 1, f)
++			if (got.reason == "") != (mode == "valid") {
++				t.Fatalf("%s: %+v", mode, got)
++			}
++			if mode == "valid" && compareOwnedForest(h, 1).reason != "child-missing-from-list" {
++				t.Fatal("strict oracle weakened")
++			}
++		})
++	}
++}
++func TestOwnedForestTransitionNestedAndEnd(t *testing.T) {
++	f, h, a, p, token := pendingFixture()
++	f.pendingForest = &token
++	q, b := new(elem), new(elem)
++	q.setElemKind(ekDeferred)
++	q.setDeferredOp(opEqz)
++	q.arg0 = b
++	q.st.setLogicalRoot(true)
++	q.prev = p
++	q.next = h
++	p.next = q
++	h.prev = q
++	inner := ownedForestPending{parent: q, arg0: b, op: opEqz, root: true, active: true, retired: []*elem{b}, outer: &token}
++	f.pendingForest = &inner
++	if got := compareOwnedForestWithPending(h, 2, f); got.reason != "" || got.pending != 2 {
++		t.Fatalf("nested: %+v", got)
++	}
++	f.regUser[1] = a
++	if compareOwnedForestWithPending(h, 2, f).reason == "" {
++		t.Fatal("outer token invisible to allocator")
++	}
++	f.regUser[1] = nil
++	TakeOwnedForestCensus()
++	q.st = storage{kind: stReg, typ: mtI32, reg: 2}
++	q.st.setLogicalRoot(true)
++	f.regUser[2] = q
++	f.endOwnedForestPending(&inner, q, 2)
++	if f.pendingForest != &token || inner.active {
++		t.Fatal("nested unwind")
++	}
++	if TakeOwnedForestCensus().Work["invalid_flags_pending_end"] != 0 {
++		t.Fatal("valid result rejected")
++	}
++	f.endOwnedForestPending(&inner, q, 2)
++	if TakeOwnedForestCensus().Work["invalid_flags_pending_end"] != 1 {
++		t.Fatal("stale end accepted")
++	}
++}
++func TestOwnedForestTransitionRuntime(t *testing.T) {
++	old := inlineEnabled
++	inlineEnabled = false
++	defer func() { inlineEnabled = old }()
++	for _, intr := range []bool{false, true} {
++		// Keep a compare result under nested ADD and an actual internal call.
++		m := modFuncs(t, funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x41, 7, 0x20, 0, 0x41, 3, 0x71, 0x45, 0x6a, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, funcDef{[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 2, 0x6c, 0x0b}})
++		for _, x := range []uint64{0, 1, 4, 31} {
++			TakeOwnedForestCensus()
++			got, err := runPureIfWithOptions(t, m, CompileOptions{Interruptible: intr}, x)
++			want := uint64(7) + 2*x
++			if x&3 == 0 {
++				want++
++			}
++			if err != nil || got != want {
++				t.Fatalf("masked/call: %d %v want %d", got, err, want)
++			}
++			c := TakeOwnedForestCensus()
++			if len(c.Divergent) != 0 || c.Work["invalid_flags_pending_end"] != 0 {
++				t.Fatalf("model: %+v", c)
++			}
++		}
++		body := []byte{0, 0x41, 7, 0x20, 0, 0x28, 2, 0, 0x41, 3, 0x46, 0x6a, 0x0b}
++		mm := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, body)
++		for _, x := range []uint64{0, 65535} {
++			TakeOwnedForestCensus()
++			got, _, err := runMemAmd64WithOptions(t, mm, CompileOptions{Interruptible: intr}, func(mem []byte) { mem[0] = 3 }, x)
++			if x == 0 {
++				if err != nil || got != 8 {
++					t.Fatalf("memory result %d %v", got, err)
++				}
++			} else {
++				var trap *wr.TrapError
++				if !errors.As(err, &trap) || trap.Code != wr.TrapLinMemOutOfBounds || len(trap.Frames) != 1 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != mm.Code[0].LocalDeclBytes+4 {
++					t.Fatalf("eager trap PC: %+v", err)
++				}
++			}
++			c := TakeOwnedForestCensus()
++			if len(c.Divergent) != 0 || c.Work["invalid_flags_pending_end"] != 0 {
++				t.Fatalf("memory model %+v", c)
++			}
++		}
++	}
++}
