@@ -1,0 +1,273 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 378ec823..f7ed9684 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1911,7 +1911,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			return nil, fmt.Errorf("fixture forest: require serial ordinary compilation without legacy checker/census")
+ 		}
+ 		work := opts.fixtureWork
+-		*work = fixtureModuleWork{Forest: work.Forest, ScalarFP: work.ScalarFP, ScalarFPBlockResults: work.ScalarFPBlockResults}
++		*work = fixtureModuleWork{
++			Forest: work.Forest, ScalarFP: work.ScalarFP,
++			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
++		}
+ 		defer work.releaseRoots()
+ 	}
+ 	relocs := make([][]callReloc, n)
+@@ -3650,6 +3653,12 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
+ 	return railcore.NewInternalCompilerError("amd64", index, offset, recovered)
+ }
+ 
++// The register prologue homes FP arguments in order. Limit this fixture to
++// XMM0–3, which cannot overlap the extended float-local pin pool.
++func fixtureScalarFPFunctionSignature(ft *wasm.CompType) bool {
++	return len(ft.Params) <= 4 && len(ft.Results) <= 1 && sigIsFloatOnly(ft)
++}
++
+ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+ 	var state *fn
+ 	if sc.fixtureWork != nil {
+@@ -3682,7 +3691,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	}
+ 	c := &m.Code[funcIdx]
+ 	if work := sc.fixtureWork; work != nil && work.Forest {
+-		if !sigIsIntOnly(ft) {
++		fixtureFPABI := work.ScalarFP && work.ScalarFPFunctionABI && fixtureScalarFPFunctionSignature(ft)
++		if !sigIsIntOnly(ft) && !fixtureFPABI {
+ 			return nil, nil, 0, fmt.Errorf("fixture forest: unsupported noninteger function ABI")
+ 		}
+ 		for _, run := range c.Locals.Runs {
+@@ -4302,6 +4312,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		if regallocCheckEnabled {
+ 			checkSourceVerify(f)
+ 		}
++		// Record only finalized exported adapter code; this says nothing
++		// about a runtime caller choosing the prepared direct entry.
++		if work := sc.fixtureWork; work != nil && work.ScalarFP && work.ScalarFPFunctionABI &&
++			hostAdapter && len(ft.Results) == 1 && fixtureScalarFPFunctionSignature(ft) {
++			if f.singleRegResult {
++				work.FPFunctionAdapterXMM0Results++
++			} else {
++				work.FPFunctionAdapterSlotReloadResults++
++			}
++		}
+ 		f.finalizeStats(len(f.a.B))
+ 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+ 			gcFrameRoots.FrameBytes = uint32(f.frameSize())
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 0776f0b8..68a0bcb8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,10 +272,11 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults  uint64
+ 	FPBlockRegMerges, FPBlockPinConflictSlots                         uint64
+ 	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps uint64
+ 	Opcodes                                                           uint64
+-	Forest, ScalarFP, ScalarFPBlockResults                            bool
++	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI       bool
+ 	Attempts, Completed, Rejected                                     int
+ 	List                                                              fixtureListWork
+ 	Vector                                                            fixtureForest
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_abi_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_abi_independent_test.go
+new file mode 100644
+index 00000000..867da76b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_abi_independent_test.go
+@@ -0,0 +1,194 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++)
++
++func ownedFPAdapterRun(t *testing.T, cm *encoder.CompiledModule, wide bool, args []uint64, memory, void bool, want uint64) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], v)
++	}
++	mem := jm.LinearMemory()
++	for i := 16; i < 56; i++ {
++		mem[i] = 0xe7
++	}
++	if err = eng.Call(entry+uintptr(cm.Entry[0]), a, mem, tr, r); err != nil {
++		t.Fatal(err)
++	}
++	if !void {
++		got := binary.LittleEndian.Uint64(r)
++		if !wide {
++			got = uint64(uint32(got))
++		}
++		if got != want {
++			t.Fatalf("input=%x result=%x want=%x", args, got, want)
++		}
++	}
++	if memory {
++		expected := bytes.Repeat([]byte{0xe7}, 40)
++		if wide {
++			binary.LittleEndian.PutUint64(expected[8:], want)
++		} else {
++			binary.LittleEndian.PutUint32(expected[8:], uint32(want))
++		}
++		if len(args) == 4 {
++			for i, v := range args[1:] {
++				if wide {
++					binary.LittleEndian.PutUint64(expected[16+8*i:], v)
++				} else {
++					binary.LittleEndian.PutUint32(expected[16+8*i:], uint32(v))
++				}
++			}
++		}
++		if !bytes.Equal(mem[16:56], expected) {
++			t.Fatalf("input=%x memory=%x want=%x", args, mem[16:56], expected)
++		}
++	}
++}
++
++func TestOwnedForestFPAdapterOrdinary(t *testing.T) {
++	for _, sh := range []struct {
++		typ                 wasm.ValType
++		load, store, align  byte
++		sign, quiet, finite uint64
++		wide                bool
++	}{
++		{wasm.F32, 0x2a, 0x38, 2, 0x80000000, 0x7fc01234, 0x40500000, false},
++		{wasm.F64, 0x2b, 0x39, 3, 0x8000000000000000, 0x7ff8000000001234, 0x400a000000000000, true},
++	} {
++		for _, name := range []string{"pure-end", "pure-return", "memory-end", "memory-return", "memory-void", "four-arg-memory"} {
++			t.Run(fmt.Sprintf("f64=%v/%s", sh.wide, name), func(t *testing.T) {
++				four := name == "four-arg-memory"
++				memory := name == "memory-end" || name == "memory-return" || name == "memory-void" || four
++				void := name == "memory-void"
++				b := []byte{0}
++				if memory {
++					b = append(b, 0x41, 24)
++				}
++				// Preserve old parameter 0 as a live operand while rebinding
++				// that parameter to a different FP bit carrier.
++				b = append(b, 0x20, 0, 0x20, 1, 0x21, 0)
++				if memory {
++					b = append(b, sh.store, sh.align, 0)
++					if four {
++						for i := byte(1); i <= 3; i++ {
++							b = append(b, 0x41, 24+8*i, 0x20, i, sh.store, sh.align, 0)
++						}
++					}
++					if !void {
++						b = append(b, 0x41, 24, sh.load, sh.align, 0)
++					}
++				}
++				if name == "pure-return" || name == "memory-return" {
++					b = append(b, 0x0f)
++				}
++				b = append(b, 0x0b)
++				params, results := []wasm.ValType{sh.typ, sh.typ}, []wasm.ValType{sh.typ}
++				if four {
++					params = append(params, sh.typ, sh.typ)
++				}
++				if void {
++					results = nil
++				}
++				var m *wasm.Module
++				if memory {
++					m = modMem(t, 1, params, results, b)
++				} else {
++					m = mod1(t, params, results, b)
++				}
++				for _, intr := range []bool{false, true} {
++					var oracle, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPFunctionABI: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++							t.Fatalf("inactive legacy forest: %+v", work)
++						}
++						if len(cm.Entry) != 1 || len(cm.InternalEntry) != 1 || cm.Entry[0] >= cm.InternalEntry[0] || stats.Funcs[0].NativeSize.HostAdapterBytes <= 0 {
++							t.Fatalf("exported adapter absent: entry=%v internal=%v", cm.Entry, cm.InternalEntry)
++						}
++						direct, slot := uint64(0), uint64(0)
++						if !void {
++							if memory {
++								slot = 1
++							} else {
++								direct = 1
++							}
++						}
++						if work.FPFunctionAdapterXMM0Results != direct || work.FPFunctionAdapterSlotReloadResults != slot {
++							t.Fatalf("wrong result dispatch want xmm0=%d slot=%d: %+v", direct, slot, work)
++						}
++						for _, pair := range [][2]uint64{{0, sh.sign}, {sh.sign, 0}, {sh.quiet, sh.finite}, {sh.finite, sh.quiet}} {
++							want := pair[0]
++							if !sh.wide {
++								pair[0] |= 0xdeadbeef00000000
++								pair[1] |= 0xaabbccdd00000000
++							}
++							args := pair[:]
++							if four {
++								args = append(args, sh.quiet^sh.sign, sh.finite^sh.sign)
++								if !sh.wide {
++									args[2] |= 0x13579bdf00000000
++									args[3] |= 0x2468ace000000000
++								}
++							}
++							ownedFPAdapterRun(t, cm, sh.wide, args, memory, void, want)
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							oracle = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(oracle, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v candidate=%v bytes=%d entry=%v internal=%v adapterBytes=%d work=%+v", intr, candidate, len(cm.Code), cm.Entry, cm.InternalEntry, stats.Funcs[0].NativeSize.HostAdapterBytes, work)
++					}
++				}
++			})
++		}
++	}
++}

@@ -386,3 +386,22 @@ function ABI coverage is claimed. Encoder JSON is not public artifact
 codec parity. No held-input, exceptional-input, corpus or timing
 run occurred. The censored coverage figure remains 77 of 114;
 compiler defaults remain unchanged.
+
+## Focused FP exported ABI (Stage 2-B)
+
+Apply fp-abi-focused.patch on top of 81c24eed. At ff082492 the
+ordinary gate passed 48 images and 192 calls, with 24 exact native
+and encoder-exported JSON pairs. All images entered the exported
+adapter through Engine.Call, with a distinct InternalEntry and
+positive HostAdapterBytes. Observed emitted agreements were 16 single
+results in XMM0, 24 single results reloaded from canonical slots,
+and eight void cases.
+
+The checks cover two or four all-FP parameters and at most one
+result, including f32 low-word inputs with dirty upper bits, finite
+values, qNaN, signed zero, and an old parameter alias. Five through
+eight FP parameters remain unverified. No typed prepared-direct,
+plain non-register-ABI wrapper, mixed or internal call claim.
+Encoder JSON is not public artifact codec parity. No legacy defect,
+exceptional-input, held-input, corpus, or timing result is claimed.
+The censored result remains 77 of 114 and defaults are unchanged.
