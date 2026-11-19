@@ -1,6 +1,6 @@
 {
   "generated": "2026-11-19",
-  "sourceCommit": "a0929e221d48e4bbe73375bf035d453cd8bb2c1e",
+  "sourceCommit": "918664c13c2e874e03feb535517c0c14da36618f",
   "machine": "AMD Ryzen 7 7800X3D 8-Core Processor, linux/amd64",
   "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
   "unit": "ms",
@@ -31,15 +31,15 @@
       "tag": "turboshaft",
       "version": "V8 version 15.5.4"
     },
-    "wasm3": {
-      "label": "wasm3",
-      "tag": "interpreter",
-      "version": "Wasm3 v0.9.0 on x86_64"
+    "wasmer": {
+      "label": "wasmer",
+      "tag": "cranelift",
+      "version": "wasmer 7.1.0"
     },
-    "wasmi": {
-      "label": "wasmi",
-      "tag": "interpreter",
-      "version": "wasmi_cli 1.1.0"
+    "wasmer-singlepass": {
+      "label": "wasmer",
+      "tag": "singlepass",
+      "version": "wasmer 7.1.0"
     },
     "wavm": {
       "label": "wavm",
@@ -53,14 +53,14 @@
       "label": "pcre2",
       "desc": "PCRE2: compile regular expressions and match them over text (303 KB module)",
       "results": {
-        "wago": 14.099,
-        "wazy": 116.529,
-        "wazero": 175.688,
-        "wasmtime": 174.35,
-        "v8": 135.329,
-        "wasm3": 14.703,
-        "wasmi": 4.268,
-        "wavm": 4746.051
+        "wago": 15.13,
+        "wazy": 131.935,
+        "wazero": 197.565,
+        "wasmtime": 191.855,
+        "v8": 132.342,
+        "wasmer": 193.914,
+        "wasmer-singlepass": 25.02,
+        "wavm": 4790.884
       }
     },
     {
@@ -68,14 +68,14 @@
       "label": "yyjson",
       "desc": "yyjson: parse, edit and re-serialize JSON documents",
       "results": {
-        "wago": 9.749,
-        "wazy": 52.663,
-        "wazero": 69.478,
-        "wasmtime": 84.871,
-        "v8": 13.873,
-        "wasm3": 3.84,
-        "wasmi": 2.588,
-        "wavm": 1879.324
+        "wago": 10.126,
+        "wazy": 55.647,
+        "wazero": 73.639,
+        "wasmtime": 89.835,
+        "v8": 14.819,
+        "wasmer": 99.451,
+        "wasmer-singlepass": 16.648,
+        "wavm": 1970.035
       }
     },
     {
@@ -83,14 +83,14 @@
       "label": "utf8proc",
       "desc": "utf8proc: Unicode normalization and case folding (324 KB module)",
       "results": {
-        "wago": 3.199,
-        "wazy": 7.356,
-        "wazero": 9.536,
-        "wasmtime": 8.97,
-        "v8": 10.803,
-        "wasm3": 1.516,
-        "wasmi": 1.596,
-        "wavm": 157.647
+        "wago": 3.482,
+        "wazy": 7.682,
+        "wazero": 9.741,
+        "wasmtime": 9.535,
+        "v8": 11.511,
+        "wasmer": 20.809,
+        "wasmer-singlepass": 9.207,
+        "wavm": 167.301
       }
     },
     {
@@ -98,14 +98,14 @@
       "label": "nanosvg",
       "desc": "NanoSVG: parse SVG documents into shapes and paths",
       "results": {
-        "wago": 6.064,
-        "wazy": 17.911,
-        "wazero": 22.883,
-        "wasmtime": 13.651,
-        "v8": 11.159,
-        "wasm3": 1.677,
-        "wasmi": 1.697,
-        "wavm": 789.233
+        "wago": 6.425,
+        "wazy": 18.38,
+        "wazero": 23.606,
+        "wasmtime": 15.053,
+        "v8": 11.965,
+        "wasmer": 36.273,
+        "wasmer-singlepass": 10.298,
+        "wavm": 815.797
       }
     },
     {
@@ -113,14 +113,14 @@
       "label": "libtommath",
       "desc": "LibTomMath: big-integer modular arithmetic",
       "results": {
-        "wago": 4.966,
-        "wazy": 12.638,
-        "wazero": 16.688,
-        "wasmtime": 11.794,
-        "v8": 11.076,
-        "wasm3": 1.675,
-        "wasmi": 1.767,
-        "wavm": 787.734
+        "wago": 5.311,
+        "wazy": 13.157,
+        "wazero": 17.153,
+        "wasmtime": 12.791,
+        "v8": 11.777,
+        "wasmer": 38.353,
+        "wasmer-singlepass": 9.142,
+        "wavm": 817.626
       }
     },
     {
@@ -128,14 +128,14 @@
       "label": "coremark",
       "desc": "CoreMark 2K performance run",
       "results": {
-        "wago": 32.089,
-        "wazy": 43.253,
-        "wazero": 56.539,
-        "wasmtime": 33.02,
-        "v8": 36.293,
-        "wasm3": 466.473,
-        "wasmi": 590.022,
-        "wavm": 224.288
+        "wago": 32.96,
+        "wazy": 44.637,
+        "wazero": 57.883,
+        "wasmtime": 34.428,
+        "v8": 38.033,
+        "wasmer": 43.706,
+        "wasmer-singlepass": 61.972,
+        "wavm": 231.366
       }
     }
   ]
