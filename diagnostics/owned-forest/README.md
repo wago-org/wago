@@ -256,3 +256,22 @@ The gate covers direct void and single-i64 return lanes, not
 wrapper, inline, tail, host, or wider ABI cases. Serialized metadata
 was not compared. No exceptional-input, corpus, original 31-panic,
 or timing check ran. No performance or default change is claimed.
+
+## Focused straight-line integer inlining
+
+Apply inline-focused.patch on top of 87b15a63. It archives
+implementation e3f1d2f7 and independent tests at clean 52e609f2.
+The ordinary valid-input gate passed 20 execution images and
+60 runtime calls, with 10 exact native pairs and zero candidate
+rejections. Same-image counters confirmed one add-constant splice,
+one add-parameter splice, two parameter-forward splices, two
+scratch-local splices with no forwarding, and one store-leaf
+splice in their respective cases. The scratch-local case checked
+a fresh zero value before each splice's write. All callers used
+legacy forest; shared-scalar callee bodies were counted separately.
+
+Native byte parity does not establish serialized metadata parity.
+No recursive, control, tuple, tail, wrapper, exceptional-input,
+corpus, original 31-panic, or timing coverage is claimed. The
+partial work counters do not establish net savings. Defaults
+remain unchanged.

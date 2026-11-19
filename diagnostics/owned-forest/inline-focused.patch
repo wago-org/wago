@@ -1,0 +1,343 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 7fd166bc..db3da74f 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -369,16 +369,21 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		return fmt.Errorf("call: unknown function %d", idx)
+ 	}
+ 	imported := f.importedFunctionCount()
+-	if f.s.forest != nil && f.selectedInlineTarget(idx) != nil {
+-		if f.sc != nil && f.sc.fixtureWork != nil {
+-			f.sc.fixtureWork.InlineCallGaps++
++	target := f.selectedInlineTarget(idx)
++	if f.s.forest != nil {
++		if target != nil {
++			if !sigIsIntOnly(ft) || target.recursive() || target.hasCtrl ||
++				target.tupleSelect() || target.tupleLoop() || target.tailLoop() ||
++				!f.fixtureInlineIntegerLocals(target) {
++				if f.sc != nil && f.sc.fixtureWork != nil {
++					f.sc.fixtureWork.InlineCallGaps++
++				}
++				panic("fixture forest: selected inline call ownership is not ported")
++			}
++		} else if int(idx) < imported || !f.opt(optRegABI) || !sigFitsRegABI(ft) ||
++			!sigIsIntOnly(ft) || len(ft.Results) > 1 || f.gcFrameRoots != nil {
++			panic("fixture forest: only direct non-inlined scalar integer register calls with at most one integer result are ported")
+ 		}
+-		panic("fixture forest: selected inline call ownership is not ported")
+-	}
+-	if f.s.forest != nil && (int(idx) < imported ||
+-		!f.opt(optRegABI) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Results) > 1 ||
+-		f.gcFrameRoots != nil) {
+-		panic("fixture forest: only direct non-inlined scalar integer register calls with at most one integer result are ported")
+ 	}
+ 	if int(idx) < imported && f.customInstructions != nil {
+ 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+@@ -393,13 +398,13 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
+ 	// runs the body with localBase set. Straight-line callees touch no control frame,
+ 	// so this is a pure operand-stack/local transform.
+-	if t := f.selectedInlineTarget(idx); t != nil {
++	if target != nil {
+ 		if f.gcFrameRoots != nil {
+ 			// Advance the original source mask even though no native call remains.
+ 			f.consumeGCFrameCallsite()
+ 			f.stats.peep("gc-numeric-leaf-inline")
+ 		}
+-		return f.inlineCall(t, r)
++		return f.inlineCall(target, r)
+ 	}
+ 	if int(idx) < imported {
+ 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 94aa7cc5..ff34fcd1 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -89,12 +89,8 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 			f.sc.fixtureWork.Opcodes++
+ 		}
+ 		if f.s.forest != nil {
+-			if !fixtureScalarOpcode(op) {
+-				return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+-			}
+-			if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+-				f.vectorRegion.enabled || len(f.intervalReg) != 0 || f.intervalControl {
+-				return fmt.Errorf("fixture forest: unsupported specialized function state")
++			if err := f.checkFixtureScalarOpcode(op); err != nil {
++				return err
+ 			}
+ 		}
+ 		if regallocCheckEnabled {
+@@ -196,6 +192,17 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 	return nil
+ }
+ 
++func (f *fn) checkFixtureScalarOpcode(op byte) error {
++	if !fixtureScalarOpcode(op) {
++		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
++	}
++	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
++		f.vectorRegion.enabled || len(f.intervalReg) != 0 || f.intervalControl {
++		return fmt.Errorf("fixture forest: unsupported specialized function state")
++	}
++	return nil
++}
++
+ // At a top-level reader instruction boundary, an empty operand stack and
+ // zero-height control frames have no live expression nodes or control prefixes.
+ // Nested blocks and loops are safe, but recursively spliced inline readers are
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 5caae00b..2a56b981 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1077,7 +1077,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
+ 	start := f.a.Len()
+ 	if t.isI32AddParams() {
+ 		right := f.s.back()
+-		left := baseOfValentBlock(right).prev
++		left := f.s.selectorPrevious(right, 1)
+ 		if right.isValue() && right.st.kind == stConst || left.isValue() && left.st.kind == stConst {
+ 			if !treeReorderSafe(left) || !treeReorderSafe(right) {
+ 				f.materializeTrapsBefore(f.s.head)
+@@ -1190,7 +1190,11 @@ func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
+ 			return false
+ 		}
+ 		sources[i] = e.st.idx
+-		e = e.prev
++		if f.s.forest != nil {
++			e = f.s.forestLast(params - i)
++		} else {
++			e = e.prev
++		}
+ 	}
+ 	for range params {
+ 		f.erase(f.s.back())
+@@ -1239,6 +1243,23 @@ func (f *fn) pureIntegerParams(t *inlineTarget) bool {
+ 	return true
+ }
+ 
++func (f *fn) fixtureInlineIntegerLocals(t *inlineTarget) bool {
++	for _, typ := range f.inlineTargets.localTypes(t) {
++		if typ != mtI32 && typ != mtI64 {
++			return false
++		}
++	}
++	return true
++}
++
++func (f *fn) realizeInlineLocalBeforeWrite(local int) {
++	if f.s.forest != nil {
++		f.realizeLocalRefsCursor(local, nil, f.s.fixtureScan(false))
++		return
++	}
++	f.realizeLocalRefs(local, nil)
++}
++
+ // bindInlineParams binds the p argument operands into the callee's param locals
+ // and zero-initializes its declared locals (wasm zero-init, re-done each splice
+ // so a call in a loop or a second site always starts from zero). Each declared
+@@ -1270,7 +1291,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
+ 		for i := params; i < nLocals; i++ {
+ 			local := base + i
+ 			if i < 64 && initialized&(uint64(1)<<i) != 0 {
+-				f.realizeLocalRefs(local, nil)
++				f.realizeInlineLocalBeforeWrite(local)
+ 				if _, floating, pinned := f.pinReg(local); pinned && !floating {
+ 					// The first source write replaces this dead home before any get.
+ 					// Do not rematerialize an older lazy zero over that new value.
+@@ -1287,7 +1308,7 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
+ 				continue
+ 			}
+ 			if reg, floating, pinned := f.pinReg(local); pinned && !floating {
+-				f.realizeLocalRefs(local, nil)
++				f.realizeInlineLocalBeforeWrite(local)
+ 				f.a.XorSelf32(reg)
+ 				f.locals[local].state = lsReg
+ 				f.invalidateGCLoadFactsForLocal(local)
+@@ -1431,6 +1452,11 @@ func (f *fn) inlineBody(body []byte) error {
+ 		if err != nil {
+ 			return err
+ 		}
++		if f.s.forest != nil {
++			if err := f.checkFixtureScalarOpcode(op); err != nil {
++				return err
++			}
++		}
+ 		switch op {
+ 		case 0x0b: // terminating end: results are on the stack
+ 			return nil
+@@ -1458,21 +1484,35 @@ func (f *fn) realizeInlineRange(lo, hi int) {
+ 	if f.s.pendingEffects&pendingLocalRef == 0 {
+ 		return
+ 	}
+-	inRange := func(idx int) bool { return idx >= lo && idx < hi }
++	if f.s.forest != nil {
++		// Materialization changes nodes and may retire descendants, but
++		// cannot resize the root vector. The cursor advances before each
++		// callback; nested allocation uses its own cursor.
++		c := f.s.fixtureScan(false)
++		for e := c.next(); e != nil; e = c.next() {
++			f.realizeInlineRangeOperand(e, lo, hi)
++		}
++		return
++	}
+ 	for e := f.s.head.next; e != f.s.head; {
+ 		next := e.next
+-		switch {
+-		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
+-			f.materializeByType(e)
+-		case e.isValue() && e.st.kind == stMemRef && inRange(e.st.memBorrow()):
+-			f.materializeByType(e)
+-		case e.isDeferred() && subtreeRefsLocalRange(e, lo, hi):
+-			f.condense(e, regNone)
+-		}
++		f.realizeInlineRangeOperand(e, lo, hi)
+ 		e = next
+ 	}
+ }
+ 
++func (f *fn) realizeInlineRangeOperand(e *elem, lo, hi int) {
++	inRange := func(idx int) bool { return idx >= lo && idx < hi }
++	switch {
++	case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
++		f.materializeByType(e)
++	case e.isValue() && e.st.kind == stMemRef && inRange(e.st.memBorrow()):
++		f.materializeByType(e)
++	case e.isDeferred() && subtreeRefsLocalRange(e, lo, hi):
++		f.condense(e, regNone)
++	}
++}
++
+ // subtreeRefsLocalRange reports whether the valent block rooted at e reads any
+ // local in [lo, hi).
+ func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_inline_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_independent_test.go
+new file mode 100644
+index 00000000..771d97b8
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_independent_test.go
+@@ -0,0 +1,124 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func ownedInlineModule(t *testing.T, name string) *wasm.Module {
++	t.Helper()
++	prefix := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	var caller, helper []byte
++	hp := []wasm.ValType{wasm.I32}
++	hr := []wasm.ValType{wasm.I32}
++	switch name {
++	case "add-constant":
++		caller = []byte{0x20, 0, 0x20, 0, 0x10, 1, 0x6a, 0x0b}
++		helper = []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x0b}
++	case "add-parameters":
++		caller = []byte{0x20, 0, 0x20, 0, 0x41, 5, 0x10, 1, 0x6a, 0x0b}
++		hp = append(hp, wasm.I32)
++		helper = []byte{0, 0x20, 0, 0x20, 1, 0x6a, 0x0b}
++	case "forwarded-parameter", "scratch-repeated":
++		caller = []byte{0x20, 0, 0x20, 0, 0x10, 1, 0x41, 13, 0x21, 0, 0x20, 0, 0x10, 1, 0x6a, 0x6a, 0x0b}
++		helper = []byte{0, 0x20, 0, 0x41, 3, 0x6c, 0x41, 1, 0x6a, 0x0b}
++		if name == "scratch-repeated" {
++			helper = []byte{1, 1, 0x7f, 0x20, 0, 0x41, 3, 0x6c, 0x41, 1, 0x6a, 0x22, 0, 0x20, 1, 0x6a, 0x41, 7, 0x21, 1, 0x0b}
++		}
++	case "store-leaf":
++		caller = []byte{0x20, 0, 0x41, 0, 0x20, 0, 0x10, 1, 0x41, 23, 0x21, 0, 0x41, 0, 0x28, 2, 0, 0x6a, 0x20, 0, 0x6a, 0x0b}
++		hp = append(hp, wasm.I32)
++		hr = nil
++		helper = []byte{0, 0x20, 0, 0x20, 1, 0x36, 2, 0, 0x0b}
++	default:
++		t.Fatal("unknown fixture")
++	}
++	caller = append(prefix, caller...)
++	ss := [][]byte{wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), wasmtest.FuncType(hp, hr))), wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1)))}
++	if name == "store-leaf" {
++		ss = append(ss, wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})))
++	}
++	ss = append(ss, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(helper))), helper...))))
++	m, e := wasm.DecodeModule(wasmtest.Module(ss...))
++	if e != nil {
++		t.Fatal(e)
++	}
++	return m
++}
++
++func TestOwnedForestInlineOrdinary(t *testing.T) {
++	for _, name := range []string{"add-constant", "add-parameters", "forwarded-parameter", "scratch-repeated", "store-leaf"} {
++		t.Run(name, func(t *testing.T) {
++			m := ownedInlineModule(t, name)
++			expectedCalls := 1
++			if name == "forwarded-parameter" || name == "scratch-repeated" {
++				expectedCalls = 2
++			}
++			for _, intr := range []bool{false, true} {
++				var oracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if e != nil {
++						t.Fatal(e)
++					}
++					st := stats.Funcs[0]
++					if st.Calls["inline"] != expectedCalls || st.Calls["regabi"] != 0 || st.Calls["wrapper"] != 0 {
++						t.Fatalf("inline not selected: %+v", st.Calls)
++					}
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || work.InlineCallGaps != 0 || (candidate && work.Vector.stores == 0) {
++						t.Fatalf("forest inactive: %+v", work)
++					}
++					switch name {
++					case "add-constant":
++						if st.Peephole["inline-i32-add-const"] == 0 {
++							t.Fatal("addconst inactive")
++						}
++					case "add-parameters":
++						if st.Peephole["inline-i32-add-argument"] == 0 {
++							t.Fatal("addparams inactive")
++						}
++					case "forwarded-parameter":
++						if st.Peephole["inline-integer-scalar-param-forward"] != 2 {
++							t.Fatal("forwarding inactive")
++						}
++					case "scratch-repeated":
++						if st.Peephole["inline-integer-scalar-param-forward"] != 0 {
++							t.Fatal("mutating callee unexpectedly forwarded")
++						}
++					}
++					for _, arg := range []uint64{7, 0x80000001, 0xffffffff} {
++						want := 2*arg + 3
++						switch name {
++						case "add-parameters":
++							want = 2*arg + 5
++						case "forwarded-parameter", "scratch-repeated":
++							want = 4*arg + 41
++						case "store-leaf":
++							want = 2*arg + 23
++						}
++						want = uint64(uint32(want))
++						got, e := ownedRunModule(t, cm, []uint64{arg})
++						if e != nil || got != want {
++							t.Fatalf("candidate=%v input=%x got=%x want=%x err=%v", candidate, arg, got, want, e)
++						}
++					}
++					if !candidate {
++						oracle = append([]byte(nil), cm.Code...)
++					} else if !bytes.Equal(oracle, cm.Code) {
++						t.Fatal("native differs")
++					}
++					t.Logf("case=%s intr=%v candidate=%v bytes=%d calls=%v peepholes=%v work=%+v", name, intr, candidate, len(cm.Code), st.Calls, st.Peephole, work)
++					if cm.CodeImage != nil {
++						cm.CodeImage.Close()
++					}
++				}
++			}
++		})
++	}
++}
