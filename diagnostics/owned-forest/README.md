@@ -1102,3 +1102,11 @@ Apply `flush-plan-focused.patch` after `fd61962a` to reach `4ad04af0cfb9da58a1a0
 Successful planner root visits and type reads went from 630 to 315 per mode in this focused fixture. The counts are source-derived and do not measure machine stores, recursive hazard work, emitter rereads or runtime. Direct pairs retained exact emitted bytes and scratch capacities.
 
 The outer runner still exited 1. A later source-only inspection showed that its final check compared the Git-state dictionary with a flush-count dictionary via a shadowed variable. The start and durable exit records and independent source recheck agreed. The failed wrapper result is retained and the gate was not rerun. Summary SHA-256: `72ef796d7a85787c6d550db3fd4c76619a97c2f49da76eab04dcab41cbdafc7d`; separate attribution SHA-256: `f3357817dde88125bcc5a84dd32428036cc7aca08617fa95b5ea65e9f4f84fc7`. No corpus, timing, RSS, public serializer or default change.
+
+### Checked ELSE prefix republishing
+
+Apply `else-republish-focused.patch` after `4ad04af0` to reach `dd2afea51cbd15ed916133ebd130d12279e7274a` (tree `4864546ede97f4d5ca653898c9418f6247310033`). The first focused gate passed eight images, 32 ordinary calls and four exact native and encoder-JSON pairs, plus two direct cases. No ordinary fallback activated. An isolated valid late type mismatch left state unchanged before the old rebuild was exercised separately.
+
+Scalar root stores fell from 52 to 46 and arena requests from 25 to 22, at the same sampled capacity of 32 nodes (1,536 bytes). Vector root stores fell from 95 to 87 and arena requests from 46 to 42, at the same 64-node (3,072-byte) sample. The scalar/vector checks added three/five root checks and three/four type checks; both added 16 register-pair and four lease checks, with retag and tail work counted separately. These are not net-work, allocator, peak heap, RSS or latency measurements.
+
+Summary SHA-256: `a5c0c74410b9234d06923e633ae28e5caf99e73fd5a69ed71fcb5cb54dfcd92e`. No default, corpus, historical replay, or public serialization claim.

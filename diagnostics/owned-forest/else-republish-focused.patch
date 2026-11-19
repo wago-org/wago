@@ -1,0 +1,408 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 15a92006..df91189b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1947,6 +1947,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			RecordOperandLayout:         work.RecordOperandLayout,
+ 			FuseNoncanonicalFlushPlan:   work.FuseNoncanonicalFlushPlan,
+ 			RecordNoncanonicalFlushPlan: work.RecordNoncanonicalFlushPlan,
++			ReuseClosedElseRoots:        work.ReuseClosedElseRoots,
+ 			ScalarFPBlockResults:        work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 			ImmutableIntegerIndirect:           work.ImmutableIntegerIndirect,
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 4fef1d12..523806ef 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -2564,6 +2564,7 @@ func (f *fn) opElse() error {
+ 	if fr.has(ctrlEntryUnreachable) {
+ 		return nil
+ 	}
++	thenReachable := !f.unreachable
+ 	if f.unreachable {
+ 		f.unreachable = false // else edge is reachable (cond-false analogue)
+ 	} else {
+@@ -2592,16 +2593,108 @@ func (f *fn) opElse() error {
+ 	f.a.PatchRel32(fr.controlSite, f.a.Len())
+ 	fr.controlSite = -1
+ 	fr.set(ctrlHasElse, true)
+-	f.setDepthTypesWithGCRoots(
+-		f.frameDepthTypesForFrame(fr, true),
+-		frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)),
+-	)
++	types := f.frameDepthTypesForFrame(fr, true)
++	gcRoots := frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr))
++	if !f.tryFixtureClosedElseRepublish(fr, types, gcRoots, thenReachable) {
++		f.setDepthTypesWithGCRoots(types, gcRoots)
++	}
+ 	// The else body is entered via the if's false edge: locals are exactly in the
+ 	// header-snapshot state (no code).
+ 	f.setLocalsState(f.frameEntryState(fr))
+ 	return nil
+ }
+ 
++// Only opElse owns this transition: the then-side image has been flushed
++// and its jump emitted, while the alternate image is an owned type snapshot.
++// No popped operand or arena chunk is recycled, and failed checks leave the
++// original rebuild entirely untouched.
++func (f *fn) tryFixtureClosedElseRepublish(fr *ctrlFrame, types []machineType, gcRoots []bool, thenReachable bool) bool {
++	if f.s.forest == nil || f.sc == nil || f.sc.fixtureWork == nil || !f.sc.fixtureWork.ReuseClosedElseRoots {
++		return false
++	}
++	w := &f.sc.fixtureWork.ElseRepublish
++	w.Attempts++
++	s, v := f.s, f.s.forest
++	if !thenReachable || fr.kind != cfIf || fr.has(ctrlRegMerge1) || fr.has(ctrlIfDeferredPrefix) ||
++		fr.has(ctrlInlineFallthrough) || fr.paramN != 0 || fr.resultN > 1 || len(types) == 0 ||
++		len(types) != fr.height || len(v.roots) != fr.height+fr.resultN || f.depth() != len(v.roots) ||
++		!s.canonicalSlots || s.hasGCRoots || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
++		f.gcResolved.valid || f.storeFwd.valid || f.globalCellReg != regNone || f.inlineDepth != 0 || f.inlineForwardN != 0 ||
++		f.inlineTailConstants != nil || f.intervalActive != 0 || f.memSizeRegionalLease ||
++		f.moduleGlobalRegionalLease != regNone || f.pinned != 0 || f.fpinned != 0 ||
++		s.pendingPrefix != nil || s.spilledPrefix != nil || s.pendingEffects&(pendingLoad|pendingTrap) != 0 ||
++		profileEnabled || regallocCheckEnabled || ownedForestCensusEnabled {
++		w.InitialRejects++
++		return false
++	}
++	if merge := f.ctrlMerge(fr); merge != nil && merge.baseTypeTop != nil {
++		w.InitialRejects++
++		return false
++	}
++	for _, lease := range f.vectorRegion.locals {
++		w.LeaseChecks++
++		if lease != 0 {
++			w.CheckedFallbacks++
++			return false
++		}
++	}
++	for i, owner := range f.regUser {
++		w.RegisterChecks++
++		if owner != nil || f.fregUser[i] != nil {
++			w.CheckedFallbacks++
++			return false
++		}
++	}
++	slot, prefixEnd := 0, 0
++	for i, e := range v.roots {
++		w.RootChecks++
++		if e == nil || !e.forestLive || e.hasPhysicalLinks() || e.forestPending || !e.isValue() ||
++			!e.st.hasLogicalRoot() || e.arg0 != nil || e.arg1 != nil || e.st.cold != 0 ||
++			e.st.kind != stSlot || e.st.slotIndex() != slot || e.st.hasGCRoot() || e.st.hasEHRoot() ||
++			e.st.typ == mtCustom || e.st.typ == mtNone {
++			w.CheckedFallbacks++
++			return false
++		}
++		if i < len(types) {
++			w.TypeChecks++
++			if e.st.typ != types[i] || (i < len(gcRoots) && gcRoots[i]) {
++				w.CheckedFallbacks++
++				return false
++			}
++		}
++		slot += e.st.typ.stackSlots()
++		if i < len(types) {
++			prefixEnd = slot
++		}
++	}
++
++	for i := len(types); i < len(v.roots); i++ {
++		s.forestRetire(v.roots[i])
++		v.roots[i] = nil
++		v.stores++
++		w.RetiredTail++
++		w.RootPointerScrubs++
++	}
++	v.roots = v.roots[:len(types)]
++	slot = 0
++	for i, typ := range types {
++		st := storage{kind: stSlot, typ: typ, slot: uint32(slot)}
++		st.setLogicalRoot(true)
++		*v.roots[i] = elem{forestLive: true, st: st}
++		slot += typ.stackSlots()
++		w.RetaggedRoots++
++	}
++	s.pendingPrefix, s.spilledPrefix = nil, nil
++	s.spillExtent, s.spillExtentValid = uint32(prefixEnd), true
++	s.logicalDepth = uint32(len(types))
++	s.canonicalSlots, s.hasGCRoots = true, false
++	f.maxSpill = max(f.maxSpill, prefixEnd)
++	w.ReusedSites++
++	w.AvoidedAllocRequests += uint64(len(types))
++	w.AvoidedRootStores += uint64(len(types)) * 2
++	return true
++}
++
+ func (f *fn) opEnd() error {
+ 	f.inlineTailCompare.reuseResume = -1
+ 	last := len(f.ctrl) - 1
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index a30ff62d..3fba035f 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -1344,3 +1344,246 @@ func TestOwnedForestFlushPlanReentrantOrdinary(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// Only these valid ordinary recipes are executed. Taken and not-taken
++// outcomes use separate pages and check observable branch-specific stores.
++func layoutRepublishModule(t *testing.T, vector bool) *wasm.Module {
++	t.Helper()
++	b := []byte{0, 0x20, 0} // retained scalar input
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	vload := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	vstore := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if vector {
++		pc(512)
++		vload(0)
++		pc(544) // main prefix: scalar, addr, vector, addr
++	} else {
++		pc(9)
++		pc(11) // independent scalar neighbors
++	}
++	b = append(b, 0x20, 1, 0x04)
++	if vector {
++		b = append(b, 0x7b)
++	} else {
++		b = append(b, 0x40)
++	}
++	for _, Cond := range []bool{true, false} {
++		if !Cond {
++			b = append(b, 0x05)
++		}
++		pc(128)
++		if Cond {
++			pc(17)
++		} else {
++			pc(29)
++		}
++		b = append(b, 0x36, 2, 0)
++		if vector {
++			if Cond {
++				vload(16)
++			} else {
++				vload(32)
++			}
++		}
++	}
++	b = append(b, 0x0b)
++	if vector {
++		vstore()
++		vstore()
++		pc(544)
++		b = append(b, 0x28, 2, 0, 0x73)
++	} else {
++		b = append(b, 0x6a, 0x6a)
++	}
++	pc(128)
++	b = append(b, 0x28, 2, 0, 0x73, 0x0b)
++	m := layoutProbeModMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if e := wasm.ValidateModule(m); e != nil {
++		t.Fatal(e)
++	}
++	return m
++}
++
++func layoutRepublishRun(t *testing.T, cm *encoder.CompiledModule, vector bool, cond uint32, seed int) {
++	t.Helper()
++	eng, e := wr.NewEngine()
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer eng.Close()
++	j, e := wr.NewJobMemory(65536)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer j.Close()
++	a, e := wr.NewArena(4096)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer a.Close()
++	mapped, entry, e := wr.MapCode(cm.Code)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer wr.Unmap(mapped)
++	mem := j.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*17 + i/16*29 + seed)
++	}
++	want := append([]byte(nil), mem...)
++	var mark uint32 = 29
++	pick := 32
++	if cond != 0 {
++		mark, pick = 17, 16
++	}
++	binary.LittleEndian.PutUint32(want[128:], mark)
++	old := uint32(0xdeadbe00 + seed)
++	expect := (old + 20) ^ mark
++	if vector {
++		copy(want[512:], mem[:16])
++		copy(want[544:], mem[pick:pick+16])
++		expect = old ^ binary.LittleEndian.Uint32(want[544:]) ^ mark
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(cond))
++	e = eng.Call(entry+uintptr(cm.Entry[0]), in, j.LinearMemory(), tr, out)
++	if got := binary.LittleEndian.Uint32(out); e != nil || got != expect {
++		t.Fatalf("vector=%t cond=%d result=%x expected=%x err=%v", vector, cond, got, expect, e)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("vector=%t cond=%d memory[%d]=%x want=%x", vector, cond, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestElseRepublishOrdinary(t *testing.T) {
++	for _, vector := range []bool{false, true} {
++		t.Run(fmt.Sprintf("vector=%t", vector), func(t *testing.T) {
++			m := layoutRepublishModule(t, vector)
++			wantPrefix, wantTail := uint64(3), uint64(0)
++			if vector {
++				wantPrefix, wantTail = 4, 1
++			}
++			for _, intr := range []bool{false, true} {
++				var code, metadata []byte
++				var stores uint64
++				for _, reuse := range []bool{false, true} {
++					w := &fixtureModuleWork{Forest: true, RecordOperandLayout: true, ReuseClosedElseRoots: reuse, TemporaryV128SIMD: vector, TemporaryV128BlockResults: vector}
++					cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
++					if e != nil {
++						t.Fatal(e)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					p := w.ElseRepublish
++					if w.LegacyBodies != 1 || w.Rejected != 0 || w.Opcodes == 0 || len(w.OperandCapacities) != 1 || vector && (w.TemporaryV128Bodies != 1 || w.TemporaryV128BlockSlotMerges != 1) {
++						t.Fatalf("inactive ordinary source path: %+v", w)
++					}
++					if !reuse && p != (fixtureElseRepublishWork{}) {
++						t.Fatalf("unexpected disabled receipt: %+v", p)
++					}
++					if reuse && (p.Attempts != 1 || p.ReusedSites != 1 || p.InitialRejects != 0 || p.CheckedFallbacks != 0 || p.RetaggedRoots != wantPrefix || p.RetiredTail != wantTail || p.RootPointerScrubs != wantTail || p.AvoidedAllocRequests != wantPrefix || p.AvoidedRootStores != 2*wantPrefix || p.RootChecks != wantPrefix+wantTail || p.TypeChecks != wantPrefix || p.RegisterChecks == 0 || p.LeaseChecks == 0) {
++						t.Fatalf("actual checked republish and shape not reached: %+v", p)
++					}
++					z := *cm
++					z.Code, z.CodeImage = nil, nil
++					j, e := json.Marshal(z)
++					if e != nil {
++						t.Fatal(e)
++					}
++					if !reuse {
++						code, metadata, stores = append([]byte(nil), cm.Code...), j, w.Vector.stores
++					} else if !bytes.Equal(code, cm.Code) || !bytes.Equal(metadata, j) || w.Vector.stores > stores || stores-w.Vector.stores != p.AvoidedRootStores {
++						t.Fatalf("native, encoder or actual root-store delta differs: old=%d new=%d receipt=%+v", stores, w.Vector.stores, p)
++					}
++					for _, cond := range []uint32{0, 1} {
++						for _, seed := range []int{3, 29} {
++							layoutRepublishRun(t, cm, vector, cond, seed)
++						}
++					}
++					layoutEmit(t, "ELSE_ORDINARY", map[string]any{"vector": vector, "intr": intr, "reuse": reuse, "calls": 4, "native": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoder": fmt.Sprintf("%x", sha256.Sum256(j)), "rootStores": w.Vector.stores, "retires": w.Vector.retirements, "capacity": w.OperandCapacities[0], "work": p})
++				}
++			}
++		})
++	}
++}
++
++func layoutRepublishDirect(types []machineType, reuse bool) (*fn, *fixtureModuleWork, []*elem, int) {
++	w := &fixtureModuleWork{Forest: true, ReuseClosedElseRoots: reuse}
++	sc := newCompileScratch(32)
++	sc.fixtureWork = w
++	sc.ensureTargetStack()
++	f := &fn{s: sc.stack, sc: sc, globalCellReg: regNone, moduleGlobalRegionalLease: regNone}
++	var roots []*elem
++	slot := 0
++	for _, typ := range types {
++		e := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
++		// Inert union bits left over in an otherwise canonical scalar/vector
++		// slot. The fresh rebuild zeros them, so retention must too.
++		e.st.cval, e.st.idx, e.st.reg = 123, 77, R12
++		roots = append(roots, e)
++		slot += typ.stackSlots()
++	}
++	f.s.canonicalSlots = true
++	f.maxSpill = slot + 9
++	return f, w, roots, len(*f.s.activeChunk)
++}
++
++func TestOwnedForestElseRepublishDirectOrdinary(t *testing.T) {
++	initial := []machineType{mtI32, mtV128, mtI64, mtV128}
++	expected := initial[:3]
++	// There is no optional merge scratch in these isolated fixtures (mergeIndex=0).
++	// Real opElse has already touched any allocated merge row before this helper.
++	fr := ctrlFrame{kind: cfIf, height: 3, resultN: 1}
++	t.Run("retag-retire-and-fresh-metadata", func(t *testing.T) {
++		old, oldW, oldRoots, oldN := layoutRepublishDirect(initial, false)
++		got, w, prior, before := layoutRepublishDirect(initial, true)
++		old.setDepthTypesWithGCRoots(expected, nil)
++		if !got.tryFixtureClosedElseRepublish(&fr, expected, nil, true) {
++			t.Fatalf("eligible direct path did not reuse: %+v", w.ElseRepublish)
++		}
++		for i := range expected {
++			if w.Vector.roots[i] != prior[i] || oldW.Vector.roots[i] == oldRoots[i] || *w.Vector.roots[i] != *oldW.Vector.roots[i] {
++				t.Fatalf("root%d identity or fully reset storage differs", i)
++			}
++		}
++		if prior[3].forestLive || prior[3].st.hasLogicalRoot() || w.Vector.roots[:cap(w.Vector.roots)][3] != nil || got.s.spillExtent != old.s.spillExtent || got.s.spillExtentValid != old.s.spillExtentValid || got.depth() != old.depth() || got.maxSpill != old.maxSpill || got.s.canonicalSlots != old.s.canonicalSlots || got.s.hasGCRoots != old.s.hasGCRoots || got.s.pendingPrefix != old.s.pendingPrefix || got.s.spilledPrefix != old.s.spilledPrefix || got.s.pendingEffects != old.s.pendingEffects || got.regUser != old.regUser || got.fregUser != old.fregUser || got.pinned != old.pinned || got.fpinned != old.fpinned {
++			t.Fatal("canonical depth/liveness/spills/reset facts differ")
++		}
++		if len(*got.s.activeChunk) != before || len(*old.s.activeChunk)-oldN != 3 || oldW.Vector.stores-w.Vector.stores != 6 {
++			t.Fatal("actual arena requests/root pointer store delta differs")
++		}
++		layoutEmit(t, "ELSE_DIRECT", map[string]any{"case": "retag-retire-and-fresh-metadata", "work": w.ElseRepublish, "oldNodeDelta": len(*old.s.activeChunk) - oldN, "newNodeDelta": len(*got.s.activeChunk) - before, "oldRootStores": oldW.Vector.stores, "newRootStores": w.Vector.stores})
++	})
++	t.Run("mismatch-is-read-only-then-old-rebuild", func(t *testing.T) {
++		got, w, roots, n := layoutRepublishDirect(initial, true)
++		want := []machineType{mtI32, mtV128, mtF64} // reports a same-width mismatch late in prefix verification
++		elems := make([]elem, len(roots))
++		for i, x := range roots {
++			elems[i] = *x
++		}
++		priorStack := *got.s
++		priorForest := w.Vector
++		if got.tryFixtureClosedElseRepublish(&fr, want, nil, true) || w.ElseRepublish.CheckedFallbacks != 1 || w.ElseRepublish.TypeChecks != 3 || w.ElseRepublish.RetaggedRoots != 0 || w.ElseRepublish.RetiredTail != 0 || w.ElseRepublish.RootPointerScrubs != 0 || w.ElseRepublish.AvoidedAllocRequests != 0 {
++			t.Fatalf("mismatch did not cleanly return to old path: %+v", w.ElseRepublish)
++		}
++		if !reflect.DeepEqual(*got.s, priorStack) || !reflect.DeepEqual(w.Vector, priorForest) || len(*got.s.activeChunk) != n {
++			t.Fatal("mismatch mutated stack before fallback")
++		}
++		for i, x := range roots {
++			if w.Vector.roots[i] != x || *x != elems[i] {
++				t.Fatalf("mismatch mutated root%d", i)
++			}
++		}
++		got.setDepthTypesWithGCRoots(want, nil)
++		if len(*got.s.activeChunk)-n != len(want) || !canonicalSlotLayout(w.Vector.roots) || w.Vector.roots[2].st.typ != mtF64 || w.Vector.roots[2] == roots[2] {
++			t.Fatal("old fallback did not rebuild fixture target image")
++		}
++		layoutEmit(t, "ELSE_DIRECT", map[string]any{"case": "mismatch-is-read-only-then-old-rebuild", "work": w.ElseRepublish, "oldNodeDelta": len(*got.s.activeChunk) - n})
++	})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index d63b5aef..e7a9966f 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -295,7 +295,15 @@ type fixtureFlushPlanWork struct {
+ 	Plans, FusedPlans, RootVisits, RootTypeReads, WideRoutes, NarrowRoutes uint64
+ }
+ 
++type fixtureElseRepublishWork struct {
++	Attempts, InitialRejects, CheckedFallbacks, ReusedSites                                uint64
++	RootChecks, TypeChecks, RegisterChecks, LeaseChecks                                    uint64
++	RetaggedRoots, RetiredTail, RootPointerScrubs, AvoidedAllocRequests, AvoidedRootStores uint64
++}
++
+ type fixtureModuleWork struct {
++	ReuseClosedElseRoots                                                                                                                                      bool
++	ElseRepublish                                                                                                                                             fixtureElseRepublishWork
+ 	FuseNoncanonicalFlushPlan, RecordNoncanonicalFlushPlan                                                                                                    bool
+ 	NoncanonicalFlushPlan                                                                                                                                     fixtureFlushPlanWork
+ 	TemporaryV128HintClassification                                                                                                                           bool
