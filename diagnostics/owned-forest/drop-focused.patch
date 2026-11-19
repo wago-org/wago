@@ -1,0 +1,147 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/drop.go b/src/core/compiler/backend/railshot/amd64/drop.go
+index 2c3821e9..eee0af8f 100644
+--- a/src/core/compiler/backend/railshot/amd64/drop.go
++++ b/src/core/compiler/backend/railshot/amd64/drop.go
+@@ -49,14 +49,60 @@ func deferredOpDiscardable(op wOp) bool {
+ }
+ 
+ func (f *fn) discardTree(e *elem) {
++	if v := f.s.forest; v != nil {
++		i := len(v.roots) - 1
++		if i < 0 || v.roots[i] != e || !e.forestLive || !e.st.hasLogicalRoot() || e.forestPending {
++			panic("fixture forest: discard requires the owned top root")
++		}
++		f.discardForestTree(e, true)
++		return
++	}
++	f.discardLinkedTree(e)
++}
++
++func (f *fn) discardLinkedTree(e *elem) {
+ 	if e.isDeferred() {
+ 		if e.arg1 != nil {
+-			f.discardTree(e.arg1)
++			f.discardLinkedTree(e.arg1)
+ 		}
+-		f.discardTree(e.arg0)
++		f.discardLinkedTree(e.arg0)
+ 		f.erase(e)
+ 		return
+ 	}
++	f.releaseDiscardedLeaf(e)
++	f.erase(e)
++}
++
++// Visit children in the legacy disposal order, releasing their resources
++// before physical retirement. Only the owning root has a vector slot.
++func (f *fn) discardForestTree(e *elem, root bool) {
++	s := f.s
++	if e == nil || !e.forestLive || e.st.hasLogicalRoot() != root ||
++		e.forestPending || e.prev != nil || e.next != nil {
++		panic("fixture forest: invalid discarded operand ownership")
++	}
++	if e.isDeferred() {
++		if e.arg1 != nil {
++			f.discardForestTree(e.arg1, false)
++			e.arg1 = nil
++		}
++		f.discardForestTree(e.arg0, false)
++		e.arg0 = nil
++	} else {
++		f.releaseDiscardedLeaf(e)
++	}
++	if root {
++		f.forestEraseAt(len(s.forest.roots)-1, e)
++	} else {
++		if regallocCheckEnabled {
++			f.checkConsumeMemRef(e)
++		}
++		s.clearElemCold(e)
++		s.forestRetire(e)
++	}
++}
++
++func (f *fn) releaseDiscardedLeaf(e *elem) {
+ 	switch e.st.kind {
+ 	case stReg:
+ 		if e.st.typ == mtCustom {
+@@ -71,7 +117,6 @@ func (f *fn) discardTree(e *elem) {
+ 	case stMemRef:
+ 		f.releaseMemRef(e.st)
+ 	}
+-	f.erase(e)
+ }
+ 
+ func (f *fn) releaseDroppedValue(e *elem) {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_drop_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_drop_independent_test.go
+new file mode 100644
+index 00000000..da3d5caa
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_drop_independent_test.go
+@@ -0,0 +1,66 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"fmt"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"testing"
++)
++
++// Ordinary well-typed scalar inputs only. Exceptional inputs and failure
++// reproductions are deliberately outside this staged fixture.
++func TestOwnedForestDropOrdinarySemantics(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		tail []byte
++		args []uint64
++		want uint64
++	}{
++		{"binary", []byte{0x20, 0, 0x20, 1, 0x73, 0x20, 0, 0x6a, 0x1a, 0x20, 0, 0x0b}, []uint64{23, 5}, 23},
++		{"unary", []byte{0x20, 0, 0x45, 0x1a, 0x20, 1, 0x0b}, []uint64{23, 5}, 5},
++		{"retained-old-local", []byte{0x20, 0, 0x20, 0, 0x20, 1, 0x73, 0x1a, 0x20, 1, 0x21, 0, 0x20, 0, 0x6a, 0x0b}, []uint64{23, 5}, 28},
++		{"in-bounds-effect", []byte{0x41, 0, 0x41, 29, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x41, 1, 0x6a, 0x1a, 0x41, 0, 0x28, 2, 0, 0x0b}, []uint64{23, 5}, 29},
++		{"valid-division", []byte{0x20, 0, 0x20, 1, 0x6e, 0x41, 1, 0x6a, 0x1a, 0x20, 0, 0x0b}, []uint64{23, 5}, 23},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			body := append([]byte{0, 0x03, 0x40, 0x01, 0x0b}, tc.tail...)
++			m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++			if tc.name == "in-bounds-effect" {
++				m = modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++			}
++			for _, intr := range []bool{false, true} {
++				t.Run(fmt.Sprintf("interruptible=%v", intr), func(t *testing.T) {
++					var oracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate}
++						cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: work})
++						if e != nil {
++							t.Fatal(e)
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 {
++							t.Fatalf("inactive legacy driver: %+v", work)
++						}
++						if candidate && work.Vector.stores == 0 {
++							t.Fatal("forest root operations absent")
++						}
++						got, e := ownedRunModule(t, cm, tc.args)
++						if e != nil || got != tc.want {
++							t.Fatalf("candidate=%v got=%d want=%d err=%v", candidate, got, tc.want, e)
++						}
++						if !candidate {
++							oracle = append([]byte(nil), cm.Code...)
++						} else if !bytes.Equal(oracle, cm.Code) {
++							t.Fatal("native differs")
++						}
++						t.Logf("candidate=%v bytes=%d work=%+v", candidate, len(cm.Code), work)
++						if cm.CodeImage != nil {
++							cm.CodeImage.Close()
++						}
++					}
++				})
++			}
++		})
++	}
++}

@@ -188,3 +188,20 @@ execution evidence. A source-only audit correlated 18 with division and
 13 with arithmetic paths; those associations are not proven causes.
 The prior failed corpus census and its raw classifications stand.
 This snapshot provides no new corpus, runtime, or performance result.
+
+## DROP source checkpoint
+
+Apply drop-focused.patch on top of 2ea18fc1. Source a20407fc routes pure
+dropped trees through explicit forest ownership, and f878b8f0 adds
+five independent valid scalar cases. The source change passed review;
+the focused gate passed on clean f878b8f0: 20 ordinary valid-input
+execution images and 10 exact native pairs. Each candidate used one
+legacy forest body, dispatched 8–14 opcodes and recorded positive root
+stores. No shared-scalar bypasses or rejections occurred. No exceptional
+inputs, crash reproductions, or corpus checks were run.
+
+On a20407fc, the ordinary existing TestRepeatedLocalEarlySelection and
+TestDivRemConstPairValues suites passed two top-level tests and 66
+subtests without skips. This was not an owned-forest selector or DROP
+runtime gate. The 31 original corpus panics remain unresolved by
+dynamic evidence. No new corpus or performance result is claimed.
