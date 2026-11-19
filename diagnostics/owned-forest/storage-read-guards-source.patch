@@ -1,0 +1,33 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index f3e75ecb..c84ec516 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1523,11 +1523,15 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 		if atomicWait && p == 5 {
+ 			index := roots[d-1].st
+ 			atomicFast = index.kind == stConst && uint64(index.constantBits()) <= 0xffffffff
+-			atomicIndex = uint32(index.constantBits())
++			if index.kind == stConst {
++				atomicIndex = uint32(index.constantBits())
++			}
+ 			offsetSlot--
+ 		}
+ 		offset := roots[offsetSlot].st
+-		atomicOffset = uint64(offset.constantBits())
++		if offset.kind == stConst {
++			atomicOffset = uint64(offset.constantBits())
++		}
+ 		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+ 			(atomicWait || atomicOffset <= 0xffffffff)
+ 	}
+@@ -1537,7 +1541,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 	if growFast && p == 2 {
+ 		index := roots[d-1].st
+ 		growFast = index.kind == stConst
+-		growIndex = uint32(index.constantBits())
++		if growFast {
++			growIndex = uint32(index.constantBits())
++		}
+ 	}
+ 	belowTypes := f.tmpTypes2[:0]
+ 	if cap(belowTypes) < d-p {

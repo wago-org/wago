@@ -1180,3 +1180,9 @@ Apply `storage-constructors-focused.patch` after `07d2bd69` to reach `82dd50786e
 The first gate passed 36 images, 114 ordinary calls and 24 exact body/native/encoder-JSON comparisons. The 40-byte layout and all 60 capacity rows were unchanged. Earlier arbitrary, packed and accessor tests remained intact. New direct coverage included 13 constructor comparisons, two FP occupation widths, an inert-emitter tee without guest execution and GP captured-slot clearing.
 
 Summary SHA-256: `50ead4082cc3db929c1eb6463663161121e7884ea7e905cfc1120df47cd9a7ff`. No 32-byte representation, public serializer, corpus, timing or RSS claim. Active source and defaults are unchanged.
+
+### Host payload read guards: source-only checkpoint
+
+Apply `storage-read-guards-source.patch` after `82dd5078` to reach `94b5d4617502390f74665d1d60c788bf2c3c7776` (tree `ee74c2e8b8a294ac636b7a5c38258cdf2f4e6493`). Three kind guards now precede pure eager payload reads in `callHostSync`. Independent source review found that short-circuit outcomes, fast-path flags and emitter behavior are preserved. Read-matrix SHA-256: `88f689338fc8aa0c775055e2316701bf56f0e111a4fadc9ece6d0ff5d3dc79f5`.
+
+No build or test ran at this checkpoint. Earlier test results are historical, not qualification of this change. No atomic execution or admission, layout switch, blanket compact 32-byte proof, or default change.
