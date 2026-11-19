@@ -1,0 +1,507 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 4475a19e..8faddaa1 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -406,6 +406,13 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 	}
+ 	imported := f.importedFunctionCount()
+ 	target := f.selectedInlineTarget(idx)
++	// Check the full two-arm lane before ordinary call lowering. Keep all
++	// unspecialized import, tail, and custom paths unchanged.
++	if int(idx) < imported && f.fixtureDynamicIntegerHostImports() {
++		if err := f.checkFixtureDynamicIntegerHostImport(idx, ft); err != nil {
++			return err
++		}
++	}
+ 	if f.s.forest != nil {
+ 		if target != nil {
+ 			if f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.TemporaryV128PerFunction {
+@@ -436,7 +443,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 				fixtureScalarFPMixedSignature(ft, f.sc.fixtureWork.maxFixtureFPArgs()) && len(f.customInstructions) == 0 && !f.s.hasGCRoots
+ 			allFP := f.fixtureScalarFPEnabled() && f.sc.fixtureWork.admitsFPInternalDirect(ft) &&
+ 				len(f.customInstructions) == 0 && !f.s.hasGCRoots
+-			if int(idx) < imported || !f.opt(optRegABI) || (!sigIsIntOnly(ft) && !mixed && !allFP) ||
++			if (int(idx) < imported && !f.fixtureDynamicIntegerHostImports()) ||
++				(int(idx) >= imported && !f.opt(optRegABI)) || (!sigIsIntOnly(ft) && !mixed && !allFP) ||
+ 				len(ft.Results) > 1 || f.gcFrameRoots != nil {
+ 				panic("fixture forest: only internal scalar integer calls with at most one integer result are ported")
+ 			}
+@@ -1964,6 +1972,54 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
+ 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
+ }
+ 
++func (f *fn) fixtureDynamicIntegerHostImports() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.DynamicIntegerHostImports
++}
++
++func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType) error {
++	if int(idx) >= len(f.importBindings) || !f.dynamicHostFast || !f.syncHostCalls ||
++		f.moduleEH || f.inlineDepth != 0 || len(f.customInstructions) != 0 ||
++		f.gcFrameRoots != nil || f.s.hasGCRoots || f.nGlobalPins != 0 || f.fpinnedLocalMask != 0 ||
++		f.intervalActive != 0 || f.fpinned != 0 ||
++		f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) ||
++		len(ft.Params) > 2 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.I64) ||
++		!sigIsIntOnly(ft) {
++		return fmt.Errorf("fixture forest: unsupported dynamic integer host import")
++	}
++	b := f.importBindings[idx]
++	if !b.Dynamic || b.CrossInstance || b.EHTransfer || b.ImportIndex != idx {
++		return fmt.Errorf("fixture forest: unsupported dynamic import binding")
++	}
++	roots := f.rootsBottomToTop()
++	base := len(roots) - len(ft.Params)
++	if base < 0 {
++		return fmt.Errorf("fixture forest: insufficient dynamic import operands")
++	}
++	for i, root := range roots {
++		typ := rootMachineType(root)
++		if fixtureDeferredI64Predicate(root) || typ != mtI32 && typ != mtI64 ||
++			i >= base && typ != mtOf(ft.Params[i-base]) {
++			return fmt.Errorf("fixture forest: unsupported dynamic import operand type")
++		}
++	}
++	return nil
++}
++
++// The common flush precedes the split. Neither path may reach allocator
++// eviction/relinquishment after it; the branch snapshot does not copy that state.
++func (f *fn) checkFixtureDynamicIntegerHostResultGP() error {
++	if !f.s.canonicalSlots || f.intervalActive != 0 || f.pinned != 0 || f.fpinned != 0 {
++		return fmt.Errorf("fixture forest: unsupported active lease at dynamic import split")
++	}
++	block := maskOf(R8).union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
++	for _, r := range gpAlloc {
++		if f.regUser[r] == nil && !block.has(r) {
++			return nil
++		}
++	}
++	return fmt.Errorf("fixture forest: no direct GP for dynamic import result")
++}
++
+ // A bound ordinary Go thunk can use its known control-frame ABI directly.
+ // The instance's tagged dispatch word proves this is not a same-context Wasm
+ // target. Both alternatives join with canonical operands and homed locals.
+@@ -1985,6 +2041,12 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	types := append([]machineType(nil), f.logicalTypes(roots)...)
+ 	rootFlags := gcRootFlags(roots)
+ 	f.flush()
++	fixture := f.fixtureDynamicIntegerHostImports()
++	if fixture {
++		if err := f.checkFixtureDynamicIntegerHostResultGP(); err != nil {
++			return err
++		}
++	}
+ 	locals := append([]localDef(nil), f.locals...)
+ 	if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
+ 		return fmt.Errorf("import dispatch index overflows displacement")
+@@ -2016,6 +2078,9 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	}
+ 	f.a.PatchRel32(done, f.a.Len())
+ 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
++	if fixture {
++		f.sc.fixtureWork.DynamicIntegerHostImportSites++
++	}
+ 	return nil
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 138ee10a..9e795a67 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1971,6 +1971,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		work := opts.fixtureWork
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
++			DynamicIntegerHostImports:   work.DynamicIntegerHostImports,
+ 			RecordOperandLayout:         work.RecordOperandLayout,
+ 			FuseNoncanonicalFlushPlan:   work.FuseNoncanonicalFlushPlan,
+ 			RecordNoncanonicalFlushPlan: work.RecordNoncanonicalFlushPlan,
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 980f284b..c868002b 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -306,6 +306,8 @@ type fixtureFinalizedTrimWork struct {
+ }
+ 
+ type fixtureModuleWork struct {
++	DynamicIntegerHostImports                                                                                                                                 bool
++	DynamicIntegerHostImportSites                                                                                                                             uint64
+ 	FinalizedTrim                                                                                                                                             fixtureFinalizedTrimWork
+ 	ReuseClosedElseRoots                                                                                                                                      bool
+ 	ElseRepublish                                                                                                                                             fixtureElseRepublishWork
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+new file mode 100644
+index 00000000..9b46dc27
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+@@ -0,0 +1,42 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && !wago_standalone && wago_owned_forest_public_fixture
++
++package amd64
++
++import (
++	"fmt"
++
++	"github.com/wago-org/wago/src/core/compiler/codegen"
++)
++
++// OwnedForestPublicFixture is a per-compile test bridge, not an API admission
++// classifier. It is available only in an explicit fixture build and never
++// retries with linked-list lowering.
++type OwnedForestPublicFixture struct {
++	work fixtureModuleWork
++}
++
++func NewOwnedForestPublicFixture(forest bool) *OwnedForestPublicFixture {
++	return &OwnedForestPublicFixture{work: fixtureModuleWork{Forest: forest, DynamicIntegerHostImports: true}}
++}
++
++func (f *OwnedForestPublicFixture) Configure(opts *CompileOptions) error {
++	if codegen.SourceChecks || opts.Workers != 1 || opts.Profile || opts.Stats != nil ||
++		opts.CollectInlineReport || len(opts.CustomInstructions) != 0 {
++		return fmt.Errorf("owned forest public fixture requires ordinary serial compilation")
++	}
++	opts.fixtureWork = &f.work
++	return nil
++}
++
++// DynamicImportSites counts source sites for which both native paths were
++// emitted and joined. It is not a count of executed runtime dispatch paths.
++func (f *OwnedForestPublicFixture) DynamicImportSites() uint64 {
++	return f.work.DynamicIntegerHostImportSites
++}
+diff --git a/src/wago/api.go b/src/wago/api.go
+index 61c97cf5..fe4f983a 100644
+--- a/src/wago/api.go
++++ b/src/wago/api.go
+@@ -1522,6 +1522,9 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
+ 	railshotConfigureGCTypeSubtypingTransitiveMismatchLink(gcTypeSubtypingTransitiveMismatchLinkSourceVariant, &compileOptions)
+ 	railshotConfigureGCTypeSubtypingNonFlatExport(exactGCTypeSubtypingNonFlatExportSource, &compileOptions)
+ 	railshotConfigureGCTypeSubtypingRefFuncGlobals(gcTypeSubtypingRefFuncGlobalsSourceVariant, &compileOptions)
++	if err := configureOwnedForestPublicFixture(cfg, &compileOptions); err != nil {
++		return nil, wrapContextError("compile", err)
++	}
+ 	var cm *railshotCompiledModule
+ 	if codegen.SourceChecks {
+ 		cm, err = railshotCompileValidatedModuleWith(m, compileOptions, &validationAnalysis, validationFeatures)
+diff --git a/src/wago/config.go b/src/wago/config.go
+index d5140fd9..2b85b7fc 100644
+--- a/src/wago/config.go
++++ b/src/wago/config.go
+@@ -237,6 +237,7 @@ func (m BoundsCheckMode) String() string {
+ // RuntimeConfig configures compilation and execution. It is immutable — every
+ // WithXxx returns a copy, so a base config can be shared and specialised safely.
+ type RuntimeConfig struct {
++	ownedForestPublicConfig
+ 	railshotState            railshotRuntimeConfigState
+ 	codeProfile              *CodeProfile
+ 	features                 CoreFeatures
+diff --git a/src/wago/owned_forest_public_dynamic_ordinary_test.go b/src/wago/owned_forest_public_dynamic_ordinary_test.go
+new file mode 100644
+index 00000000..ed883c48
+--- /dev/null
++++ b/src/wago/owned_forest_public_dynamic_ordinary_test.go
+@@ -0,0 +1,247 @@
++//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++
++	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	coreruntime "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"unsafe"
++)
++
++type ordinaryDynamicInput struct {
++	x uint64
++	y uint32
++}
++
++var ordinaryDynamicInputs = []ordinaryDynamicInput{
++	{0x0, 0}, {0x8000000000000001, 0x80000003}, {0xffffffffffffffff, 0xffffffff},
++}
++
++func ordinaryDynamicImport(module, name string, typeIndex uint32) []byte {
++	field := func(s string) []byte { return append(wasmtest.ULEB(uint32(len(s))), []byte(s)...) }
++	e := append(field(module), field(name)...)
++	return append(append(e, 0), wasmtest.ULEB(typeIndex)...)
++}
++func ordinaryDynamicHostBytes() []byte {
++	i, j := wasm.I32, wasm.I64
++	importType := wasmtest.FuncType([]wasm.ValType{i, j}, []wasm.ValType{j})
++	runType := wasmtest.FuncType([]wasm.ValType{j, i}, []wasm.ValType{j})
++	leafType := wasmtest.FuncType([]wasm.ValType{i, j}, []wasm.ValType{j})
++	body := []byte{0x20, 0, 0x20, 0, 0x42}
++	body = append(body, wasmtest.SLEB64(95)...)
++	body = append(body, 0x85, 0x21, 0, 0x20, 1, 0x20, 0, 0x10, 0)
++	body = append(body, 0x85, 0x20, 0, 0x7c, 0x0b)
++	// leaf(y, x) returns (x*3 + uint32(y)) - 1.
++	leaf := []byte{0x20, 1, 0x42, 3, 0x7e, 0x20, 0, 0xad, 0x7c, 0x42, 1, 0x7d, 0x0b}
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(importType, runType, leafType)),
++		wasmtest.Section(2, wasmtest.Vec(ordinaryDynamicImport("env", "combine", 0))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(2))),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1), wasmtest.ExportEntry("leaf", 0, 2))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(leaf))),
++	)
++}
++
++func ordinaryDynamicProducerBytes() []byte {
++	i, j := wasm.I32, wasm.I64
++	ft := wasmtest.FuncType([]wasm.ValType{i, j}, []wasm.ValType{j})
++	// Independent local Wasm instance; x*5 - uint32(y).
++	body := []byte{0x20, 1, 0x42, 5, 0x7e, 0x20, 0, 0xad, 0x7d, 0x0b}
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(ft)),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("combine", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
++	)
++}
++func ordinaryDynamicGoValue(x uint64, y uint32) uint64 {
++	return (x<<11 | x>>53) ^ (uint64(y) * 0x100000001)
++}
++func ordinaryDynamicCheck(t *testing.T, c, producer *Compiled, lane string) {
++	t.Helper()
++	var in *Instance
++	var producerIn *Instance
++	imports := NewImports()
++	var target ordinaryDynamicInput
++	calls, reentries := 0, 0
++	read := func(h HostCall) (uint64, uint32) {
++		if h.ParamCount() != 2 || h.ResultCount() != 1 {
++			t.Errorf("args/results %d/%d want2/1", h.ParamCount(), h.ResultCount())
++			return 0, 0
++		}
++		y, yhi := h.RawParam(0)
++		x, xhi := h.RawParam(1)
++		if y != uint64(target.y) || x != target.x^95 || yhi != 0 || xhi != 0 || uint32(h.I32(0)) != target.y || uint64(h.I64(1)) != x {
++			t.Errorf("raw/typed ordered slots got (%x,%x)/(%x,%x), input=%+v", y, yhi, x, xhi, target)
++		}
++		return x, uint32(y)
++	}
++	bind := func(fn any) {
++		imports.HostFunc("env", "combine", fn).Params(ValI32, ValI64).Results(ValI64)
++	}
++	switch lane {
++	case "go-host":
++		bind(HostCallFunc(func(h HostCall) {
++			calls++
++			x, y := read(h)
++			z := ordinaryDynamicGoValue(x, y)
++			if calls%2 == 1 {
++				h.SetI64(0, int64(z))
++			} else {
++				h.SetRawResult(0, z, 0)
++			}
++		}))
++	case "same-instance-reentry":
++		bind(CallerHostCallFunc(func(caller Caller, h HostCall) {
++			calls++
++			x, y := read(h)
++			r, e := in.InvokeFromHost(context.Background(), caller, "leaf", uint64(y), x)
++			if e != nil || len(r) != 1 {
++				t.Errorf("ordinary nested leaf=%v err=%v", r, e)
++				return
++			}
++			got := r[0] // no retained invocation-owned slice
++			reentries++
++			if got != 3*x+uint64(y)-1 {
++				t.Errorf("nested leaf=%x want=%x", got, 3*x+uint64(y)-1)
++			}
++			h.SetRawResult(0, got, 0)
++		}))
++	case "native-cross-instance":
++		if producer == nil {
++			t.Fatal("invalid test lane setup")
++		}
++		var e error
++		producerIn, e = Instantiate(producer, InstantiateOptions{})
++		if e != nil {
++			t.Fatal(e)
++		}
++		defer producerIn.Close()
++		exp, e := producerIn.ExportedFunc("combine")
++		if e != nil {
++			t.Fatal(e)
++		}
++		imports.Function("env", "combine", exp)
++	default:
++		t.Fatal("unknown lane")
++	}
++	var e error
++	in, e = Instantiate(c, InstantiateOptions{Imports: imports})
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer in.Close()
++	if c.NumImports != 1 || !c.dynamicImports || !c.supportsGoHostDispatchTag() {
++		t.Fatal("public image lacks dynamic import or selected dispatch tag publication")
++	}
++	// Read the one real runtime-owned dispatch entry while its instance
++	// still owns it. No guest-provided offsets or process addresses logged.
++	ptr := in.jm.CaptureInstanceContext().ImportDispatch
++	if ptr == 0 {
++		t.Fatal("missing actual import dispatch entry")
++	}
++	dispatch := unsafe.Slice((*byte)(offHeapPtr(ptr)), coreruntime.ImportDispatchEntryBytes)
++	lo := func(off int) uint64 { return binary.LittleEndian.Uint64(dispatch[off:]) }
++	contextWord := lo(coreruntime.ImportDispatchCallerContextOffset)
++	contextTag := contextWord & uint64(coreruntime.ImportDispatchCallerGoHostTag)
++	if contextWord&uint64(coreruntime.ImportDispatchCallerNativeLeafTag) != 0 {
++		t.Fatal("out-of-scope native leaf route was installed")
++	}
++	if lane == "native-cross-instance" {
++		if contextTag != 0 || lo(coreruntime.ImportDispatchCodePtrOffset) != uint64(producerIn.base)+uint64(producerIn.c.Entry[0]) || lo(coreruntime.ImportDispatchHomeLinMemOffset) != uint64(producerIn.jm.LinMemBase()) {
++			t.Fatal("runtime import is not bound to the exact native producer")
++		}
++	} else if contextTag == 0 || lo(coreruntime.ImportDispatchHomeLinMemOffset) != uint64(in.jm.LinMemBase()) {
++		t.Fatal("runtime import has no ordinary Go caller dispatch tag")
++	}
++	for _, v := range ordinaryDynamicInputs {
++		target = v
++		x := v.x ^ 95
++		z := ordinaryDynamicGoValue(x, v.y)
++		switch lane {
++		case "same-instance-reentry":
++			z = 3*x + uint64(v.y) - 1
++		case "native-cross-instance":
++			z = 5*x - uint64(v.y)
++		}
++		want := (v.x ^ z) + x
++		r, e := in.Invoke("run", v.x, uint64(v.y))
++		if e != nil || len(r) != 1 || r[0] != want {
++			t.Fatalf("lane=%s v=%+v got=%v want=%x err=%v", lane, v, r, want, e)
++		}
++	}
++	expectedCalls, expectedReentries := len(ordinaryDynamicInputs), 0
++	if lane == "native-cross-instance" {
++		expectedCalls = 0
++	}
++	if lane == "same-instance-reentry" {
++		expectedReentries = len(ordinaryDynamicInputs)
++	}
++	if calls != expectedCalls || reentries != expectedReentries {
++		t.Fatalf("actual callbacks=%d reentries=%d want=%d/%d", calls, reentries, expectedCalls, expectedReentries)
++	}
++	r, e := json.Marshal(map[string]any{"lane": lane, "outer": len(ordinaryDynamicInputs), "callbacks": calls, "nested": reentries, "goTag": contextTag != 0})
++	if e != nil {
++		t.Fatal(e)
++	}
++	t.Logf("PUBLIC_DYNAMIC_RUNTIME %s", r)
++}
++
++func TestScopedPublicDynamicIntegerHostImports(t *testing.T) {
++	arm := os.Getenv("WAGO_ORDINARY_DYNAMIC_ARM")
++	if arm != "wide" && arm != "compact" {
++		t.Fatal("run only with the predeclared public gate arm")
++	}
++	forest := arm == "compact"
++	compile := func(name string, body []byte, sites uint64) *Compiled {
++		t.Helper()
++		cfg := NewRuntimeConfig().WithFunctionWorkers(1).WithMaxModuleBytes(uint64(len(body)))
++		proof := railshot.NewOwnedForestPublicFixture(forest)
++		cfg.ownedForestPublicFixture = proof
++		c, e := Compile(cfg, body)
++		if e != nil {
++			t.Fatalf("public compile of %s: %v", name, e)
++		}
++		t.Cleanup(func() {
++			if e := c.Close(); e != nil {
++				t.Error(e)
++			}
++		})
++		if proof.DynamicImportSites() != sites {
++			t.Fatalf("public compile of %s emitted %d completed dynamic sites, want%d", name, proof.DynamicImportSites(), sites)
++		}
++		if (sites == 1) != c.dynamicImports || (sites == 1) != c.supportsGoHostDispatchTag() {
++			t.Fatalf("public compile of %s published incorrect import or host dispatch metadata", name)
++		}
++		var out bytes.Buffer
++		if _, e = c.WriteCodeTo(&out); e != nil {
++			t.Fatal(e)
++		}
++		meta, e := compiledMetadataBytes(c, true)
++		if e != nil {
++			t.Fatal(e)
++		}
++		receipt, e := json.Marshal(map[string]any{"arm": arm, "module": name, "body": fmt.Sprintf("%x", sha256.Sum256(body)), "native": fmt.Sprintf("%x", sha256.Sum256(out.Bytes())), "metadata": fmt.Sprintf("%x", sha256.Sum256(meta)), "nativeBytes": out.Len(), "metadataBytes": len(meta), "sites": sites, "dynamic": c.dynamicImports, "goDispatchTag": c.supportsGoHostDispatchTag()})
++		if e != nil {
++			t.Fatal(e)
++		}
++		t.Logf("PUBLIC_DYNAMIC_ARTIFACT %s", receipt)
++		return c
++	}
++	consumer := compile("caller", ordinaryDynamicHostBytes(), 1)
++	producer := compile("producer", ordinaryDynamicProducerBytes(), 0)
++	for _, lane := range []string{"go-host", "same-instance-reentry", "native-cross-instance"} {
++		t.Run(lane, func(t *testing.T) { ordinaryDynamicCheck(t, consumer, producer, lane) })
++	}
++}
+diff --git a/src/wago/owned_forest_public_fixture_amd64.go b/src/wago/owned_forest_public_fixture_amd64.go
+new file mode 100644
+index 00000000..1c7b33d0
+--- /dev/null
++++ b/src/wago/owned_forest_public_fixture_amd64.go
+@@ -0,0 +1,23 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++
++type ownedForestPublicConfig struct {
++	ownedForestPublicFixture *railshot.OwnedForestPublicFixture
++}
++
++func configureOwnedForestPublicFixture(cfg *RuntimeConfig, opts *railshotCompileOptions) error {
++	if cfg.ownedForestPublicFixture == nil {
++		return nil
++	}
++	return cfg.ownedForestPublicFixture.Configure(opts)
++}
+diff --git a/src/wago/owned_forest_public_fixture_disabled.go b/src/wago/owned_forest_public_fixture_disabled.go
+new file mode 100644
+index 00000000..82075378
+--- /dev/null
++++ b/src/wago/owned_forest_public_fixture_disabled.go
+@@ -0,0 +1,14 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build !amd64 || wago_standalone || !wago_owned_forest_public_fixture
++
++package wago
++
++type ownedForestPublicConfig struct{}
++
++func configureOwnedForestPublicFixture(*RuntimeConfig, *railshotCompileOptions) error { return nil }

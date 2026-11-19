@@ -1126,3 +1126,11 @@ Apply `finalized-trim-focused.patch` after `ec3f7e0b` to reach `71b3ff1edbbe9c7b
 A separate allocation-only probe exercised the actual trim: requested capacity fell from 1,310,720 to 983,040 bytes, with 327,680 bytes discarded. It checked 24,576 root-length and 29,696 capacity scrub entries, two holders and zero semantic retirements. The probe retained the pretrim receipt and checked the next reset. Requested/discarded storage is not freed allocator bytes or process RSS; no forced GC or public-path execution claim.
 
 Summary SHA-256: `e5d581294fe9556a578ec946b94c1d361a2abc54c7b3e16c84fb02bac064ae9c`. No timing, corpus or default change.
+
+### Scoped public dynamic calls
+
+Apply `public-dynamic-focused.patch` after `71b3ff1e` to reach `f59172c2bda5f84f524bc1b5f798e880d79a60b7` (tree `ea0fa78d6d485169da97ef0d41049ff4b79f6d23`). The private early-tag bridge is serial and opt-in. It is not the public default.
+
+Attempt 1 on `607ccae` stopped at an unrelated package initialization failure before any requested execution. One reviewed overlay packaging retry retained the production package, assembly and dependency graph. Attempt 2 passed four public compiles, 18 outer calls and six nested leaf calls with two exact native and publicly serialized metadata pairs. Actual routes included Go host callbacks, same-instance reentry and native cross-instance calls.
+
+Summary SHA-256: `81ee2f93c200eab4d2f24fa5f287b14b8254bc4d7e1afad1c362841d40a8e4ee`. No full-API, corpus, timing, RSS or default-change claim.
