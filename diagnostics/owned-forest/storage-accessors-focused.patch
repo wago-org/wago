@@ -1,0 +1,2448 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/atomic.go b/src/core/compiler/backend/railshot/amd64/atomic.go
+index fd5b0f80..00ec6572 100644
+--- a/src/core/compiler/backend/railshot/amd64/atomic.go
++++ b/src/core/compiler/backend/railshot/amd64/atomic.go
+@@ -55,14 +55,14 @@ func (f *fn) emitFE(r *wasm.Reader) error {
+ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
+ 	if d.Class == railshared.AtomicNotify && f.opt(optAtomicNotifyEmpty) && d.MemoryIndex == 0 && f.threadedMemory0 && !f.memoryAddr64(0) {
+ 		top := f.s.back()
+-		if top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
++		if top.elemKind() == ekValue && top.st.kind == stConst && top.st.constantBits() == 0 {
+ 			return f.atomicZeroNotify(d)
+ 		}
+ 	}
+ 	if d.Class == railshared.AtomicWait && f.opt(optAtomicZeroWait) {
+ 		mt, ok := f.memoryType(d.MemoryIndex)
+ 		top := f.s.back()
+-		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
++		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.constantBits() == 0 {
+ 			f.consumeGCFrameCallsite()
+ 			return f.atomicZeroWait(d)
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/atomic_static_bounds.go b/src/core/compiler/backend/railshot/amd64/atomic_static_bounds.go
+index a8770e45..9cd57be6 100644
+--- a/src/core/compiler/backend/railshot/amd64/atomic_static_bounds.go
++++ b/src/core/compiler/backend/railshot/amd64/atomic_static_bounds.go
+@@ -22,7 +22,7 @@ func (f *fn) staticAtomicMem(memoryIndex uint32, offset uint64, size int) (base,
+ 	if !valid || e == nil || !e.isValue() || e.st.kind != stConst {
+ 		return regNone, regNone, false
+ 	}
+-	address, valid := shared.ProvenAtomicAddress(mt, uint32(e.st.cval), offset, size)
++	address, valid := shared.ProvenAtomicAddress(mt, uint32(e.st.constantBits()), offset, size)
+ 	if !valid {
+ 		return regNone, regNone, false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/bounded_unsigned_div.go b/src/core/compiler/backend/railshot/amd64/bounded_unsigned_div.go
+index c288f6c9..b84c1ad6 100644
+--- a/src/core/compiler/backend/railshot/amd64/bounded_unsigned_div.go
++++ b/src/core/compiler/backend/railshot/amd64/bounded_unsigned_div.go
+@@ -23,7 +23,7 @@ func boundedUnsignedDividend(e *elem) (uint32, bool) {
+ 	}
+ 	for _, c := range [2]*elem{e.arg0, e.arg1} {
+ 		if c != nil && c.isValue() && c.st.kind == stConst {
+-			mask := uint32(c.st.cval)
++			mask := uint32(c.st.constantBits())
+ 			if mask > 0 && mask <= 65535 {
+ 				return mask, true
+ 			}
+diff --git a/src/core/compiler/backend/railshot/amd64/bswap.go b/src/core/compiler/backend/railshot/amd64/bswap.go
+index f93e2f58..414da2f6 100644
+--- a/src/core/compiler/backend/railshot/amd64/bswap.go
++++ b/src/core/compiler/backend/railshot/amd64/bswap.go
+@@ -28,7 +28,7 @@ func (f *fn) tryByteSwapAfterTee(r *wasm.Reader, x int) bool {
+ 		return false
+ 	}
+ 	e := f.s.back()
+-	if e == nil || !e.isValue() || e.st.typ != mtI32 {
++	if e == nil || !e.isValue() || e.st.machineType() != mtI32 {
+ 		return false
+ 	}
+ 	look := *r
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+index 07e022c8..e531c855 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+@@ -41,11 +41,11 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
+ 		dst = src.prevLink()
+ 	}
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst ||
+-		src.st.typ != mtI32 || dst.st.typ != mtI32 {
++		src.st.machineType() != mtI32 || dst.st.machineType() != mtI32 {
+ 		return false, nil
+ 	}
+-	base := uint64(uint32(dst.st.cval))
+-	if uint64(uint32(src.st.cval)) != base+1 || base+uint64(n)+1 > 0x7fffffff {
++	base := uint64(uint32(dst.st.constantBits()))
++	if uint64(uint32(src.st.constantBits())) != base+1 || base+uint64(n)+1 > 0x7fffffff {
+ 		return false, nil
+ 	}
+ 	mt, ok := f.memoryType(0)
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+index 6ccee4fd..c38d63fb 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+@@ -103,7 +103,7 @@ func (f *fn) emitFixedBulkCopy(n int, dstMemory, srcMemory uint32) bool {
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst {
+ 		return false
+ 	}
+-	source, destination := uint64(uint32(src.st.cval)), uint64(uint32(dst.st.cval))
++	source, destination := uint64(uint32(src.st.constantBits())), uint64(uint32(dst.st.constantBits()))
+ 	if source+uint64(n) > 0x7fffffff || destination+uint64(n) > 0x7fffffff {
+ 		return false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+index cd3f24a3..52e064a8 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+@@ -19,14 +19,14 @@ type bulkValueKey struct {
+ }
+ 
+ func bulkOperandKey(e *elem) (bulkValueKey, bool) {
+-	if e == nil || !e.isValue() || e.st.typ != mtI32 {
++	if e == nil || !e.isValue() || e.st.machineType() != mtI32 {
+ 		return bulkValueKey{}, false
+ 	}
+ 	switch e.st.kind {
+ 	case stConst:
+-		return bulkValueKey{value: uint32(e.st.cval)}, true
++		return bulkValueKey{value: uint32(e.st.constantBits())}, true
+ 	case stLocalReg, stLocalRef:
+-		return bulkValueKey{value: e.st.idx, local: true}, true
++		return bulkValueKey{value: e.st.indexBits(), local: true}, true
+ 	}
+ 	return bulkValueKey{}, false
+ }
+@@ -98,5 +98,5 @@ func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
+ 		return
+ 	}
+ 	f.filledCopyEnd = f.tracePCBase + uint32(scan.Offset())
+-	f.filledCopyByte = byte(value.st.cval)
++	f.filledCopyByte = byte(value.st.constantBits())
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 18f5cbf6..317d5249 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1177,7 +1177,7 @@ type tailDeferredArg struct {
+ // loadCallLocalInt selects the local's exact width so packed adjacent i32 homes
+ // cannot leak into an argument's upper half.
+ func (f *fn) loadCallLocalInt(dst Reg, st storage) {
+-	f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
++	f.loadFrameInt(dst, f.localAddr(st.index()), st.machineType())
+ }
+ 
+ // emitTailFrameRelease discards this function's exception handlers and
+@@ -1326,9 +1326,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+ 			case stConst:
+ 				f.loadFConst(arg.target, arg.root.st)
+ 			case stSlot:
+-				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
++				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.machineType() == mtF64)
+ 			case stLocalRef:
+-				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
++				f.loadFrameFloat(arg.target, f.localAddr(arg.root.st.index()), arg.root.st.machineType() == mtF64)
+ 			}
+ 			continue
+ 		}
+@@ -1469,7 +1469,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 		if top.st.kind != stConst {
+ 			notifyFast = false
+ 		} else {
+-			notifyIndex = uint32(top.st.cval)
++			notifyIndex = uint32(top.st.constantBits())
+ 		}
+ 	}
+ 	var rootOffsets []uint32
+@@ -1502,7 +1502,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 	slotOf := f.tmpStackSlots[:0]
+ 	slotTop := 0
+ 	for _, root := range roots {
+-		typ := root.st.typ
++		typ := root.st.machineType()
+ 		if root.isDeferred() && root.valueType() != mtNone {
+ 			typ = root.valueType()
+ 		}
+@@ -1522,12 +1522,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 		offsetSlot := d - 1
+ 		if atomicWait && p == 5 {
+ 			index := roots[d-1].st
+-			atomicFast = index.kind == stConst && uint64(index.cval) <= 0xffffffff
+-			atomicIndex = uint32(index.cval)
++			atomicFast = index.kind == stConst && uint64(index.constantBits()) <= 0xffffffff
++			atomicIndex = uint32(index.constantBits())
+ 			offsetSlot--
+ 		}
+ 		offset := roots[offsetSlot].st
+-		atomicOffset = uint64(offset.cval)
++		atomicOffset = uint64(offset.constantBits())
+ 		atomicFast = atomicFast && offset.kind == stConst && f.memoryShared(atomicIndex) &&
+ 			(atomicWait || atomicOffset <= 0xffffffff)
+ 	}
+@@ -1537,7 +1537,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+ 	if growFast && p == 2 {
+ 		index := roots[d-1].st
+ 		growFast = index.kind == stConst
+-		growIndex = uint32(index.cval)
++		growIndex = uint32(index.constantBits())
+ 	}
+ 	belowTypes := f.tmpTypes2[:0]
+ 	if cap(belowTypes) < d-p {
+@@ -2223,7 +2223,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+ 	slotOf := f.tmpStackSlots[:0]
+ 	slotTop := 0
+ 	for _, root := range roots {
+-		typ := root.st.typ
++		typ := root.st.machineType()
+ 		if root.isDeferred() && root.valueType() != mtNone {
+ 			typ = root.valueType()
+ 		}
+@@ -3026,9 +3026,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 					f.sc.fixtureWork.FPInternalDeferredConstants++
+ 				}
+ 			case stSlot:
+-				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
++				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.machineType() == mtF64)
+ 			case stLocalRef:
+-				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
++				f.loadFrameFloat(da.target, f.localAddr(da.root.st.index()), da.root.st.machineType() == mtF64)
+ 			}
+ 			continue
+ 		}
+@@ -3253,7 +3253,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
+ 		roots := f.rootsBottomToTop()
+ 		types := make([]machineType, len(roots))
+ 		for i, root := range roots {
+-			types[i] = root.st.typ
++			types[i] = root.st.machineType()
+ 			if root.isDeferred() && root.valueType() != mtNone {
+ 				types[i] = root.valueType()
+ 			}
+@@ -3725,8 +3725,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+ 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
+ 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+ 	}
+-	if index := f.s.back(); index != nil && index.isValue() && index.st.kind == stConst && index.st.typ == mtI32 {
+-		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.cval))); ok {
++	if index := f.s.back(); index != nil && index.isValue() && index.st.kind == stConst && index.st.machineType() == mtI32 {
++		if target, ok := f.constantPrivateTailTarget(typeIdx, tableIdx, uint64(uint32(index.st.constantBits()))); ok {
+ 			f.erase(index)
+ 			f.stats.peep("tail-constant-private-table")
+ 			return f.returnCallIndex(uint32(target))
+@@ -4006,7 +4006,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
+ 		roots := f.rootsBottomToTop()
+ 		types := make([]machineType, len(roots))
+ 		for i, root := range roots {
+-			types[i] = root.st.typ
++			types[i] = root.st.machineType()
+ 			if root.isDeferred() && root.valueType() != mtNone {
+ 				types[i] = root.valueType()
+ 			}
+@@ -4077,7 +4077,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
+ 	slotOf := f.tmpStackSlots[:0]
+ 	slotTop := 0
+ 	for _, root := range roots {
+-		typ := root.st.typ
++		typ := root.st.machineType()
+ 		if root.isDeferred() && root.valueType() != mtNone {
+ 			typ = root.valueType()
+ 		}
+@@ -4213,7 +4213,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
+ 	slotOf := f.tmpStackSlots[:0]
+ 	slotTop := 0
+ 	for _, root := range roots {
+-		typ := root.st.typ
++		typ := root.st.machineType()
+ 		if root.isDeferred() && root.valueType() != mtNone {
+ 			typ = root.valueType()
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index e250cda9..729baf88 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -852,7 +852,7 @@ func (c *ehCatchClause) lane(i int) int {
+ // --- operand-stack canonicalization ---
+ 
+ func rootMachineType(root *elem) machineType {
+-	typ := root.st.typ
++	typ := root.st.machineType()
+ 	if root.isDeferred() && root.valueType() != mtNone {
+ 		typ = root.valueType()
+ 	}
+@@ -1122,7 +1122,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 			panic("custom value cannot cross a control-flow or ordinary call boundary")
+ 		}
+ 		types = append(types, typ)
+-		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
++		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.machineType() == typ {
+ 			slot += typ.stackSlots()
+ 			continue // already canonical
+ 		}
+@@ -1134,7 +1134,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 			continue
+ 		}
+ 		if root.isValue() && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+-			if root.st.typ.isFloat() {
++			if root.st.machineType().isFloat() {
+ 				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
+ 			} else {
+ 				f.a.Store64(RSP, f.spillOff(slot), root.st.reg) // copy pinned local/global's value; never release
+@@ -1142,7 +1142,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 			slot++
+ 			continue
+ 		}
+-		if root.isValue() && root.st.typ.isFloat() {
++		if root.isValue() && root.st.machineType().isFloat() {
+ 			x := f.materializeF(root)
+ 			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true) // 8B store
+ 			f.releaseF(x)
+@@ -1203,7 +1203,7 @@ func canonicalSlotLayout(roots []*elem) bool {
+ 	slot := 0
+ 	for _, root := range roots {
+ 		typ := rootMachineType(root)
+-		if typ == mtCustom || !root.isValue() || root.st.kind != stSlot || root.st.slotIndex() != slot || root.st.typ != typ {
++		if typ == mtCustom || !root.isValue() || root.st.kind != stSlot || root.st.slotIndex() != slot || root.st.machineType() != typ {
+ 			return false
+ 		}
+ 		slot += typ.stackSlots()
+@@ -1331,7 +1331,7 @@ func (f *fn) setDepth(l int) {
+ 	types := f.tmpTypes[:0]
+ 	gcRoots := f.tmpGCRoots[:0]
+ 	for _, root := range roots[:l] {
+-		types = append(types, root.st.typ)
++		types = append(types, root.st.machineType())
+ 		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
+ 	}
+ 	f.tmpTypes = types
+@@ -1760,12 +1760,12 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
+ 		if wantFloat && steps < 256 && (op == 0x43 || op == 0x44) {
+ 			st := storage{kind: stConst, typ: mtF32, cval: floatBits}
+ 			if op == 0x44 {
+-				st.typ = mtF64
++				st.setMachineType(mtF64)
+ 			}
+ 			weight := uint32(1) << min(depth*2, 8)
+ 			found := false
+ 			for i := 0; i < n; i++ {
+-				if candidates[i].st.typ == st.typ && candidates[i].st.cval == st.cval {
++				if candidates[i].st.machineType() == st.machineType() && candidates[i].st.constantBits() == st.constantBits() {
+ 					candidates[i].score += weight
+ 					found = true
+ 					break
+@@ -1858,7 +1858,7 @@ func (f *fn) keepBlockOperands() bool {
+ 		// A deferred root necessarily makes the old physical prefix nonflat.
+ 		// Otherwise the vector contains every physical operand exactly once.
+ 		for _, e := range f.s.forest.roots {
+-			if e.isDeferred() || e.st.typ == mtCustom {
++			if e.isDeferred() || e.st.machineType() == mtCustom {
+ 				return false
+ 			}
+ 		}
+@@ -1866,7 +1866,7 @@ func (f *fn) keepBlockOperands() bool {
+ 	}
+ 	n := 0
+ 	for e := f.s.head.nextLink(); e != f.s.head; e = e.nextLink() {
+-		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
++		if n == limit || e.isDeferred() || e.st.machineType() == mtCustom {
+ 			return false
+ 		}
+ 		n++
+@@ -2651,18 +2651,18 @@ func (f *fn) tryFixtureClosedElseRepublish(fr *ctrlFrame, types []machineType, g
+ 		if e == nil || !e.forestIsLive() || e.hasPhysicalLinks() || e.forestIsPending() || !e.isValue() ||
+ 			!e.st.hasLogicalRoot() || e.arg0 != nil || e.arg1 != nil || e.st.coldIndex() != 0 ||
+ 			e.st.kind != stSlot || e.st.slotIndex() != slot || e.st.hasGCRoot() || e.st.hasEHRoot() ||
+-			e.st.typ == mtCustom || e.st.typ == mtNone {
++			e.st.machineType() == mtCustom || e.st.machineType() == mtNone {
+ 			w.CheckedFallbacks++
+ 			return false
+ 		}
+ 		if i < len(types) {
+ 			w.TypeChecks++
+-			if e.st.typ != types[i] || (i < len(gcRoots) && gcRoots[i]) {
++			if e.st.machineType() != types[i] || (i < len(gcRoots) && gcRoots[i]) {
+ 				w.CheckedFallbacks++
+ 				return false
+ 			}
+ 		}
+-		slot += e.st.typ.stackSlots()
++		slot += e.st.machineType().stackSlots()
+ 		if i < len(types) {
+ 			prefixEnd = slot
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go b/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
+index c6610a2d..fd18f6b6 100644
+--- a/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
++++ b/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
+@@ -48,7 +48,7 @@ func (f *fn) detachControlIntervalAddresses() regMask {
+ 	}
+ 	f.moveInt(dst, src, mtI64)
+ 	borrowed.st.reg = dst
+-	borrowed.st.cval = 0 // memBorrow() == -1: the load now owns its carrier.
++	borrowed.st.clearMemBorrow() // memBorrow() == -1: the load now owns its carrier.
+ 	if regallocCheckEnabled {
+ 		f.checkTrackMemRef(borrowed)
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+index cdfda172..1f75d82f 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+@@ -31,7 +31,7 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
+ 		!constant.isValue() || constant.st.kind != stConst {
+ 		return regNone, false
+ 	}
+-	d := uint32(constant.st.cval)
++	d := uint32(constant.st.constantBits())
+ 	if !strengthReducibleWithMagic(int64(d), false, false, f.opt(optMagicDiv)) {
+ 		return regNone, false
+ 	}
+@@ -117,7 +117,7 @@ func matchDivRemConstRemainder(head, local *elem, divisor uint32, otherLocal *el
+ 		if otherLocal == nil || otherLocal == head || !otherLocal.isValue() {
+ 			return nil
+ 		}
+-		if otherLocal.valueType() == mtI32 && otherLocal.st.kind == local.st.kind && otherLocal.st.idx == local.st.idx {
++		if otherLocal.valueType() == mtI32 && otherLocal.st.kind == local.st.kind && otherLocal.st.indexBits() == local.st.indexBits() {
+ 			break
+ 		}
+ 		if otherLocal.valueType() != mtI32 && otherLocal.valueType() != mtI64 {
+@@ -131,12 +131,12 @@ func matchDivRemConstRemainder(head, local *elem, divisor uint32, otherLocal *el
+ 		otherLocal = divRemConstSuccessor(otherLocal, cursor)
+ 	}
+ 	if otherLocal == nil || !otherLocal.isValue() || otherLocal.valueType() != mtI32 ||
+-		otherLocal.st.kind != local.st.kind || otherLocal.st.idx != local.st.idx {
++		otherLocal.st.kind != local.st.kind || otherLocal.st.indexBits() != local.st.indexBits() {
+ 		return nil
+ 	}
+ 	otherConstant := divRemConstSuccessor(otherLocal, cursor)
+ 	if otherConstant == nil || !otherConstant.isValue() || otherConstant.valueType() != mtI32 ||
+-		otherConstant.st.kind != stConst || uint32(otherConstant.st.cval) != divisor {
++		otherConstant.st.kind != stConst || uint32(otherConstant.st.constantBits()) != divisor {
+ 		return nil
+ 	}
+ 	remainder := divRemConstSuccessor(otherConstant, cursor)
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_pair.go
+index fdc90469..6d3786e2 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_pair.go
+@@ -22,7 +22,7 @@ func (f *fn) tryDivRemPair(r *wasm.Reader, opcode byte, op wOp, typ machineType)
+ 	right := f.s.back()
+ 	left := f.s.selectorPrevious(right, 1)
+ 	local := func(e *elem) bool {
+-		return e != f.s.head && e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.typ == typ
++		return e != f.s.head && e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.machineType() == typ
+ 	}
+ 	if !local(left) || !local(right) {
+ 		return false
+@@ -34,7 +34,7 @@ func (f *fn) tryDivRemPair(r *wasm.Reader, opcode byte, op wOp, typ machineType)
+ 			return false
+ 		}
+ 		idx, err := look.U32()
+-		if err != nil || uint64(idx)+uint64(f.localBase) != uint64(e.st.idx) {
++		if err != nil || uint64(idx)+uint64(f.localBase) != uint64(e.st.indexBits()) {
+ 			return false
+ 		}
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index ea758218..e326d003 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -1184,7 +1184,7 @@ func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
+ 		return false, nil
+ 	}
+ 	isTarget := func(e *elem) bool {
+-		return e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) && e.st.reg == pr
++		return e.isValue() && e.st.kind == stLocalReg && e.st.indexBits() == uint32(x) && e.st.reg == pr
+ 	}
+ 	if isTarget(a) == isTarget(b) {
+ 		return false, nil
+@@ -1213,7 +1213,7 @@ func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
+ 		}
+ 		switch x.st.kind {
+ 		case stLocalReg, stLocalRef:
+-			return (y.st.kind == stLocalReg || y.st.kind == stLocalRef) && x.st.idx == y.st.idx
++			return (y.st.kind == stLocalReg || y.st.kind == stLocalRef) && x.st.indexBits() == y.st.indexBits()
+ 		case stReg:
+ 			return y.st.kind == stReg && x.st.reg == y.st.reg
+ 		}
+@@ -1538,18 +1538,18 @@ func (f *fn) realizeLocalRefsCursor(x int, skipFrom *elem, c fixtureCursor) {
+ 	// it still need x's pre-set value and are realized.
+ 	for e := c.next(); e != nil && e != skipFrom; e = c.next() {
+ 		switch {
+-		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
++		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.indexBits() == uint32(x):
+ 			// Capturing an i32 local emits a 32-bit load or move. Its owned
+ 			// copy has a zero upper half even if the original local is later
+ 			// overwritten, so retain that fact with the captured value.
+-			cleanI32 := e.st.typ == mtI32
++			cleanI32 := e.st.machineType() == mtI32
+ 			var extent int32
+ 			if capturedBoundsEnabled && cleanI32 && f.boundsFacts && !f.guardMode {
+ 				extent = f.boundsCertExtent(1, uint32(x))
+ 			}
+ 			f.materializeByType(e)
+ 			if extent > 0 && e.st.kind == stReg {
+-				e.st.cval = int64(extent)
++				e.st.setConstantBits(int64(extent))
+ 				e.st.meta |= uint8(storageCapturedBounds)
+ 			}
+ 			if cleanI32 {
+@@ -1571,7 +1571,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
+ 		return false
+ 	}
+ 	if e.isValue() {
+-		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
++		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.indexBits() == uint32(x)
+ 	}
+ 	if e.isDeferred() {
+ 		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
+@@ -1651,7 +1651,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 		f.bindOrInvalidateGCFreshStructLocal(x)
+ 	}
+ 	f.invalidateGCLoadFactsForLocal(x)
+-	if e != nil && e.isValue() && e.st.typ == mtCustom {
++	if e != nil && e.isValue() && e.st.machineType() == mtCustom {
+ 		panic("custom value cannot be stored in a Wasm local")
+ 	}
+ 	// A deferred load can borrow x's pinned register as its address. Condensing
+@@ -1705,7 +1705,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 		// writing the just-loaded value back to its original slot.
+ 		keepSlot := false
+ 		var originalSlot storage
+-		if teeSlotPredicateEnabled && tee && reader != nil && e.isValue() && e.st.kind == stSlot && e.st.typ == mtI32 && !e.st.hasGCRoot() {
++		if teeSlotPredicateEnabled && tee && reader != nil && e.isValue() && e.st.kind == stSlot && e.st.machineType() == mtI32 && !e.st.hasGCRoot() {
+ 			if op, ok := reader.Peek(); ok && (op == 0x04 || op == 0x0d) {
+ 				keepSlot, originalSlot = true, e.st
+ 			}
+@@ -1818,7 +1818,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 			// The tee result still owns xmm and aliases the just-stored local.
+ 			// Short SIMD peepholes use this to recognize a following local.get
+ 			// without promoting the local to a dedicated pin.
+-			e.st.cval = int64(x + 1)
++			e.st.setConstantBits(int64(x + 1))
+ 		}
+ 		return
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/drop.go b/src/core/compiler/backend/railshot/amd64/drop.go
+index c57fa4bd..94911396 100644
+--- a/src/core/compiler/backend/railshot/amd64/drop.go
++++ b/src/core/compiler/backend/railshot/amd64/drop.go
+@@ -105,11 +105,11 @@ func (f *fn) discardForestTree(e *elem, root bool) {
+ func (f *fn) releaseDiscardedLeaf(e *elem) {
+ 	switch e.st.kind {
+ 	case stReg:
+-		if e.st.typ == mtCustom {
++		if e.st.machineType() == mtCustom {
+ 			for _, reg := range f.s.elemCold(e).vregs {
+ 				f.releaseF(reg)
+ 			}
+-		} else if e.st.typ.isXMM() {
++		} else if e.st.machineType().isXMM() {
+ 			f.releaseF(e.st.reg)
+ 		} else {
+ 			f.release(e.st.reg)
+@@ -141,11 +141,11 @@ func (f *fn) releaseDroppedValue(e *elem) {
+ 	}
+ 	switch e.st.kind {
+ 	case stReg:
+-		if e.st.typ == mtCustom {
++		if e.st.machineType() == mtCustom {
+ 			for _, reg := range f.s.elemCold(e).vregs {
+ 				f.releaseF(reg)
+ 			}
+-		} else if e.st.typ.isXMM() {
++		} else if e.st.machineType().isXMM() {
+ 			f.releaseF(e.st.reg)
+ 		} else {
+ 			f.release(e.st.reg)
+@@ -154,7 +154,7 @@ func (f *fn) releaseDroppedValue(e *elem) {
+ 		// In guard-page mode the load itself is the OOB trap, so a dropped load
+ 		// must still be emitted; with explicit checks the bounds check already ran.
+ 		if f.guardMode {
+-			if e.st.typ.isFloat() {
++			if e.st.machineType().isFloat() {
+ 				x := f.allocFReg(0)
+ 				f.loadFMemRef(x, e)
+ 				f.releaseF(x)
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index 6a480658..4fe5525d 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -151,7 +151,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+ 	if dest != regNone && right.isValue() && right.st.kind == stMemRef && right.st.reg == dest {
+ 		result := f.condenseBinary(node, regNone)
+ 		if result != dest {
+-			f.moveInt(dest, result, node.st.typ)
++			f.moveInt(dest, result, node.st.machineType())
+ 			f.release(result)
+ 			f.occupy(node, dest)
+ 		}
+@@ -160,7 +160,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
+ 	// Integer subtraction from zero is modular negation. Reuse the operand's
+ 	// owned register, copying borrowed locals through ordinary materialization.
+ 	if dest == regNone && node.deferredOp() == opSub && left.isValue() &&
+-		left.st.kind == stConst && left.st.cval == 0 {
++		left.st.kind == stConst && left.st.constantBits() == 0 {
+ 		r := f.materialize(right)
+ 		f.a.Neg(r, w)
+ 		f.consumeBlockBelow(node)
+@@ -435,9 +435,9 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
+ 	}
+ 	var xor *elem
+ 	switch {
+-	case right.isValue() && right.st.kind == stConst && right.st.cval == 255:
++	case right.isValue() && right.st.kind == stConst && right.st.constantBits() == 255:
+ 		xor = left
+-	case left.isValue() && left.st.kind == stConst && left.st.cval == 255:
++	case left.isValue() && left.st.kind == stConst && left.st.constantBits() == 255:
+ 		xor = right
+ 	default:
+ 		return regNone
+@@ -448,7 +448,7 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
+ 	byteArg, other := xor.arg0, xor.arg1
+ 	isByteLoad := func(e *elem) bool {
+ 		return e != nil && e.isValue() && e.st.kind == stMemRef &&
+-			e.st.typ == mtI32 && e.st.memSize() == 1 && !e.st.memSigned()
++			e.st.machineType() == mtI32 && e.st.memSize() == 1 && !e.st.memSigned()
+ 	}
+ 	if !isByteLoad(byteArg) {
+ 		byteArg, other = other, byteArg
+@@ -504,7 +504,7 @@ func shlByConst123(e *elem, t machineType) (int, bool) {
+ 	if t.is64() {
+ 		mask = 63
+ 	}
+-	if k := c.st.cval & mask; k >= 1 && k <= 3 {
++	if k := c.st.constantBits() & mask; k >= 1 && k <= 3 {
+ 		return int(k), true
+ 	}
+ 	return 0, false
+@@ -608,7 +608,7 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
+ 		return regNone
+ 	}
+ 	var scaleLog uint8
+-	switch right.st.cval {
++	switch right.st.constantBits() {
+ 	case 3:
+ 		scaleLog = 1
+ 	case 5:
+@@ -649,7 +649,7 @@ func leaRightOK(right *elem) bool {
+ 	case stReg, stLocalReg, stGlobReg:
+ 		return true
+ 	case stConst:
+-		return fitsImm32(right.st.cval)
++		return fitsImm32(right.st.constantBits())
+ 	}
+ 	return false
+ }
+@@ -662,7 +662,7 @@ func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
+ 	}
+ 	switch right.st.kind {
+ 	case stConst:
+-		f.a.LeaDispW(dst, base, int32(right.st.cval), w)
++		f.a.LeaDispW(dst, base, int32(right.st.constantBits()), w)
+ 	case stReg:
+ 		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w)
+ 		f.release(right.st.reg)
+@@ -689,7 +689,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+ 			if w {
+ 				mask = 63
+ 			}
+-			count := right.st.cval & mask
++			count := right.st.constantBits() & mask
+ 			if node.deferredOp() == opRotl {
+ 				count = (-count) & mask
+ 			}
+@@ -734,7 +734,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+ 		if w {
+ 			mask = 63
+ 		}
+-		f.a.ShiftImm(digit, dest, byte(right.st.cval&mask), w)
++		f.a.ShiftImm(digit, dest, byte(right.st.constantBits()&mask), w)
+ 		f.pinned = f.pinned.remove(dest)
+ 		f.consumeBlockBelow(node)
+ 		f.occupy(node, dest)
+@@ -796,7 +796,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		f.stats.peep("compare-setcc")
+ 		f.a.SetccReg(foldedCC, result)
+ 		f.occupy(node, result)
+-		node.st.typ = mtI32
++		node.st.setMachineType(mtI32)
+ 		node.setDeferredOp(opNone)
+ 		if f.s.forest != nil {
+ 			if !node.forestIsPending() || f.regUser[result] != node || node.isDeferred() {
+@@ -849,8 +849,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		}
+ 		switch right.st.kind {
+ 		case stConst:
+-			if fitsImm32(right.st.cval) {
+-				f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
++			if fitsImm32(right.st.constantBits()) {
++				f.a.AluRI(cmpDigit, L, int32(right.st.constantBits()), w)
+ 			} else {
+ 				t := f.allocReg(maskOf(L))
+ 				f.loadConst(t, right.st)
+@@ -912,7 +912,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 	f.a.SetccReg(cc, result)
+ 	f.consumeBlockBelow(node)
+ 	f.occupy(node, result)
+-	node.st.typ = mtI32 // relational result is always i32
++	node.st.setMachineType(mtI32) // relational result is always i32
+ 	node.setDeferredOp(opNone)
+ 	return result
+ }
+@@ -1060,7 +1060,7 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
+ 
+ 	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding idiv.
+ 	if right.isValue() && right.st.kind == stConst {
+-		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
++		if r, ok := f.tryDivByConst(node, dest, right.st.constantBits()); ok {
+ 			return r
+ 		}
+ 	}
+@@ -1188,22 +1188,22 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
+ 	switch e.st.kind {
+ 	case stReg:
+ 		if e.st.reg != dest {
+-			f.moveInt(dest, e.st.reg, e.st.typ)
++			f.moveInt(dest, e.st.reg, e.st.machineType())
+ 			f.release(e.st.reg)
+ 		}
+ 	case stConst:
+ 		f.loadConst(dest, e.st)
+ 	case stSlot:
+-		if f.opt(optCanonicalI32) && e.st.typ == mtI32 {
++		if f.opt(optCanonicalI32) && e.st.machineType() == mtI32 {
+ 			f.a.Load32(dest, RSP, f.spillOff(e.st.slotIndex()))
+ 		} else {
+ 			f.a.Load64(dest, RSP, f.spillOff(e.st.slotIndex()))
+ 		}
+ 	case stLocalRef:
+-		f.loadFrameInt(dest, f.localAddr(e.st.index()), e.st.typ)
++		f.loadFrameInt(dest, f.localAddr(e.st.index()), e.st.machineType())
+ 	case stLocalReg, stGlobReg:
+ 		if e.st.reg != dest {
+-			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
++			f.moveInt(dest, e.st.reg, e.st.machineType()) // copy from the pinned local/global; never release it
+ 		}
+ 	case stMemRef:
+ 		f.loadMemRef(dest, e) // emit the deferred load into dest
+@@ -1231,8 +1231,8 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+ 		// Select this only at final emission so tree scheduling, associative covering,
+ 		// and higher-level SWAR recognition retain their original shapes.
+ 		if f.policy.CompactNative &&
+-			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
+-			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
++			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.constantBits() == 1 || right.st.constantBits() == -1) {
++			increment := enc == aluTable[opAdd] && right.st.constantBits() == 1 || enc == aluTable[opSub] && right.st.constantBits() == -1
+ 			if increment {
+ 				f.a.Inc(dest, w)
+ 			} else {
+@@ -1240,10 +1240,10 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+ 			}
+ 			f.stats.peep("inc-dec")
+ 		} else if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Low32Mask(right) {
+-			f.a.AluRI(enc.digit, dest, int32(uint32(right.st.cval)), false)
++			f.a.AluRI(enc.digit, dest, int32(uint32(right.st.constantBits())), false)
+ 			f.stats.peep("i64-mask32")
+-		} else if fitsImm32(right.st.cval) {
+-			f.a.AluRI(enc.digit, dest, int32(right.st.cval), w)
++		} else if fitsImm32(right.st.constantBits()) {
++			f.a.AluRI(enc.digit, dest, int32(right.st.constantBits()), w)
+ 		} else {
+ 			t, owned := f.intConstReadReg(right.st, maskOf(dest))
+ 			f.a.AluRR(enc.rr, dest, t, w)
+@@ -1284,7 +1284,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
+ 
+ func isI64Low32Mask(e *elem) bool {
+ 	return e != nil && e.isValue() && e.st.kind == stConst &&
+-		e.st.typ == mtI64 && uint64(e.st.cval) <= 0xffffffff
++		e.st.machineType() == mtI64 && uint64(e.st.constantBits()) <= 0xffffffff
+ }
+ 
+ // applyMul emits `dest = dest * right` (imul), folding the right operand.
+@@ -1301,7 +1301,7 @@ func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
+ 	if !(left.isValue() && (left.st.kind == stLocalReg || left.st.kind == stGlobReg)) {
+ 		return regNone
+ 	}
+-	if !(right.isValue() && right.st.kind == stConst) || !fitsImm32(right.st.cval) {
++	if !(right.isValue() && right.st.kind == stConst) || !fitsImm32(right.st.constantBits()) {
+ 		return regNone
+ 	}
+ 	src := left.st.reg
+@@ -1309,7 +1309,7 @@ func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
+ 	if d == regNone {
+ 		d = f.allocReg(maskOf(src))
+ 	}
+-	f.a.ImulRRI(d, src, int32(right.st.cval), w)
++	f.a.ImulRRI(d, src, int32(right.st.constantBits()), w)
+ 	f.stats.peep("mul3-imm")
+ 	f.consumeBlockBelow(node)
+ 	f.occupy(node, d)
+@@ -1325,13 +1325,13 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
+ 	case stConst:
+ 		// x*{3,5,9} → one-cycle LEA [x+x*{2,4,8}] (powers of two already became
+ 		// shifts at pushBinOp).
+-		switch right.st.cval {
++		switch right.st.constantBits() {
+ 		case 3, 5, 9:
+-			f.a.LeaScaledW(dest, dest, dest, uint8(log2u(uint64(right.st.cval-1))), 0, w)
++			f.a.LeaScaledW(dest, dest, dest, uint8(log2u(uint64(right.st.constantBits()-1))), 0, w)
+ 			return
+ 		}
+-		if fitsImm32(right.st.cval) {
+-			f.a.ImulRI(dest, int32(right.st.cval), w)
++		if fitsImm32(right.st.constantBits()) {
++			f.a.ImulRI(dest, int32(right.st.constantBits()), w)
+ 		} else {
+ 			t, owned := f.intConstReadReg(right.st, maskOf(dest))
+ 			f.a.IMul(dest, t, w)
+diff --git a/src/core/compiler/backend/railshot/amd64/float_compare_branch.go b/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
+index c8705245..4543853f 100644
+--- a/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
++++ b/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
+@@ -77,7 +77,7 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
+ // Above/above-equal reject unordered inputs; swap operands for less/less-equal.
+ func (f *fn) emitFloatCompareFlags(node *elem) Cond {
+ 	left, right := node.arg0, node.arg1
+-	f64 := left.st.typ == mtF64
++	f64 := left.st.machineType() == mtF64
+ 	xa, ownA := f.operandRegF(left)
+ 	old := f.fpinned
+ 	f.fpinned = old.add(xa)
+diff --git a/src/core/compiler/backend/railshot/amd64/flush_spills.go b/src/core/compiler/backend/railshot/amd64/flush_spills.go
+index 114341d7..07fc9165 100644
+--- a/src/core/compiler/backend/railshot/amd64/flush_spills.go
++++ b/src/core/compiler/backend/railshot/amd64/flush_spills.go
+@@ -39,7 +39,7 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
+ 			if !e.isValue() || e.st.kind != stSlot {
+ 				continue
+ 			}
+-			from, width := e.st.slotIndex(), e.st.typ.stackSlots()
++			from, width := e.st.slotIndex(), e.st.machineType().stackSlots()
+ 			if pass == 0 && from+width > nextSlot {
+ 				nextSlot = from + width
+ 			}
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 3e4ec399..8a5c5c0d 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -44,10 +44,11 @@ func (f *fn) occupyF(e *elem, r Reg) {
+ 	f.s.canonicalSlots = false
+ 	f.fregUser[r] = e
+ 	if e.isDeferred() && e.valueType() != mtNone {
+-		e.st.typ = e.valueType()
++		e.st.setMachineType(e.valueType())
+ 	}
+ 	e.setElemKind(ekValue)
+-	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
++	e.st.kind, e.st.reg = stReg, r
++	e.st.setConstantBits(0)
+ 	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+ 		f.s.hasGCRoots = true
+ 	}
+@@ -124,7 +125,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
+ 		if e == nil {
+ 			break
+ 		}
+-		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
++		if e.isValue() && e.st.kind == stReg && e.st.machineType().isXMM() && !block.has(e.st.reg) {
+ 			r := e.st.reg
+ 			if profileEnabled {
+ 				f.recordProfileFPressure(avoid, "fp-pressure-spill")
+@@ -188,7 +189,7 @@ func (f *fn) spillF(e *elem) {
+ 	before := f.a.Len()
+ 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
+ 	r := e.st.reg
+-	if e.st.typ == mtCustom {
++	if e.st.machineType() == mtCustom {
+ 		cold := f.s.elemCold(e)
+ 		chunks := int((cold.custom.Size() + 31) / 32)
+ 		slot := f.allocSpillSlots(chunks * 4)
+@@ -203,7 +204,7 @@ func (f *fn) spillF(e *elem) {
+ 		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
+ 		return
+ 	}
+-	if e.st.typ == mtV128 {
++	if e.st.machineType() == mtV128 {
+ 		if f.fixtureTemporarySIMD {
+ 			f.sc.fixtureWork.TemporaryV128Spills++
+ 		}
+@@ -213,7 +214,7 @@ func (f *fn) spillF(e *elem) {
+ 			f.recordProfileCodeSite(before, "vector-spill")
+ 		}
+ 		f.fregUser[r] = nil
+-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
++		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.machineType(), slot: uint32(slot)})
+ 		return
+ 	}
+ 	slot := f.allocSpillSlot()
+@@ -222,7 +223,7 @@ func (f *fn) spillF(e *elem) {
+ 		f.recordProfileCodeSite(before, "fp-spill")
+ 	}
+ 	f.fregUser[r] = nil
+-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
++	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.machineType(), slot: uint32(slot)})
+ }
+ 
+ // materializeF ensures float value e lives in an XMM register and returns it.
+@@ -238,7 +239,7 @@ func (f *fn) materializeF(e *elem) Reg {
+ 		if !f.makesCalls && !f.syncHostCalls {
+ 			if c, ok := f.floatConstReg(e.st); ok {
+ 				x := f.allocFReg(maskOf(c))
+-				f.a.FMov(x, c, e.st.typ == mtF64)
++				f.a.FMov(x, c, e.st.machineType() == mtF64)
+ 				f.occupyF(e, x)
+ 				return x
+ 			}
+@@ -259,7 +260,7 @@ func (f *fn) materializeF(e *elem) Reg {
+ 		return x
+ 	case stLocalRef:
+ 		x := f.allocFReg(0)
+-		f.loadFrameFloat(x, f.localAddr(e.st.index()), e.st.typ == mtF64)
++		f.loadFrameFloat(x, f.localAddr(e.st.index()), e.st.machineType() == mtF64)
+ 		f.occupyF(e, x)
+ 		return x
+ 	case stLocalReg:
+@@ -267,7 +268,7 @@ func (f *fn) materializeF(e *elem) Reg {
+ 		// clobber it without corrupting the local.
+ 		x := f.allocFReg(0)
+ 		before := f.a.Len()
+-		f.a.FMov(x, e.st.reg, e.st.typ == mtF64)
++		f.a.FMov(x, e.st.reg, e.st.machineType() == mtF64)
+ 		if profileEnabled {
+ 			f.recordProfileCodeSite(before, "fp-borrow-copy")
+ 		}
+@@ -293,7 +294,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
+ 	if e.isValue() && e.st.kind == stLocalReg {
+ 		return e.st.reg, false
+ 	}
+-	if e.isValue() && e.st.kind == stConst && e.st.typ.isFloat() && !f.makesCalls {
++	if e.isValue() && e.st.kind == stConst && e.st.machineType().isFloat() && !f.makesCalls {
+ 		if r, ok := f.floatConstReg(e.st); ok {
+ 			return r, false
+ 		}
+@@ -303,7 +304,7 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
+ 
+ func (f *fn) floatConstReg(st storage) (Reg, bool) {
+ 	for _, c := range f.fconsts {
+-		if c.typ == st.typ && c.bits == st.cval {
++		if c.typ == st.machineType() && c.bits == st.constantBits() {
+ 			return c.reg, true
+ 		}
+ 	}
+@@ -326,9 +327,9 @@ func (f *fn) preloadFloatConst(st storage) (Reg, bool) {
+ 		return regNone, false
+ 	}
+ 	f.loadFConst(x, st)
+-	f.fconsts = append(f.fconsts, floatConstReg{typ: st.typ, bits: st.cval, reg: x})
++	f.fconsts = append(f.fconsts, floatConstReg{typ: st.machineType(), bits: st.constantBits(), reg: x})
+ 	if regallocCheckEnabled {
+-		f.checkImmutable(x, true, checkSize(st.typ))
++		f.checkImmutable(x, true, checkSize(st.machineType()))
+ 	}
+ 	return x, true
+ }
+@@ -384,7 +385,7 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
+ 
+ // loadFConst materializes a float constant's bits into XMM r (via a GP scratch).
+ func (f *fn) loadFConst(r Reg, st storage) {
+-	f64 := st.typ == mtF64
++	f64 := st.machineType() == mtF64
+ 	if f.opt(optV128ConstCache) {
+ 		// Load from the trailing rip-relative constant pool with one MOVSD/MOVSS,
+ 		// instead of building the bit pattern through a GPR (movabs + movq). Float-
+@@ -393,21 +394,21 @@ func (f *fn) loadFConst(r Reg, st storage) {
+ 		site := f.a.MovsRipPlaceholder(r, f64)
+ 		if f64 {
+ 			var b [8]byte
+-			binary.LittleEndian.PutUint64(b[:], uint64(st.cval))
++			binary.LittleEndian.PutUint64(b[:], uint64(st.constantBits()))
+ 			f.recordConst(b[:], site)
+ 		} else {
+ 			var b [4]byte
+-			binary.LittleEndian.PutUint32(b[:], uint32(st.cval))
++			binary.LittleEndian.PutUint32(b[:], uint32(st.constantBits()))
+ 			f.recordConst(b[:], site)
+ 		}
+ 		return
+ 	}
+ 	t := f.allocReg(0)
+ 	if f64 {
+-		f.a.MovImm64(t, uint64(st.cval))
++		f.a.MovImm64(t, uint64(st.constantBits()))
+ 		f.a.MovGprToXmm(r, t, true)
+ 	} else {
+-		f.a.MovImm32(t, int32(uint32(st.cval)))
++		f.a.MovImm32(t, int32(uint32(st.constantBits())))
+ 		f.a.MovGprToXmm(r, t, false)
+ 	}
+ 	f.release(t)
+@@ -466,7 +467,7 @@ var floatFrameMemEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_NO_F
+ // foldFloatMem admits exact-width deferred loads and canonical scalar frame
+ // homes as arithmetic memory operands. Pinned locals retain their register form.
+ func (f *fn) foldFloatMem(e *elem, f64 bool) bool {
+-	if !e.isValue() || e.st.typ != mtOf2(f64) {
++	if !e.isValue() || e.st.machineType() != mtOf2(f64) {
+ 		return false
+ 	}
+ 	if e.st.kind == stMemRef {
+@@ -1288,7 +1289,7 @@ func (f *fn) loadFMemRef(dst Reg, e *elem) {
+ 		defer f.switchProfileOrigin(previous)
+ 	}
+ 	st := e.st
+-	f.a.FLoadIdx(dst, RBX, st.reg, st.memDisp(), st.typ == mtF64)
++	f.a.FLoadIdx(dst, RBX, st.reg, st.memDisp(), st.machineType() == mtF64)
+ }
+ 
+ func fsize(f64 bool) int {
+diff --git a/src/core/compiler/backend/railshot/amd64/fuse.go b/src/core/compiler/backend/railshot/amd64/fuse.go
+index 85c8c44d..0a0d995a 100644
+--- a/src/core/compiler/backend/railshot/amd64/fuse.go
++++ b/src/core/compiler/backend/railshot/amd64/fuse.go
+@@ -47,7 +47,7 @@ func isMaskedI32Condition(node *elem) bool {
+ 		node.valueType() != mtI32 || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+ 		return false
+ 	}
+-	mask := uint32(node.arg1.st.cval)
++	mask := uint32(node.arg1.st.constantBits())
+ 	return mask != 0 && mask <= 0xff
+ }
+ 
+@@ -68,7 +68,7 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+ 	}
+ 	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd ||
+ 		inner.arg1 == nil || !inner.arg1.isValue() || inner.arg1.st.kind != stConst ||
+-		inner.arg1.st.cval == 0 {
++		inner.arg1.st.constantBits() == 0 {
+ 		return 0, false
+ 	}
+ 
+@@ -85,7 +85,7 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+ 	}
+ 	f.pinned = f.pinned.add(x)
+ 	w := inner.valueType().is64()
+-	c := inner.arg1.st.cval
++	c := inner.arg1.st.constantBits()
+ 	mask := uint64(c)
+ 	if !w {
+ 		mask = uint64(uint32(c))
+@@ -176,7 +176,7 @@ func (f *fn) flushBelowRoots(below []*elem, belowSlots int) int {
+ 	slot := 0
+ 	for _, root := range below {
+ 		typ := rootMachineType(root)
+-		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
++		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.machineType() == typ {
+ 			slot += typ.stackSlots()
+ 			continue
+ 		}
+@@ -190,7 +190,7 @@ func (f *fn) flushBelowRoots(below []*elem, belowSlots int) int {
+ 			continue
+ 		}
+ 		if root.isValue() && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+-			if root.st.typ.isFloat() {
++			if root.st.machineType().isFloat() {
+ 				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
+ 			} else {
+ 				f.a.Store64(RSP, f.spillOff(slot), root.st.reg)
+@@ -309,7 +309,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
+ 	left, right := node.arg0, node.arg1
+ 	// Specialization often exposes a constant on the source comparison's
+ 	// left. Commute two concrete operands so CMP can use its immediate form.
+-	if f.inlineTailConstants != nil && left.isValue() && left.st.kind == stConst && fitsImm32(left.st.cval) && right.isValue() &&
++	if f.inlineTailConstants != nil && left.isValue() && left.st.kind == stConst && fitsImm32(left.st.constantBits()) && right.isValue() &&
+ 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) {
+ 		switch cc {
+ 		case condB:
+@@ -357,9 +357,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
+ 	reused := f.tryReuseInlineTailCompare(L, right, w)
+ 	switch right.st.kind {
+ 	case stConst:
+-		if fitsImm32(right.st.cval) {
++		if fitsImm32(right.st.constantBits()) {
+ 			if !reused {
+-				f.a.AluRI(cmpDigit, L, int32(right.st.cval), w)
++				f.a.AluRI(cmpDigit, L, int32(right.st.constantBits()), w)
+ 			}
+ 		} else {
+ 			t := f.allocReg(maskOf(L))
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array.go b/src/core/compiler/backend/railshot/amd64/gc_array.go
+index 37b86101..c4665c20 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array.go
+@@ -418,7 +418,7 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
+ 	first := len(roots) - int(count)
+ 	firstSlot := 0
+ 	for i := 0; i < first; i++ {
+-		typ := roots[i].st.typ
++		typ := roots[i].st.machineType()
+ 		if roots[i].isDeferred() && roots[i].valueType() != mtNone {
+ 			typ = roots[i].valueType()
+ 		}
+@@ -453,10 +453,10 @@ func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uin
+ 	if value != nil {
+ 		value = value.prevLink() // trailing type-index constant was pushed before admission
+ 	}
+-	if value == nil || !value.isValue() || value.st.kind != stConst || value.st.typ != mtI32 {
++	if value == nil || !value.isValue() || value.st.kind != stConst || value.st.machineType() != mtI32 {
+ 		return 0, 0, false
+ 	}
+-	length = uint32(value.st.cval)
++	length = uint32(value.st.constantBits())
+ 	objectBytes = uint64(gc.PayloadOffset) + uint64(length)*uint64(layout.elemSize)
+ 	objectBytes = (objectBytes + 7) &^ 7
+ 	return length, objectBytes, objectBytes <= uint64(^uint32(0))
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_copy.go b/src/core/compiler/backend/railshot/amd64/gc_array_copy.go
+index 09a5d807..3046b90f 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_copy.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_copy.go
+@@ -22,10 +22,10 @@ func (f *fn) emitDirectGCArrayCopy(dstType, srcType uint32) bool {
+ 	srcScalar, srcFinal, srcOK := f.directGCArrayLayout(srcType)
+ 	countRoot := f.s.back()
+ 	if !dstOK || !srcOK || !dstFinal || !srcFinal || dstScalar != srcScalar ||
+-		countRoot == nil || countRoot.elemKind() != ekValue || countRoot.st.kind != stConst || countRoot.st.typ != mtI32 {
++		countRoot == nil || countRoot.elemKind() != ekValue || countRoot.st.kind != stConst || countRoot.st.machineType() != mtI32 {
+ 		return false
+ 	}
+-	count := uint32(countRoot.st.cval)
++	count := uint32(countRoot.st.constantBits())
+ 	if count > 4 {
+ 		return false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_fill.go b/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
+index 67d7441c..a0013053 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
+@@ -22,10 +22,10 @@ func directGCArrayFillCount(count uint32, size int) bool {
+ func (f *fn) emitDirectGCArrayFill(typeIndex uint32) bool {
+ 	scalar, final, ok := f.directGCArrayLayout(typeIndex)
+ 	countRoot := f.s.back()
+-	if !ok || !final || countRoot == nil || countRoot.elemKind() != ekValue || countRoot.st.kind != stConst || countRoot.st.typ != mtI32 {
++	if !ok || !final || countRoot == nil || countRoot.elemKind() != ekValue || countRoot.st.kind != stConst || countRoot.st.machineType() != mtI32 {
+ 		return false
+ 	}
+-	count := uint32(countRoot.st.cval)
++	count := uint32(countRoot.st.constantBits())
+ 	if !directGCArrayFillCount(count, scalar.size) {
+ 		return false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_forward.go b/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
+index 0c12096a..9e8ee707 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
+@@ -27,7 +27,7 @@ func (f *fn) gcFreshArray16Candidate(typeIndex uint32, field wasm.FieldType) (st
+ 		return storage{}, false
+ 	}
+ 	length := f.s.back()
+-	if length == nil || !length.isValue() || length.st.kind != stConst || length.st.typ != mtI32 || uint32(length.st.cval) != 16 {
++	if length == nil || !length.isValue() || length.st.kind != stConst || length.st.machineType() != mtI32 || uint32(length.st.constantBits()) != 16 {
+ 		return storage{}, false
+ 	}
+ 	value := baseOfValentBlock(length).prevLink()
+@@ -80,7 +80,7 @@ func gcI32Mask15(root *elem) bool {
+ 
+ func gcI32Mask15Leaves(value, mask *elem) bool {
+ 	if value == nil || mask == nil || !value.isValue() || !mask.isValue() ||
+-		value.st.typ != mtI32 || mask.st.kind != stConst || mask.st.typ != mtI32 || uint32(mask.st.cval) != 15 {
++		value.st.machineType() != mtI32 || mask.st.kind != stConst || mask.st.machineType() != mtI32 || uint32(mask.st.constantBits()) != 15 {
+ 		return false
+ 	}
+ 	return value.st.kind == stLocalRef || value.st.kind == stLocalReg
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+index 2a0779fc..3f2ef2f4 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+@@ -33,15 +33,15 @@ func (f *fn) matchGCArrayNewFill(r *wasm.Reader, typeIndex uint32, field wasm.Fi
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+ 	countRoot := f.s.back()
+-	if countRoot == nil || !countRoot.isValue() || countRoot.st.kind != stConst || countRoot.st.typ != mtI32 {
++	if countRoot == nil || !countRoot.isValue() || countRoot.st.kind != stConst || countRoot.st.machineType() != mtI32 {
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+-	count := uint32(countRoot.st.cval)
++	count := uint32(countRoot.st.constantBits())
+ 	if count == 0 || count > 16 {
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+ 	valueRoot := baseOfValentBlock(countRoot).prevLink()
+-	if valueRoot == nil || !valueRoot.isValue() || valueRoot.st.kind != stConst || valueRoot.st.typ != mtI32 || valueRoot.st.cval != 0 {
++	if valueRoot == nil || !valueRoot.isValue() || valueRoot.st.kind != stConst || valueRoot.st.machineType() != mtI32 || valueRoot.st.constantBits() != 0 {
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+index 190c1db9..d45e7820 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+@@ -94,7 +94,7 @@ func (f *fn) tryForwardGCConstructorIf(reader *wasm.Reader, sourceType uint32, s
+ 		switch v.kind {
+ 		case stConst:
+ 		case stLocalRef, stLocalReg:
+-			if v.idx == objectLocal {
++			if v.indexBits() == objectLocal {
+ 				return fail()
+ 			}
+ 			v.kind, v.reg = stLocalRef, regNone
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index e53584d5..9ee0de9f 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -547,7 +547,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+ 	nullable := sub == 21
+ 	if heap >= 0 {
+ 		top := f.s.back()
+-		if top != nil && top.isValue() && top.st.kind == stConst && top.st.cval == 0 {
++		if top != nil && top.isValue() && top.st.kind == stConst && top.st.constantBits() == 0 {
+ 			f.popValue()
+ 			matched := int64(0)
+ 			if nullable {
+@@ -556,7 +556,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+ 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
+ 			return nil
+ 		}
+-		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.isValue() && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
++		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.isValue() && top.st.kind == stFuncRef && top.st.indexBits() >= uint32(f.m.ImportedFuncCount()) && top.st.indexBits() < uint32(len(f.m.FuncTypes)) {
+ 			f.popValue()
+ 			actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.index()]), false)
+ 			required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
+@@ -1308,12 +1308,12 @@ func stagedStructField(m *wasm.Module, typeIndex, fieldIndex uint32) (wasm.Field
+ // pins or spill them through a helper. Recover from the current local state.
+ func (f *fn) pushGCForwardedValue(value storage) {
+ 	if value.kind == stLocalRef {
+-		x := int(value.idx)
++		x := int(value.indexBits())
+ 		if reg, _, pinned := f.pinReg(x); pinned {
+ 			f.recoverLocal(x)
+ 			value.kind, value.reg = stLocalReg, reg
+ 		} else if f.localConstZero(x) {
+-			value = zeroStorage(value.typ)
++			value = zeroStorage(value.machineType())
+ 		}
+ 	}
+ 	f.pushValue(value)
+diff --git a/src/core/compiler/backend/railshot/amd64/globals.go b/src/core/compiler/backend/railshot/amd64/globals.go
+index d0cf5795..c90e7c06 100644
+--- a/src/core/compiler/backend/railshot/amd64/globals.go
++++ b/src/core/compiler/backend/railshot/amd64/globals.go
+@@ -140,7 +140,7 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
+ 	}
+ 	for e := c.next(); e != nil && e != skipFrom; e = c.next() {
+ 		switch {
+-		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
++		case e.isValue() && e.st.kind == stGlobReg && e.st.indexBits() == x:
+ 			f.materialize(e)
+ 		case e.isDeferred() && subtreeRefsGlobal(e, x):
+ 			f.condense(e, regNone)
+@@ -155,7 +155,7 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
+ 		return false
+ 	}
+ 	if e.isValue() {
+-		return e.st.kind == stGlobReg && e.st.idx == x
++		return e.st.kind == stGlobReg && e.st.indexBits() == x
+ 	}
+ 	if e.isDeferred() {
+ 		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 650ca4df..fbc647c2 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1194,10 +1194,10 @@ func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
+ 	e := f.s.back()
+ 	for i := params - 1; i >= 0; i-- {
+ 		if e == nil || e == f.s.head || !e.isValue() || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) ||
+-			int(e.st.idx) >= f.nLocals || e.st.typ != localTypes[i] || f.localType[e.st.idx] != localTypes[i] {
++			int(e.st.indexBits()) >= f.nLocals || e.st.machineType() != localTypes[i] || f.localType[e.st.indexBits()] != localTypes[i] {
+ 			return false
+ 		}
+-		sources[i] = e.st.idx
++		sources[i] = e.st.indexBits()
+ 		if f.s.forest != nil {
+ 			e = f.s.forestLast(params - i)
+ 		} else {
+diff --git a/src/core/compiler/backend/railshot/amd64/interval_region.go b/src/core/compiler/backend/railshot/amd64/interval_region.go
+index 94b73ae2..d1670bc3 100644
+--- a/src/core/compiler/backend/railshot/amd64/interval_region.go
++++ b/src/core/compiler/backend/railshot/amd64/interval_region.go
+@@ -624,7 +624,7 @@ func (f *fn) demoteIntervalLocalRefs(x int) {
+ 		if e == nil {
+ 			break
+ 		}
+-		if e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
++		if e.isValue() && e.st.kind == stLocalReg && e.st.indexBits() == uint32(x) {
+ 			f.s.canonicalSlots = false
+ 			e.st.kind = stLocalRef
+ 			e.st.reg = regNone
+diff --git a/src/core/compiler/backend/railshot/amd64/linear_integer_pair.go b/src/core/compiler/backend/railshot/amd64/linear_integer_pair.go
+index 00bf4a0d..b3aec7f6 100644
+--- a/src/core/compiler/backend/railshot/amd64/linear_integer_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/linear_integer_pair.go
+@@ -36,14 +36,14 @@ func (w *linearPairTree) collect(e *elem, scale uint32) bool {
+ 	w.budget--
+ 	if e.isValue() {
+ 		if e.st.kind == stConst {
+-			w.constant += uint32(e.st.cval) * scale
++			w.constant += uint32(e.st.constantBits()) * scale
+ 			return true
+ 		}
+ 		if e.st.kind != stLocalReg && e.st.kind != stLocalRef {
+ 			return false
+ 		}
+ 		for i := 0; i < w.count; i++ {
+-			if w.terms[i].index == e.st.idx {
++			if w.terms[i].index == e.st.indexBits() {
+ 				w.terms[i].coefficient += scale
+ 				w.terms[i].reads++
+ 				return true
+@@ -52,7 +52,7 @@ func (w *linearPairTree) collect(e *elem, scale uint32) bool {
+ 		if w.count == len(w.terms) {
+ 			return false
+ 		}
+-		w.terms[w.count] = linearPairTerm{source: e, coefficient: scale, index: e.st.idx, reads: 1}
++		w.terms[w.count] = linearPairTerm{source: e, coefficient: scale, index: e.st.indexBits(), reads: 1}
+ 		w.count++
+ 		return true
+ 	}
+@@ -73,12 +73,12 @@ func (w *linearPairTree) collect(e *elem, scale uint32) bool {
+ 		if b == nil || !b.isValue() || b.st.kind != stConst {
+ 			return false
+ 		}
+-		return w.collect(a, scale*uint32(b.st.cval))
++		return w.collect(a, scale*uint32(b.st.constantBits()))
+ 	case opShl:
+ 		if b == nil || !b.isValue() || b.st.kind != stConst {
+ 			return false
+ 		}
+-		return w.collect(a, scale<<(uint32(b.st.cval)&31))
++		return w.collect(a, scale<<(uint32(b.st.constantBits())&31))
+ 	}
+ 	return false
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/lone_predicate.go b/src/core/compiler/backend/railshot/amd64/lone_predicate.go
+index 21f164a5..9919ad4a 100644
+--- a/src/core/compiler/backend/railshot/amd64/lone_predicate.go
++++ b/src/core/compiler/backend/railshot/amd64/lone_predicate.go
+@@ -23,7 +23,7 @@ var borrowedPredicateEnabled = os.Getenv("WAGO_AMD64_BORROWED_PREDICATE") != "0"
+ // Borrowed values are retained on loop backedges, where the saved transfers
+ // recur; forward branches retain the existing code layout and staging policy.
+ func (f *fn) flushBranchPredicate(predicate *elem, loopBackedge bool) {
+-	if lonePredicateEnabled && f.depth() == 1 && predicate.isValue() && predicate.st.typ == mtI32 && !predicate.st.hasGCRoot() && f.lonePredicateRegisterSafe(predicate, loopBackedge) {
++	if lonePredicateEnabled && f.depth() == 1 && predicate.isValue() && predicate.st.machineType() == mtI32 && !predicate.st.hasGCRoot() && f.lonePredicateRegisterSafe(predicate, loopBackedge) {
+ 		if f.s.forest != nil {
+ 			f.flushBelowRoot(f.depth() - 1)
+ 		} else {
+@@ -43,9 +43,9 @@ func (f *fn) lonePredicateRegisterSafe(predicate *elem, loopBackedge bool) bool
+ 	if s.kind == stReg {
+ 		return !f.pinnedLocalMask.has(s.reg)
+ 	}
+-	if !borrowedPredicateEnabled || !loopBackedge || s.kind != stLocalReg || int(s.idx) >= len(f.locals) || f.pinRelinquished {
++	if !borrowedPredicateEnabled || !loopBackedge || s.kind != stLocalReg || int(s.indexBits()) >= len(f.locals) || f.pinRelinquished {
+ 		return false
+ 	}
+-	local := f.locals[s.idx]
++	local := f.locals[s.indexBits()]
+ 	return local.reg == s.reg && !local.isFloat && (local.state == lsReg || local.state == lsStackReg)
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 55272313..56b7ffdf 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -471,8 +471,8 @@ func (f *fn) memAddrModular(off uint32, size int, aliasPinned bool, rangeExtent
+ 	hoistedLoopBounds := f.hoistedLoopBoundsCover(bcKind, bcIdx)
+ 	// The address may be an owned snapshot of a local whose value changed after
+ 	// a successful check. Its proof belongs to that snapshot, not the new local.
+-	capturedBounds := capturedBoundsEnabled && f.boundsFacts && e.st.kind == stReg && e.st.typ == mtI32 &&
+-		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off)+int64(size) <= e.st.cval
++	capturedBounds := capturedBoundsEnabled && f.boundsFacts && e.st.kind == stReg && e.st.machineType() == mtI32 &&
++		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off)+int64(size) <= e.st.constantBits()
+ 	// The preheader proof zero-extends the induction local, and the admitted
+ 	// update is a 32-bit add. Its physical register therefore remains canonical
+ 	// throughout the loop; don't emit a self-move before every access.
+@@ -605,9 +605,9 @@ type boundsCert struct {
+ func boundsSource(s storage) (kind uint8, idx uint32) {
+ 	switch s.kind {
+ 	case stLocalReg, stLocalRef:
+-		return 1, uint32(s.idx)
++		return 1, uint32(s.indexBits())
+ 	case stGlobReg:
+-		return 2, uint32(s.idx)
++		return 2, uint32(s.indexBits())
+ 	default:
+ 		return 0, 0
+ 	}
+@@ -979,7 +979,7 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
+ 	if !f.opt(optAddrZExtElim) || e == nil {
+ 		return false
+ 	}
+-	if e.st.typ != mtI32 {
++	if e.st.machineType() != mtI32 {
+ 		return false
+ 	}
+ 	if f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero) {
+@@ -1166,7 +1166,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+ 		f.stats.peep("store-imm")
+ 		st := top.st
+-		v := st.cval
++		v := st.constantBits()
+ 		f.erase(top)
+ 		ea, eaOwned, _, disp := f.memAddr(off32, size, true, 0)
+ 		if size == 8 && int64(int32(v)) == v {
+@@ -1216,7 +1216,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 	// pinned local feeds the store in place — no copy (nothing between the reads
+ 	// and the StoreIdx can write a local).
+ 	value := f.popValue()
+-	vtyp := value.st.typ
++	vtyp := value.st.machineType()
+ 	vreg, vOwned := f.materializeRead(value)
+ 	f.pinned = f.pinned.add(vreg)
+ 	var read regallocReadMask
+@@ -1225,10 +1225,10 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 	}
+ 	// A proven pure constant needs no register carrier. Keep this immediate
+ 	// store path separate from deferred memory-reference ownership.
+-	if addr := f.s.back(); !f.guardMode && addr != nil && addr.isValue() && addr.st.kind == stConst && addr.st.typ == mtI32 &&
+-		uint64(uint32(addr.st.cval))+uint64(off32)+uint64(size) <= 0x7fffffff && f.minimumMemoryAccess(0, uint64(off32), size) {
++	if addr := f.s.back(); !f.guardMode && addr != nil && addr.isValue() && addr.st.kind == stConst && addr.st.machineType() == mtI32 &&
++		uint64(uint32(addr.st.constantBits()))+uint64(off32)+uint64(size) <= 0x7fffffff && f.minimumMemoryAccess(0, uint64(off32), size) {
+ 		f.materializePendingTraps()
+-		disp := int32(uint32(addr.st.cval) + off32)
++		disp := int32(uint32(addr.st.constantBits()) + off32)
+ 		f.erase(addr)
+ 		if regallocCheckEnabled {
+ 			checkRestoreRead(f, read)
+@@ -1440,7 +1440,7 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
+ 	}
+ 	if memoryIndex == 0 && f.threadedMemory0 {
+ 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+-			if n := uint32(top.st.cval); n <= 64 {
++			if n := uint32(top.st.constantBits()); n <= 64 {
+ 				f.memoryInitConst(dataIdx, int(n))
+ 				return nil
+ 			}
+@@ -1583,7 +1583,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
+ 	f.filledCopyEnd = 0
+ 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
+ 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+-			if n := uint64(uint32(top.st.cval)); n <= 64 {
++			if n := uint64(uint32(top.st.constantBits())); n <= 64 {
+ 				if done, err := f.tryBulkCopyAppend(r, int(n)); done || err != nil {
+ 					return err
+ 				}
+@@ -1647,7 +1647,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
+ 	}
+ 	if memoryIndex == 0 && !f.memoryAddr64(0) {
+ 		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+-			if n := uint64(uint32(top.st.cval)); n <= 64 {
++			if n := uint64(uint32(top.st.constantBits())); n <= 64 {
+ 				f.memoryFillConst(int(n), memoryIndex)
+ 				return nil
+ 			}
+@@ -1720,7 +1720,7 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
+ 	f.invalidateBoundsCert()
+ 	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
+ 		mt, ok := f.memoryType(memoryIndex)
+-		delta := uint64(top.st.cval)
++		delta := uint64(top.st.constantBits())
+ 		if !mt.Limits.Addr64 {
+ 			delta = uint64(uint32(delta))
+ 		}
+@@ -2127,7 +2127,7 @@ func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
+ 	pat := regNone
+ 	if n > 0 {
+ 		if valElem.st.kind == stConst {
+-			b := uint64(valElem.st.cval) & 0xFF
++			b := uint64(valElem.st.constantBits()) & 0xFF
+ 			pat = f.allocReg(0)
+ 			f.a.MovImm64(pat, b*0x0101010101010101)
+ 		} else {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory_compare.go b/src/core/compiler/backend/railshot/amd64/memory_compare.go
+index 1987aabf..6c04b7f6 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory_compare.go
++++ b/src/core/compiler/backend/railshot/amd64/memory_compare.go
+@@ -81,7 +81,7 @@ func (f *fn) tryMemoryCompareToFlags(node *elem) (Cond, bool) {
+ 		if !isCompare(node.deferredOp()) || node.arg1 == nil || !node.arg1.isValue() || node.arg1.st.kind != stConst {
+ 			return 0, false
+ 		}
+-		constant, cc = node.arg1.st.cval, condOf(node.deferredOp())
++		constant, cc = node.arg1.st.constantBits(), condOf(node.deferredOp())
+ 	}
+ 	imm, cc, ok := memoryCompareImmediate(left.st, constant, node.valueType().is64(), cc)
+ 	if !ok {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory_min_bounds.go b/src/core/compiler/backend/railshot/amd64/memory_min_bounds.go
+index d14cafcf..5cc3365b 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory_min_bounds.go
++++ b/src/core/compiler/backend/railshot/amd64/memory_min_bounds.go
+@@ -36,13 +36,13 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
+ 		limit = ^uint64(0)
+ 		typ = mtI64
+ 	}
+-	if e == nil || *budget <= 0 || e.st.typ != typ {
++	if e == nil || *budget <= 0 || e.st.machineType() != typ {
+ 		return limit
+ 	}
+ 	*budget--
+ 	if e.elemKind() == ekValue {
+ 		if e.st.kind == stConst {
+-			value := uint64(e.st.cval)
++			value := uint64(e.st.constantBits())
+ 			if !wide {
+ 				value = uint64(uint32(value))
+ 			}
+@@ -63,9 +63,9 @@ func (f *fn) unsignedAddressMaximum(e *elem, wide bool, budget *int) uint64 {
+ 	a := f.unsignedAddressMaximum(left, wide, budget)
+ 	b := f.unsignedAddressMaximum(right, wide, budget)
+ 	constant := uint64(0)
+-	known := right != nil && right.elemKind() == ekValue && right.st.kind == stConst && right.st.typ == typ
++	known := right != nil && right.elemKind() == ekValue && right.st.kind == stConst && right.st.machineType() == typ
+ 	if known {
+-		constant = uint64(right.st.cval)
++		constant = uint64(right.st.constantBits())
+ 	}
+ 	return shared.UnsignedOperationMaximum(shared.IntOp(op), a, b, constant, known, wide)
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/modular_load_group.go b/src/core/compiler/backend/railshot/amd64/modular_load_group.go
+index 6ec5b1db..af7aaec1 100644
+--- a/src/core/compiler/backend/railshot/amd64/modular_load_group.go
++++ b/src/core/compiler/backend/railshot/amd64/modular_load_group.go
+@@ -21,8 +21,8 @@ var modularLoadGroupEnabled = os.Getenv("WAGO_AMD64_MODULAR_LOAD_GROUP") != "0"
+ // modularLoadAddress recognizes wrapping i32 source arithmetic, not the
+ // widened memory immediate. The bounded group currently covers word loads.
+ func modularLoadAddress(e *elem) (local uint32, displacement uint8, ok bool) {
+-	if e != nil && e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stLocalRef) && e.st.typ == mtI32 {
+-		return e.st.idx, 0, true
++	if e != nil && e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stLocalRef) && e.st.machineType() == mtI32 {
++		return e.st.indexBits(), 0, true
+ 	}
+ 	if e == nil || !e.isDeferred() || e.deferredOp() != opAdd || e.valueType() != mtI32 {
+ 		return
+@@ -32,14 +32,14 @@ func modularLoadAddress(e *elem) (local uint32, displacement uint8, ok bool) {
+ 		a, b = b, a
+ 	}
+ 	if !a.isValue() || (a.st.kind != stLocalReg && a.st.kind != stLocalRef) ||
+-		!b.isValue() || b.st.kind != stConst || b.st.typ != mtI32 {
++		!b.isValue() || b.st.kind != stConst || b.st.machineType() != mtI32 {
+ 		return
+ 	}
+-	v := uint32(b.st.cval)
++	v := uint32(b.st.constantBits())
+ 	if v >= 256 || v&3 != 0 {
+ 		return
+ 	}
+-	return a.st.idx, uint8(v), true
++	return a.st.indexBits(), uint8(v), true
+ }
+ 
+ type modularLoadGroup struct {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index b1e1f5ef..e26ad4a8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -1810,3 +1810,109 @@ func TestOwnedForestFinalizedTrimAllocationOnly(t *testing.T) {
+ 	}
+ 	layoutEmit(t, "TRIM_ALLOCATION", map[string]any{"pretrim": row, "trim": p, "postTrimNodeUsed": newUsed, "postTrimNodeReserved": newReserved, "discardedNodeRequested": sc.nodeScratchDiscarded, "oldBackingAllNil": true, "semanticRetireDelta": w.Vector.retirements - retireCount, "compact": compactOperandNodes})
+ }
++
++func TestOwnedForestTypedStorageAccessorsOrdinary(t *testing.T) {
++	t.Run("variants-and-copy", func(t *testing.T) {
++		// Golden keyed literals deliberately use the unchanged physical layout;
++		// deriving the oracle through the accessor under test would be circular.
++		rows := []storage{
++			{kind: stInvalid},
++			{kind: stConst, typ: mtI64, cval: -0x7ffffffffffffffb},
++			{kind: stFuncRef, typ: mtI64, idx: 0xfffffff0},
++			{kind: stReg, typ: mtI32, reg: RAX, cval: 0x7fffffff, meta: uint8(storageCapturedBounds | factUpper32Zero)},
++			{kind: stSlot, typ: mtI32, slot: 0xabcdef01, idx: 0x87654321, cval: -0x112233445566778, meta: uint8(storageCapturedBounds | factUpper32Zero)},
++			{kind: stLocalRef, typ: mtI64, idx: 0xfedcba98, slot: 0x76543210},
++			{kind: stLocalReg, typ: mtI32, reg: RCX, idx: 17, slot: 0xfffffff1},
++			{kind: stGlobalRef, typ: mtI64, idx: 0xffffffff},
++			{kind: stGlobReg, typ: mtI64, reg: RDX, idx: 23},
++			{kind: stMemRef, typ: mtI64, reg: RAX, slot: 0x80000000, idx: 0x102, cval: 0x100000000},
++		}
++		for _, want := range rows {
++			got := want
++			got.setMachineType(mtI32)
++			got.setConstantBits(7)
++			got.setIndexBits(8)
++			if got.machineType() != mtI32 || got.constantBits() != 7 || got.indexBits() != 8 || got.kind != want.kind || got.reg != want.reg || got.slot != want.slot || got.meta != want.meta {
++				t.Fatalf("independent setter changed another raw field: %+v from %+v", got, want)
++			}
++			got.setMachineType(want.typ)
++			got.setConstantBits(want.cval)
++			got.setIndexBits(want.idx)
++			if got != want {
++				t.Fatalf("accessors did not restore raw variant: %+v want %+v", got, want)
++			}
++			donor := elem{st: want}
++			donor.setForestLive(true)
++			donor.setForestPending(true)
++			var fresh elem
++			fresh.setFreshStorage(donor.st)
++			if fresh.forestIsLive() || fresh.forestIsPending() || fresh.st != want {
++				t.Fatalf("fresh copy changed payload or copied owner state: %+v from %+v", fresh.st, want)
++			}
++			fresh.setForestLive(true)
++			fresh.setForestPending(true)
++			fresh.setStoragePreservingOwnership(want)
++			if !fresh.forestIsLive() || !fresh.forestIsPending() {
++				t.Fatal("destination pending owner did not survive replacement")
++			}
++			fresh.setForestPending(false)
++			fresh.setForestLive(false)
++			if fresh.st != want || !donor.forestIsLive() || !donor.forestIsPending() {
++				t.Fatal("preserving replacement changed payload or donor state")
++			}
++		}
++		layoutEmit(t, "STORAGE_ACCESSORS", map[string]any{"case": "variants-and-copy", "variants": len(rows), "compact": compactOperandNodes})
++	})
++	t.Run("borrow-displacements-tee-and-deferred", func(t *testing.T) {
++		for _, row := range []struct {
++			disp         int32
++			slot         uint32
++			size         int
++			signed, wide bool
++			borrow       int
++			encoded      int64
++		}{
++			{-1 << 31, 0x80000000, 1, true, true, -1, 0},
++			{1<<31 - 1, 0x7fffffff, 2, true, false, 255, 256},
++			{-257, 0xfffffeff, 4, false, true, 510, 511},
++			{-1, 0xffffffff, 8, false, true, 0xffffffff, 0x100000000},
++		} {
++			st := memRefStorage(RAX, row.disp, row.size, row.signed, row.wide, row.borrow)
++			if st.memDisp() != row.disp || st.memSize() != row.size || st.memSigned() != row.signed || st.memBorrow() != row.borrow || st.slot != row.slot || st.cval != row.encoded {
++				t.Fatalf("deferred memory payload mismatch: %+v -> %+v", row, st)
++			}
++			old := st
++			st.clearMemBorrow()
++			old.cval = 0
++			if st != old || st.memBorrow() != -1 {
++				t.Fatalf("clearing borrow changed unrelated memory payload: %+v want %+v", st, old)
++			}
++		}
++		fp := fmemRefStorage(RCX, -123, true, 7)
++		if fp.machineType() != mtF64 || fp.memDisp() != -123 || fp.memSize() != 8 || fp.memSigned() || fp.memBorrow() != 7 {
++			t.Fatalf("float memory reference payload=%+v", fp)
++		}
++		f := layoutOwnedTagState()
++		// Reify just the storage-preservation contract of a tee slot recipe:
++		// save original, simulate staging in owned GP, restore saved stSlot.
++		// This does not assert actual production tee selector activation.
++		original := storage{kind: stSlot, typ: mtI32, slot: 3, idx: 7, cval: 0x7fffffff, meta: uint8(storageCapturedBounds | factUpper32Zero)}
++		e := f.pushValue(original)
++		saved := e.st
++		e.setForestPending(true)
++		f.replaceStorage(e, storage{kind: stReg, typ: mtI32, reg: RAX})
++		f.replaceStorage(e, saved)
++		if !e.forestIsLive() || !e.forestIsPending() || e.st.slot != original.slot || e.st.idx != original.idx || e.st.cval != original.cval || e.st.meta&uint8(storageCapturedBounds) == 0 || !e.st.valueFacts().has(factUpper32Zero) {
++			t.Fatal("tee slot replacement changed saved fields or ownership")
++		}
++		e.setElemKind(ekDeferred)
++		e.setDeferredOp(opAdd)
++		e.setDeferredDepth(maxDeferDepth)
++		e.setRegisterNeed(maxDeferDepth + 1)
++		e.st.setMachineType(mtI64)
++		if e.isValue() || e.deferredOp() != opAdd || e.deferredDepth() != maxDeferDepth || e.registerNeed() != maxDeferDepth+1 || e.valueType() != mtI64 || !e.forestIsPending() || !e.forestIsLive() {
++			t.Fatal("machine type accessor corrupted deferred labels or ownership")
++		}
++		layoutEmit(t, "STORAGE_ACCESSORS", map[string]any{"case": "borrow-displacements-tee-and-deferred", "memoryRows": 5, "maxBorrowCode": uint64(0x100000000), "compact": compactOperandNodes})
++	})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+index 7bb05161..5f48e68a 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+@@ -94,7 +94,7 @@ func (f *fn) beginOwnedForestPending(t *ownedForestPending, node *elem, cc Cond)
+ 
+ func (f *fn) endOwnedForestPending(t *ownedForestPending, node *elem, result Reg) {
+ 	ok := f.pendingForest == t && t.active && !t.invalid && t.parent == node &&
+-		node.isValue() && node.st.kind == stReg && node.st.typ == mtI32 &&
++		node.isValue() && node.st.kind == stReg && node.st.machineType() == mtI32 &&
+ 		node.st.hasLogicalRoot() == t.root && node.st.reg == result && uint(result) < uint(len(f.regUser)) && f.regUser[result] == node
+ 	f.pendingForest = t.outer
+ 	t.active = false
+diff --git a/src/core/compiler/backend/railshot/amd64/plugin_machine.go b/src/core/compiler/backend/railshot/amd64/plugin_machine.go
+index 88b01159..73c7dbd7 100644
+--- a/src/core/compiler/backend/railshot/amd64/plugin_machine.go
++++ b/src/core/compiler/backend/railshot/amd64/plugin_machine.go
+@@ -80,7 +80,7 @@ func (c *pluginAMD64Context) InputCustom(index int) ([]x86.Reg, error) {
+ 	e := c.paramElems[index]
+ 	want := c.paramCustom[index]
+ 	cold := c.f.s.elemCold(e)
+-	if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
++	if !e.isValue() || e.st.machineType() != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
+ 		return nil, fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", index)
+ 	}
+ 	regs := c.f.materializePluginCustom(e)
+@@ -328,7 +328,8 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
+ 	}
+ 	f.s.canonicalSlots = false
+ 	f.s.forgetSpill(e)
+-	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
++	e.st.kind, e.st.reg = stReg, regs[0]
++	e.st.setMachineType(mtCustom)
+ 	cold.vregs = regs
+ 	return cold.vregs
+ }
+@@ -382,7 +383,7 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
+ 	ctx := &pluginAMD64Context{f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths, output: regNone}
+ 	for i := range ctx.paramSlots {
+ 		e := roots[base+i]
+-		if !e.isValue() || e.st.kind != stSlot || e.st.typ != mtI32 {
++		if !e.isValue() || e.st.kind != stSlot || e.st.machineType() != mtI32 {
+ 			return fmt.Errorf("amd64 plugin input %d is not a canonical i32 slot", i)
+ 		}
+ 		ctx.paramSlots[i] = e.st.slotIndex()
+@@ -436,12 +437,12 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
+ 		e := ctx.paramElems[i]
+ 		if !typ.IsZero() {
+ 			cold := f.s.elemCold(e)
+-			if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
++			if !e.isValue() || e.st.machineType() != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
+ 				return fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", i)
+ 			}
+ 			continue
+ 		}
+-		if !e.isValue() || e.st.typ != mtI32 {
++		if !e.isValue() || e.st.machineType() != mtI32 {
+ 			return fmt.Errorf("amd64 plugin input %d is not i32", i)
+ 		}
+ 		r := f.materialize(e)
+@@ -489,7 +490,7 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
+ 		}
+ 	}
+ 	for _, root := range ctx.paramElems {
+-		if root.st.typ == mtCustom {
++		if root.st.machineType() == mtCustom {
+ 			for _, reg := range f.s.elemCold(root).vregs {
+ 				f.releaseF(reg)
+ 			}
+diff --git a/src/core/compiler/backend/railshot/amd64/pure_select.go b/src/core/compiler/backend/railshot/amd64/pure_select.go
+index f56257d6..5d3752c0 100644
+--- a/src/core/compiler/backend/railshot/amd64/pure_select.go
++++ b/src/core/compiler/backend/railshot/amd64/pure_select.go
+@@ -28,7 +28,7 @@ type pureSelectChain struct {
+ }
+ 
+ func pureSelectLeaf(e *elem, typ machineType) bool {
+-	if e == nil || !e.isValue() || e.st.typ != typ || e.st.hasGCRoot() {
++	if e == nil || !e.isValue() || e.st.machineType() != typ || e.st.hasGCRoot() {
+ 		return false
+ 	}
+ 	switch e.st.kind {
+@@ -129,11 +129,11 @@ func (f *fn) tryPureExpensiveSelect() bool {
+ 		if regallocCheckEnabled {
+ 			f.checkUse(right)
+ 		}
+-		if right.st.kind == stConst && (!w || fitsImm32(right.st.cval)) {
++		if right.st.kind == stConst && (!w || fitsImm32(right.st.constantBits())) {
+ 			if node.deferredOp() == opMul {
+-				f.a.ImulRI(result, int32(right.st.cval), w)
++				f.a.ImulRI(result, int32(right.st.constantBits()), w)
+ 			} else {
+-				f.a.AluRI(aluTable[node.deferredOp()].digit, result, int32(right.st.cval), w)
++				f.a.AluRI(aluTable[node.deferredOp()].digit, result, int32(right.st.constantBits()), w)
+ 			}
+ 		} else {
+ 			rreg := right.st.reg
+@@ -218,8 +218,8 @@ func (f *fn) readPureSelectLeaf(dst Reg, e *elem) {
+ 	case stConst:
+ 		f.loadConst(dst, e.st)
+ 	case stReg, stLocalReg:
+-		f.moveInt(dst, e.st.reg, e.st.typ)
++		f.moveInt(dst, e.st.reg, e.st.machineType())
+ 	case stSlot:
+-		f.loadFrameInt(dst, f.spillOff(e.st.slotIndex()), e.st.typ)
++		f.loadFrameInt(dst, f.spillOff(e.st.slotIndex()), e.st.machineType())
+ 	}
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/references.go b/src/core/compiler/backend/railshot/amd64/references.go
+index 03f737b4..cd4cee7b 100644
+--- a/src/core/compiler/backend/railshot/amd64/references.go
++++ b/src/core/compiler/backend/railshot/amd64/references.go
+@@ -49,7 +49,7 @@ func (f *fn) replaceStorage(e *elem, st storage) {
+ 	if st.hasGCRoot() && st.hasLogicalRoot() {
+ 		f.s.hasGCRoots = true
+ 	}
+-	if st.typ == mtCustom {
++	if st.machineType() == mtCustom {
+ 		st.setColdIndex(e.st.coldIndex())
+ 	}
+ 	e.setStoragePreservingOwnership(st)
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
+index c3bd2b30..eee17dfe 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
+@@ -17,11 +17,11 @@ type intConstReg struct {
+ }
+ 
+ func (f *fn) cachedIntConst(st storage) (Reg, bool) {
+-	if st.typ != mtI64 {
++	if st.machineType() != mtI64 {
+ 		return regNone, false
+ 	}
+ 	for i := 0; i < int(f.iconstN); i++ {
+-		if f.iconsts[i].bits == st.cval {
++		if f.iconsts[i].bits == st.constantBits() {
+ 			return f.iconsts[i].reg, true
+ 		}
+ 	}
+@@ -97,12 +97,14 @@ func (f *fn) occupy(e *elem, r Reg) {
+ 	local, hasLocal := gcLocalProvenance(e)
+ 	f.regUser[r] = e
+ 	if e.isDeferred() && e.valueType() != mtNone {
+-		e.st.typ = e.valueType()
++		e.st.setMachineType(e.valueType())
+ 	}
+ 	e.setElemKind(ekValue)
+-	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
++	e.st.kind, e.st.reg = stReg, r
++	e.st.setConstantBits(0)
+ 	e.st.meta &^= uint8(storageCapturedBounds)
+-	e.st.idx, e.st.slot = 0, 0
++	e.st.setIndexBits(0)
++	e.st.slot = 0
+ 	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+ 		f.s.hasGCRoots = true
+ 	}
+@@ -165,7 +167,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
+ 		if e == nil {
+ 			break
+ 		}
+-		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
++		if e.isValue() && e.st.kind == stReg && !e.st.machineType().isXMM() && !block.has(e.st.reg) {
+ 			r := e.st.reg
+ 			f.spill(e)
+ 			return r
+@@ -180,7 +182,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
+ 		}
+ 		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
+ 			r := e.st.reg
+-			if e.st.typ.isFloat() {
++			if e.st.machineType().isFloat() {
+ 				x := f.allocFReg(0)
+ 				f.loadFMemRef(x, e)
+ 				f.releaseMemRef(e.st)
+@@ -262,7 +264,7 @@ func (f *fn) spillIfUsed(r Reg) {
+ func (f *fn) spill(e *elem) {
+ 	if f.sc != nil && f.sc.fixtureWork != nil {
+ 		v := f.sc.fixtureWork
+-		v.Spills = append(v.Spills, fixtureSpillTrace{Function: f.traceFuncIdx, PC: f.wasmPC, Reg: e.st.reg, Kind: e.st.kind, Type: e.st.typ})
++		v.Spills = append(v.Spills, fixtureSpillTrace{Function: f.traceFuncIdx, PC: f.wasmPC, Reg: e.st.reg, Kind: e.st.kind, Type: e.st.machineType()})
+ 	}
+ 	if f.s.forest != nil {
+ 		f.s.forest.spills++
+@@ -278,7 +280,7 @@ func (f *fn) spill(e *elem) {
+ 		// stMemRef case of materialize(). Reached via spillIfUsed when a deferred
+ 		// load's owned address register is reclaimed for a fixed role (e.g. RAX/RDX
+ 		// for div/mul, RCX for a shift count).
+-		if e.st.typ.isFloat() {
++		if e.st.machineType().isFloat() {
+ 			x := f.allocFReg(0)
+ 			f.loadFMemRef(x, e)
+ 			f.releaseMemRef(e.st)
+@@ -308,7 +310,7 @@ func (f *fn) spill(e *elem) {
+ 		f.recordProfileCodeSite(spillStart, "gp-spill")
+ 	}
+ 	f.regUser[r] = nil
+-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
++	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.machineType(), slot: uint32(slot)})
+ }
+ 
+ // allocSpillSlot returns the next 8-byte operand spill slot index, growing the frame.
+@@ -335,7 +337,7 @@ func (f *fn) curSpillSlot() int {
+ 				break
+ 			}
+ 			if e.isValue() && e.st.kind == stSlot {
+-				end := e.st.slotIndex() + e.st.typ.stackSlots()
++				end := e.st.slotIndex() + e.st.machineType().stackSlots()
+ 				if end > used {
+ 					used = end
+ 				}
+@@ -356,7 +358,7 @@ func (f *fn) materialize(e *elem) Reg {
+ 		f.checkUse(e)
+ 	}
+ 
+-	if e.st.typ == mtCustom {
++	if e.st.machineType() == mtCustom {
+ 		panic("custom value escaped to an ordinary Wasm instruction")
+ 	}
+ 	if e.isDeferred() {
+@@ -375,14 +377,14 @@ func (f *fn) materialize(e *elem) Reg {
+ 		f.a.Load64(r, RBX, -int32(offFuncRefDescPtr))
+ 		f.a.TestSelf(r, true)
+ 		f.trapIf(condE, trapIndirectOOB)
+-		f.a.LeaDisp(r, r, int32((e.st.idx+1)*runtime.FuncRefDescBytes))
++		f.a.LeaDisp(r, r, int32((e.st.indexBits()+1)*runtime.FuncRefDescBytes))
+ 		f.occupy(e, r)
+ 		return r
+ 	case stSlot:
+ 		f.stats.addReload()
+ 		r := f.allocReg(0)
+ 		before := f.a.Len()
+-		if f.opt(optCanonicalI32) && e.st.typ == mtI32 {
++		if f.opt(optCanonicalI32) && e.st.machineType() == mtI32 {
+ 			f.a.Load32(r, RSP, f.spillOff(e.st.slotIndex()))
+ 		} else {
+ 			f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
+@@ -394,24 +396,24 @@ func (f *fn) materialize(e *elem) Reg {
+ 		f.occupy(e, r)
+ 		return r
+ 	case stLocalRef:
+-		if e.st.typ == mtV128 {
++		if e.st.machineType() == mtV128 {
+ 			panic("amd64: v128 local requires XMM materialization")
+ 		}
+ 		r := f.allocReg(0)
+-		f.loadFrameInt(r, f.localAddr(e.st.index()), e.st.typ)
++		f.loadFrameInt(r, f.localAddr(e.st.index()), e.st.machineType())
+ 		f.occupy(e, r)
+ 		return r
+ 	case stLocalReg:
+ 		// Borrowed pinned-local register: copy its value into an owned register so
+ 		// the caller may clobber it without corrupting the local.
+ 		r := f.allocReg(0)
+-		f.moveInt(r, e.st.reg, e.st.typ)
++		f.moveInt(r, e.st.reg, e.st.machineType())
+ 		f.occupy(e, r)
+ 		return r
+ 	case stGlobReg:
+ 		// Borrowed value-pinned global register: copy out, mirroring stLocalReg.
+ 		r := f.allocReg(0)
+-		f.moveInt(r, e.st.reg, e.st.typ)
++		f.moveInt(r, e.st.reg, e.st.machineType())
+ 		f.occupy(e, r)
+ 		return r
+ 	case stMemRef:
+@@ -476,16 +478,16 @@ func (f *fn) loadMemRef(dst Reg, e *elem) {
+ 		defer f.switchProfileOrigin(previous)
+ 	}
+ 	st := e.st
+-	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
++	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.machineType().is64())
+ }
+ 
+ // materializeByType realizes e with the register class required by its machine
+ // type. v128 values are XMM values even though they are not scalar floats.
+ func (f *fn) materializeByType(e *elem) Reg {
+-	if e.st.typ.isV128() {
++	if e.st.machineType().isV128() {
+ 		return f.materializeV128(e)
+ 	}
+-	if e.st.typ.isFloat() {
++	if e.st.machineType().isFloat() {
+ 		return f.materializeF(e)
+ 	}
+ 	return f.materialize(e)
+@@ -560,9 +562,9 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+ 
+ // loadConst emits an immediate load of st's constant into r.
+ func (f *fn) loadConst(r Reg, st storage) {
+-	if st.typ.is64() {
+-		f.a.MovImm64(r, uint64(st.cval))
++	if st.machineType().is64() {
++		f.a.MovImm64(r, uint64(st.constantBits()))
+ 	} else {
+-		f.a.MovImm32(r, int32(st.cval))
++		f.a.MovImm32(r, int32(st.constantBits()))
+ 	}
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go b/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
+index 89aa32e4..ef058674 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
+@@ -79,7 +79,7 @@ func (f *fn) checkLocation(e *elem) (regalloccheck.Location, bool) {
+ 	}
+ 	switch e.st.kind {
+ 	case stReg, stLocalReg, stGlobReg:
+-		return checkReg(e.st.reg, e.st.typ.isXMM()), true
++		return checkReg(e.st.reg, e.st.machineType().isXMM()), true
+ 	case stSlot:
+ 		return regalloccheck.Slot(f.spillOff(e.st.slotIndex())), true
+ 	case stLocalRef:
+@@ -95,7 +95,7 @@ func (f *fn) checkSeed(e *elem) {
+ 	if _, ok := c.values[e]; ok {
+ 		return
+ 	}
+-	size := checkSize(e.st.typ)
++	size := checkSize(e.st.machineType())
+ 	// Deferred comparisons carry the operand width until condensation, but
+ 	// their result is an i32 even when both inputs are i64.
+ 	if e.isDeferred() && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz) {
+@@ -131,7 +131,7 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
+ 	slot := 0
+ 	for _, e := range roots {
+ 		c.goals = append(c.goals, allocationGoal{regalloccheck.Slot(f.spillOff(slot)), c.values[e]})
+-		slot += e.st.typ.stackSlots()
++		slot += e.st.machineType().stackSlots()
+ 	}
+ 	// A partial flush must also preserve the condition/argument suffix.
+ 	c.protected = make(map[*elem]bool)
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index 9ce2d852..393540d0 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -40,7 +40,7 @@ func (f *fn) materializeV128(e *elem) Reg {
+ 	case stReg:
+ 		return e.st.reg
+ 	case stConst:
+-		if e.st.typ == mtV128 && e.st.cval == 0 {
++		if e.st.machineType() == mtV128 && e.st.constantBits() == 0 {
+ 			x := f.allocFReg(0)
+ 			opVPxor.emit(f, x, x, x)
+ 			f.occupyF(e, x)
+@@ -598,15 +598,15 @@ func (f *fn) v128ShuffleMask(dst, src Reg, lo, hi uint64) {
+ }
+ 
+ func v128LocalAlias(e *elem) (int, bool) {
+-	if e == nil || !e.isValue() || e.st.typ != mtV128 {
++	if e == nil || !e.isValue() || e.st.machineType() != mtV128 {
+ 		return 0, false
+ 	}
+ 	switch e.st.kind {
+ 	case stLocalRef, stLocalReg:
+ 		return e.st.index(), true
+ 	case stReg:
+-		if e.st.cval > 0 {
+-			return int(e.st.cval) - 1, true
++		if e.st.constantBits() > 0 {
++			return int(e.st.constantBits()) - 1, true
+ 		}
+ 	}
+ 	return 0, false
+@@ -623,7 +623,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ 		if e == nil || !f.s.operandAttached(e) {
+ 			continue
+ 		}
+-		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
++		if !e.isValue() || e.st.kind != stReg || e.st.machineType() != mtV128 || e.st.constantBits() != int64(x+1) {
+ 			continue
+ 		}
+ 		facts := e.st.valueFacts()
+@@ -674,8 +674,8 @@ func (f *fn) clearV128LocalAliases(x int) {
+ 			if e == nil {
+ 				break
+ 			}
+-			if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
+-				e.st.cval = 0
++			if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.constantBits() == int64(x+1) {
++				e.st.setConstantBits(0)
+ 				f.sc.fixtureWork.TemporaryV128AliasInvalidations++
+ 			}
+ 		}
+@@ -687,8 +687,8 @@ func (f *fn) clearV128LocalAliases(x int) {
+ 		return
+ 	}
+ 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prevLink() {
+-		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
+-			e.st.cval = 0
++		if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.constantBits() == int64(x+1) {
++			e.st.setConstantBits(0)
+ 		}
+ 	}
+ }
+@@ -904,7 +904,7 @@ func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
+ }
+ 
+ func (f *fn) v128StackMem(e *elem) (int32, bool) {
+-	if e == nil || !e.isValue() || e.st.typ != mtV128 {
++	if e == nil || !e.isValue() || e.st.machineType() != mtV128 {
+ 		return 0, false
+ 	}
+ 	switch e.st.kind {
+@@ -1343,7 +1343,7 @@ func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImm
+ 			f.sc.fixtureWork.TemporaryV128ShiftImmediate++
+ 		}
+ 		x, src := f.v128OutputOperand(value)
+-		opImm.emit(f, x, src, byte(countElem.st.cval&int64(countMask)))
++		opImm.emit(f, x, src, byte(countElem.st.constantBits()&int64(countMask)))
+ 		f.stats.peep("simd-shift-imm")
+ 		f.pushVReg(x)
+ 		return
+@@ -1393,7 +1393,7 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
+ 		shiftOp, err6 := r.U32()
+ 		prefix2, err7 := r.Byte()
+ 		orOp, err8 := r.U32()
+-		rightCount := int32(countElem.st.cval) & 31
++		rightCount := int32(countElem.st.constantBits()) & 31
+ 		if err1 == nil && err2 == nil && err3 == nil && err4 == nil &&
+ 			err5 == nil && err6 == nil && err7 == nil && err8 == nil &&
+ 			localOp == 0x20 && int(localIdx)+f.localBase == valueLocal &&
+@@ -1461,7 +1461,7 @@ func (f *fn) i8x16Shift(op simdBinaryOp, kind int) {
+ 	signed := kind == i8ShiftShrS
+ 	countElem := f.popValue()
+ 	if countElem.isValue() && countElem.st.kind == stConst {
+-		f.i8x16ShiftConst(kind, byte(countElem.st.cval&7))
++		f.i8x16ShiftConst(kind, byte(countElem.st.constantBits()&7))
+ 		return
+ 	}
+ 	count := f.materialize(countElem)
+@@ -2282,15 +2282,15 @@ func v128BooleanTernaryImm(inner, outer uint32, role [3]int) byte {
+ 
+ func (f *fn) topThreeV128Values() bool {
+ 	top := f.s.back()
+-	if top == nil || top == f.s.head || !top.isValue() || top.st.typ != mtV128 {
++	if top == nil || top == f.s.head || !top.isValue() || top.st.machineType() != mtV128 {
+ 		return false
+ 	}
+ 	middle := f.s.selectorPrevious(top, 1)
+-	if middle == f.s.head || !middle.isValue() || middle.st.typ != mtV128 {
++	if middle == f.s.head || !middle.isValue() || middle.st.machineType() != mtV128 {
+ 		return false
+ 	}
+ 	bottom := f.s.selectorPrevious(middle, 2)
+-	return bottom != f.s.head && bottom.isValue() && bottom.st.typ == mtV128
++	return bottom != f.s.head && bottom.isValue() && bottom.st.machineType() == mtV128
+ }
+ 
+ // tryV128BooleanTernary fuses adjacent eager AND/OR/XOR operations into one
+diff --git a/src/core/compiler/backend/railshot/amd64/simd_store_load_address.go b/src/core/compiler/backend/railshot/amd64/simd_store_load_address.go
+index a26dcf37..05aab7e2 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd_store_load_address.go
++++ b/src/core/compiler/backend/railshot/amd64/simd_store_load_address.go
+@@ -65,7 +65,7 @@ func (f *fn) matchRepeatedAddress(r *wasm.Reader, e *elem, wide bool, budget *in
+ 	if wide {
+ 		typ = mtI64
+ 	}
+-	if e == nil || *budget <= 0 || e.st.typ != typ {
++	if e == nil || *budget <= 0 || e.st.machineType() != typ {
+ 		return false
+ 	}
+ 	*budget--
+@@ -77,7 +77,7 @@ func (f *fn) matchRepeatedAddress(r *wasm.Reader, e *elem, wide bool, budget *in
+ 				return false
+ 			}
+ 			local, err := r.U32()
+-			return err == nil && uint64(local)+uint64(f.localBase) == uint64(e.st.idx)
++			return err == nil && uint64(local)+uint64(f.localBase) == uint64(e.st.indexBits())
+ 		case stConst:
+ 			op, err := r.Byte()
+ 			if err != nil {
+@@ -88,13 +88,13 @@ func (f *fn) matchRepeatedAddress(r *wasm.Reader, e *elem, wide bool, budget *in
+ 					return false
+ 				}
+ 				v, err := r.I64()
+-				return err == nil && v == e.st.cval
++				return err == nil && v == e.st.constantBits()
+ 			}
+ 			if op != 0x41 {
+ 				return false
+ 			}
+ 			v, err := r.I32()
+-			return err == nil && uint32(v) == uint32(e.st.cval)
++			return err == nil && uint32(v) == uint32(e.st.constantBits())
+ 		}
+ 		return false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go b/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
+index 25f34539..45d97737 100644
+--- a/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
++++ b/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
+@@ -399,7 +399,7 @@ func checkNativeSourceAfter(f *fn, endPC int) {
+ 				st.fail(regalloccheck.UnsupportedOperation)
+ 				return
+ 			}
+-			bits := uint64(e.st.cval)
++			bits := uint64(e.st.constantBits())
+ 			if e.valueType() == mtI32 {
+ 				bits = uint64(uint32(bits))
+ 			}
+@@ -423,13 +423,13 @@ func checkNativeSourceAfter(f *fn, endPC int) {
+ 				}
+ 				switch e.st.kind {
+ 				case stLocalRef, stLocalReg:
+-					if e.st.idx != c.Event.Index {
++					if e.st.indexBits() != c.Event.Index {
+ 						st.fail(regalloccheck.InvalidGraph)
+ 						return
+ 					}
+ 				case stConst:
+ 					v := c.Outputs[0]
+-					bits := uint64(e.st.cval)
++					bits := uint64(e.st.constantBits())
+ 					if e.valueType() == mtI32 {
+ 						bits = uint64(uint32(bits))
+ 					}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index e6d7ae95..ea4c1c9b 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -25,7 +25,7 @@ func treeUsesBorrowedLocal(e *elem, kind storageKind, idx uint32) bool {
+ 		return false
+ 	}
+ 	if e.isValue() {
+-		return e.st.kind == kind && e.st.idx == idx
++		return e.st.kind == kind && e.st.indexBits() == idx
+ 	}
+ 	return e.isDeferred() && (treeUsesBorrowedLocal(e.arg0, kind, idx) || treeUsesBorrowedLocal(e.arg1, kind, idx))
+ }
+@@ -156,13 +156,13 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+ 
+ func (st storage) memDisp() int32  { return int32(st.slot) }
+ func (st storage) slotIndex() int  { return int(st.slot) }
+-func (st storage) index() int      { return int(st.idx) }
+-func (st storage) memSize() int    { return int(st.idx & 0xff) }
+-func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
++func (st storage) index() int      { return int(st.indexBits()) }
++func (st storage) memSize() int    { return int(st.indexBits() & 0xff) }
++func (st storage) memSigned() bool { return st.indexBits()&0x100 != 0 }
+ 
+ // memBorrow returns the local whose pinned register serves as this deferred
+ // load's address, or -1 when the address register is owned.
+-func (st storage) memBorrow() int { return int(st.cval) - 1 }
++func (st storage) memBorrow() int { return int(st.constantBits()) - 1 }
+ 
+ // memRefFoldable reports whether a deferred load can be folded directly as an
+ // ALU/CMP r/m operand of the given width — only full-width loads (no sub-width
+@@ -183,6 +183,19 @@ type storage struct {
+ 	meta uint8 // semantic value facts and root-state bits
+ }
+ 
++// Raw storage words remain independent in this layout. Accessors centralize
++// their use without restricting the payload combinations accepted by copies.
++func (st storage) machineType() machineType        { return st.typ }
++func (st *storage) setMachineType(typ machineType) { st.typ = typ }
++func (st storage) constantBits() int64             { return st.cval }
++func (st *storage) setConstantBits(bits int64)     { st.cval = bits }
++func (st storage) indexBits() uint32               { return st.idx }
++func (st *storage) setIndexBits(index uint32)      { st.idx = index }
++
++// clearMemBorrow makes a memory-reference carrier owned without changing the
++// memory width, sign, displacement, or semantic value facts.
++func (st *storage) clearMemBorrow() { st.setConstantBits(0) }
++
+ // elemCold contains state used only by custom plugin values. Keeping it out of
+ // storage removes a pointer and slice header from every ordinary operand node.
+ type elemCold struct {
+@@ -254,9 +267,9 @@ func (e *elem) setRegisterNeed(need int16) {
+ 	e.st.slot = e.st.slot&^0xff0000 | uint32(uint8(need))<<16
+ }
+ 
+-func (e *elem) valueType() machineType { return e.st.typ }
++func (e *elem) valueType() machineType { return e.st.machineType() }
+ func (e *elem) setValueType(typ machineType) {
+-	e.st.typ = typ
++	e.st.setMachineType(typ)
+ }
+ 
+ // deferDepthOf is the subtree height contributed by an operand: its deferDepth
+@@ -586,8 +599,8 @@ func (s *stack) pushIntegerConstant(typ machineType, value int64) *elem {
+ 		e = s.allocNextChunk()
+ 	}
+ 	e.st.kind = stConst
+-	e.st.typ = typ
+-	e.st.cval = value
++	e.st.setMachineType(typ)
++	e.st.setConstantBits(value)
+ 	e.st.meta = uint8(storageLogicalRoot)
+ 	s.logicalDepth++
+ 	return s.push(e)
+@@ -603,9 +616,9 @@ func (s *stack) pushLocalRead(kind storageKind, typ machineType, reg Reg, index
+ 		e = s.allocNextChunk()
+ 	}
+ 	e.st.kind = kind
+-	e.st.typ = typ
++	e.st.setMachineType(typ)
+ 	e.st.reg = reg
+-	e.st.idx = index
++	e.st.setIndexBits(index)
+ 	e.st.meta = uint8(storageLogicalRoot)
+ 	s.pendingEffects |= pendingLocalRef
+ 	s.logicalDepth++
+@@ -742,7 +755,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 		left.isValue() && left.st.kind == stConst {
+ 		if foldable(op) {
+ 			f.stats.peep("const-fold")
+-			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
++			v := foldBin(op, left.st.constantBits(), right.st.constantBits(), typ.is64())
+ 			f.erase(right)
+ 			// The left operand is already the remaining logical root. Reuse it
+ 			// instead of erasing, allocating, and republishing the same position.
+@@ -753,7 +766,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 		if isCompare(op) {
+ 			// typ carries the operand width; a compare's result is always i32.
+ 			f.stats.peep("const-fold")
+-			v := foldCompare(op, left.st.cval, right.st.cval, typ.is64())
++			v := foldCompare(op, left.st.constantBits(), right.st.constantBits(), typ.is64())
+ 			f.erase(right)
+ 			f.s.clearElemCold(left)
+ 			f.replaceStorage(left, storage{kind: stConst, typ: mtI32, cval: v})
+@@ -774,7 +787,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 	// Only matching local leaves can simplify. Reject other storage here so
+ 	// deferred trees and ordinary RHS operands avoid entering the cold helper.
+ 	if (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
+-		left.st.kind == right.st.kind && left.st.idx == right.st.idx &&
++		left.st.kind == right.st.kind && left.st.indexBits() == right.st.indexBits() &&
+ 		f.simplifySameOperand(op, typ, left, right) {
+ 		f.stats.peep("same-operand")
+ 		return
+@@ -811,7 +824,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 	// Materialize earlier trapping roots first to preserve source trap order.
+ 	if repeatedLocalEarly && (op == opAdd || op == opSub || op == opMul) && f.s.logicalDepth >= 2 && left.isDeferred() && right.isValue() &&
+ 		(right.st.kind == stLocalReg || right.st.kind == stLocalRef) &&
+-		f.hasNearbyDeferredRoot(node) && treeUsesBorrowedLocal(left, right.st.kind, right.st.idx) && treeReorderSafe(node) {
++		f.hasNearbyDeferredRoot(node) && treeUsesBorrowedLocal(left, right.st.kind, right.st.indexBits()) && treeReorderSafe(node) {
+ 		f.materializeTrapsBefore(node)
+ 		f.materialize(node)
+ 		f.stats.peep("repeated-local-early")
+@@ -837,7 +850,7 @@ func max16(a, b int16) int16 {
+ // (shift count / mask) alongside an op rewrite.
+ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp, bool) {
+ 	w := typ.is64()
+-	c := right.st.cval
++	c := right.st.constantBits()
+ 	cu := uint64(c)
+ 	ones := ^uint64(0)
+ 	shiftMask := int64(63)
+@@ -874,7 +887,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 			f.pushValue(storage{kind: stConst, typ: typ})
+ 			return op, true // x*0 → 0
+ 		case cu != 0 && cu&(cu-1) == 0: // x * 2ⁿ → x << n
+-			right.st.cval = int64(log2u(cu))
++			right.st.setConstantBits(int64(log2u(cu)))
+ 			return opShl, false
+ 		}
+ 	case opDivU:
+@@ -882,7 +895,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 		case cu == 1:
+ 			return dropRight() // x/1 → x
+ 		case cu != 0 && cu&(cu-1) == 0: // x /ᵤ 2ⁿ → x >>ᵤ n
+-			right.st.cval = int64(log2u(cu))
++			right.st.setConstantBits(int64(log2u(cu)))
+ 			return opShrU, false
+ 		}
+ 	case opRemU:
+@@ -892,7 +905,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 			f.pushValue(storage{kind: stConst, typ: typ})
+ 			return op, true
+ 		case cu != 0 && cu&(cu-1) == 0: // x %ᵤ 2ⁿ → x & (2ⁿ-1)
+-			right.st.cval = int64(cu - 1)
++			right.st.setConstantBits(int64(cu - 1))
+ 			return opAnd, false
+ 		}
+ 	}
+@@ -906,7 +919,7 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
+ 		return false
+ 	}
+ 	sameLocal := (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
+-		left.st.kind == right.st.kind && left.st.idx == right.st.idx
++		left.st.kind == right.st.kind && left.st.indexBits() == right.st.indexBits()
+ 	if !sameLocal {
+ 		return false
+ 	}
+@@ -983,7 +996,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
+ 	operand := f.s.back()
+ 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
+ 	if operand.isValue() && operand.st.kind == stConst {
+-		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {
++		if v, rtyp, ok := foldUnaryConst(op, operand.st.constantBits(), typ); ok {
+ 			f.stats.peep("const-fold")
+ 			f.erase(operand)
+ 			f.pushValue(storage{kind: stConst, typ: rtyp, cval: v})
+@@ -1014,7 +1027,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
+ // Slot extent excludes spillFloor, which belongs to the current flush only.
+ func (s *stack) noteSpill(st storage) {
+ 	if st.kind == stSlot && s.spillExtentValid {
+-		end := st.slotIndex() + st.typ.stackSlots()
++		end := st.slotIndex() + st.machineType().stackSlots()
+ 		if uint64(end) > uint64(^uint32(0)) {
+ 			s.spillExtentValid = false
+ 			return
+@@ -1029,7 +1042,7 @@ func (s *stack) forgetSpill(e *elem) {
+ 	if !s.operandAttached(e) || !e.isValue() || e.st.kind != stSlot {
+ 		return
+ 	}
+-	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
++	if e.st.slotIndex()+e.st.machineType().stackSlots() == int(s.spillExtent) {
+ 		s.spillExtentValid = false
+ 	}
+ 	// A previously skipped slot may now become a register-resident value.
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_inline_compare.go b/src/core/compiler/backend/railshot/amd64/tail_inline_compare.go
+index 7f9352d7..a6ebe94d 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_inline_compare.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_inline_compare.go
+@@ -57,10 +57,10 @@ func (f *fn) tryReuseInlineTailCompare(left Reg, right *elem, wide bool) bool {
+ 	probe := encoder.Asm{B: storage[:0]}
+ 	switch right.st.kind {
+ 	case stConst:
+-		if !fitsImm32(right.st.cval) {
++		if !fitsImm32(right.st.constantBits()) {
+ 			return false
+ 		}
+-		probe.AluRI(cmpDigit, left, int32(right.st.cval), wide)
++		probe.AluRI(cmpDigit, left, int32(right.st.constantBits()), wide)
+ 	case stReg, stLocalReg, stGlobReg:
+ 		if wide {
+ 			probe.Cmp64(left, right.st.reg)
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go b/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
+index a2a1d168..efce346d 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
+@@ -34,7 +34,7 @@ func (f *fn) captureInlineTailConstants(t *inlineTarget, base int) *inlineTailCo
+ 			return nil
+ 		}
+ 		if node.isValue() && node.st.kind == stConst {
+-			values[i] = node.st.cval
++			values[i] = node.st.constantBits()
+ 			known |= 1 << i
+ 		}
+ 		node = baseOfValentBlock(node).prevLink()
+@@ -64,7 +64,7 @@ func (f *fn) inlineTailConstantSet(local int) {
+ 	c.known &^= 1 << i
+ 	value := f.s.back()
+ 	if c.blocked&(1<<i) == 0 && value != nil && value.isValue() && value.st.kind == stConst {
+-		c.values[i] = value.st.cval
++		c.values[i] = value.st.constantBits()
+ 		c.known |= 1 << i
+ 	}
+ }
+@@ -161,7 +161,7 @@ func (f *fn) tryInlineTailConstantIf(r *wasm.Reader) (bool, error) {
+ 		return false, err
+ 	}
+ 	chosenStart, chosenStop := start, stop
+-	if uint32(condition.st.cval) != 0 {
++	if uint32(condition.st.constantBits()) != 0 {
+ 		if alternative >= 0 {
+ 			chosenStop = alternative
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_inline_prefix.go b/src/core/compiler/backend/railshot/amd64/tail_inline_prefix.go
+index 6c9f6f90..c7ffbb58 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_inline_prefix.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_inline_prefix.go
+@@ -24,7 +24,7 @@ func (f *fn) detachInlineTailPrefix(t *inlineTarget, base int, saved *[8]storage
+ 	}
+ 	for i, root := range roots {
+ 		st := root.st
+-		if !root.isValue() || st.typ != mtI32 && st.typ != mtI64 {
++		if !root.isValue() || st.machineType() != mtI32 && st.machineType() != mtI64 {
+ 			return 0
+ 		}
+ 		switch st.kind {
+diff --git a/src/core/compiler/backend/railshot/amd64/treecover.go b/src/core/compiler/backend/railshot/amd64/treecover.go
+index 457815b3..e01ce1f5 100644
+--- a/src/core/compiler/backend/railshot/amd64/treecover.go
++++ b/src/core/compiler/backend/railshot/amd64/treecover.go
+@@ -148,12 +148,12 @@ func inspectAffineAddTree(e *elem, typ machineType, reg Reg, count int, constant
+ 		}
+ 		return inspectAffineAddTree(e.arg1, typ, reg, count, constant)
+ 	}
+-	if !e.isValue() || e.st.typ != typ {
++	if !e.isValue() || e.st.machineType() != typ {
+ 		return regNone, 0, 0, false
+ 	}
+ 	switch e.st.kind {
+ 	case stConst:
+-		return reg, count, constant + e.st.cval, true
++		return reg, count, constant + e.st.constantBits(), true
+ 	case stLocalReg, stGlobReg:
+ 		if reg != regNone && reg != e.st.reg {
+ 			return regNone, 0, 0, false
+diff --git a/src/core/compiler/backend/railshot/amd64/vector_region.go b/src/core/compiler/backend/railshot/amd64/vector_region.go
+index 046496c4..5f8d4899 100644
+--- a/src/core/compiler/backend/railshot/amd64/vector_region.go
++++ b/src/core/compiler/backend/railshot/amd64/vector_region.go
+@@ -111,7 +111,7 @@ func (f *fn) homeVectorLocal(i int) {
+ }
+ 
+ func (f *fn) rebaseVectorLocalAlias(e *elem, x int) bool {
+-	if e.isValue() && e.st.kind == stLocalReg && e.st.typ == mtV128 && e.st.index() == x {
++	if e.isValue() && e.st.kind == stLocalReg && e.st.machineType() == mtV128 && e.st.index() == x {
+ 		f.replaceStorage(e, storage{kind: stLocalRef, typ: mtV128, idx: uint32(x)})
+ 		return true
+ 	}

@@ -1164,3 +1164,11 @@ Apply `public-direct-tail-focused.patch` after `c9b1d23f` to reach `c84da8cd`. T
 The first scoped gate passed two public compiles and 12 ordinary invocations (six tail calls and six explicit call-and-return controls). Native code and publicly serialized metadata matched across representations (423 and 191 bytes). Each arm recorded the required tail-call marker, one terminal internal relocation and two root checks.
 
 Summary SHA-256: `32ba2ac12c1743617555e4ec1382276762e156ebba3de8e3fb0c6e2014d0726b`. No self/imported/indirect targets, FP/EH/GC/tuple/wrapper cases, outer edges, cycles, timing, RSS or default change.
+
+### Typed operand storage accessors, unchanged layout
+
+Apply `storage-accessors-focused.patch` after `c84da8cd` to reach `07d2bd690ee8d17924929cc51ee5caf70b03ed29` (tree `0be846bc5edc8b2cd711ef6325ac8ed1f8dfbb18`). The source conversion changed 50 files and left six raw production field selectors in the accessors. It did not change literals, whole-value copies or representation. The eight typed source inventories covered ordinary wide, compact/public, checker/stat, census, profile, stream, guard and TinyGo variants. TinyGo production was clean; the pre-existing TinyGo all-package test failure was outside the test scope.
+
+The first gate passed 36 images, 114 ordinary calls and 24 exact body/native/encoder-JSON comparisons. All 60 capacity rows and the 40-byte compact element layout were unchanged. The gate retained two wide and three compact packed direct checks and added two typed direct checks per forest arm.
+
+Summary SHA-256: `5305c32cceaadee5c806227725122e490418a35698980742e33919fe444700a0`. No 32-byte representation, variant-union proof, public serialization, corpus, timing, RSS or default change.
