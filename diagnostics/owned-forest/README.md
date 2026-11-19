@@ -369,3 +369,20 @@ measured. Encoder JSON is not public artifact codec parity.
 No exceptional-input, held-input, corpus, or timing gate ran.
 The earlier censored result remains 77 of 114, not an updated
 coverage estimate. Compiler defaults are unchanged.
+
+## Focused private FP block results (Stage 2-A)
+
+Apply fp-block-focused.patch on top of ffa9cd4f. At 81c24eed the
+ordinary gate passed 32 execution images and 128 valid calls, with
+16 exact native and encoder-exported JSON pairs. The emitted
+agreements were 24 FP register merges and eight slot agreements
+with merge requested and XMM11 pinned. That observation does not
+establish that the pin was the sole cause of slot selection.
+
+The ABI remained integer-only. Coverage was private explicit single
+f32/f64 BLOCK and IF results, ordinary br/br_if, and qNaN/signed-zero
+bit carriers. No FP loop, br_table, type-indexed block, FP call or
+function ABI coverage is claimed. Encoder JSON is not public artifact
+codec parity. No held-input, exceptional-input, corpus or timing
+run occurred. The censored coverage figure remains 77 of 114;
+compiler defaults remain unchanged.

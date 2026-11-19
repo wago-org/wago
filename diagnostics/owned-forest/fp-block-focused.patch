@@ -1,0 +1,221 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 9514c09b..378ec823 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1911,7 +1911,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			return nil, fmt.Errorf("fixture forest: require serial ordinary compilation without legacy checker/census")
+ 		}
+ 		work := opts.fixtureWork
+-		*work = fixtureModuleWork{Forest: work.Forest, ScalarFP: work.ScalarFP}
++		*work = fixtureModuleWork{Forest: work.Forest, ScalarFP: work.ScalarFP, ScalarFPBlockResults: work.ScalarFPBlockResults}
+ 		defer work.releaseRoots()
+ 	}
+ 	relocs := make([][]callReloc, n)
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 694b7884..3494c9e3 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -1317,6 +1317,10 @@ func valByteMT(b byte) machineType {
+ // blockType decodes a block's parameter and result types and the first result's
+ // machine type.
+ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineType, res0 machineType, err error) {
++	return f.blockTypeWithFixtureFPResult(r, false)
++}
++
++func (f *fn) blockTypeWithFixtureFPResult(r *wasm.Reader, fixtureFPResult bool) (params, results, frameTypes []machineType, res0 machineType, err error) {
+ 	b, ok := r.Peek()
+ 	if !ok {
+ 		return nil, nil, nil, mtNone, fmt.Errorf("eof in blocktype")
+@@ -1326,7 +1330,8 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
+ 		return nil, nil, nil, mtNone, nil
+ 	}
+ 	if isValByte(b) {
+-		if f.s != nil && f.s.forest != nil && b != 0x7f && b != 0x7e {
++		if f.s != nil && f.s.forest != nil && b != 0x7f && b != 0x7e &&
++			!(fixtureFPResult && (b == 0x7d || b == 0x7c)) {
+ 			panic("fixture forest: unported noninteger block result")
+ 		}
+ 		_, _ = r.Byte()
+@@ -1767,7 +1772,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
+ 
+ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 	signature := *r
+-	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
++	// Only inline valtype single-result BLOCK/IF are part of the fixture's
++	// FP agreement lane. Indexed signatures retain their original fence.
++	fixtureFPResult := (op == 0x02 || op == 0x04) && f.fixtureScalarFPEnabled() &&
++		f.sc.fixtureWork.ScalarFPBlockResults
++	paramTypes, resultTypes, frameTypes, res0, err := f.blockTypeWithFixtureFPResult(r, fixtureFPResult)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -1776,7 +1785,7 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 		rN = 1
+ 	}
+ 	if f.s.forest != nil && (pN != 0 || rN > 1 ||
+-		rN == 1 && res0 != mtI32 && res0 != mtI64 ||
++		rN == 1 && res0 != mtI32 && res0 != mtI64 && !(fixtureFPResult && res0.isFloat()) ||
+ 		f.moduleEH || f.gcFrameRoots != nil || f.s.hasGCRoots) {
+ 		panic("fixture forest: unported block signature or root state")
+ 	}
+@@ -2611,6 +2620,15 @@ func (f *fn) opEnd() error {
+ 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
+ 	f.unreachable = !endReachable
+ 	if endReachable {
++		// This receipt describes emitted agreement, not executed paths.
++		if (fr.kind == cfBlock || fr.kind == cfIf) && fr.resultN == 1 && fr.res0.isFloat() &&
++			f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFPBlockResults {
++			if fr.has(ctrlRegMerge1) {
++				f.sc.fixtureWork.FPBlockRegMerges++
++			} else if f.opt(optRegMerge) && f.fpinnedLocalMask.has(mergeFReg) {
++				f.sc.fixtureWork.FPBlockPinConflictSlots++
++			}
++		}
+ 		if fr.kind != cfLoop {
+ 			f.setLocalsState(branchState) // merge: what every edge guaranteed
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 636ac1e2..0776f0b8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,9 +272,10 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	FPBlockRegMerges, FPBlockPinConflictSlots                         uint64
+ 	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps uint64
+ 	Opcodes                                                           uint64
+-	Forest, ScalarFP                                                  bool
++	Forest, ScalarFP, ScalarFPBlockResults                            bool
+ 	Attempts, Completed, Rejected                                     int
+ 	List                                                              fixtureListWork
+ 	Vector                                                            fixtureForest
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_block_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_block_independent_test.go
+new file mode 100644
+index 00000000..231d035c
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_block_independent_test.go
+@@ -0,0 +1,123 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"math"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestFPBlockOrdinary(t *testing.T) {
++	for _, sh := range []ownedFPShape{
++		{integer: wasm.I32, floatCode: 0x7d, add: 0x92, intoFP: 0xbe, fromFP: 0xbc, xor: 0x73, bits: func(v float64) uint64 { return uint64(math.Float32bits(float32(v))) }, quiet: 0x7fc01234, sign: 1 << 31},
++		{integer: wasm.I64, floatCode: 0x7c, add: 0xa0, intoFP: 0xbf, fromFP: 0xbd, xor: 0x85, bits: math.Float64bits, quiet: 0x7ff8000000001234, sign: 1 << 63},
++	} {
++		for _, name := range []string{"if-merge", "block-br-merge", "block-br-if-merge", "if-pinned-slot"} {
++			t.Run(fmt.Sprintf("width=%x/%s", sh.floatCode, name), func(t *testing.T) {
++				slot := name == "if-pinned-slot"
++				n := byte(1)
++				if slot {
++					n = 12
++				}
++				b := []byte{1, n, sh.floatCode}
++				if slot {
++					for i := byte(0); i < n; i++ {
++						b = sh.constant(b, float64(i+1))
++						b = append(b, 0x21, 4+i)
++					}
++					// Preserve raw FP prefix while 12 independent FP locals
++					// retain their natural homes for reads after the join.
++					b = append(b, 0x20, 3, sh.intoFP)
++				} else {
++					b = append(b, 0x20, 3, sh.intoFP, 0x21, 4, 0x20, 4)
++				}
++				pick := func(b []byte, i byte) []byte { return append(b, 0x20, i, sh.intoFP) }
++				switch name {
++				case "if-merge", "if-pinned-slot":
++					b = append(b, 0x20, 0, 0x04, sh.floatCode)
++					b = pick(b, 1)
++					b = append(b, 0x05)
++					b = pick(b, 2)
++				case "block-br-merge":
++					b = append(b, 0x02, sh.floatCode)
++					b = pick(b, 1)
++					b = append(b, 0x0c, 0)
++				case "block-br-if-merge":
++					b = append(b, 0x02, sh.floatCode)
++					b = pick(b, 1)
++					b = append(b, 0x20, 0, 0x0d, 0, 0x1a)
++					b = pick(b, 2)
++				}
++				b = append(b, 0x0b, sh.fromFP)
++				// Save the result bits in integer local 2, then consume the
++				// separate raw FP prefix without performing arithmetic on it.
++				b = append(b, 0x21, 2, sh.fromFP, 0x20, 2, sh.xor)
++				if slot {
++					b = sh.constant(b, 0)
++					for i := byte(0); i < n; i++ {
++						b = append(b, 0x20, 4+i, 0x20, 4+i, sh.add, sh.add)
++					}
++					b = append(b, sh.fromFP, sh.xor)
++				}
++				b = append(b, 0x0b)
++				m := mod1(t, []wasm.ValType{wasm.I32, sh.integer, sh.integer, sh.integer}, []wasm.ValType{sh.integer}, b)
++				for _, intr := range []bool{false, true} {
++					var native, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPBlockResults: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++							t.Fatalf("inactive FP block legacy: %+v", work)
++						}
++						wantMerge, wantSlot := uint64(1), uint64(0)
++						if slot {
++							wantMerge, wantSlot = 0, 1
++						}
++						if work.FPBlockRegMerges != wantMerge || work.FPBlockPinConflictSlots != wantSlot {
++							t.Fatalf("pin total=%d, mode reg=%d slot-conflict=%d; want %d/%d", stats.Funcs[0].PinnedLocals, work.FPBlockRegMerges, work.FPBlockPinConflictSlots, wantMerge, wantSlot)
++						}
++						for _, args := range [][4]uint64{{1, sh.sign, sh.quiet, 0}, {0, sh.sign, sh.quiet, sh.sign}, {1, sh.quiet, 0, sh.sign}, {0, sh.quiet, 0, sh.quiet}} {
++							chosen := args[1]
++							if args[0] == 0 && name != "block-br-merge" {
++								chosen = args[2]
++							}
++							want := chosen ^ args[3]
++							if slot {
++								want ^= sh.bits(156)
++							}
++							got, err := ownedRunModule(t, cm, args[:])
++							if err != nil || got != want {
++								t.Fatalf("intr=%v forest=%v args=%x got=%x want=%x err=%v", intr, candidate, args, got, want, err)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							native = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v candidate=%v bytes=%d pins=%d work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].PinnedLocals, work)
++					}
++				}
++			})
++		}
++	}
++}
