@@ -1148,3 +1148,11 @@ Summary SHA-256: `9dfe5443802ef91000655eacc062c298c4dd01103f72cc48dd51e0f945b585
 Apply `public-dynamic-i32-void-focused.patch` after `181571bd` to reach `37c520a769608214939bb9222f2ba6a191ea51b5` (tree `caa71e0b58fd9c4ed7ff916615013e4c6d635a16`). The first scoped gate passed six public compiles, 36 outer calls and six nested calls, with three exact native/publicly serialized metadata pairs. The fixtures checked native leaf emission and the installed tag/flag, Go and cross-instance routes, same-instance reentry, and void-call ordering as observed in the callback and subsequent memory. The leaf count in the void caller belongs to its returning i32 sibling, not a native void leaf.
 
 Summary SHA-256: `894f837602588b56c40e5bb0f761b0c28e95b65b03ac5454bb272a880316ba7c`. This remains a private, opt-in fixture, not full-API or default-path qualification. No corpus, timing or RSS result.
+
+### Scoped public buffered event imports
+
+Apply `public-buffered-event-focused.patch` after `37c520a7` to reach `c9b1d23f878a60e7f4a3d8e8d82edee34a04a334` (tree `9faf4c27149fa688dd0df94e253c4c3b2ffc82aa`). This descriptor-only path is for an explicit buffered `I32HostEvent` binding, not a regular synchronous import. Existing runtime buffering, the roughly 64 KiB log, and copy/replay are unchanged.
+
+The focused gate passed two public compiles and 12 invocations with 16 callbacks across eight nonzero invocations and four zero-event invocations. Both arms recorded two descriptor sites, zero synchronous splits, one signature check and four root checks. Native code and publicly serialized metadata matched exactly (791 and 182 bytes respectively).
+
+Summary SHA-256: `6a1654e9be24676439e80ece416d74dab6c21169449daa6f7a2bfd49349a05b7`. No reentry, transitive cross-instance, overflow, default-path, full-API, timing or RSS claim.

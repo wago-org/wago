@@ -1,0 +1,384 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 7a160648..b4b48989 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -408,8 +408,13 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 	target := f.selectedInlineTarget(idx)
+ 	// Check the full two-arm lane before ordinary call lowering. Keep all
+ 	// unspecialized import, tail, and custom paths unchanged.
+-	if int(idx) < imported && f.fixtureDynamicIntegerHostImports() {
+-		if err := f.checkFixtureDynamicIntegerHostImport(idx, ft); err != nil {
++	fixtureDescriptor := int(idx) < imported && f.fixtureDescriptorI32VoidImports()
++	if fixtureDescriptor {
++		if err := f.checkFixtureDynamicIntegerHostImport(idx, ft, true); err != nil {
++			return err
++		}
++	} else if int(idx) < imported && f.fixtureDynamicIntegerHostImports() {
++		if err := f.checkFixtureDynamicIntegerHostImport(idx, ft, false); err != nil {
+ 			return err
+ 		}
+ 	}
+@@ -443,7 +448,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 				fixtureScalarFPMixedSignature(ft, f.sc.fixtureWork.maxFixtureFPArgs()) && len(f.customInstructions) == 0 && !f.s.hasGCRoots
+ 			allFP := f.fixtureScalarFPEnabled() && f.sc.fixtureWork.admitsFPInternalDirect(ft) &&
+ 				len(f.customInstructions) == 0 && !f.s.hasGCRoots
+-			if (int(idx) < imported && !f.fixtureDynamicIntegerHostImports()) ||
++			if (int(idx) < imported && !fixtureDescriptor && !f.fixtureDynamicIntegerHostImports()) ||
+ 				(int(idx) >= imported && !f.opt(optRegABI)) || (!sigIsIntOnly(ft) && !mixed && !allFP) ||
+ 				len(ft.Results) > 1 || f.gcFrameRoots != nil {
+ 				panic("fixture forest: only internal scalar integer calls with at most one integer result are ported")
+@@ -1976,8 +1981,43 @@ func (f *fn) fixtureDynamicIntegerHostImports() bool {
+ 	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.DynamicIntegerHostImports
+ }
+ 
+-func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType) error {
+-	if int(idx) >= len(f.importBindings) || !f.dynamicHostFast || !f.syncHostCalls ||
++func (f *fn) fixtureDescriptorI32VoidImports() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.DescriptorI32VoidImports
++}
++
++func fixtureDescriptorI32VoidSignature(ft *wasm.CompType) bool {
++	return len(ft.Params) == 1 && wasm.EqualValType(ft.Params[0], wasm.I32) && len(ft.Results) == 0
++}
++
++func fixtureOrdinaryDynamicImport(b ImportBinding, idx uint32) bool {
++	return b.Dynamic && !b.CrossInstance && !b.EHTransfer && b.ImportIndex == idx
++}
++
++func (w *fixtureModuleWork) checkFixtureDescriptorI32VoidModule(m *wasm.Module, bindings []ImportBinding) error {
++	n := m.ImportedFuncCount()
++	if n != len(m.Imports) {
++		return fmt.Errorf("fixture forest: descriptor lane admits only function imports")
++	}
++	for i := 0; i < n; i++ {
++		w.DescriptorI32VoidTypeChecks++
++		ft, ok := m.FuncSignature(uint32(i))
++		if !ok || !fixtureDescriptorI32VoidSignature(ft) || i >= len(bindings) ||
++			!fixtureOrdinaryDynamicImport(bindings[i], uint32(i)) {
++			return fmt.Errorf("fixture forest: descriptor import %d must be a dynamic (i32)->() function", i)
++		}
++	}
++	return nil
++}
++
++func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType, descriptor bool) error {
++	if descriptor {
++		if f.dynamicHostFast || f.syncHostCalls || !fixtureDescriptorI32VoidSignature(ft) {
++			return fmt.Errorf("fixture forest: unsupported nonsynchronous i32 void import")
++		}
++	} else if !f.dynamicHostFast || !f.syncHostCalls {
++		return fmt.Errorf("fixture forest: unsupported dynamic integer host import")
++	}
++	if int(idx) >= len(f.importBindings) ||
+ 		f.moduleEH || f.inlineDepth != 0 || len(f.customInstructions) != 0 ||
+ 		f.gcFrameRoots != nil || f.s.hasGCRoots || f.nGlobalPins != 0 || f.fpinnedLocalMask != 0 ||
+ 		f.intervalActive != 0 || f.fpinned != 0 ||
+@@ -1987,10 +2027,10 @@ func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType)
+ 		return fmt.Errorf("fixture forest: unsupported dynamic integer host import")
+ 	}
+ 	b := f.importBindings[idx]
+-	if !b.Dynamic || b.CrossInstance || b.EHTransfer || b.ImportIndex != idx {
++	if !fixtureOrdinaryDynamicImport(b, idx) {
+ 		return fmt.Errorf("fixture forest: unsupported dynamic import binding")
+ 	}
+-	if len(ft.Results) == 0 && !f.hasFixtureReturningDynamicIntegerImport() {
++	if !descriptor && len(ft.Results) == 0 && !f.hasFixtureReturningDynamicIntegerImport() {
+ 		return fmt.Errorf("fixture forest: void import requires a returning dynamic integer sibling")
+ 	}
+ 	roots := f.rootsBottomToTop()
+@@ -1999,6 +2039,9 @@ func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType)
+ 		return fmt.Errorf("fixture forest: insufficient dynamic import operands")
+ 	}
+ 	for i, root := range roots {
++		if descriptor {
++			f.sc.fixtureWork.DescriptorI32VoidRootChecks++
++		}
+ 		typ := rootMachineType(root)
+ 		if fixtureDeferredI64Predicate(root) || typ != mtI32 && typ != mtI64 ||
+ 			i >= base && typ != mtOf(ft.Params[i-base]) {
+@@ -2159,6 +2202,12 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+ 	resultSlots := funcTypeSlots(ft.Results)
+ 
+ 	f.flushWrapper()
++	fixtureDescriptor := f.fixtureDescriptorI32VoidImports()
++	if fixtureDescriptor {
++		if err := f.checkFixtureDynamicIntegerHostSplit(false); err != nil {
++			return err
++		}
++	}
+ 	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
+ 
+ 	if need := resultSlot + resultSlots; need > f.maxSpill {
+@@ -2292,6 +2341,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+ 	// Pop the args and publish results without imposing a physical-register
+ 	// arity limit on legal multi-value signatures.
+ 	f.finishWrapperResultsWithRoots(belowTypes, belowGCRoots, resultSlot, ft.Results)
++	if fixtureDescriptor {
++		f.sc.fixtureWork.DescriptorI32VoidSites++
++	}
+ 	return nil
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 9e795a67..68b75ecf 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1972,6 +1972,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			DynamicIntegerHostImports:   work.DynamicIntegerHostImports,
++			DescriptorI32VoidImports:    work.DescriptorI32VoidImports,
+ 			RecordOperandLayout:         work.RecordOperandLayout,
+ 			FuseNoncanonicalFlushPlan:   work.FuseNoncanonicalFlushPlan,
+ 			RecordNoncanonicalFlushPlan: work.RecordNoncanonicalFlushPlan,
+@@ -2005,6 +2006,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128BooleanLeases:         work.TemporaryV128BooleanLeases,
+ 			TemporaryV128WideningArithmetic:    work.TemporaryV128WideningArithmetic,
+ 		}
++		if work.DescriptorI32VoidImports {
++			if opts.SyncHostCalls || work.DynamicIntegerHostImports || len(opts.CustomInstructions) != 0 {
++				return nil, fmt.Errorf("fixture forest: descriptor imports require natural nonsynchronous module lowering")
++			}
++			if err := work.checkFixtureDescriptorI32VoidModule(m, opts.ImportBindings); err != nil {
++				return nil, err
++			}
++		}
+ 		if work.RecordOperandLayout {
+ 			work.OperandLayout = fixtureOperandLayout{
+ 				Compact: compactOperandNodes, NodeBytes: unsafe.Sizeof(elem{}), NodeAlign: unsafe.Alignof(elem{}),
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 8c04337e..6d979dfe 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -307,6 +307,8 @@ type fixtureFinalizedTrimWork struct {
+ }
+ 
+ type fixtureModuleWork struct {
++	DescriptorI32VoidImports                                                                                                                                  bool
++	DescriptorI32VoidSites, DescriptorI32VoidTypeChecks, DescriptorI32VoidRootChecks                                                                          uint64
+ 	DynamicIntegerHostImports                                                                                                                                 bool
+ 	DynamicIntegerHostImportSites                                                                                                                             uint64
+ 	DynamicIntegerHostI32Sites, DynamicIntegerHostVoidSites, DynamicIntegerHostNativeLeafSites                                                                uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+index 81b44a52..28b4df59 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+@@ -28,6 +28,24 @@ func NewOwnedForestPublicFixture(forest bool) *OwnedForestPublicFixture {
+ 	return &OwnedForestPublicFixture{work: fixtureModuleWork{Forest: forest, DynamicIntegerHostImports: true}}
+ }
+ 
++// NewOwnedForestPublicDescriptorFixture observes ordinary all-void (i32)->()
++// dynamic imports at their existing descriptor call sites.
++func NewOwnedForestPublicDescriptorFixture(forest bool) *OwnedForestPublicFixture {
++	return &OwnedForestPublicFixture{work: fixtureModuleWork{Forest: forest, DescriptorI32VoidImports: true}}
++}
++
++func (f *OwnedForestPublicFixture) DescriptorImportSites() uint64 {
++	return f.work.DescriptorI32VoidSites
++}
++
++func (f *OwnedForestPublicFixture) DescriptorImportTypeChecks() uint64 {
++	return f.work.DescriptorI32VoidTypeChecks
++}
++
++func (f *OwnedForestPublicFixture) DescriptorImportRootChecks() uint64 {
++	return f.work.DescriptorI32VoidRootChecks
++}
++
+ // NewOwnedForestPublicTrimFixture observes the real serial compile boundary
+ // after the first function finalizes. It does not call GC or alter codegen.
+ func NewOwnedForestPublicTrimFixture() *OwnedForestPublicFixture {
+diff --git a/src/wago/owned_forest_public_buffered_event_ordinary_test.go b/src/wago/owned_forest_public_buffered_event_ordinary_test.go
+new file mode 100644
+index 00000000..321aa194
+--- /dev/null
++++ b/src/wago/owned_forest_public_buffered_event_ordinary_test.go
+@@ -0,0 +1,188 @@
++//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++
++	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	coreruntime "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ordinaryBufferedEventModule() []byte {
++	event := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
++	run := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
++	imp := append(wasmtest.Name("env"), wasmtest.Name("event")...)
++	imp = append(imp, 0, 0)
++	// Preserve original x under the entire IF. Nonzero path emits two
++	// events with different same-page markers and a local overwrite.
++	b := []byte{0x20, 0, 0x20, 0, 0x04, 0x40}
++	store := func(marker byte) { b = append(b, 0x41, 0xc0, 0, 0x41, marker, 0x3a, 0, 0) }
++	store(17)
++	b = append(b, 0x20, 0, 0x10, 0)
++	store(29)
++	b = append(b, 0x20, 0, 0x41, 0xdf, 0, 0x73, 0x21, 0, 0x20, 0, 0x10, 0)
++	store(43)
++	b = append(b, 0x05)
++	store(7)
++	b = append(b, 0x41, 13, 0x21, 0, 0x0b, 0x20, 0, 0x41, 3, 0x6c, 0x6a, 0x0b)
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(event, run)),
++		wasmtest.Section(2, wasmtest.Vec(imp)),
++		wasmtest.Section(3, wasmtest.Vec([]byte{1})),
++		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1), wasmtest.ExportEntry("memory", 2, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(b))),
++	)
++}
++
++type ordinaryBufferedEventObservation struct {
++	Value  uint32
++	Marker byte
++}
++
++func ordinaryBufferedEventRun(t *testing.T, c *Compiled, buffered bool) int {
++	t.Helper()
++	var page []byte
++	var calls []ordinaryBufferedEventObservation
++	observe := func(x uint32) {
++		if len(page) != 65536 {
++			t.Error("callback did not see active fixed page")
++			return
++		}
++		calls = append(calls, ordinaryBufferedEventObservation{x, page[64]})
++	}
++	im := NewImports()
++	if buffered {
++		im.Function("env", "event", I32HostEvent(func(value int32) { observe(uint32(value)) }))
++	} else {
++		im.HostFunc("env", "event", HostCallFunc(func(h HostCall) {
++			if h.ParamCount() != 1 || h.ResultCount() != 0 {
++				t.Error("wrong synchronous void signature")
++				return
++			}
++			low, high := h.RawParam(0)
++			value := uint32(h.I32(0))
++			if low != uint64(value) || high != 0 {
++				t.Errorf("noncanonical synchronous argument: %x/%x", low, high)
++			}
++			observe(value)
++		})).Params(ValI32)
++	}
++	in, err := Instantiate(c, InstantiateOptions{Imports: im})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := in.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	if buffered {
++		if in.syncMode || in.hostEvents == nil || len(in.hostLog) != coreruntime.HostCallLogBytes || len(in.syncHosts) != 0 {
++			t.Fatal("explicit I32HostEvent did not select installed buffered event log")
++		}
++	} else if !in.syncMode || in.hostEvents != nil || len(in.hostLog) != 0 || len(in.syncHosts) != 1 {
++		t.Fatal("ordinary HostCallFunc did not select installed synchronous frame")
++	}
++	mem := in.Memory()
++	if mem == nil {
++		t.Fatal("missing fixed memory")
++	}
++	page = mem.UnsafeBytes()
++	wantPage := make([]byte, 65536)
++	if !bytes.Equal(page, wantPage) {
++		t.Fatal("unexpected initial memory")
++	}
++	for _, x := range []uint32{0x80000017, 0, 0xffeeddcc} {
++		start := len(calls)
++		got, err := in.Invoke("run", uint64(x))
++		current := uint32(13)
++		finalMarker := byte(7)
++		var want []ordinaryBufferedEventObservation
++		if x != 0 {
++			current = x ^ 95
++			finalMarker = 43
++			first, second := byte(17), byte(29)
++			if buffered {
++				first, second = 43, 43
++			}
++			want = []ordinaryBufferedEventObservation{{x, first}, {current, second}}
++		}
++		if result := uint64(x + 3*current); err != nil || len(got) != 1 || got[0] != result {
++			t.Fatalf("run(%x)=%v err=%v expectedI32=%x", x, got, err, result)
++		}
++		batch := calls[start:]
++		if len(batch) != len(want) {
++			t.Fatalf("run(%x) delivered %v want %v", x, batch, want)
++		}
++		for i := range want {
++			if batch[i] != want[i] {
++				t.Fatalf("run(%x) event %d got %+v want %+v", x, i, batch[i], want[i])
++			}
++		}
++		wantPage[64] = finalMarker
++		if !bytes.Equal(page, wantPage) {
++			t.Fatalf("run(%x) changed wrong memory", x)
++		}
++	}
++	if len(calls) != 4 {
++		t.Fatalf("exactly four callbacks, got %v", calls)
++	}
++	return len(calls)
++}
++
++func TestScopedPublicBufferedIntegerHostEvent(t *testing.T) {
++	arm := os.Getenv("WAGO_ORDINARY_BUFFERED_EVENT_ARM")
++	if arm != "wide" && arm != "compact" {
++		t.Fatal("run only within predeclared public gate")
++	}
++	emit := func(kind string, v any) {
++		q, e := json.Marshal(v)
++		if e != nil {
++			t.Fatal(e)
++		}
++		t.Logf("PUBLIC_BUFFERED_EVENT_%s %s", kind, q)
++	}
++	body := ordinaryBufferedEventModule()
++	cfg := NewRuntimeConfig().WithFunctionWorkers(1).WithMaxModuleBytes(uint64(len(body)))
++	proof := railshot.NewOwnedForestPublicDescriptorFixture(arm == "compact")
++	cfg.ownedForestPublicFixture = proof
++	c, err := Compile(cfg, body)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := c.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	if !c.dynamicImports || c.NumImports != 1 {
++		t.Fatal("missing real public dynamic import")
++	}
++	if proof.DescriptorImportSites() != 2 || proof.DynamicImportSites() != 0 || proof.DescriptorImportTypeChecks() == 0 || proof.DescriptorImportRootChecks() == 0 {
++		t.Fatalf("actual descriptor/dynamic/type/root receipts = %d/%d/%d/%d", proof.DescriptorImportSites(), proof.DynamicImportSites(), proof.DescriptorImportTypeChecks(), proof.DescriptorImportRootChecks())
++	}
++	var code bytes.Buffer
++	if _, err = c.WriteCodeTo(&code); err != nil {
++		t.Fatal(err)
++	}
++	meta, err := compiledMetadataBytes(c, true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	emit("ARTIFACT", map[string]any{"arm": arm, "body": fmt.Sprintf("%x", sha256.Sum256(body)), "native": fmt.Sprintf("%x", sha256.Sum256(code.Bytes())), "metadata": fmt.Sprintf("%x", sha256.Sum256(meta)), "nativeBytes": code.Len(), "metadataBytes": len(meta), "descriptor": proof.DescriptorImportSites(), "dynamic": proof.DynamicImportSites(), "typeChecks": proof.DescriptorImportTypeChecks(), "rootChecks": proof.DescriptorImportRootChecks()})
++	for _, lane := range []string{"buffered", "synchronous"} {
++		t.Run(lane, func(t *testing.T) {
++			count := ordinaryBufferedEventRun(t, c, lane == "buffered")
++			emit("RUNTIME", map[string]any{"lane": lane, "invokes": 3, "callbacks": count, "zeroEventCalls": 1})
++		})
++	}
++}
