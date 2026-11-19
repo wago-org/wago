@@ -40,11 +40,6 @@
       "label": "wasmer",
       "tag": "singlepass",
       "version": "wasmer 7.1.0"
-    },
-    "wavm": {
-      "label": "wavm",
-      "tag": "llvm",
-      "version": "WAVM version 0.0.0-prerelease"
     }
   },
   "workloads": [
@@ -59,8 +54,7 @@
         "wasmtime": 191.855,
         "v8": 132.342,
         "wasmer": 193.914,
-        "wasmer-singlepass": 25.02,
-        "wavm": 4790.884
+        "wasmer-singlepass": 25.02
       }
     },
     {
@@ -74,8 +68,7 @@
         "wasmtime": 89.835,
         "v8": 14.819,
         "wasmer": 99.451,
-        "wasmer-singlepass": 16.648,
-        "wavm": 1970.035
+        "wasmer-singlepass": 16.648
       }
     },
     {
@@ -89,8 +82,7 @@
         "wasmtime": 9.535,
         "v8": 11.511,
         "wasmer": 20.809,
-        "wasmer-singlepass": 9.207,
-        "wavm": 167.301
+        "wasmer-singlepass": 9.207
       }
     },
     {
@@ -104,8 +96,7 @@
         "wasmtime": 15.053,
         "v8": 11.965,
         "wasmer": 36.273,
-        "wasmer-singlepass": 10.298,
-        "wavm": 815.797
+        "wasmer-singlepass": 10.298
       }
     },
     {
@@ -119,8 +110,7 @@
         "wasmtime": 12.791,
         "v8": 11.777,
         "wasmer": 38.353,
-        "wasmer-singlepass": 9.142,
-        "wavm": 817.626
+        "wasmer-singlepass": 9.142
       }
     },
     {
@@ -134,8 +124,7 @@
         "wasmtime": 34.428,
         "v8": 38.033,
         "wasmer": 43.706,
-        "wasmer-singlepass": 61.972,
-        "wavm": 231.366
+        "wasmer-singlepass": 61.972
       }
     }
   ]

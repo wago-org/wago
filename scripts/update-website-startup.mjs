@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasmer", "wasmer-singlepass", "wavm"];
+const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasmer", "wasmer-singlepass"];
 const REQUIRED_TAGS = {
   wago: "single-pass",
   wazy: "compiler",
@@ -26,7 +26,6 @@ const REQUIRED_TAGS = {
   v8: "turboshaft",
   wasmer: "cranelift",
   "wasmer-singlepass": "singlepass",
-  wavm: "llvm",
 };
 const dataPaths = {
   amd64: resolve(process.env.WAGO_STARTUP_JSON_AMD64 || join(ROOT, "bench", "startup", "startup-amd64.json")),

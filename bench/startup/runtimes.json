@@ -7,8 +7,7 @@
     "wasmtime",
     "v8",
     "wasmer",
-    "wasmer-singlepass",
-    "wavm"
+    "wasmer-singlepass"
   ],
   "runtimes": {
     "wago": {
@@ -86,20 +85,6 @@
         "run",
         "--singlepass",
         "--disable-cache",
-        "{wasm}"
-      ]
-    },
-    "wavm": {
-      "tag": "llvm",
-      "bin": "wavm",
-      "env": "WAVM_BIN",
-      "versionArgs": [
-        "version"
-      ],
-      "args": [
-        "run",
-        "--abi=bare",
-        "--function=_start",
         "{wasm}"
       ]
     }
