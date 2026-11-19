@@ -1,0 +1,302 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index c868002b..5e5f28c2 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -303,6 +303,7 @@ type fixtureElseRepublishWork struct {
+ 
+ type fixtureFinalizedTrimWork struct {
+ 	Sites, LiveRootsAtScrub, RootPointerScrubs, ControlRecipeChecks, ControlHolderRejects uint64
++	LastRetainedNodeBytes                                                                 uint64
+ }
+ 
+ type fixtureModuleWork struct {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+index 9b46dc27..b87ce119 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+@@ -19,18 +19,37 @@ import (
+ // classifier. It is available only in an explicit fixture build and never
+ // retries with linked-list lowering.
+ type OwnedForestPublicFixture struct {
+-	work fixtureModuleWork
++	work        fixtureModuleWork
++	observeTrim bool
++	trim        OwnedForestPublicTrimObservation
+ }
+ 
+ func NewOwnedForestPublicFixture(forest bool) *OwnedForestPublicFixture {
+ 	return &OwnedForestPublicFixture{work: fixtureModuleWork{Forest: forest, DynamicIntegerHostImports: true}}
+ }
+ 
++// NewOwnedForestPublicTrimFixture observes the real serial compile boundary
++// after the first function finalizes. It does not call GC or alter codegen.
++func NewOwnedForestPublicTrimFixture() *OwnedForestPublicFixture {
++	return &OwnedForestPublicFixture{
++		work:        fixtureModuleWork{Forest: true, RecordOperandLayout: true},
++		observeTrim: true,
++	}
++}
++
+ func (f *OwnedForestPublicFixture) Configure(opts *CompileOptions) error {
+ 	if codegen.SourceChecks || opts.Workers != 1 || opts.Profile || opts.Stats != nil ||
+ 		opts.CollectInlineReport || len(opts.CustomInstructions) != 0 {
+ 		return fmt.Errorf("owned forest public fixture requires ordinary serial compilation")
+ 	}
++	if f.observeTrim {
++		if opts.MemoryPressure != nil || opts.MemoryPressureAt != 0 {
++			return fmt.Errorf("owned forest trim fixture cannot replace a memory pressure callback")
++		}
++		f.trim = OwnedForestPublicTrimObservation{}
++		opts.MemoryPressureAt = 1
++		opts.MemoryPressure = f.observeFinalizedTrim
++	}
+ 	opts.fixtureWork = &f.work
+ 	return nil
+ }
+@@ -40,3 +59,69 @@ func (f *OwnedForestPublicFixture) Configure(opts *CompileOptions) error {
+ func (f *OwnedForestPublicFixture) DynamicImportSites() uint64 {
+ 	return f.work.DynamicIntegerHostImportSites
+ }
++
++// OwnedForestPublicTrimObservation is a scalar snapshot taken in the existing
++// serial memory-pressure callback, before the next function is compiled.
++type OwnedForestPublicTrimObservation struct {
++	Callbacks, LegacyBodies                                           uint64
++	Attempts, Completed, Rejected                                     int
++	CapacityRows, Function, NodesAtSample                             int
++	ArenaMappedBytes, ArenaAppendedBytes                              int
++	NodeBytes                                                         uintptr
++	PretrimUsedBytes, PretrimReservedBytes, PosttrimRetainedNodeBytes uint64
++	RootLen, RootCap, NonNilRootPointers                              int
++	Sites, LiveRootsAtScrub, RootPointerScrubs, ControlHolderRejects  uint64
++}
++
++func (f *OwnedForestPublicFixture) observeFinalizedTrim() {
++	w := &f.work
++	row := OwnedForestPublicTrimObservation{
++		Callbacks: f.trim.Callbacks + 1, LegacyBodies: w.LegacyBodies,
++		Attempts: w.Attempts, Completed: w.Completed, Rejected: w.Rejected,
++		CapacityRows: len(w.OperandCapacities), Function: -1,
++		NodeBytes:                 w.OperandLayout.NodeBytes,
++		PosttrimRetainedNodeBytes: w.FinalizedTrim.LastRetainedNodeBytes,
++		RootLen:                   len(w.Vector.roots), RootCap: cap(w.Vector.roots),
++		Sites: w.FinalizedTrim.Sites, LiveRootsAtScrub: w.FinalizedTrim.LiveRootsAtScrub,
++		RootPointerScrubs:    w.FinalizedTrim.RootPointerScrubs,
++		ControlHolderRejects: w.FinalizedTrim.ControlHolderRejects,
++	}
++	if n := len(w.OperandCapacities); n != 0 {
++		pre := w.OperandCapacities[n-1]
++		row.Function, row.NodesAtSample = pre.Function, pre.NodesAtSample
++		row.PretrimUsedBytes, row.PretrimReservedBytes = pre.NodeUsedBytes, pre.NodeReservedBytes
++		row.ArenaMappedBytes, row.ArenaAppendedBytes = pre.ArenaMappedBytes, pre.ArenaAppendedBytes
++	}
++	for _, root := range w.Vector.roots[:cap(w.Vector.roots)] {
++		if root != nil {
++			row.NonNilRootPointers++
++		}
++	}
++	f.trim = row
++}
++
++func (f *OwnedForestPublicFixture) TrimObservation() OwnedForestPublicTrimObservation {
++	return f.trim
++}
++
++// OwnedForestPublicTrimCompletion contains scalar counters at module return,
++// separate from the first-function callback.
++type OwnedForestPublicTrimCompletion struct {
++	Sites, LegacyBodies           uint64
++	Attempts, Completed, Rejected int
++	CapacityRows, LastFunction    int
++	LastReservedBytes             uint64
++}
++
++func (f *OwnedForestPublicFixture) TrimCompletion() OwnedForestPublicTrimCompletion {
++	w := &f.work
++	row := OwnedForestPublicTrimCompletion{
++		Attempts: w.Attempts, Completed: w.Completed, Rejected: w.Rejected, Sites: w.FinalizedTrim.Sites, LegacyBodies: w.LegacyBodies,
++		CapacityRows: len(w.OperandCapacities), LastFunction: -1,
++	}
++	if n := len(w.OperandCapacities); n != 0 {
++		row.LastFunction = w.OperandCapacities[n-1].Function
++		row.LastReservedBytes = w.OperandCapacities[n-1].NodeReservedBytes
++	}
++	return row
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 2f4d365d..e6d7ae95 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -460,6 +460,9 @@ func (s *stack) finishFunctionWithForestScrub(work *fixtureFinalizedTrimWork) (d
+ 	s.chunks = s.chunks[:keep]
+ 	s.resetGrowthCaps()
+ 	s.initSentinel()
++	if work != nil {
++		work.LastRetainedNodeBytes = retained
++	}
+ 	return discarded
+ }
+ 
+diff --git a/src/wago/owned_forest_public_compiled_trim_ordinary_test.go b/src/wago/owned_forest_public_compiled_trim_ordinary_test.go
+new file mode 100644
+index 00000000..36b6e2a8
+--- /dev/null
++++ b/src/wago/owned_forest_public_compiled_trim_ordinary_test.go
+@@ -0,0 +1,157 @@
++//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++
++	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++const ordinaryTrimRounds = 5400
++const ordinaryTrimPrime = 1099511628211
++const ordinaryTrimBudget = 1 << 20
++
++func ordinaryCompiledTrimBytes() []byte {
++	j, i := wasm.I64, wasm.I32
++	mix := []byte{0x20, 1}
++	for r := 0; r < ordinaryTrimRounds; r++ {
++		mix = append(mix, 0x20, 0, 0x42)
++		mix = append(mix, wasmtest.SLEB64(int64(1+r%63))...)
++		mix = append(mix, 0x85, 0x42)
++		mix = append(mix, wasmtest.SLEB64(ordinaryTrimPrime)...)
++		mix = append(mix, 0x7e, 0x21, 0)
++	}
++	mix = append(mix, 0x20, 0, 0x0b)
++	// Both arms perform an in-bounds store and joins return a real reload.
++	next := []byte{0x20, 0, 0x04, 0x40}
++	for n, value := range []int64{17, 29} {
++		if n != 0 {
++			next = append(next, 0x05)
++		}
++		next = append(next, 0x41)
++		next = append(next, wasmtest.SLEB64(64)...)
++		next = append(next, 0x41)
++		next = append(next, wasmtest.SLEB64(value)...)
++		next = append(next, 0x3a, 0, 0)
++	}
++	next = append(next, 0x0b, 0x41)
++	next = append(next, wasmtest.SLEB64(64)...)
++	next = append(next, 0x2d, 0, 0, 0x0b)
++
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{j, j}, []wasm.ValType{j, j}), wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mix", 0, 0), wasmtest.ExportEntry("next", 0, 1), wasmtest.ExportEntry("memory", 2, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(mix), wasmtest.Code(next))),
++	)
++}
++
++func ordinaryTrimReference(x uint64) uint64 {
++	for n := 0; n < 5400; n++ {
++		x ^= uint64(n%63 + 1)
++		x *= uint64(1099511628211)
++	}
++	return x
++}
++
++func TestScopedPublicCompiledForestTrim(t *testing.T) {
++	arm := os.Getenv("WAGO_ORDINARY_COMPILED_TRIM_ARM")
++	if arm != "wide" && arm != "compact" {
++		t.Fatal("run only with a predeclared public compiled trim arm")
++	}
++	body := ordinaryCompiledTrimBytes()
++	cfg := NewRuntimeConfig().WithFunctionWorkers(1).WithMaxModuleBytes(uint64(len(body)))
++	cfg.ownedForestPublicFixture = railshot.NewOwnedForestPublicTrimFixture()
++	c, err := Compile(cfg, body)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := c.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	emit := func(kind string, v any) {
++		q, err := json.Marshal(v)
++		if err != nil {
++			t.Fatal(err)
++		}
++		t.Logf("PUBLIC_COMPILED_TRIM_%s %s", kind, q)
++	}
++	{
++		expectedWidth := uintptr(64)
++		if arm == "compact" {
++			expectedWidth = 40
++		}
++		obs, end := cfg.ownedForestPublicFixture.TrimObservation(), cfg.ownedForestPublicFixture.TrimCompletion()
++		emit("OBSERVATION", obs)
++		emit("COMPLETION", end)
++		if obs.Callbacks != 1 || obs.Attempts != 1 || obs.Completed != 1 || obs.Rejected != 0 || obs.CapacityRows != 1 || obs.Function != 0 ||
++			obs.LegacyBodies != 1 || obs.NodeBytes != expectedWidth || obs.NodesAtSample < 5*ordinaryTrimRounds || obs.PretrimUsedBytes < uint64(5*ordinaryTrimRounds)*uint64(expectedWidth) ||
++			obs.ArenaMappedBytes <= 0 || obs.ArenaAppendedBytes <= 0 || obs.ArenaAppendedBytes > obs.ArenaMappedBytes ||
++			obs.PretrimReservedBytes < obs.PretrimUsedBytes || obs.PretrimReservedBytes <= ordinaryTrimBudget ||
++			obs.PosttrimRetainedNodeBytes <= 0 || obs.PosttrimRetainedNodeBytes > ordinaryTrimBudget ||
++			obs.Sites != 1 || obs.LiveRootsAtScrub != 2 || obs.RootLen != 0 || obs.RootCap < 2 ||
++			obs.NonNilRootPointers != 0 || obs.RootPointerScrubs != uint64(obs.RootCap) || obs.ControlHolderRejects != 0 {
++			t.Fatalf("actual compiled trim boundary not established: %+v", obs)
++		}
++		if end.LegacyBodies != 2 || end.Attempts != 2 || end.Completed != 2 || end.Rejected != 0 || end.CapacityRows != 2 ||
++			end.LastFunction != 1 || end.LastReservedBytes != obs.PosttrimRetainedNodeBytes || end.Sites != 1 {
++			t.Fatalf("successor did not complete on retained trimmed worker: %+v after %+v", end, obs)
++		}
++	}
++	var out bytes.Buffer
++	if _, err = c.WriteCodeTo(&out); err != nil {
++		t.Fatal(err)
++	}
++	meta, err := compiledMetadataBytes(c, true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	emit("ARTIFACT", map[string]any{"arm": arm, "body": fmt.Sprintf("%x", sha256.Sum256(body)), "native": fmt.Sprintf("%x", sha256.Sum256(out.Bytes())), "metadata": fmt.Sprintf("%x", sha256.Sum256(meta)), "nativeBytes": out.Len(), "metadataBytes": len(meta)})
++	in, err := Instantiate(c, InstantiateOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := in.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	memory := in.Memory()
++	if memory == nil {
++		t.Fatal("missing module memory")
++	}
++	wantMemory := make([]byte, 65536)
++	checkMemory := func(lane string) {
++		if !bytes.Equal(memory.UnsafeBytes(), wantMemory) {
++			t.Fatalf("%s changed memory outside the expected byte", lane)
++		}
++	}
++	checkMemory("initial")
++	for _, p := range [][2]uint64{{0xa018c05b80000015, 0x01020304850607d8}, {0x98fedcba76543210, 0xfedcba9847653201}} {
++		got, e := in.Invoke("mix", p[0], p[1])
++		if want := ordinaryTrimReference(p[0]); e != nil || len(got) != 2 || got[0] != p[1] || got[1] != want {
++			t.Fatalf("mix(%x,%x)=%x error %v; expected (%x,%x)", p[0], p[1], got, e, p[1], want)
++		}
++		checkMemory("mix")
++	}
++	for _, p := range [][2]uint64{{0, 29}, {1, 17}} {
++		got, e := in.Invoke("next", p[0])
++		if e != nil || len(got) != 1 || got[0] != p[1] {
++			t.Fatalf("next(%d)=%v error %v; expected %d", p[0], got, e, p[1])
++		}
++		wantMemory[64] = byte(p[1])
++		checkMemory("next")
++	}
++	emit("RUNTIME", map[string]int{"mix": 2, "successor": 2, "memoryChecks": 5})
++}

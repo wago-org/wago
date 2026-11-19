@@ -1134,3 +1134,11 @@ Apply `public-dynamic-focused.patch` after `71b3ff1e` to reach `f59172c2bda5f84f
 Attempt 1 on `607ccae` stopped at an unrelated package initialization failure before any requested execution. One reviewed overlay packaging retry retained the production package, assembly and dependency graph. Attempt 2 passed four public compiles, 18 outer calls and six nested leaf calls with two exact native and publicly serialized metadata pairs. Actual routes included Go host callbacks, same-instance reentry and native cross-instance calls.
 
 Summary SHA-256: `81ee2f93c200eab4d2f24fa5f287b14b8254bc4d7e1afad1c362841d40a8e4ee`. No full-API, corpus, timing, RSS or default-change claim.
+
+### Scoped public compile: actual finalized trim
+
+Apply `public-compiled-trim-focused.patch` after `f59172c2` to reach `181571bd`. The first scoped run passed two public compiles, four mixer calls and four successor calls, with one exact native/public-metadata pair (97,429 and 186 bytes respectively). The verified overlay retained the production graph and assembly. The fixture used the private early tag, not the public default.
+
+Each first function used 27,005 nodes and scrubbed two live root entries, dropping root capacity from four to zero before compiling the successor. Wide requested node bytes were 1,728,320 used, 2,097,152 reserved before trim, and 1,048,576 reserved after trim. Compact used 1,080,200, reserved 1,310,720 before trim, and retained 983,040. Both mappings remained 1,048,576 bytes; append accounting was 1,048,576 wide and 983,040 compact.
+
+Summary SHA-256: `9dfe5443802ef91000655eacc062c298c4dd01103f72cc48dd51e0f945b585ea`. No allocator-reclamation, GC, RSS, timing, default-pressure, or corpus claim.
