@@ -1,0 +1,456 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 0e1e993e..aa3e5217 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -395,23 +395,24 @@ type fn struct {
+ 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
+ 	// an eligible local; locals[x].reg is populated only while its cached value is
+ 	// live. Physical registers are selected and reclaimed dynamically.
+-	intervalReg       []Reg
+-	intervalLast      []uint32
+-	intervalScore     []uint32
+-	intervalEvents    []intervalLocalEvent
+-	intervalHead      []uint32
+-	intervalOwner     [16]int
+-	intervalRegLimit  int
+-	intervalActive    int
+-	intervalNext      bool
+-	intervalI64Weight bool
+-	intervalScratch   bool
+-	intervalR8        bool
+-	intervalRSI       bool
+-	intervalControl   bool
+-	moduleHasSIMD     bool
+-	localWritten      uint64 // conservative lexical write history for the first 64 locals
+-	loopLocalParams   loopLocalParamHomes
++	intervalReg          []Reg
++	intervalLast         []uint32
++	intervalScore        []uint32
++	intervalEvents       []intervalLocalEvent
++	intervalHead         []uint32
++	intervalOwner        [16]int
++	intervalRegLimit     int
++	intervalActive       int
++	intervalNext         bool
++	intervalI64Weight    bool
++	intervalScratch      bool
++	intervalR8           bool
++	intervalRSI          bool
++	intervalControl      bool
++	moduleHasSIMD        bool
++	fixtureTemporarySIMD bool
++	localWritten         uint64 // conservative lexical write history for the first 64 locals
++	loopLocalParams      loopLocalParamHomes
+ 
+ 	// Register occupancy: regUser[r] is the value elem currently resident in
+ 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
+@@ -1924,6 +1925,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			IntegerControlInlineComposition:    work.IntegerControlInlineComposition,
+ 			PrivateMemory32Grow:                work.PrivateMemory32Grow,
+ 			ScalarFPSixArgABI:                  work.ScalarFPSixArgABI,
++			TemporaryV128SIMD:                  work.TemporaryV128SIMD,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+@@ -4204,6 +4206,19 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	if f.vectorRegion.enabled && fpPinLimit > 8 {
+ 		fpPinLimit = 8
+ 	}
++	if work := sc.fixtureWork; work != nil && work.TemporaryV128SIMD && f.moduleHasSIMD {
++		sawSIMD, err := f.preflightFixtureTemporarySIMD(c.BodyBytes)
++		if err != nil {
++			if work.Forest {
++				return nil, nil, 0, err
++			}
++		} else {
++			f.fixtureTemporarySIMD = true
++			if sawSIMD {
++				work.TemporaryV128Bodies++
++			}
++		}
++	}
+ 	f.noteResidencyEvents(hints)
+ 	intervalControl := f.opt(optIntervalControl) && !f.moduleHasSIMD && len(f.customInstructions) == 0 &&
+ 		(hasCall || hints.flags.has(hintHasControlFlow|hintUsesBulkMem))
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index f5912332..6cdebedc 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -313,10 +313,10 @@ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
+ 		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) &&
+ 		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) &&
+-		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) {
++		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) && !(op == 0xfd && f.fixtureTemporarySIMD) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+-	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
++	if f.moduleEH || (f.moduleHasSIMD && !f.fixtureTemporarySIMD) || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+ 		f.vectorRegion.enabled {
+ 		return fmt.Errorf("fixture forest: unsupported specialized function state")
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 995d7112..e164ae08 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -109,7 +109,7 @@ func (f *fn) allocBulkFReg(avoid regMask) Reg {
+ // allocFReg returns a free XMM register, spilling the deepest float-resident stack
+ // value if none is free.
+ func (f *fn) allocFReg(avoid regMask) Reg {
+-	if f.s.forest != nil && !f.fixtureScalarFPEnabled() {
++	if f.s.forest != nil && !f.fixtureScalarFPEnabled() && !f.fixtureTemporarySIMD {
+ 		panic("fixture forest: unported FP allocation")
+ 	}
+ 	if ownedForestCensusEnabled && f.s.forest == nil {
+@@ -204,6 +204,9 @@ func (f *fn) spillF(e *elem) {
+ 		return
+ 	}
+ 	if e.st.typ == mtV128 {
++		if f.fixtureTemporarySIMD {
++			f.sc.fixtureWork.TemporaryV128Spills++
++		}
+ 		slot := f.allocSpillSlots(2)
+ 		f.mov128StoreDisp(RSP, f.spillOff(slot), r)
+ 		if profileEnabled {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index a1e14527..9a08d6d7 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128SIMD                                                                               bool
++	TemporaryV128Bodies, TemporaryV128Spills                                                        uint64
+ 	ScalarFPSixArgABI                                                                               bool
+ 	FPEntryForwardOverlaps, FPEntryStagedFunctions, FPEntryExtraStores                              uint64
+ 	PrivateMemory32Grow                                                                             bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+new file mode 100644
+index 00000000..5e459f29
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -0,0 +1,108 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64
++
++package amd64
++
++import (
++	"fmt"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++// Preflight the entire validated body, not just the instructions visited by
++// bodyLoop. Existing SIMD selectors can consume adjacent operations, including
++// a load/extract packet and store/repeated-address/load packet.
++func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
++	if f.moduleEH || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
++		f.vectorRegion.enabled || len(f.customInstructions) != 0 || !sigIsIntOnly(f.ft) {
++		return false, fmt.Errorf("fixture forest: unsupported temporary SIMD function state")
++	}
++	for _, typ := range f.localType {
++		if typ != mtI32 && typ != mtI64 {
++			return false, fmt.Errorf("fixture forest: unsupported temporary SIMD local type")
++		}
++	}
++
++	r := wasm.NewReader(body)
++	depth := 1
++	sawSIMD := false
++	for r.HasNext() {
++		op, err := r.Byte()
++		if err != nil {
++			return false, err
++		}
++		switch {
++		case op == 0xfd:
++			sub, err := r.U32()
++			if err != nil {
++				return false, err
++			}
++			switch sub {
++			case 0, 11: // v128.load/store
++				if err := f.checkFixtureSIMDMemory(r); err != nil {
++					return false, err
++				}
++			case 12: // v128.const
++				if _, err := r.Bytes(16); err != nil {
++					return false, err
++				}
++			case 21, 22, 24, 25, 27, 29: // integer lane extraction
++				if _, err := r.Byte(); err != nil {
++					return false, err
++				}
++			case 77, 78, 79, 80, 81, 82, 83: // bitwise and any_true
++			default:
++				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
++			}
++			sawSIMD = true
++		case op == 0x02 || op == 0x04:
++			bt, err := r.Byte()
++			if err != nil || (bt != 0x40 && bt != 0x7f && bt != 0x7e) {
++				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD control signature")
++			}
++			depth++
++		case op == 0x0b:
++			depth--
++			if depth == 0 {
++				if r.HasNext() {
++					return false, fmt.Errorf("fixture forest: trailing temporary SIMD body bytes")
++				}
++				return sawSIMD, nil
++			}
++		case op == 0x0c || op == 0x0d:
++			label, err := r.U32()
++			if err != nil || uint64(label) >= uint64(depth-1) {
++				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD branch target")
++			}
++		case op >= 0x28 && op <= 0x3e && fixtureScalarOpcode(op):
++			if err := f.checkFixtureSIMDMemory(r); err != nil {
++				return false, err
++			}
++		case op == 0x03 || op == 0x0e || op == 0x10 || op == 0x1b ||
++			op == 0x23 || op == 0x24 || op == 0x3f || op == 0xfc || !fixtureScalarOpcode(op):
++			return false, fmt.Errorf("fixture forest: unsupported temporary SIMD body opcode %#x", op)
++		default:
++			if err := f.classifier.SkipImmediate(r, op); err != nil {
++				return false, err
++			}
++		}
++	}
++	return false, fmt.Errorf("fixture forest: missing temporary SIMD body end")
++}
++
++func (f *fn) checkFixtureSIMDMemory(r *wasm.Reader) error {
++	index, _, err := f.readMemArg(r)
++	if err != nil {
++		return err
++	}
++	if f.checkFixtureMemorySize(index) != nil {
++		return fmt.Errorf("fixture forest: unsupported temporary SIMD memory")
++	}
++	return nil
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd_temp_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd_temp_independent_test.go
+new file mode 100644
+index 00000000..ed6b28f2
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd_temp_independent_test.go
+@@ -0,0 +1,172 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++var ownedSIMDTempMask = [16]byte{1, 33, 10, 17, 5, 93, 0xe0, 0x23, 4, 2, 97, 0x91, 7, 0x11, 55, 0xf1}
++
++const ownedSIMDTempOut = 512
++const ownedSIMDTempPressureRoots = 20
++
++func ownedSIMDTempModule(t *testing.T, pressure bool) *wasm.Module {
++	t.Helper()
++	b := []byte{0, 0x20, 0}
++	pc := func(addr int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(addr))...) }
++	ld := func(addr int) { pc(addr); b = append(b, 0xfd, 0, 4, 0) }
++	pc(ownedSIMDTempOut)
++	if pressure {
++		for i := range ownedSIMDTempPressureRoots {
++			ld(16 * i)
++			b = append(b, 0xfd, 77) // eager v128.not
++		}
++		for range ownedSIMDTempPressureRoots - 1 {
++			b = append(b, 0xfd, 81)
++		} // v128.xor
++	} else {
++		ld(0)
++		b = append(b, 0xfd, 12)
++		b = append(b, ownedSIMDTempMask[:]...)
++		b = append(b, 0xfd, 81)
++	}
++	b = append(b, 0xfd, 11, 4, 0)
++	ld(ownedSIMDTempOut)
++	b = append(b, 0xfd, 83, 0x04, 0x7f) // v128.any_true, scalar i32 IF
++	ld(ownedSIMDTempOut)
++	b = append(b, 0xfd, 27, 0, 0x05, 0x41, 23, 0x0b, 0x73, 0x0b) // i32x4.extract_lane0; xor old prefix
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedSIMDTempRun(t *testing.T, cm *encoder.CompiledModule, pressure, zero bool) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	mem := jm.LinearMemory()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	for i := range ownedSIMDTempPressureRoots {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + 13)
++		}
++	}
++	if zero {
++		if pressure {
++			clear(mem[:16*ownedSIMDTempPressureRoots])
++		} else {
++			copy(mem, ownedSIMDTempMask[:])
++		}
++	}
++	var data [16]byte
++	for j := range data {
++		if pressure {
++			for i := range ownedSIMDTempPressureRoots {
++				data[j] ^= ^mem[i*16+j]
++			}
++		} else {
++			data[j] = mem[j] ^ ownedSIMDTempMask[j]
++		}
++	}
++	if zero != (data == [16]byte{}) {
++		t.Fatalf("invalid test oracle data %x (zero=%v)", data, zero)
++	}
++	if !zero && bytes.Equal(data[:8], data[8:]) {
++		t.Fatalf("invalid identical result halves: %x", data)
++	}
++	wantMem := append([]byte(nil), mem...)
++	copy(wantMem[ownedSIMDTempOut:], data[:])
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xabcde112)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, mem, tr, out)
++	v := binary.LittleEndian.Uint32(data[:])
++	if zero {
++		v = 23
++	}
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != old^v {
++		t.Fatalf("pressure=%v zero=%v got=%x want=%x err=%v", pressure, zero, got, old^v, err)
++	}
++	if !bytes.Equal(mem, wantMem) {
++		t.Fatalf("wrong full memory: SIMD output=%x want=%x", mem[ownedSIMDTempOut:ownedSIMDTempOut+16], data)
++	}
++}
++
++func TestOwnedForestTemporarySIMDOrdinary(t *testing.T) {
++	for _, pressure := range []bool{false, true} {
++		name := "memory-if"
++		if pressure {
++			name = "live-v128-pressure"
++		}
++		t.Run(name, func(t *testing.T) {
++			m := ownedSIMDTempModule(t, pressure)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("SIMD legacy lane inactive: %+v", work)
++					}
++					if pressure && work.TemporaryV128Spills == 0 {
++						t.Fatalf("actual full-width spill not observed: %+v", work)
++					}
++					for _, zero := range []bool{false, true} {
++						ownedSIMDTempRun(t, cm, pressure, zero)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index ec6703c9..fe8f927c 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -849,7 +849,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op simdBinaryOp) {
+ 		return
+ 	}
+ 	right := f.s.back()
+-	left := baseOfValentBlock(right).prev
++	left := f.s.selectorPrevious(right, 1)
+ 	memElem, regElem := right, left
+ 	disp, ok := f.v128StackMem(memElem)
+ 	if !ok {
+@@ -2114,11 +2114,11 @@ func (f *fn) topThreeV128Values() bool {
+ 	if top == nil || top == f.s.head || !top.isValue() || top.st.typ != mtV128 {
+ 		return false
+ 	}
+-	middle := baseOfValentBlock(top).prev
++	middle := f.s.selectorPrevious(top, 1)
+ 	if middle == f.s.head || !middle.isValue() || middle.st.typ != mtV128 {
+ 		return false
+ 	}
+-	bottom := baseOfValentBlock(middle).prev
++	bottom := f.s.selectorPrevious(middle, 2)
+ 	return bottom != f.s.head && bottom.isValue() && bottom.st.typ == mtV128
+ }
+ 
+@@ -2719,6 +2719,9 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
+ }
+ 
+ func (f *fn) emitFD(r *wasm.Reader) error {
++	if f.s.forest != nil && !f.fixtureTemporarySIMD {
++		return fmt.Errorf("fixture forest: unsupported SIMD opcode")
++	}
+ 	sub, err := r.U32()
+ 	if err != nil {
+ 		return err

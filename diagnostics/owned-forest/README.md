@@ -778,3 +778,21 @@ activated in this census. The focused receipts remain separate.
 No guest execution, timing, held-input qualification, or promotion.
 Summary SHA-256: `2797b7aa978dff77f46d123509b1d3f2d7b78e8d1249239e2074df1a634b32b4`.
 Rows SHA-256: `2f897250ff87bff9d39498c290ac4703f7360393fe42a9d1fa9830cfd2aa5038`.
+
+## Focused eager temporary SIMD
+
+Apply simd-temp-focused.patch on top of a1a6f488. At 2921e4a6 the gate
+passed eight images and 16 ordinary calls with four exact native and
+encoder-metadata pairs. Each of the four pressure images recorded five
+actual full-width 16-byte spills; the four basic images recorded none.
+The in-bounds local memory32 checks covered all 16 bytes with distinct
+halves or zero, and checked the full memory image. Every image selected
+any_true VPTEST and load/extract once; pressure images each selected
+memory folding five times.
+
+The control fixture retains a scalar prefix, not a live vector across
+IF. This does not cover SIMD locals, ABI, calls, regions, all selectors,
+or closure of the two earlier specialized-state census gaps. Admission
+scans the whole body without disabling optimizers; that classification
+has a cost, and abandoned work matters if fallback is later introduced.
+No public artifact codec, corpus, timing or speed claim. Defaults unchanged.
