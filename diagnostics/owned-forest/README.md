@@ -1110,3 +1110,11 @@ Apply `else-republish-focused.patch` after `4ad04af0` to reach `dd2afea51cbd15ed
 Scalar root stores fell from 52 to 46 and arena requests from 25 to 22, at the same sampled capacity of 32 nodes (1,536 bytes). Vector root stores fell from 95 to 87 and arena requests from 46 to 42, at the same 64-node (3,072-byte) sample. The scalar/vector checks added three/five root checks and three/four type checks; both added 16 register-pair and four lease checks, with retag and tail work counted separately. These are not net-work, allocator, peak heap, RSS or latency measurements.
 
 Summary SHA-256: `a5c0c74410b9234d06923e633ae28e5caf99e73fd5a69ed71fcb5cb54dfcd92e`. No default, corpus, historical replay, or public serialization claim.
+
+### Compact 40-byte operand layout
+
+Apply `compact40-focused.patch` after `dd2afea5` to reach `ec3f7e0b2fa737a1b029ce192e5b2281f0284bd4` (tree `23d1170fafe31e058d149111b7949cdcc4fea1bf`). The first gate passed 36 images, 114 ordinary calls, 24 strict comparisons and the two wide/three compact direct cases. The companion [typed ownership inventory](compact40-inventory/README.md) records 40 production and 16 historical test occurrences.
+
+Compact elements measured 40 bytes instead of 48, with unchanged counts and capacities in all 20 compact rows, so requested used/reserved node bytes were five-sixths of the prior layout. The cold sample fell from 43,296 to 36,080 used bytes and from 49,152 to 40,960 reserved bytes. The 64-byte wide layout and separately accounted headers, roots, cold backing and cursor were unchanged. No mapping, timing or RSS measurements were made.
+
+Summary SHA-256: `23cc1bacd9057d68bfc6c2ef947439fefc7f4ec2f01316022c5beb3b73272a17`. No default or corpus qualification.

@@ -1,0 +1,57 @@
+scope	file	line	field	access	historical_source
+production	control.go	2651	forestLive	state read	if e == nil || !e.forestLive || e.hasPhysicalLinks() || e.forestPending || !e.isValue() ||
+production	control.go	2651	forestPending	state read	if e == nil || !e.forestLive || e.hasPhysicalLinks() || e.forestPending || !e.isValue() ||
+production	control.go	2683	forestLive	whole-node live initialization	*v.roots[i] = elem{forestLive: true, st: st}
+production	drop.go	54	forestLive	state read	if i < 0 || v.roots[i] != e || !e.forestLive || !e.st.hasLogicalRoot() || e.forestPending {
+production	drop.go	54	forestPending	state read	if i < 0 || v.roots[i] != e || !e.forestLive || !e.st.hasLogicalRoot() || e.forestPending {
+production	drop.go	80	forestLive	state read	if e == nil || !e.forestLive || e.st.hasLogicalRoot() != root ||
+production	drop.go	81	forestPending	state read	e.forestPending || e.hasPhysicalLinks() {
+production	emit.go	784	forestLive	state read	if !node.forestLive || !node.isDeferred() || node.arg0 != nil || node.arg1 != nil || node.forestPending {
+production	emit.go	784	forestPending	state read	if !node.forestLive || !node.isDeferred() || node.arg0 != nil || node.arg1 != nil || node.forestPending {
+production	emit.go	787	forestPending	state write	node.forestPending = true
+production	emit.go	802	forestPending	state read	if !node.forestPending || f.regUser[result] != node || node.isDeferred() {
+production	emit.go	805	forestPending	state write	node.forestPending = false
+historical-test	owned_forest_compact_layout_independent_test.go	769	forestLive	state read	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
+historical-test	owned_forest_compact_layout_independent_test.go	788	forestPending	state read	if e.isDeferred() && !e.forestPending {
+historical-test	owned_forest_compact_layout_independent_test.go	813	forestLive	whole-node live initialization	val := func() *elem { return &elem{forestLive: true, st: storage{kind: stConst, typ: mtI32}} }
+historical-test	owned_forest_compact_layout_independent_test.go	815	forestLive	whole-node live initialization	return &elem{forestLive: true, st: storage{kind: deferredStorageKind, typ: mtI32}, arg0: l, arg1: r}
+historical-test	owned_forest_compact_layout_independent_test.go	821	forestPending	state write	pending.forestPending = true
+historical-test	owned_forest_compact_layout_independent_test.go	838	forestLive	state write	child.forestLive, nextChild.forestLive = false, false
+historical-test	owned_forest_compact_layout_independent_test.go	838	forestLive	state write	child.forestLive, nextChild.forestLive = false, false
+historical-test	owned_forest_compact_layout_independent_test.go	841	forestPending	state write	nextDeferred.forestPending = true
+historical-test	owned_forest_compact_layout_independent_test.go	842	forestLive	state write	nextDeferredChild.forestLive = false
+historical-test	owned_forest_compact_layout_independent_test.go	1555	forestLive	state read	if prior[3].forestLive || prior[3].st.hasLogicalRoot() || w.Vector.roots[:cap(w.Vector.roots)][3] != nil || got.s.spillExtent != old.s.spillExtent || got.s.spillExtentValid != old.s.spillExtentValid || got.depth() != old.depth() || got.maxSpill != old.maxSpill || got.s.canonicalSlots != old.s.canonicalSlots || got.s.hasGCRoots != old.s.hasGCRoots || got.s.pendingPrefix != old.s.pendingPrefix || got.s.spilledPrefix != old.s.spilledPrefix || got.s.pendingEffects != old.s.pendingEffects || got.regUser != old.regUser || got.fregUser != old.fregUser || got.pinned != old.pinned || got.fpinned != old.fpinned {
+historical-test	owned_forest_emitter_independent_test.go	229	forestPending	state write	e.forestPending = true
+production	owned_forest_fixture.go	27	forestLive	state read	return e.forestLive
+production	owned_forest_fixture.go	41	forestLive	state read	if e.hasPhysicalLinks() || e.forestLive || !e.st.hasLogicalRoot() {
+production	owned_forest_fixture.go	44	forestLive	state write	e.forestLive = true
+production	owned_forest_fixture.go	63	forestLive	state read	if e.forestLive || e.hasPhysicalLinks() {
+production	owned_forest_fixture.go	73	forestLive	state write	e.forestLive = true
+production	owned_forest_fixture.go	79	forestLive	state read	if !e.forestLive || e.hasPhysicalLinks() {
+production	owned_forest_fixture.go	92	forestLive	state write	e.forestLive = false
+production	owned_forest_fixture.go	126	forestPending	state read	if e.isDeferred() || e.forestPending {
+production	owned_forest_fixture.go	166	forestLive	state read	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
+production	owned_forest_fixture.go	199	forestPending	state read	if root != nil && (root.isValue() || root.forestPending) {
+production	owned_forest_fixture.go	200	forestLive	state read	if !root.forestLive || root.hasPhysicalLinks() {
+production	owned_forest_fixture.go	213	forestPending	state read	if e.isDeferred() && !e.forestPending {
+production	owned_forest_fixture.go	276	forestPending	state read	if e.forestPending {
+production	owned_forest_fixture.go	439	forestPending	state read	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending ||
+production	owned_forest_fixture.go	456	forestPending	state read	if s.back() != parent || parent.forestPending || !parent.isDeferred() ||
+production	owned_forest_fixture.go	457	forestLive	state read	parent.arg0 != child || parent.arg1 != nil || !child.forestLive || child.st.hasLogicalRoot() {
+production	owned_forest_fixture.go	478	forestPending	state read	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending {
+production	owned_forest_fixture.go	519	forestLive	state read	if len(s.forest.roots) != 1 || root.forestLive || root.st.hasLogicalRoot() {
+production	owned_forest_fixture.go	527	forestLive	state read	if !e.isValue() || e.forestLive || e.st.hasLogicalRoot() {
+production	owned_forest_fixture.go	530	forestLive	state write	e.forestLive = true
+historical-test	owned_forest_identity_independent_test.go	33	forestLive	state read	if left.forestLive {
+historical-test	owned_forest_module_independent_test.go	173	forestLive	state read	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
+historical-test	owned_forest_module_independent_test.go	173	forestLive	state read	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
+historical-test	owned_forest_module_independent_test.go	173	forestLive	state read	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
+historical-test	owned_forest_module_independent_test.go	173	forestLive	state read	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
+production	stack.go	204	forestPending	declaration	forestPending bool
+production	stack.go	205	forestLive	declaration	forestLive    bool // No locator; only used by the experimental fixture.
+production	stack.go	643	forestPending	state read	if e.forestPending || (e.isDeferred() && (e.arg0 != nil || e.arg1 != nil)) {
+production	stack.go	931	forestLive	state read	!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
+production	stack.go	931	forestLive	state read	!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
+production	stack.go	931	forestPending	state read	!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
+production	stack.go	931	forestPending	state read	!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
+production	treeorder.go	125	forestPending	state read	if e.forestPending {

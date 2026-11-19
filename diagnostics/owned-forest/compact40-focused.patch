@@ -1,0 +1,657 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index df91189b..a02700c6 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1861,6 +1861,9 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
+ // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
+ // handler (the caller must back memory with runtime guard pages).
+ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
++	if compactOperandNodes && len(opts.CustomInstructions) != 0 {
++		return nil, fmt.Errorf("compact operand nodes: custom instructions are unsupported")
++	}
+ 	if compactOperandNodes && (opts.fixtureWork == nil || !opts.fixtureWork.Forest ||
+ 		opts.Workers != 1 || opts.Profile || opts.Stats != nil || opts.CollectInlineReport) {
+ 		return nil, fmt.Errorf("compact operand nodes require a serial owned-forest fixture without diagnostics")
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 523806ef..e250cda9 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -2648,8 +2648,8 @@ func (f *fn) tryFixtureClosedElseRepublish(fr *ctrlFrame, types []machineType, g
+ 	slot, prefixEnd := 0, 0
+ 	for i, e := range v.roots {
+ 		w.RootChecks++
+-		if e == nil || !e.forestLive || e.hasPhysicalLinks() || e.forestPending || !e.isValue() ||
+-			!e.st.hasLogicalRoot() || e.arg0 != nil || e.arg1 != nil || e.st.cold != 0 ||
++		if e == nil || !e.forestIsLive() || e.hasPhysicalLinks() || e.forestIsPending() || !e.isValue() ||
++			!e.st.hasLogicalRoot() || e.arg0 != nil || e.arg1 != nil || e.st.coldIndex() != 0 ||
+ 			e.st.kind != stSlot || e.st.slotIndex() != slot || e.st.hasGCRoot() || e.st.hasEHRoot() ||
+ 			e.st.typ == mtCustom || e.st.typ == mtNone {
+ 			w.CheckedFallbacks++
+@@ -2680,7 +2680,8 @@ func (f *fn) tryFixtureClosedElseRepublish(fr *ctrlFrame, types []machineType, g
+ 	for i, typ := range types {
+ 		st := storage{kind: stSlot, typ: typ, slot: uint32(slot)}
+ 		st.setLogicalRoot(true)
+-		*v.roots[i] = elem{forestLive: true, st: st}
++		*v.roots[i] = elem{st: st}
++		v.roots[i].setForestLive(true)
+ 		slot += typ.stackSlots()
+ 		w.RetaggedRoots++
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/drop.go b/src/core/compiler/backend/railshot/amd64/drop.go
+index 78fe09d4..c57fa4bd 100644
+--- a/src/core/compiler/backend/railshot/amd64/drop.go
++++ b/src/core/compiler/backend/railshot/amd64/drop.go
+@@ -51,7 +51,7 @@ func deferredOpDiscardable(op wOp) bool {
+ func (f *fn) discardTree(e *elem) {
+ 	if v := f.s.forest; v != nil {
+ 		i := len(v.roots) - 1
+-		if i < 0 || v.roots[i] != e || !e.forestLive || !e.st.hasLogicalRoot() || e.forestPending {
++		if i < 0 || v.roots[i] != e || !e.forestIsLive() || !e.st.hasLogicalRoot() || e.forestIsPending() {
+ 			panic("fixture forest: discard requires the owned top root")
+ 		}
+ 		f.discardForestTree(e, true)
+@@ -77,8 +77,8 @@ func (f *fn) discardLinkedTree(e *elem) {
+ // before physical retirement. Only the owning root has a vector slot.
+ func (f *fn) discardForestTree(e *elem, root bool) {
+ 	s := f.s
+-	if e == nil || !e.forestLive || e.st.hasLogicalRoot() != root ||
+-		e.forestPending || e.hasPhysicalLinks() {
++	if e == nil || !e.forestIsLive() || e.st.hasLogicalRoot() != root ||
++		e.forestIsPending() || e.hasPhysicalLinks() {
+ 		panic("fixture forest: invalid discarded operand ownership")
+ 	}
+ 	if e.isDeferred() {
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index f101d8f8..6a480658 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -781,10 +781,10 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 	}
+ 	if folded {
+ 		if f.s.forest != nil {
+-			if !node.forestLive || !node.isDeferred() || node.arg0 != nil || node.arg1 != nil || node.forestPending {
++			if !node.forestIsLive() || !node.isDeferred() || node.arg0 != nil || node.arg1 != nil || node.forestIsPending() {
+ 				panic("fixture forest: invalid flags transition")
+ 			}
+-			node.forestPending = true
++			node.setForestPending(true)
+ 			f.s.forest.flagsTransitions++
+ 		} else if ownedForestCensusEnabled {
+ 			f.beginOwnedForestPending(&pending, node, foldedCC)
+@@ -799,10 +799,10 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		node.st.typ = mtI32
+ 		node.setDeferredOp(opNone)
+ 		if f.s.forest != nil {
+-			if !node.forestPending || f.regUser[result] != node || node.isDeferred() {
++			if !node.forestIsPending() || f.regUser[result] != node || node.isDeferred() {
+ 				panic("fixture forest: invalid flags result")
+ 			}
+-			node.forestPending = false
++			node.setForestPending(false)
+ 		} else if ownedForestCensusEnabled {
+ 			f.endOwnedForestPending(&pending, node, result)
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_compact.go b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+index 8e09f9ef..06266479 100644
+--- a/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+@@ -13,6 +13,49 @@ const compactOperandNodes = true
+ 
+ // Compact operand nodes contain no intrusive links and have no link sidecar.
+ type operandLinks struct{}
++type operandOwnership struct{}
++
++const (
++	compactForestLive          uint32 = 1 << 31
++	compactForestPending       uint32 = 1 << 30
++	compactForestOwnershipMask        = compactForestLive | compactForestPending
++)
++
++func (e *elem) forestIsLive() bool    { return e.st.cold&compactForestLive != 0 }
++func (e *elem) forestIsPending() bool { return e.st.cold&compactForestPending != 0 }
++func (e *elem) setForestLive(v bool) {
++	if v {
++		e.st.cold |= compactForestLive
++	} else {
++		e.st.cold &^= compactForestLive
++	}
++}
++func (e *elem) setForestPending(v bool) {
++	if v {
++		e.st.cold |= compactForestPending
++	} else {
++		e.st.cold &^= compactForestPending
++	}
++}
++
++func (st storage) coldIndex() uint32 { return st.cold &^ compactForestOwnershipMask }
++func (st *storage) setColdIndex(index uint32) {
++	if index != 0 {
++		panic("compact operand nodes: custom cold index is unsupported")
++	}
++	st.cold &= compactForestOwnershipMask
++}
++
++// Value storage snapshots may contain the donor's ownership bits. A fresh
++// node starts detached; a replacement retains the destination's ownership.
++func (e *elem) setFreshStorage(st storage) {
++	st.cold &^= compactForestOwnershipMask
++	e.st = st
++}
++func (e *elem) setStoragePreservingOwnership(st storage) {
++	st.cold = st.coldIndex() | (e.st.cold & compactForestOwnershipMask)
++	e.st = st
++}
+ 
+ func (*elem) prevLink() *elem        { panic("compact operand nodes: list predecessor reached") }
+ func (*elem) nextLink() *elem        { panic("compact operand nodes: list successor reached") }
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_list.go b/src/core/compiler/backend/railshot/amd64/operand_links_list.go
+index 2d04ff24..56371a05 100644
+--- a/src/core/compiler/backend/railshot/amd64/operand_links_list.go
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_list.go
+@@ -15,6 +15,20 @@ type operandLinks struct {
+ 	prev, next *elem
+ }
+ 
++type operandOwnership struct {
++	live, pending bool
++}
++
++func (e *elem) forestIsLive() bool      { return e.live }
++func (e *elem) forestIsPending() bool   { return e.pending }
++func (e *elem) setForestLive(v bool)    { e.live = v }
++func (e *elem) setForestPending(v bool) { e.pending = v }
++
++func (st storage) coldIndex() uint32                     { return st.cold }
++func (st *storage) setColdIndex(index uint32)            { st.cold = index }
++func (e *elem) setFreshStorage(st storage)               { e.st = st }
++func (e *elem) setStoragePreservingOwnership(st storage) { e.st = st }
++
+ func (e *elem) prevLink() *elem           { return e.prev }
+ func (e *elem) nextLink() *elem           { return e.next }
+ func (e *elem) setPrevLink(prev *elem)    { e.prev = prev }
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index 3fba035f..d0de59e8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -72,7 +72,7 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 					t.Fatalf("missing legacy/ownership/capacity activation: %+v", w)
+ 				}
+ 				l := w.OperandLayout
+-				if l.Compact != compactOperandNodes || (l.Compact && (l.NodeBytes != 48 || l.NodePhysicalLinkBytes != 0)) || (!l.Compact && (l.NodeBytes != 64 || l.NodePhysicalLinkBytes != 16)) {
++				if l.Compact != compactOperandNodes || (l.Compact && (l.NodeBytes != 40 || l.NodePhysicalLinkBytes != 0)) || (!l.Compact && (l.NodeBytes != 64 || l.NodePhysicalLinkBytes != 16)) {
+ 					t.Fatalf("unexpected measured layout: %+v", l)
+ 				}
+ 				for _, r := range w.OperandCapacities {
+@@ -766,7 +766,7 @@ type layoutPriorCursor struct {
+ }
+ 
+ func (c *layoutPriorCursor) push(e *elem) {
+-	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
++	if c.n >= len(c.frames) || !e.forestIsLive() || e.hasPhysicalLinks() {
+ 		panic("prior cursor invalid child")
+ 	}
+ 	c.frames[c.n] = fixtureCursorFrame{node: e}
+@@ -785,7 +785,7 @@ func (c *layoutPriorCursor) next() *elem {
+ 		}
+ 		top := &c.frames[c.n-1]
+ 		e := top.node
+-		if e.isDeferred() && !e.forestPending {
++		if e.isDeferred() && !e.forestIsPending() {
+ 			switch top.phase {
+ 			case 0:
+ 				top.phase = 1
+@@ -810,15 +810,21 @@ func (c *layoutPriorCursor) next() *elem {
+ }
+ 
+ func TestOwnedForestReadyRootTraversalOrdinary(t *testing.T) {
+-	val := func() *elem { return &elem{forestLive: true, st: storage{kind: stConst, typ: mtI32}} }
++	val := func() *elem {
++		e := &elem{st: storage{kind: stConst, typ: mtI32}}
++		e.setForestLive(true)
++		return e
++	}
+ 	def := func(l, r *elem) *elem {
+-		return &elem{forestLive: true, st: storage{kind: deferredStorageKind, typ: mtI32}, arg0: l, arg1: r}
++		e := &elem{st: storage{kind: deferredStorageKind, typ: mtI32}, arg0: l, arg1: r}
++		e.setForestLive(true)
++		return e
+ 	}
+ 	t.Run("mixed-postorder", func(t *testing.T) {
+ 		ready, l, r, innerChild, tail := val(), val(), val(), val(), val()
+ 		inner := def(innerChild, nil)
+ 		pending := def(nil, nil)
+-		pending.forestPending = true
++		pending.setForestPending(true)
+ 		left := def(l, r)
+ 		tree := def(left, inner)
+ 		checkLayoutReadyRoot(t, []*elem{ready, pending, tree, tail}, []*elem{ready, pending, l, r, left, innerChild, inner, tree, tail}, map[int]bool{0: true, 1: true, 8: true}, nil)
+@@ -835,11 +841,12 @@ func TestOwnedForestReadyRootTraversalOrdinary(t *testing.T) {
+ 				// neither cursor may consult the now-retired sibling.
+ 				first.st.kind = stConst
+ 				first.arg0, first.arg1 = nil, nil
+-				child.forestLive, nextChild.forestLive = false, false
++				child.setForestLive(false)
++				nextChild.setForestLive(false)
+ 				// A pending flags result has no remaining children to revisit.
+ 				nextDeferred.arg0 = nil
+-				nextDeferred.forestPending = true
+-				nextDeferredChild.forestLive = false
++				nextDeferred.setForestPending(true)
++				nextDeferredChild.setForestLive(false)
+ 				// Independent nested walk sees current state, while the
+ 				// suspended cursor retains and resumes its own frame.
+ 				checkLayoutReadyRoot(t, roots, []*elem{first, nextDeferred, tail}, map[int]bool{0: true, 1: true, 2: true}, nil)
+@@ -1552,7 +1559,7 @@ func TestOwnedForestElseRepublishDirectOrdinary(t *testing.T) {
+ 				t.Fatalf("root%d identity or fully reset storage differs", i)
+ 			}
+ 		}
+-		if prior[3].forestLive || prior[3].st.hasLogicalRoot() || w.Vector.roots[:cap(w.Vector.roots)][3] != nil || got.s.spillExtent != old.s.spillExtent || got.s.spillExtentValid != old.s.spillExtentValid || got.depth() != old.depth() || got.maxSpill != old.maxSpill || got.s.canonicalSlots != old.s.canonicalSlots || got.s.hasGCRoots != old.s.hasGCRoots || got.s.pendingPrefix != old.s.pendingPrefix || got.s.spilledPrefix != old.s.spilledPrefix || got.s.pendingEffects != old.s.pendingEffects || got.regUser != old.regUser || got.fregUser != old.fregUser || got.pinned != old.pinned || got.fpinned != old.fpinned {
++		if prior[3].forestIsLive() || prior[3].st.hasLogicalRoot() || w.Vector.roots[:cap(w.Vector.roots)][3] != nil || got.s.spillExtent != old.s.spillExtent || got.s.spillExtentValid != old.s.spillExtentValid || got.depth() != old.depth() || got.maxSpill != old.maxSpill || got.s.canonicalSlots != old.s.canonicalSlots || got.s.hasGCRoots != old.s.hasGCRoots || got.s.pendingPrefix != old.s.pendingPrefix || got.s.spilledPrefix != old.s.spilledPrefix || got.s.pendingEffects != old.s.pendingEffects || got.regUser != old.regUser || got.fregUser != old.fregUser || got.pinned != old.pinned || got.fpinned != old.fpinned {
+ 			t.Fatal("canonical depth/liveness/spills/reset facts differ")
+ 		}
+ 		if len(*got.s.activeChunk) != before || len(*old.s.activeChunk)-oldN != 3 || oldW.Vector.stores-w.Vector.stores != 6 {
+@@ -1587,3 +1594,111 @@ func TestOwnedForestElseRepublishDirectOrdinary(t *testing.T) {
+ 		layoutEmit(t, "ELSE_DIRECT", map[string]any{"case": "mismatch-is-read-only-then-old-rebuild", "work": w.ElseRepublish, "oldNodeDelta": len(*got.s.activeChunk) - n})
+ 	})
+ }
++
++func layoutOwnedTagState() *fn {
++	w := &fixtureModuleWork{Forest: true}
++	s := newCompileScratch(32)
++	s.fixtureWork = w
++	s.ensureTargetStack()
++	return &fn{s: s.stack, sc: s}
++}
++
++func TestOwnedForestPackedOwnershipOrdinary(t *testing.T) {
++	t.Run("storage-copy-and-pending-occupy", func(t *testing.T) {
++		f := layoutOwnedTagState()
++		donor := &elem{st: storage{kind: stSlot, typ: mtI32, slot: 3, cval: 512, idx: 7, meta: uint8(storageCapturedBounds | factUpper32Zero)}}
++		donor.setForestLive(true)
++		donor.setForestPending(true)
++		copy := f.pushValue(donor.st)
++		if !copy.forestIsLive() || copy.forestIsPending() || copy.st.coldIndex() != 0 || !copy.st.hasLogicalRoot() || copy.st.meta&uint8(storageCapturedBounds) == 0 || copy.st.cval != 512 || copy.st.slot != 3 || copy.st.idx != 7 || !donor.forestIsPending() || !donor.forestIsLive() {
++			t.Fatal("push leaked donor ownership or lost ordinary payload")
++		}
++		f.replaceStorage(copy, donor.st)
++		if !copy.forestIsLive() || copy.forestIsPending() || !copy.st.hasLogicalRoot() {
++			t.Fatal("replacement inherited pending donor state")
++		}
++		copy.setElemKind(ekDeferred)
++		copy.setDeferredOp(opAdd)
++		copy.setDeferredDepth(3)
++		copy.setRegisterNeed(2)
++		copy.setForestPending(true)
++		if copy.deferredOp() != opAdd || copy.deferredDepth() != 3 || copy.registerNeed() != 2 || copy.st.coldIndex() != 0 || f.s.elemCold(copy) != nil {
++			t.Fatal("ownership aliases deferred slots or cold index")
++		}
++		f.s.clearElemCold(copy)
++		copy.st.setColdIndex(0)
++		if !copy.forestIsPending() || !copy.forestIsLive() {
++			t.Fatal("zero cold reset changed ownership")
++		}
++		f.occupy(copy, RAX)
++		if !copy.forestIsPending() || !copy.forestIsLive() || f.regUser[RAX] != copy || copy.st.kind != stReg || copy.st.meta&uint8(storageCapturedBounds) != 0 || copy.st.slot != 0 || copy.st.idx != 0 || copy.st.cval != 0 || !copy.st.valueFacts().has(factUpper32Zero) {
++			t.Fatal("occupy changed lease lifetime or reg metadata contract")
++		}
++		f.replaceStorage(copy, storage{kind: stReg, typ: mtI32, reg: RAX})
++		if !copy.forestIsPending() || !copy.forestIsLive() || copy.st.coldIndex() != 0 {
++			t.Fatal("replacement lost destination pending lease")
++		}
++		copy.setForestPending(false)
++		f.release(RAX)
++		f.s.erase(copy)
++		if copy.forestIsLive() || copy.forestIsPending() || copy.st.hasLogicalRoot() {
++			t.Fatal("retirement did not drop ownership")
++		}
++		// Raw storage from a still-pending donor cannot make an unattached
++		// destination implicitly live or pending, either.
++		var detached elem
++		detached.setStoragePreservingOwnership(donor.st)
++		if detached.forestIsLive() || detached.forestIsPending() || detached.st.coldIndex() != 0 || detached.st.cval != 512 {
++			t.Fatal("detached replacement changed ownership")
++		}
++		layoutEmit(t, "OWNERSHIP", map[string]any{"case": "storage-copy-and-pending-occupy", "wideOrCompact": compactOperandNodes})
++	})
++	t.Run("detached-if-recipe-and-arena-reset", func(t *testing.T) {
++		f := layoutOwnedTagState()
++		a := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0, meta: uint8(factUpper32Zero)})
++		b := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
++		rec := f.s.alloc()
++		rec.setElemKind(ekDeferred)
++		rec.setValueType(mtI32)
++		rec.setDeferredOp(opAdd)
++		rec.setDeferredDepth(1)
++		rec.setRegisterNeed(2)
++		rec.arg0, rec.arg1 = a, b
++		f.s.pushDeferred(rec)
++		f.forestDetachIfRecipe(0, rec)
++		if f.depth() != 0 || rec.arg0 != a || rec.arg1 != b || rec.forestIsLive() || a.forestIsLive() || b.forestIsLive() || rec.st.hasLogicalRoot() {
++			t.Fatal("detach broke rematerialization recipe or retained ownership")
++		}
++		result := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 13})
++		f.s.forestRestoreIfRecipe(rec)
++		if f.depth() != 2 || f.s.forest.roots[0] != rec || f.s.back() != result || !rec.forestIsLive() || !a.forestIsLive() || !b.forestIsLive() || !rec.st.hasLogicalRoot() || a.st.hasLogicalRoot() || b.st.hasLogicalRoot() || rec.deferredOp() != opAdd || rec.deferredDepth() != 1 || rec.registerNeed() != 2 || b.st.cval != 7 || !a.st.valueFacts().has(factUpper32Zero) {
++			t.Fatal("restore changed tree, logical roots or payload")
++		}
++		result.setForestPending(true)
++		f.s.reset()
++		if f.depth() != 0 || len(f.s.forest.roots) != 0 || result.forestIsLive() || result.forestIsPending() || rec.forestIsLive() || a.forestIsLive() || b.forestIsLive() {
++			t.Fatal("arena reset retained former ownership")
++		}
++		next := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 29})
++		if next != a || !next.forestIsLive() || next.forestIsPending() || next.arg0 != nil || next.arg1 != nil || next.st.coldIndex() != 0 || next.st.cval != 29 || next.st.valueFacts() != 0 {
++			t.Fatal("reused arena slot retained stale state")
++		}
++		layoutEmit(t, "OWNERSHIP", map[string]any{"case": "detached-if-recipe-and-arena-reset", "wideOrCompact": compactOperandNodes})
++	})
++	if compactOperandNodes {
++		t.Run("custom-option-rejected-before-emission", func(t *testing.T) {
++			m := layoutProbeModFuncs(t, layoutProbeFuncDef{nil, nil, []byte{0, 0x0b}})
++			if e := wasm.ValidateModule(m); e != nil {
++				t.Fatal(e)
++			}
++			w := &fixtureModuleWork{Forest: true}
++			opts := CompileOptions{Workers: 1, fixtureWork: w}
++			opts.CustomInstructions = map[uint32]CustomInstruction{0: {}}
++			cm, e := CompileModuleWith(m, opts)
++			if cm != nil || e == nil || e.Error() != "compact operand nodes: custom instructions are unsupported" || w.Attempts != 0 {
++				t.Fatalf("custom capability was not fenced: %v attempts=%d", e, w.Attempts)
++			}
++			layoutEmit(t, "OWNERSHIP", map[string]any{"case": "custom-option-rejected-before-emission", "wideOrCompact": compactOperandNodes})
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
+index 29fe140f..2d7540c8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
+@@ -226,7 +226,7 @@ func TestOwnedForestEmitterRejectsUnsupported(t *testing.T) {
+ 		{"missing-effect-pending", "fixture forest: partial effect limit not found", func(f *fn) { f.s.pendingEffects = pendingLoad; f.fixturePendingEffects(true, new(elem)) }},
+ 		{"pending-erase", "fixture forest: erase unresolved subtree or pending result", func(f *fn) {
+ 			e := f.pushValue(storage{kind: stConst, typ: mtI32})
+-			e.forestPending = true
++			e.setForestPending(true)
+ 			f.s.erase(e)
+ 		}},
+ 		{"deferred-erase", "fixture forest: erase unresolved subtree or pending result", func(f *fn) {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index e7a9966f..15572498 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -24,7 +24,7 @@ type fixtureForest struct {
+ 
+ func (s *stack) operandAttached(e *elem) bool {
+ 	if s.forest != nil {
+-		return e.forestLive
++		return e.forestIsLive()
+ 	}
+ 	return e.listAttached()
+ }
+@@ -38,10 +38,10 @@ func (s *stack) forestLast(n int) *elem {
+ }
+ 
+ func (s *stack) forestAppend(e *elem) *elem {
+-	if e.hasPhysicalLinks() || e.forestLive || !e.st.hasLogicalRoot() {
++	if e.hasPhysicalLinks() || e.forestIsLive() || !e.st.hasLogicalRoot() {
+ 		panic("fixture forest: invalid root append")
+ 	}
+-	e.forestLive = true
++	e.setForestLive(true)
+ 	v := s.forest
+ 	if len(v.roots) == cap(v.roots) {
+ 		v.grows++
+@@ -60,7 +60,7 @@ func (s *stack) forestReplace(arity int, e *elem) *elem {
+ 	if i < 0 || v.roots[i] != e.arg0 || (arity == 2 && v.roots[i+1] != e.arg1) {
+ 		panic("fixture forest: wrong deferred suffix")
+ 	}
+-	if e.forestLive || e.hasPhysicalLinks() {
++	if e.forestIsLive() || e.hasPhysicalLinks() {
+ 		panic("fixture forest: attached replacement")
+ 	}
+ 	v.roots[i] = e
+@@ -70,13 +70,13 @@ func (s *stack) forestReplace(arity int, e *elem) *elem {
+ 		v.stores++
+ 	}
+ 	v.roots = v.roots[:i+1]
+-	e.forestLive = true
++	e.setForestLive(true)
+ 	return e
+ }
+ 
+ // Structural retirement only: existing lowering owns all register releases.
+ func (s *stack) forestRetire(e *elem) {
+-	if !e.forestLive || e.hasPhysicalLinks() {
++	if !e.forestIsLive() || e.hasPhysicalLinks() {
+ 		panic("fixture forest: retire invalid operand")
+ 	}
+ 	s.forgetSpill(e)
+@@ -89,7 +89,7 @@ func (s *stack) forestRetire(e *elem) {
+ 		s.logicalDepth--
+ 		e.st.setLogicalRoot(false)
+ 	}
+-	e.forestLive = false
++	e.setForestLive(false)
+ 	s.forest.retirements++
+ 	if len(s.forest.roots) == 0 {
+ 		s.pendingEffects &^= pendingLocalRef
+@@ -123,7 +123,7 @@ func (f *fn) forestRetireChildren(node *elem) {
+ func (s *stack) forestResetRoots() {
+ 	v := s.forest
+ 	for i, e := range v.roots {
+-		if e.isDeferred() || e.forestPending {
++		if e.isDeferred() || e.forestIsPending() {
+ 			panic("fixture forest: cannot reset unresolved roots")
+ 		}
+ 		s.clearElemCold(e)
+@@ -163,7 +163,7 @@ func (s *stack) fixtureScan(skipSpillPrefix bool) fixtureCursor {
+ }
+ 
+ func (c *fixtureCursor) push(e *elem) {
+-	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
++	if c.n >= len(c.frames) || !e.forestIsLive() || e.hasPhysicalLinks() {
+ 		panic("fixture forest: invalid cursor child")
+ 	}
+ 	c.frames[c.n] = fixtureCursorFrame{node: e}
+@@ -196,8 +196,8 @@ func (c *fixtureCursor) next() *elem {
+ 			// just as push would, then advance before returning so a
+ 			// nested allocation or in-place materialization cannot
+ 			// cause this cursor to revisit the root.
+-			if root != nil && (root.isValue() || root.forestPending) {
+-				if !root.forestLive || root.hasPhysicalLinks() {
++			if root != nil && (root.isValue() || root.forestIsPending()) {
++				if !root.forestIsLive() || root.hasPhysicalLinks() {
+ 					panic("fixture forest: invalid cursor child")
+ 				}
+ 				c.root++
+@@ -210,7 +210,7 @@ func (c *fixtureCursor) next() *elem {
+ 		}
+ 		top := &c.frames[c.n-1]
+ 		e := top.node
+-		if e.isDeferred() && !e.forestPending {
++		if e.isDeferred() && !e.forestIsPending() {
+ 			switch top.phase {
+ 			case 0:
+ 				top.phase = 1
+@@ -273,7 +273,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 			}
+ 			break
+ 		}
+-		if e.forestPending {
++		if e.forestIsPending() {
+ 			panic("fixture forest: pending result observed at effect barrier")
+ 		}
+ 		if e.isDeferred() && isDivRem(e.deferredOp()) {
+@@ -436,7 +436,7 @@ func (s *stack) selectorPrevious(node *elem, depth int) *elem {
+ func (f *fn) forestEraseAt(i int, e *elem) {
+ 	s := f.s
+ 	v := s.forest
+-	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending ||
++	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestIsPending() ||
+ 		e.isDeferred() && (e.arg0 != nil || e.arg1 != nil) {
+ 		panic("fixture forest: indexed erase of wrong or unresolved root")
+ 	}
+@@ -453,8 +453,8 @@ func (f *fn) forestEraseAt(i int, e *elem) {
+ 
+ func (f *fn) forestPeelTop(parent, child *elem) {
+ 	s := f.s
+-	if s.back() != parent || parent.forestPending || !parent.isDeferred() ||
+-		parent.arg0 != child || parent.arg1 != nil || !child.forestLive || child.st.hasLogicalRoot() {
++	if s.back() != parent || parent.forestIsPending() || !parent.isDeferred() ||
++		parent.arg0 != child || parent.arg1 != nil || !child.forestIsLive() || child.st.hasLogicalRoot() {
+ 		panic("fixture forest: invalid unary root transfer")
+ 	}
+ 	i := len(s.forest.roots) - 1
+@@ -475,7 +475,7 @@ func (f *fn) forestPeelTop(parent, child *elem) {
+ 
+ func (s *stack) forestRotateToTop(i int, e *elem) {
+ 	v := s.forest
+-	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending {
++	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestIsPending() {
+ 		panic("fixture forest: invalid root rotation")
+ 	}
+ 	if i == len(v.roots)-1 {
+@@ -516,7 +516,7 @@ func (f *fn) forestDetachIfRecipe(i int, root *elem) {
+ }
+ 
+ func (s *stack) forestRestoreIfRecipe(root *elem) {
+-	if len(s.forest.roots) != 1 || root.forestLive || root.st.hasLogicalRoot() {
++	if len(s.forest.roots) != 1 || root.forestIsLive() || root.st.hasLogicalRoot() {
+ 		panic("fixture forest: invalid IF prefix restore")
+ 	}
+ 	if root.isDeferred() {
+@@ -524,10 +524,10 @@ func (s *stack) forestRestoreIfRecipe(root *elem) {
+ 			panic("fixture forest: missing recipe leaves")
+ 		}
+ 		for _, e := range []*elem{root.arg0, root.arg1} {
+-			if !e.isValue() || e.forestLive || e.st.hasLogicalRoot() {
++			if !e.isValue() || e.forestIsLive() || e.st.hasLogicalRoot() {
+ 				panic("fixture forest: invalid recipe leaf")
+ 			}
+-			e.forestLive = true
++			e.setForestLive(true)
+ 		}
+ 	}
+ 	result := s.forest.roots[0]
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go
+index ea519cbf..52545c55 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go
+@@ -30,7 +30,7 @@ func TestOwnedForestIdentityRetirement(t *testing.T) {
+ 					t.Fatal("prefix alias changed")
+ 				}
+ 				if candidate {
+-					if left.forestLive {
++					if left.forestIsLive() {
+ 						t.Fatal("discarded operand still attached")
+ 					}
+ 					independentForestNilLinks(t, f, []*elem{prefix, left, top})
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go
+index 704e1771..998d7db3 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go
+@@ -170,7 +170,7 @@ func TestOwnedForestModulePeelPreservesLazyLocal(t *testing.T) {
+ 	if f.s.pendingEffects&pendingLocalRef == 0 {
+ 		t.Fatal("sole-root peel lost lazy-local effect summary")
+ 	}
+-	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
++	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestIsLive() || !child.forestIsLive() || !leaf.forestIsLive() || !constant.forestIsLive() || !child.st.hasLogicalRoot() {
+ 		t.Fatal("ownership/depth changed")
+ 	}
+ 	c := f.s.fixtureScan(false)
+diff --git a/src/core/compiler/backend/railshot/amd64/references.go b/src/core/compiler/backend/railshot/amd64/references.go
+index 1b78c4bf..03f737b4 100644
+--- a/src/core/compiler/backend/railshot/amd64/references.go
++++ b/src/core/compiler/backend/railshot/amd64/references.go
+@@ -50,9 +50,9 @@ func (f *fn) replaceStorage(e *elem, st storage) {
+ 		f.s.hasGCRoots = true
+ 	}
+ 	if st.typ == mtCustom {
+-		st.cold = e.st.cold
++		st.setColdIndex(e.st.coldIndex())
+ 	}
+-	e.st = st
++	e.setStoragePreservingOwnership(st)
+ 	if regallocCheckEnabled {
+ 		f.checkTrackMemRef(e)
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index e8ced9d4..6011217f 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -201,8 +201,7 @@ const (
+ // elem is one node on the operand stack: a value, a deferred operation, or a
+ // control-frame marker. Deferred nodes carry their opcode and operand links.
+ type elem struct {
+-	forestPending bool
+-	forestLive    bool // No locator; only used by the experimental fixture.
++	operandOwnership
+ 	// st is the variant payload. Concrete values use it as storage. Deferred
+ 	// nodes reuse slot for their opcode, depth, and register-need labels; those
+ 	// bits are otherwise dead for the variant. typ and metadata retain their
+@@ -393,16 +392,20 @@ func (s *stack) reset() {
+ }
+ 
+ func (s *stack) elemCold(e *elem) *elemCold {
+-	if e.st.cold == 0 {
++	index := e.st.coldIndex()
++	if index == 0 {
+ 		return nil
+ 	}
+-	return &s.cold[e.st.cold-1]
++	return &s.cold[index-1]
+ }
+ 
+ func (s *stack) setElemCold(e *elem, custom *coreplugins.CustomType, vregs []Reg) {
+-	if e.st.cold == 0 {
++	if compactOperandNodes {
++		panic("compact operand nodes: custom cold state is unsupported")
++	}
++	if e.st.coldIndex() == 0 {
+ 		s.cold = append(s.cold, elemCold{})
+-		e.st.cold = uint32(len(s.cold))
++		e.st.setColdIndex(uint32(len(s.cold)))
+ 	}
+ 	*s.elemCold(e) = elemCold{custom: custom, vregs: vregs}
+ }
+@@ -547,7 +550,7 @@ func (s *stack) pushValue(st storage) *elem {
+ 		e = s.allocNextChunk()
+ 	}
+ 	e.setElemKind(ekValue)
+-	e.st = st
++	e.setFreshStorage(st)
+ 	s.noteSpill(st)
+ 	s.recordStorageEffects(st)
+ 	s.logicalDepth++
+@@ -640,7 +643,7 @@ func (s *stack) erase(e *elem) {
+ 		if s.forestLast(0) != e {
+ 			panic("fixture forest: unported non-top erase")
+ 		}
+-		if e.forestPending || (e.isDeferred() && (e.arg0 != nil || e.arg1 != nil)) {
++		if e.forestIsPending() || (e.isDeferred() && (e.arg0 != nil || e.arg1 != nil)) {
+ 			panic("fixture forest: erase unresolved subtree or pending result")
+ 		}
+ 		i := len(s.forest.roots) - 1
+@@ -928,7 +931,7 @@ func (f *fn) discardSimple(left, right *elem) bool {
+ 	if v := f.s.forest; v != nil {
+ 		i := len(v.roots) - 2
+ 		if i < 0 || v.roots[i] != left || v.roots[i+1] != right ||
+-			!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
++			!left.forestIsLive() || !right.forestIsLive() || left.forestIsPending() || right.forestIsPending() ||
+ 			!left.st.hasLogicalRoot() || !right.st.hasLogicalRoot() {
+ 			panic("fixture forest: discard requires the owned binary suffix")
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/treeorder.go b/src/core/compiler/backend/railshot/amd64/treeorder.go
+index ff966bf1..215d31a6 100644
+--- a/src/core/compiler/backend/railshot/amd64/treeorder.go
++++ b/src/core/compiler/backend/railshot/amd64/treeorder.go
+@@ -122,7 +122,7 @@ func (f *fn) materializeTrapsBefore(node *elem) {
+ func (f *fn) materializeTrapsBeforeRoot(index int) {
+ 	roots := f.s.forest.roots
+ 	for _, e := range roots[:index:index] {
+-		if e.forestPending {
++		if e.forestIsPending() {
+ 			panic("fixture forest: pending flags at root barrier")
+ 		}
+ 		if !treeReorderSafe(e) {
