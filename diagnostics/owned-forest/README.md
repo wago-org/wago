@@ -642,3 +642,23 @@ codec parity, held-input, corpus or timing result is claimed. The prior
 
 Focused summary SHA-256:
 `d7eb87d21e4dcc6095c069e3b4416a3bcefa293c0588780c7c952bc5b87a14ef`.
+
+## Focused finite unsigned f64-to-i32 saturation (FC3)
+
+Apply fc3-focused.patch on top of 429aadf2. The experimental FC3-only
+helper stages zero and 2^32 before splitting control flow. The focused
+run at 0ef1a34a passed eight images and 72 finite calls, with four
+exact native and encoder-exported JSON pairs. Both ownership arms used
+the new helper; the default helper was not compiled or executed.
+Each image emitted one staged FC3. All 24 live FP values and the old
+alias were checked in the pressure fixture.
+
+Four pressure images recorded no free XMM register before upper-bound
+acquisition; the four basic images did not. This does not identify a
+spill or victim. Native sizes were 154/203 bytes (basic) and 787/836
+(pressure), ordinary/interruptible. No NaN, infinity, public codec,
+corpus, or timing result. Default helper, FC1/5/7, and defaults are
+unchanged.
+
+Focused summary SHA-256:
+`1d42b8b0db565175b41018052c6ebc6fc1679ac03bec76f8824f3e288bda1a75`.

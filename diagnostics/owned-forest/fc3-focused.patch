@@ -1,0 +1,217 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 70ecef27..8ba5d5e8 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1915,11 +1915,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+-			ImmutableIntegerIndirect:    work.ImmutableIntegerIndirect,
+-			ScalarFPMixedDirectCalls:    work.ScalarFPMixedDirectCalls,
+-			ScalarFPInternalDirectCalls: work.ScalarFPInternalDirectCalls,
+-			ScalarFPSignedSaturation:    work.ScalarFPSignedSaturation,
+-			IntegerControlInline:        work.IntegerControlInline,
++			ImmutableIntegerIndirect:           work.ImmutableIntegerIndirect,
++			ScalarFPMixedDirectCalls:           work.ScalarFPMixedDirectCalls,
++			ScalarFPInternalDirectCalls:        work.ScalarFPInternalDirectCalls,
++			ScalarFPSignedSaturation:           work.ScalarFPSignedSaturation,
++			ScalarFPUnsignedF64ToI32Saturation: work.ScalarFPUnsignedF64ToI32Saturation,
++			IntegerControlInline:               work.IntegerControlInline,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 90ce40cf..7e042f45 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -889,6 +889,17 @@ func signedSaturationFC(sub uint32) bool {
+ // checkFixtureFC separates scalar numeric conversions from memory-index
+ // immediates. For dead code the polymorphic stack has no concrete input.
+ func (f *fn) checkFixtureFC(sub uint32, probe wasm.Reader) error {
++	if sub == 3 {
++		if !f.fixtureUnsignedF64ToI32SaturationEnabled() {
++			return fmt.Errorf("fixture forest: unsupported opcode 0xfc subopcode %d", sub)
++		}
++		if !f.unreachable {
++			if x := f.s.back(); x == nil || rootMachineType(x) != mtF64 {
++				return fmt.Errorf("fixture forest: unsupported unsigned saturation operand")
++			}
++		}
++		return nil
++	}
+ 	if !signedSaturationFC(sub) {
+ 		return f.checkFixtureBulkMemory(sub, probe)
+ 	}
+@@ -958,6 +969,9 @@ func (f *fn) emitFC(r *wasm.Reader) error {
+ 		f.truncSat(true, false, true) // i32.trunc_sat_f64_s
+ 	case 3:
+ 		f.truncSat(true, false, false) // i32.trunc_sat_f64_u
++		if f.fixtureUnsignedF64ToI32SaturationEnabled() {
++			f.sc.fixtureWork.FPUnsignedF64ToI32SaturationEmissions++
++		}
+ 	case 4:
+ 		f.truncSat(false, true, true) // i64.trunc_sat_f32_s
+ 	case 5:
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index b2394936..995d7112 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -1080,16 +1080,35 @@ func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
+ 	f.a.PatchRel32(toEnd, f.a.Len())
+ }
+ 
++func (f *fn) fixtureUnsignedF64ToI32SaturationEnabled() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFP &&
++		f.sc.fixtureWork.ScalarFPUnsignedF64ToI32Saturation
++}
++
+ func (f *fn) truncSatU32(x, r Reg, f64src bool) {
+ 	f.a.Cvttf2si(r, x, f64src, true) // i64 trunc; low 32 is the in-range u32
+ 	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
++	hi := regNone
++	if f64src && f.fixtureUnsignedF64ToI32SaturationEnabled() {
++		// Both native edges must see any allocation-time spills or local
++		// homing. Keep the detached zero alive while staging the bound.
++		f.fpinned = f.fpinned.add(zero)
++		pressure := f.freeFReg(0) == regNone
++		hi = f.loadFConstBits(floatBits(math.Ldexp(1, 32), true), true)
++		f.fpinned = f.fpinned.remove(zero)
++		if pressure {
++			f.sc.fixtureWork.FPUnsignedF64ToI32SaturationBoundPressure++
++		}
++	}
+ 	f.a.Ucomis(x, zero, f64src)
+ 	f.releaseF(zero)
+ 	pos := f.a.JccPlaceholder(condA)
+ 	f.a.XorSelf32(r) // NaN/≤0 → 0
+ 	toEnd := f.a.JmpPlaceholder()
+ 	f.a.PatchRel32(pos, f.a.Len())
+-	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
++	if hi == regNone {
++		hi = f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
++	}
+ 	f.a.Ucomis(x, hi, f64src)
+ 	f.releaseF(hi)
+ 	below := f.a.JccPlaceholder(condB)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fc3_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fc3_independent_test.go
+new file mode 100644
+index 00000000..e4490a81
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fc3_independent_test.go
+@@ -0,0 +1,103 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"math"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestFC3FiniteOrdinary(t *testing.T) {
++	const lim = 4294967296.0
++	cases := []struct {
++		value  float64
++		result uint64
++	}{
++		{-1.5 * lim, 0}, {-0.75, 0}, {math.Copysign(0, -1), 0}, {0, 0}, {37.875, 37},
++		{2147483648.875, 0x80000000}, {math.Nextafter(lim, 0), 0xffffffff}, {lim, 0xffffffff}, {1.5 * lim, 0xffffffff},
++	}
++	for _, pressure := range []bool{false, true} {
++		name := "finite"
++		if pressure {
++			name = "finite-live-FP"
++		}
++		t.Run(name, func(t *testing.T) {
++			// Integer carriers and one i32 result local. The old local1 value
++			// remains live below conversion and the subsequent overwrite.
++			body := []byte{1, 1, 0x7f, 0x20, 1}
++			const owners = 24
++			var sum uint64
++			if pressure {
++				for range owners {
++					// Each eager add reads two distinct parameters that the
++					// runtime caller sets equal, so it returns exactly 1.25.
++					body = append(body, 0x20, 1, 0x20, 2, 0x85, 0xbf, 0x44)
++					body = binary.LittleEndian.AppendUint64(body, math.Float64bits(1.25))
++					body = append(body, 0xa0)
++				}
++				sum = math.Float64bits(owners * 1.25)
++			}
++			body = append(body, 0x20, 0, 0xbf, 0xfc, 3, 0x21, 3, 0x42, 23, 0x21, 1)
++			if pressure {
++				for range owners - 1 {
++					body = append(body, 0xa0)
++				}
++				body = append(body, 0xbd, 0x85)
++			}
++			body = append(body, 0x20, 3, 0xad, 0x85, 0x20, 1, 0x85, 0x0b)
++			m := mod1(t, []wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, body)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					// The old default helper is never compiled or executed by this test.
++					work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPUnsignedF64ToI32Saturation: true}
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive legacy body: %+v", work)
++					}
++					wantPressure := uint64(0)
++					if pressure {
++						wantPressure = 1
++					}
++					if work.FPUnsignedF64ToI32SaturationEmissions != 1 || work.FPUnsignedF64ToI32SaturationBoundPressure != wantPressure {
++						t.Fatalf("staged FC3 / bound-pressure witness not reached: %+v", work)
++					}
++					for i, tc := range cases {
++						old := uint64(0x95ad42406abc0010) + uint64(i)
++						want := old ^ sum ^ tc.result ^ 23
++						got, err := ownedRunModule(t, cm, []uint64{math.Float64bits(tc.value), old, old})
++						if err != nil || got != want {
++							t.Fatalf("intr=%v forest=%v input=%g got=%x want=%x err=%v", intr, candidate, tc.value, got, want, err)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else {
++						// Deliberate ownership-order differences are review evidence; record
++						// comparisons instead of coercing bytes or metadata to match.
++						t.Logf("pair intr=%v nativeExact=%v encoderExact=%v listBytes=%d forestBytes=%d", intr, bytes.Equal(native, cm.Code), bytes.Equal(metaOracle, encoded), len(native), len(cm.Code))
++					}
++					t.Logf("intr=%v forest=%v bytes=%d work=%+v", intr, candidate, len(cm.Code), work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index a6ef25ca..9715e9c8 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	ScalarFPUnsignedF64ToI32Saturation                                                              bool
++	FPUnsignedF64ToI32SaturationEmissions, FPUnsignedF64ToI32SaturationBoundPressure                uint64
+ 	ScalarFPInternalDirectCalls                                                                     bool
+ 	FPInternalDirectCalls, FPInternalDeferredConstants                                              uint64
+ 	MemorySizeEmissions                                                                             uint64
