@@ -1038,3 +1038,11 @@ Apply `v128-bitselect-focused.patch` after `8065d7f6`. The alternative ends at `
 Eight images and 24 ordinary calls passed with four exact native and encoder-JSON pairs. Each image recorded one bitselect. Routine images each added three home pins; pressure images each recorded one slot-floor raise and eight full-width spills. The ternary path did not activate. This does not establish FD78/80/81 coverage, corpus parity, public serialization parity, or a timing gain.
 
 Focused summary SHA-256: `9878498997d2649d99d4d3e504d3907c9ff12f4f3c459a1b24984d189235992c`. Active source and defaults are unchanged.
+
+### V128 Boolean ownership
+
+Apply `v128-boolean-focused.patch` after `f842877c`. The alternative ends at `1bc0300fd8efc0b769ee2fd2a262ba3ef932d02b` (tree `c540aec9968086b7cbb68a65300eeebae1a7ead2`). It scopes operand ownership for existing Boolean operations; opcode admission and defaults are unchanged.
+
+In the first attempt, the routine fixture expected `(a & b) ^ c` rather than the emitted postfix expression `a ^ (b & c)`; the pressure lane passed. Correcting only the fixture oracle yielded eight passing images, 24 ordinary calls and four exact native and encoder-JSON pairs. NOT-AND and AND-anytrue each activated once per image and are subsets of the binary count. The routine images added 17 local pin bits each; the pressure images each recorded one floor raise and nine full-width spills, not localized to any individual operation. No ternary activation was observed.
+
+Focused summary and both attempt hashes are pinned by SHA-256 `97a446f674ffbe2373eab2e2a02f16cefd40342a5c525509b40a356648dc5ca4`. No default comparison, public codec, corpus, timing or RSS claim.

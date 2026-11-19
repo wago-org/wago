@@ -1,0 +1,366 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 99301b07..8bdf20d1 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1943,6 +1943,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128CompareMasks:          work.TemporaryV128CompareMasks,
+ 			TemporaryV128Select:                work.TemporaryV128Select,
+ 			TemporaryV128BitselectLeases:       work.TemporaryV128BitselectLeases,
++			TemporaryV128BooleanLeases:         work.TemporaryV128BooleanLeases,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 0b87a14c..4ffac575 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,10 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128BooleanLeases                                                                                                                                bool
++	TemporaryV128BooleanUnary, TemporaryV128BooleanBinary, TemporaryV128BooleanTernaries                                                                      uint64
++	TemporaryV128BooleanNotAnd, TemporaryV128BooleanAndAnyTrue                                                                                                uint64
++	TemporaryV128BooleanSlotLeases, TemporaryV128BooleanLocalLeases                                                                                           uint64
+ 	TemporaryV128BitselectLeases                                                                                                                              bool
+ 	TemporaryV128Bitselects, TemporaryV128BitselectTernaries, TemporaryV128BitselectSlotLeases, TemporaryV128BitselectLocalLeases                             uint64
+ 	TemporaryV128Select                                                                                                                                       bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 7f44c1ae..62c51b3f 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,19 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128BooleanLeasesEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BooleanLeases
++}
++
++func (f *fn) protectFixtureV128Boolean(a, b, c *elem) (int, regMask) {
++	work := f.sc.fixtureWork
++	floor, pins := f.protectFixtureV128Pair(a, b, &work.TemporaryV128BooleanSlotLeases, &work.TemporaryV128BooleanLocalLeases)
++	if c != nil {
++		f.protectFixtureV128Pair(c, nil, &work.TemporaryV128BooleanSlotLeases, &work.TemporaryV128BooleanLocalLeases)
++	}
++	return floor, pins
++}
++
+ func (f *fn) fixtureV128SelectEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128Select
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_boolean_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_boolean_independent_test.go
+new file mode 100644
+index 00000000..fd962581
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_boolean_independent_test.go
+@@ -0,0 +1,219 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128BooleanModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 2, 0x7b, 0x20, 0}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	op := func(ids ...byte) {
++		for _, id := range ids {
++			b = append(b, 0xfd, id)
++		}
++	}
++	pc(688)
++	ld(48)
++	b = append(b, 0x21, 1, 0x20, 1)
++	for j := range 2 {
++		ld(16 * j)
++		b = append(b, 0x21, byte(j+1))
++	}
++	pair := func() { b = append(b, 0x20, 1, 0x20, 2) }
++	if lane == "pressure" {
++		pc(512)
++		ld(0)
++		for i := 4; i <= 23; i++ {
++			ld(16 * i)
++			op(77)
++		}
++		for range 19 {
++			op(81)
++		}
++		b = append(b, 0x1a)
++		ld(16)
++		op(77, 78)
++		st()
++	} else {
++		for j, id := range []byte{77, 78, 79, 80, 81} {
++			pc(512 + j*16)
++			if id == 77 {
++				b = append(b, 0x20, 1)
++			} else {
++				pair()
++			}
++			op(id)
++			st()
++		}
++		pc(608)
++		pair()
++		op(77, 78)
++		st()
++		pc(624)
++		pair()
++		ld(32)
++		op(78, 81)
++		st()
++	}
++	st()
++	for j := range 2 {
++		pc(640 + 16*j)
++		b = append(b, 0x20, byte(j+1))
++		st()
++	}
++	pair()
++	op(78, 83)
++	b = append(b, 0x73)
++	pair()
++	op(78, 77, 83)
++	b = append(b, 0x41, 1, 0x74, 0x73, 0x0b)
++
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128BooleanRun(t *testing.T, cm *encoder.CompiledModule, lane string, maskCase int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + maskCase*23)
++	}
++	for i := range 16 {
++		switch maskCase {
++		case 0:
++			mem[i], mem[16+i] = 0x55, 0xaa
++		case 1:
++			mem[i], mem[16+i] = 0xff, 0xff
++		default:
++			mem[i], mem[16+i] = byte(13*i+0x95), byte(29*i+0x17)
++		}
++	}
++	want := append([]byte(nil), mem...)
++	var and, notAnd byte
++	for i := range 16 {
++		a, b, c := mem[i], mem[16+i], mem[32+i]
++		and |= a & b
++		notAnd |= ^(a & b)
++		if lane == "pressure" {
++			want[512+i] = a &^ b
++		} else {
++			want[512+i], want[528+i], want[544+i], want[560+i], want[576+i] = ^a, a&b, a&^b, a|b, a^b
++			want[608+i], want[624+i] = a&^b, a^(b&c)
++		}
++	}
++	copy(want[688:], mem[48:64])
++	copy(want[640:], mem[:32])
++
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + maskCase)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old
++	if and != 0 {
++		expected ^= 1
++	}
++	if notAnd != 0 {
++		expected ^= 2
++	}
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s maskCase=%d got=%x want=%x err=%v", lane, maskCase, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s byte[%d]=%x want=%x", lane, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128BooleanOrdinary(t *testing.T) {
++	for _, lane := range []string{"ordinary", "pressure"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedV128BooleanModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128BooleanLeases: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive Boolean fixture: %+v", work)
++					}
++					peeps := stats.Funcs[0].Peephole
++					if peeps["simd-not-and"] != 1 || peeps["simd-and-anytrue"] != 1 ||
++						work.TemporaryV128BooleanNotAnd != 1 || work.TemporaryV128BooleanAndAnyTrue != 1 ||
++						work.TemporaryV128BooleanUnary == 0 || work.TemporaryV128BooleanBinary < 2 ||
++						work.TemporaryV128BooleanTernaries != uint64(peeps["simd-ternary-boolean"]) {
++						t.Fatalf("missing or extra natural adjacent fusion: %v", peeps)
++					}
++					if lane == "pressure" && (work.TemporaryV128Spills == 0 || work.TemporaryV128BooleanSlotLeases == 0) {
++						t.Fatalf("actual full-width spill or slot-floor raise absent: %+v", work)
++					}
++
++					if lane == "ordinary" && work.TemporaryV128BooleanLocalLeases == 0 {
++						t.Fatalf("actual borrowed local lease absent: %+v", work)
++					}
++					for v := range 3 {
++						ownedV128BooleanRun(t, cm, lane, v)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index ddb082ac..ade46843 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -510,6 +510,11 @@ func (f *fn) v128Const(lo, hi uint64) {
+ 
+ func (f *fn) v128UnaryNot() {
+ 	a := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() {
++		floor, pins := f.protectFixtureV128Boolean(a, nil, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanUnary++
++	}
+ 	x, src := f.v128OutputOperand(a)
+ 	m := f.allocFReg(maskOf(x, src))
+ 	opVPcmpeqb.emit(f, m, m, m)
+@@ -840,6 +845,11 @@ func (f *fn) operandRegV128(e *elem) (Reg, bool) {
+ func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() && (op == opVPand || op == opVPor || op == opVPxor) {
++		floor, pins := f.protectFixtureV128Boolean(a, b, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanBinary++
++	}
+ 	if f.fixtureV128IntegerBinaryEnabled() {
+ 		work := f.sc.fixtureWork
+ 		var emitted *uint64
+@@ -2173,6 +2183,11 @@ func (f *fn) v128Movemask() Reg {
+ 
+ func (f *fn) v128AnyTrue() {
+ 	v := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() {
++		floor, pins := f.protectFixtureV128Boolean(v, nil, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanUnary++
++	}
+ 	x, owned := f.reductionOperand(v)
+ 	f.emitVPtest(x, x)
+ 	if owned {
+@@ -2279,6 +2294,11 @@ func (f *fn) tryV128BooleanTernary(r *wasm.Reader, inner uint32) bool {
+ 	c := f.popValue()
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() {
++		floor, pins := f.protectFixtureV128Boolean(a, b, c)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanTernaries++
++	}
+ 	oldPinned := f.fpinned
+ 	var regs [3]Reg
+ 	var owned [3]bool
+@@ -2332,6 +2352,12 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
+ 	}
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() {
++		floor, pins := f.protectFixtureV128Boolean(a, b, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanBinary++
++		f.sc.fixtureWork.TemporaryV128BooleanAndAnyTrue++
++	}
+ 	sa, oa := f.operandRegV128(a)
+ 	f.fpinned = f.fpinned.add(sa)
+ 	sb, ob := f.operandRegV128(b)
+@@ -2359,6 +2385,12 @@ func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
+ 	}
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128BooleanLeasesEnabled() {
++		floor, pins := f.protectFixtureV128Boolean(a, b, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128BooleanBinary++
++		f.sc.fixtureWork.TemporaryV128BooleanNotAnd++
++	}
+ 	sa, oa := f.operandRegV128(a)
+ 	f.fpinned = f.fpinned.add(sa)
+ 	sb, ob := f.operandRegV128(b)
+@@ -3373,6 +3405,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.
+ 		b := f.popValue()
+ 		a := f.popValue()
++		if f.fixtureV128BooleanLeasesEnabled() {
++			floor, pins := f.protectFixtureV128Boolean(a, b, nil)
++			defer f.restoreFixtureV128DetachedState(floor, pins)
++			f.sc.fixtureWork.TemporaryV128BooleanBinary++
++		}
+ 		sa, oa := f.operandRegV128(a)
+ 		f.fpinned = f.fpinned.add(sa)
+ 		sb, ob := f.operandRegV128(b)
