@@ -1,0 +1,10 @@
+{
+  "protocol": "Standalone adaptation of completed identical-binary 384-run design; not itself executed",
+  "original_plan_sha256": "54003db9736cb1cc3509bf769ea25cd635e27f95cb117f49a9eb37ab4275955a",
+  "original_controller_sha256": "7e4ee07b98b5cf883338d33ac388f17cac78c1449185546e447f72b44fb58b9c",
+  "byte_identical_input_contract_sha256": "66a3f1d2277b09b1b998f4ed2c14a0cfefe759f9ab4f9c1d232968290955ebe3",
+  "historical_adapter_sha256": "91c65a975fada991ecefc9dc1d35252572677e2330df3218722647b39438deee",
+  "historical_source": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd",
+  "historical_build": "Go 1.27.1, PGO off, T402000/R4096, full public API",
+  "scope": "Source-only. Host authorization, compatibility and A/A stability not inferred."
+}
