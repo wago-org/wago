@@ -405,3 +405,17 @@ plain non-register-ABI wrapper, mixed or internal call claim.
 Encoder JSON is not public artifact codec parity. No legacy defect,
 exceptional-input, held-input, corpus, or timing result is claimed.
 The censored result remains 77 of 114 and defaults are unchanged.
+
+## Focused scalar FP and bulk-memory composition
+
+Apply fp-bulk-focused.patch on top of ff082492. The focused gate
+at 054dc7f8 passed 32 images and 96 ordinary in-bounds calls with
+16 exact native and encoder-exported JSON pairs. Eight images
+activated exact-chunk copy and eight activated vector fill. The
+fixtures checked whole memory after copies in both overlap
+directions and disjoint copies, plus raw captured FP prefixes.
+
+The gate does not establish dynamic scratch use with live XMM
+values, dirty FP home rereads, spilling under pressure, public
+artifact codec parity, or corpus or timing results. The prior
+censored coverage remains 77 of 114, and defaults did not change.

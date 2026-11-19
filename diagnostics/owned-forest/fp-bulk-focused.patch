@@ -1,0 +1,256 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index f7ed9684..9243cb5b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1914,6 +1914,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
++			ScalarFPBulkMemory: work.ScalarFPBulkMemory,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 918fcfbb..1e63a473 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -207,6 +207,10 @@ func (f *fn) fixtureScalarFPEnabled() bool {
+ 	return f.s != nil && f.s.forest != nil && f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFP
+ }
+ 
++func (f *fn) fixtureScalarFPBulkEnabled() bool {
++	return f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPBulkMemory
++}
++
+ func fixtureScalarFPOpcode(op byte) bool {
+ 	return op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39 ||
+ 		op == 0x43 || op == 0x44 || op >= 0x5b && op <= 0x66 ||
+@@ -800,7 +804,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ // checkFixtureBulkMemory validates the closed fixture subset without consuming
+ // the emitter reader or changing stack, region, or memory-forwarding state.
+ func (f *fn) checkFixtureBulkMemory(sub uint32, probe wasm.Reader) error {
+-	if f.fixtureScalarFPEnabled() {
++	if f.fixtureScalarFPEnabled() && !f.fixtureScalarFPBulkEnabled() {
+ 		return fmt.Errorf("fixture forest: unsupported bulk memory in scalar FP stage")
+ 	}
+ 	count := 1
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 6a2a701e..b2394936 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -86,11 +86,10 @@ func (f *fn) freeFReg(avoid regMask) Reg {
+ }
+ 
+ // allocBulkFReg leases transient XMM scratch for integer bulk copy and fill.
+-// The forest slice does not admit guest XMM ownership or persistent FP local
+-// pins, so only the ordinary free-register search is permitted. In particular,
+-// it does not add a forest victim policy or enable guest FP allocation.
++// Only the explicit composed fixture lane can use ordinary scalar-FP spilling
++// and pin relinquishment. The integer-only fixture still requires free XMMs.
+ func (f *fn) allocBulkFReg(avoid regMask) Reg {
+-	if f.s.forest == nil {
++	if f.s.forest == nil || f.fixtureScalarFPBulkEnabled() {
+ 		return f.allocFReg(avoid)
+ 	}
+ 	if f.fpinnedLocalMask != 0 {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 68a0bcb8..f660355c 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,16 +272,16 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
+-	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults  uint64
+-	FPBlockRegMerges, FPBlockPinConflictSlots                         uint64
+-	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps uint64
+-	Opcodes                                                           uint64
+-	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI       bool
+-	Attempts, Completed, Rejected                                     int
+-	List                                                              fixtureListWork
+-	Vector                                                            fixtureForest
+-	RootCapacity                                                      int
+-	Spills                                                            []fixtureSpillTrace
++	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                uint64
++	FPBlockRegMerges, FPBlockPinConflictSlots                                       uint64
++	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps               uint64
++	Opcodes                                                                         uint64
++	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI, ScalarFPBulkMemory bool
++	Attempts, Completed, Rejected                                                   int
++	List                                                                            fixtureListWork
++	Vector                                                                          fixtureForest
++	RootCapacity                                                                    int
++	Spills                                                                          []fixtureSpillTrace
+ }
+ 
+ type fixtureSpillTrace struct {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_bulk_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_bulk_independent_test.go
+new file mode 100644
+index 00000000..d1e9c210
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_bulk_independent_test.go
+@@ -0,0 +1,164 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedFPBulkRun(t *testing.T, cm *encoder.CompiledModule, args [6]uint64, want uint64, expected []byte) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], v)
++	}
++	mem := jm.LinearMemory()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	if err = eng.Call(entry+uintptr(cm.Entry[0]), a, mem, tr, r); err != nil {
++		t.Fatal(err)
++	}
++	if got := binary.LittleEndian.Uint64(r); got != want {
++		t.Fatalf("FP prefix bits got=%x want=%x", got, want)
++	}
++	if !bytes.Equal(mem, expected) {
++		for i := range mem {
++			if mem[i] != expected[i] {
++				t.Fatalf("memory[%d]=%x want %x", i, mem[i], expected[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestFPBulkOrdinary(t *testing.T) {
++	for _, sh := range []struct {
++		integer               wasm.ValType
++		local, into, out, xor byte
++		raw                   [2][2]uint64
++	}{
++		{wasm.I32, 0x7d, 0xbe, 0xbc, 0x73, [2][2]uint64{{0x7fc01234, 0x80000000}, {0, 0x40500000}}},
++		{wasm.I64, 0x7c, 0xbf, 0xbd, 0x85, [2][2]uint64{{0x7ff8000000001234, 0x8000000000000000}, {0, 0x400a000000000000}}},
++	} {
++		for _, tc := range []struct {
++			name, peep string
++			fill       bool
++			n          int
++		}{
++			{"dynamic-copy", "", false, -1},
++			{"constant-copy-chunks", "memcopy-exact-chunks", false, 39},
++			{"dynamic-fill", "", true, -1},
++			{"constant-fill-vector", "memfill-vector", true, 39},
++		} {
++			t.Run(fmt.Sprintf("local=%x/%s", sh.local, tc.name), func(t *testing.T) {
++				// local6 holds raw parameter4 reinterpreted as FP. Its old
++				// value and an independent eager XMM reinterpret of param5
++				// remain below integer bulk arguments.
++				b := []byte{1, 1, sh.local, 0x20, 4, sh.into, 0x21, 6, 0x20, 6, 0x20, 5, sh.into, 0x20, 0}
++				op := byte(10)
++				if tc.fill {
++					op = 11
++					b = append(b, 0x20, 3)
++				} else {
++					b = append(b, 0x20, 1)
++				}
++				if tc.n < 0 {
++					b = append(b, 0x20, 2)
++				} else {
++					b = append(append(b, 0x41), wasmtest.SLEB32(int32(tc.n))...)
++				}
++				b = append(b, 0xfc, op, 0)
++				if !tc.fill {
++					b = append(b, 0)
++				}
++				// Overwrite local6 without disturbing either old prefix
++				// operand. Observe both payloads after the bulk operation.
++				b = append(b, 0x20, 5, sh.into, 0x21, 6, sh.out, 0x21, 5, sh.out, 0x20, 5, sh.xor, 0x0b)
++				m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, sh.integer, sh.integer}, []wasm.ValType{sh.integer}, b)
++				for _, intr := range []bool{false, true} {
++					var oracle, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPBulkMemory: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || (candidate && work.Vector.stores == 0) {
++							t.Fatalf("inactive forest: %+v", work)
++						}
++						peeps := stats.Funcs[0].Peephole
++						if tc.peep != "" && peeps[tc.peep] != 1 {
++							t.Fatalf("required %s inactive: %v", tc.peep, peeps)
++						}
++						for j, loc := range [][3]int{{51, 48, 72}, {45, 48, 72}, {131, 32, 72}} {
++							raw := sh.raw[j%len(sh.raw)]
++							args := [6]uint64{uint64(loc[0]), uint64(loc[1]), uint64(loc[2]), 0x1db, raw[0], raw[1]}
++							n := loc[2]
++							if tc.n >= 0 {
++								n = tc.n
++							}
++							want := make([]byte, 65536)
++							for i := range want {
++								want[i] = byte(i*29 + 13)
++							}
++							if tc.fill {
++								for i := 0; i < n; i++ {
++									want[loc[0]+i] = byte(args[3])
++								}
++							} else {
++								copy(want[loc[0]:loc[0]+n], want[loc[1]:loc[1]+n])
++							}
++							ownedFPBulkRun(t, cm, args, raw[0]^raw[1], want)
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							oracle = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(oracle, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peeps, work)
++					}
++				}
++			})
++		}
++	}
++}
