@@ -296,3 +296,15 @@ The non-inline register-ABI call was confirmed.
 The paired carrier check emits moves only; no two-load flush or
 direct stale-leaf/current-home case was tested. No broader exceptional
 input, corpus, timing, or performance claim. Defaults are unchanged.
+
+## Focused ordinary wrapper calls
+
+Apply wrapper-focused.patch on top of b8347700. The focused gate at
+clean 3383092b passed eight ordinary images and 24 runtime calls.
+Four pairs matched exact native code and encoder-exported JSON
+metadata. Every image recorded one actual wrapper call; candidates
+reached two legacy bodies, with no alternate ABI or rejection.
+
+Encoder-exported JSON parity is not public artifact codec parity.
+This focused case does not establish broad wrapper, corpus, timing,
+or prior-defect coverage. Compiler defaults remain unchanged.

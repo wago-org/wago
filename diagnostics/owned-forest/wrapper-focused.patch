@@ -1,0 +1,157 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index db3da74f..686c9351 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -380,9 +380,13 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 				}
+ 				panic("fixture forest: selected inline call ownership is not ported")
+ 			}
+-		} else if int(idx) < imported || !f.opt(optRegABI) || !sigFitsRegABI(ft) ||
+-			!sigIsIntOnly(ft) || len(ft.Results) > 1 || f.gcFrameRoots != nil {
+-			panic("fixture forest: only direct non-inlined scalar integer register calls with at most one integer result are ported")
++		} else {
++			if int(idx) < imported || !f.opt(optRegABI) || !sigIsIntOnly(ft) ||
++				len(ft.Results) > 1 || f.gcFrameRoots != nil {
++				panic("fixture forest: only internal scalar integer calls with at most one integer result are ported")
++			}
++			// For this signature family only argument count can exceed
++			// sigFitsRegABI. Leave the ordinary wrapper choice to callInternal.
+ 		}
+ 	}
+ 	if int(idx) < imported && f.customInstructions != nil {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_wrapper_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_wrapper_independent_test.go
+new file mode 100644
+index 00000000..44cb6ce1
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_wrapper_independent_test.go
+@@ -0,0 +1,130 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedOversizedWrapperModule(t *testing.T, void bool) *wasm.Module {
++	t.Helper()
++	// The long, naturally non-inline callee receives nine I32 arguments
++	// followed by one I64. Distinct weights expose incorrect slot ordering.
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x42, 0)
++	params := make([]wasm.ValType, 10)
++	for i := range params {
++		callee = append(callee, 0x20, byte(i))
++		if i < 9 {
++			params[i] = wasm.I32
++			callee = append(callee, 0xad) // i64.extend_i32_u
++		} else {
++			params[i] = wasm.I64
++		}
++		callee = append(callee, 0x42, byte(i+1), 0x7e, 0x7c)
++	}
++	results := []wasm.ValType{wasm.I64}
++	if void {
++		callee = append(callee, 0x24, 0) // global.set 0
++		results = nil
++	}
++	callee = append(callee, 0x0b)
++
++	caller := []byte{0}
++	if void {
++		caller = append(caller, 0x23, 0) // retain the old global before the call
++	}
++	caller = append(caller, 0x20, 0) // retain old I64 local under all arguments
++	for i := byte(1); i < 9; i++ {
++		caller = append(caller, 0x41, i)
++	}
++	caller = append(caller, 0x20, 1, 0x20, 0, 0x10, 1)
++	caller = append(caller, 0x42, 23, 0x21, 0)
++	if void {
++		caller = append(caller, 0x23, 0)
++	}
++	caller = append(caller, 0x7c, 0x20, 0, 0x7c)
++	if void {
++		caller = append(caller, 0x7c)
++	}
++	caller = append(caller, 0x0b)
++
++	sections := [][]byte{
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64}), wasmtest.FuncType(params, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++	}
++	if void {
++		sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0, 0x0b}))))
++	}
++	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(callee))), callee...))))
++	m, err := wasm.DecodeModule(wasmtest.Module(sections...))
++	if err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestOversizedWrapperOrdinary(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		void bool
++	}{{"i64-result", false}, {"void-global", true}} {
++		t.Run(tc.name, func(t *testing.T) {
++			m := ownedOversizedWrapperModule(t, tc.void)
++			for _, intr := range []bool{false, true} {
++				var oracleCode, oracleMeta []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 2 || work.Opcodes == 0 || work.Rejected != 0 || (candidate && work.Vector.stores == 0) {
++						t.Fatalf("legacy wrapper inactive: %+v", work)
++					}
++					calls := stats.Funcs[0].Calls
++					if calls["wrapper"] != 1 || calls["regabi"] != 0 || calls["mixed"] != 0 || calls["inline"] != 0 {
++						t.Fatalf("unexpected call lanes: %v", calls)
++					}
++					for _, args := range [][2]uint64{{0x100000001, 0x80000005}, {0xfffffffffffffff0, 0xffffffff}, {17, 29}} {
++						// Sum of squares 1..8 is 204; retain old local and read back new 23.
++						want := uint64(227) + 9*uint64(uint32(args[1])) + 11*args[0]
++						if tc.void {
++							want += 17
++						} // ownedRunModule initializes global storage to 17.
++						got, err := ownedRunModule(t, cm, args[:])
++						if err != nil || got != want {
++							t.Fatalf("intr=%v candidate=%v args=%x got=%x want=%x err=%v", intr, candidate, args, got, want, err)
++						}
++					}
++					// Compare same-image encoder metadata. This is not the
++					// public runtime artifact codec (which lives above this package).
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						oracleCode = append([]byte(nil), cm.Code...)
++						oracleMeta = encoded
++					} else if !bytes.Equal(oracleCode, cm.Code) || !bytes.Equal(oracleMeta, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d wrapper=%d work=%+v", intr, candidate, len(cm.Code), calls["wrapper"], work)
++				}
++			}
++		})
++	}
++}
