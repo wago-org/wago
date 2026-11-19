@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/project"
@@ -122,13 +123,11 @@ func AllBoolean() []BoolSetting {
 }
 
 func Lookup(key string) (BoolSetting, bool) {
-	key = CanonicalKey(key)
-	for _, setting := range allKnownBoolean() {
-		if setting.Key == key {
-			return setting, true
-		}
+	index, ok := knownIndex().byKey[CanonicalKey(key)]
+	if !ok {
+		return BoolSetting{}, false
 	}
-	return BoolSetting{}, false
+	return allKnownBoolean()[index], true
 }
 
 func CanonicalKey(key string) string {
@@ -137,16 +136,7 @@ func CanonicalKey(key string) string {
 	if strings.Contains(key, ".") {
 		return key
 	}
-	var match string
-	for _, setting := range allKnownBoolean() {
-		if strings.TrimPrefix(setting.Key, "features.") == key || strings.TrimPrefix(setting.Key, "optimizations.") == key {
-			if match != "" && match != setting.Key {
-				return key
-			}
-			match = setting.Key
-		}
-	}
-	if match != "" {
+	if match, ok := knownIndex().byShort[key]; ok && match != "" {
 		return match
 	}
 	return key
@@ -161,10 +151,46 @@ func allFeatures() []BoolSetting {
 	return result
 }
 
+// allKnownBoolean returns every feature and optimization setting. The catalog
+// is fixed once the process starts, and Lookup and CanonicalKey consult it for
+// every configured value, so it is built once instead of on each call. The
+// result is shared and clipped: callers must not modify its elements.
 func allKnownBoolean() []BoolSetting {
-	items := append(allFeatures(), OptimizationCatalog()...)
-	return items
+	items := knownBoolean()
+	return items[:len(items):len(items)]
 }
+
+var knownBoolean = sync.OnceValue(func() []BoolSetting {
+	return append(allFeatures(), OptimizationCatalog()...)
+})
+
+type settingIndex struct {
+	byKey map[string]int
+	// byShort maps a name without its section prefix to its full key, or to ""
+	// when the name is ambiguous across sections.
+	byShort map[string]string
+}
+
+var knownIndex = sync.OnceValue(func() settingIndex {
+	items := knownBoolean()
+	index := settingIndex{byKey: make(map[string]int, len(items)), byShort: make(map[string]string, len(items))}
+	for position, setting := range items {
+		if _, seen := index.byKey[setting.Key]; !seen {
+			index.byKey[setting.Key] = position
+		}
+		for _, short := range []string{strings.TrimPrefix(setting.Key, "features."), strings.TrimPrefix(setting.Key, "optimizations.")} {
+			if short == setting.Key {
+				continue
+			}
+			if previous, seen := index.byShort[short]; seen && previous != setting.Key {
+				index.byShort[short] = ""
+			} else if !seen {
+				index.byShort[short] = setting.Key
+			}
+		}
+	}
+	return index
+})
 
 func featureSetting(info wago.FeatureInfo) BoolSetting {
 	return BoolSetting{
