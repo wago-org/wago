@@ -814,3 +814,20 @@ or timing result. Defaults remain unchanged.
 
 Focused summary SHA-256:
 `560ae472f74a20c3b892531d8401c8747869245c8e3bd66d1fc5634e70de551f`.
+
+## Focused finite unsigned f32-to-i32 saturation (FC1)
+
+Apply fc1-focused.patch on top of f7fffd12. The independent FC1 capability
+stages zero and 2^32 before splitting control flow. At 894039d0, both
+ownership arms used the staged helper. Eight images and 72 finite calls
+passed, with four exact native and encoder-metadata pairs. Each image
+emitted FC1 once. Four pressure images recorded XMM exhaustion before
+the staged upper-bound acquisition, versus zero events in four basic
+images. Live FP sums and aliases matched. The metric does not establish
+spill identity.
+
+No default-helper execution, NaN/Inf, public codec, corpus or timing
+result. FC3, FC5/7, compiler defaults and prior evidence are unchanged.
+
+Focused summary SHA-256:
+`50dcd86146da26482b9403cf21671b1e5e6162ac7c8e5960b252e4669b18a61d`.
