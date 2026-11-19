@@ -1,0 +1,286 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go b/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
+index 592ebf66..c6610a2d 100644
+--- a/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
++++ b/src/core/compiler/backend/railshot/amd64/control_mem_borrow.go
+@@ -15,7 +15,10 @@ package amd64
+ func (f *fn) detachControlIntervalAddresses() regMask {
+ 	var borrowed *elem
+ 	loads := 0
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	// Finish the ordered scan before allocating a carrier: allocation can
++	// enter its own regional borrow scan and can change register ownership.
++	c := f.s.fixtureScan(false)
++	for e := c.next(); e != nil; e = c.next() {
+ 		if !e.isValue() || e.st.kind != stMemRef {
+ 			continue
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index ff34fcd1..cd3b36d8 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -197,7 +197,7 @@ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+-		f.vectorRegion.enabled || len(f.intervalReg) != 0 || f.intervalControl {
++		f.vectorRegion.enabled {
+ 		return fmt.Errorf("fixture forest: unsupported specialized function state")
+ 	}
+ 	return nil
+diff --git a/src/core/compiler/backend/railshot/amd64/interval_region.go b/src/core/compiler/backend/railshot/amd64/interval_region.go
+index 23068a0d..94b73ae2 100644
+--- a/src/core/compiler/backend/railshot/amd64/interval_region.go
++++ b/src/core/compiler/backend/railshot/amd64/interval_region.go
+@@ -361,6 +361,16 @@ func (f *fn) intervalResidencyScore(x int) int {
+ 	return score
+ }
+ 
++// realizeIntervalLocalRefs captures every older alias before its resident
++// register changes ownership. Neither walk excludes an operand subtree.
++func (f *fn) realizeIntervalLocalRefs(x int) {
++	if f.s.forest != nil {
++		f.realizeLocalRefsCursor(x, nil, f.s.fixtureScan(false))
++		return
++	}
++	f.realizeLocalRefs(x, nil)
++}
++
+ // takeFinalIntervalGet transfers a dying local's register directly to the
+ // operand stack. Older borrowed references are realized first; no copy or frame
+ // access is needed for the final get itself.
+@@ -369,7 +379,7 @@ func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
+ 		f.intervalLast[x] != uint32(pos) || f.locals[x].reg == regNone {
+ 		return regNone, false
+ 	}
+-	f.realizeLocalRefs(x, nil)
++	f.realizeIntervalLocalRefs(x)
+ 	reg := f.locals[x].reg
+ 	f.locals[x].reg = regNone
+ 	f.locals[x].state = lsMem
+@@ -398,7 +408,7 @@ func (f *fn) flushControlIntervals() {
+ 		if x < 0 {
+ 			continue
+ 		}
+-		f.realizeLocalRefs(x, nil)
++		f.realizeIntervalLocalRefs(x)
+ 		if f.locals[x].reg != Reg(reg) {
+ 			continue
+ 		}
+@@ -432,9 +442,6 @@ func (f *fn) evictIntervalLocal(avoid regMask) Reg {
+ }
+ 
+ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
+-	if f.s.forest != nil && len(f.intervalReg) != 0 {
+-		panic("fixture forest: unported interval local eviction")
+-	}
+ 	if len(f.intervalReg) == 0 {
+ 		return regNone
+ 	}
+@@ -557,7 +564,11 @@ func (f *fn) noteResidencyActivation(load bool) {
+ }
+ 
+ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(false); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x {
+ 			return true
+ 		}
+@@ -566,7 +577,11 @@ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
+ }
+ 
+ func (f *fn) intervalLocalBorrowed(x int) bool {
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(false); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+ 			return true
+ 		}
+@@ -575,12 +590,15 @@ func (f *fn) intervalLocalBorrowed(x int) bool {
+ }
+ 
+ // intervalBorrowedRegs finds resident locals borrowed by pending values.
+-// Deferred children remain on the physical list until they are consumed, so
+-// visiting each value once also covers every pending expression tree. Recursing
+-// from each physical node would revisit leaves through every ancestor.
++// Visit each value once in legacy physical order (postorder for the forest),
++// covering deferred children as well as roots without revisiting their leaves.
+ func (f *fn) intervalBorrowedRegs() regMask {
+ 	var borrowed regMask
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(false); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if !e.isValue() {
+ 			continue
+ 		}
+@@ -601,7 +619,11 @@ func (f *fn) intervalBorrowedRegs() regMask {
+ }
+ 
+ func (f *fn) demoteIntervalLocalRefs(x int) {
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(false); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
+ 			f.s.canonicalSlots = false
+ 			e.st.kind = stLocalRef
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_interval_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_interval_independent_test.go
+new file mode 100644
+index 00000000..8f8fc3b1
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_interval_independent_test.go
+@@ -0,0 +1,143 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
++	"testing"
++)
++
++func ownedIntervalModule(t *testing.T, name string) (*wasm.Module, uint64) {
++	base := intervalRegionBody()
++	const cut = 3 + 20*4
++	body := append([]byte(nil), base[:cut]...)
++	// A normal in-bounds store keeps the memory witness in legacy lowering.
++	if name != "call-old-alias" {
++		body = append(body, 0x41, 0, 0x20, 0, 0x36, 2, 0)
++	}
++	if name != "region-final-transfer" {
++		// Keep the old local live while its canonical binding changes.
++		body = append(body, 0x20, 0)
++	}
++	switch name {
++	case "region-final-transfer":
++	case "if-true", "if-false":
++		cond := byte(1)
++		if name == "if-false" {
++			cond = 0
++		}
++		body = append(body, 0x41, cond, 0x04, 0x40, 0x41, 23, 0x21, 0, 0x05, 0x41, 29, 0x21, 0, 0x0b)
++	case "call-old-alias":
++		body = append(body, 0x20, 0, 0x10, 1, 0x41, 23, 0x21, 0, 0x6a)
++	default:
++		t.Fatal("unknown case")
++	}
++	body = append(body, base[cut:len(base)-1]...)
++	if name != "region-final-transfer" {
++		body = append(body, 0x6a)
++	}
++	if name != "call-old-alias" {
++		// Consume the stored value in the returned result.
++		body = append(body, 0x41, 0, 0x28, 2, 0, 0x6a)
++	}
++	body = append(body, 0x0b)
++	if name == "call-old-alias" {
++		// Ordinary fallthrough loop and body size prevent inline/shared-scalar
++		// selection naturally, without changing either arm's optimization policy.
++		callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++		for i := 0; i < 512; i++ {
++			callee = append(callee, 0x01)
++		}
++		callee = append(callee, 0x20, 0, 0x41, 7, 0x6a, 0x0b)
++		return modFuncs(t, funcDef{results: []wasm.ValType{wasm.I32}, body: body}, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: callee}), 241
++	}
++	want := map[string]uint64{"region-final-transfer": 211, "if-true": 234, "if-false": 240}[name]
++	return modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body), want
++}
++
++func TestOwnedForestIntervalOrdinary(t *testing.T) {
++	for _, name := range []string{"region-final-transfer", "if-true", "if-false", "call-old-alias"} {
++		t.Run(name, func(t *testing.T) {
++			m, want := ownedIntervalModule(t, name)
++			for _, intr := range []bool{false, true} {
++				var oracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if e != nil {
++						t.Fatal(e)
++					}
++					st := stats.Funcs[0]
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || (candidate && work.Vector.stores == 0) {
++						t.Fatalf("inactive: %+v", work)
++					}
++					if st.Residency.Activations == 0 {
++						t.Fatalf("interval inactive: %+v %v", st.Residency, st.Peephole)
++					}
++					if name == "region-final-transfer" && (st.Peephole["interval-region"] != 1 || st.Residency.FinalTransfers == 0) {
++						t.Fatalf("final transfer inactive: %+v %v", st.Residency, st.Peephole)
++					}
++					if name != "region-final-transfer" && st.Peephole["interval-control"] != 1 {
++						t.Fatalf("control interval inactive: %v", st.Peephole)
++					}
++					if name == "call-old-alias" && st.Calls["regabi"] != 1 {
++						t.Fatalf("noninline register call inactive: %v", st.Calls)
++					}
++					got, e := ownedRunModule(t, cm, nil)
++					if e != nil || got != want {
++						t.Fatalf("candidate=%v got=%d want=%d err=%v", candidate, got, want, e)
++					}
++					if !candidate {
++						oracle = append([]byte(nil), cm.Code...)
++					} else if !bytes.Equal(oracle, cm.Code) {
++						t.Fatal("native differs")
++					}
++					t.Logf("case=%s intr=%v candidate=%v bytes=%d residency=%+v peepholes=%v calls=%v work=%+v", name, intr, candidate, len(cm.Code), st.Residency, st.Peephole, st.Calls, work)
++					if cm.CodeImage != nil {
++						cm.CodeImage.Close()
++					}
++				}
++			}
++		})
++	}
++}
++
++// This proves address-carrier ownership only: it deliberately emits no load.
++func TestOwnedForestIntervalOrdinaryCarrier(t *testing.T) {
++	for _, candidate := range []bool{false, true} {
++		f := &fn{a: &encoderamd64.Asm{}, s: newStack()}
++		if candidate {
++			f.s.forest = &fixtureForest{}
++			f.s.head.prev = nil
++			f.s.head.next = nil
++		}
++		for r := range f.intervalOwner {
++			f.intervalOwner[r] = -1
++		}
++		f.intervalOwner[R12] = 0
++		for _, r := range gpAlloc {
++			if r != RAX && r != RDX && r != RCX && r != R8 {
++				f.reserved = f.reserved.add(r)
++			}
++		}
++		reserved := f.reserved
++		load := f.pushValue(memRefStorage(R12, 7, 4, false, false, 0))
++		if got := f.detachControlIntervalAddresses(); got != maskOf(R8) {
++			t.Fatalf("candidate=%v carrier=%x", candidate, got)
++		}
++		if load.st.kind != stMemRef || load.st.reg != R8 || load.st.memBorrow() != -1 || f.regUser[R8] != load || f.reserved != reserved {
++			t.Fatalf("candidate=%v ownership=%+v", candidate, load.st)
++		}
++		want := &encoderamd64.Asm{}
++		want.MovReg64(R8, R12)
++		if !bytes.Equal(f.a.B, want.B) {
++			t.Fatalf("candidate=%v unexpected load/code %x", candidate, f.a.B)
++		}
++		if candidate && (load.prev != nil || load.next != nil || f.s.head.prev != nil || f.s.head.next != nil) {
++			t.Fatal("candidate used physical links")
++		}
++	}
++}

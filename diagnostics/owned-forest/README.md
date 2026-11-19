@@ -275,3 +275,24 @@ No recursive, control, tuple, tail, wrapper, exceptional-input,
 corpus, original 31-panic, or timing coverage is claimed. The
 partial work counters do not establish net savings. Defaults
 remain unchanged.
+
+## Focused scalar interval ownership
+
+Apply interval-focused.patch on top of 52e609f2. The archive captures
+b8347700, including interval changes 6ee5a9a3, 8d89f425, 2bc45e30
+and 969b6275 and tests 473fb306 and b8347700. The first attempt did
+not pass: three fixtures selected default shared scalar rather than
+interval lowering. The call and paired carrier checks passed.
+
+The second attempt used observable in-bounds stores and loads to
+reach interval lowering without optimizer overrides. It passed 16
+ordinary execution images and eight exact native pairs, with results
+211, 234, 240 and 241. Interval-region counters activated in every
+image. Straight-line images recorded 20 final transfers each and
+a maximum of 11 active entries. The IF and call control counters
+activated once per image and reached at most two active entries.
+The non-inline register-ABI call was confirmed.
+
+The paired carrier check emits moves only; no two-load flush or
+direct stale-leaf/current-home case was tested. No broader exceptional
+input, corpus, timing, or performance claim. Defaults are unchanged.
