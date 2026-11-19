@@ -1,0 +1,223 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index a02700c6..138ee10a 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1257,6 +1257,10 @@ func (sc *scratch) observeFixtureOperandCapacity(funcIdx int) {
+ }
+ 
+ func (sc *scratch) finishStackFunction() {
++	sc.finishStackFunctionAfterAttempt(false)
++}
++
++func (sc *scratch) finishStackFunctionAfterAttempt(finalized bool) {
+ 	_, reserved := sc.stack.nodeMemory()
+ 	if reserved > sc.nodeScratchPeak {
+ 		sc.nodeScratchPeak = reserved
+@@ -1264,8 +1268,28 @@ func (sc *scratch) finishStackFunction() {
+ 	if reserved <= shared.MaxRetainedStackArenaBytes {
+ 		return
+ 	}
++	var forestScrub *fixtureFinalizedTrimWork
++	if finalized && sc.stack.forest != nil && sc.fixtureWork != nil &&
++		!profileEnabled && !regallocCheckEnabled && !ownedForestCensusEnabled {
++		w := &sc.fixtureWork.FinalizedTrim
++		safe := len(sc.ctrl) == 0
++		if safe {
++			for _, merge := range sc.ctrlMerges[:sc.ctrlMergeTouched] {
++				w.ControlRecipeChecks++
++				if merge.baseTypeTop != nil {
++					safe = false
++					break
++				}
++			}
++		}
++		if safe {
++			forestScrub = w
++		} else {
++			w.ControlHolderRejects++
++		}
++	}
+ 	sc.clearNodeReferences()
+-	sc.nodeScratchDiscarded += sc.stack.finishFunction()
++	sc.nodeScratchDiscarded += sc.stack.finishFunctionWithForestScrub(forestScrub)
+ }
+ 
+ // finishStackWorker releases every pointer-rich node chunk after a parallel
+@@ -3718,7 +3742,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
+ 		sc.observeFixtureOperandCapacity(funcIdx)
+ 	}
+ 	if len(sc.stack.chunks) > 1 {
+-		sc.finishStackFunction()
++		sc.finishStackFunctionAfterAttempt(err == nil)
+ 	}
+ 	if diagnosticsEnabled && stats != nil {
+ 		sc.noteControlScratch()
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index d0de59e8..b1e1f5ef 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -1702,3 +1702,111 @@ func TestOwnedForestPackedOwnershipOrdinary(t *testing.T) {
+ 		})
+ 	}
+ }
++
++func TestOwnedForestFinalizedTrimLifecycleOrdinary(t *testing.T) {
++	// Existing natural non-inlined caller/callee; caller result57 uses
++	// the callee's result, so both compiled functions must remain usable.
++	_, m := layoutScalarModules(t)
++	if e := wasm.ValidateModule(m); e != nil {
++		t.Fatal(e)
++	}
++	for _, intr := range []bool{false, true} {
++		var native, meta []byte
++		for _, observe := range []bool{false, true} {
++			w := &fixtureModuleWork{Forest: true, RecordOperandLayout: true}
++			var callbacks int
++			opts := CompileOptions{Workers: 1, Interruptible: intr, DeferCodeMapping: true, fixtureWork: w}
++			if observe {
++				opts.MemoryPressureAt = 1
++				opts.MemoryPressure = func() {
++					callbacks++
++					if callbacks != 1 || w.Completed != 1 || w.Rejected != 0 || len(w.OperandCapacities) != 1 || w.OperandCapacities[0].Function != 0 || cap(w.Vector.roots) == 0 || w.OperandCapacities[0].NodeReservedBytes > shared.MaxRetainedStackArenaBytes || w.FinalizedTrim != (fixtureFinalizedTrimWork{}) {
++						t.Fatalf("small callback did not observe the first finalized, untrimmed function: %+v", w)
++					}
++					layoutEmit(t, "TRIM_CALLBACK", map[string]any{"intr": intr, "completed": w.Completed, "rootLen": len(w.Vector.roots), "rootCap": cap(w.Vector.roots), "beforeTrimRow": w.OperandCapacities[0], "trim": w.FinalizedTrim})
++				}
++			}
++			cm, e := CompileModuleWith(m, opts)
++			if e != nil {
++				t.Fatal(e)
++			}
++			if cm.CodeImage != nil {
++				defer cm.CodeImage.Close()
++			}
++			if observe != (callbacks == 1) || w.Completed != 2 || w.Rejected != 0 || w.LegacyBodies != 2 || len(w.OperandCapacities) != 2 || w.OperandCapacities[1].Function != 1 || w.FinalizedTrim != (fixtureFinalizedTrimWork{}) || w.Vector.roots != nil {
++				t.Fatalf("subsequent compile/module release state differs: %+v", w)
++			}
++			z := *cm
++			z.Code, z.CodeImage = nil, nil
++			encoded, e := json.Marshal(z)
++			if e != nil {
++				t.Fatal(e)
++			}
++			if !observe {
++				native = append([]byte(nil), cm.Code...)
++				meta = encoded
++			} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(meta, encoded) {
++				t.Fatal("callback altered native or encoder metadata")
++			}
++			got, e := layoutProbeOwnedRunModule(t, cm, []uint64{7, 4})
++			if e != nil || got != 57 {
++				t.Fatalf("caller/callee result=%d want57 err=%v", got, e)
++			}
++			layoutEmit(t, "TRIM_LIFECYCLE", map[string]any{"intr": intr, "callback": observe, "calls": 1, "native": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoder": fmt.Sprintf("%x", sha256.Sum256(encoded))})
++		}
++	}
++}
++
++func TestOwnedForestFinalizedTrimAllocationOnly(t *testing.T) {
++	w := &fixtureModuleWork{Forest: true, RecordOperandLayout: true}
++	sc := newCompileScratch(32)
++	sc.fixtureWork = w
++	sc.ensureTargetStack()
++	s := sc.stack
++	_, reserved := s.nodeMemory()
++	// Bounded ordinary node allocation only. Allocations use the original
++	// geometric chunk path; no huge guest, execution, forced GC or heap size estimate.
++	for i := 0; reserved <= shared.MaxRetainedStackArenaBytes; i++ {
++		if i >= 32768 {
++			t.Fatal("fixture did not reach the actual retention ceiling")
++		}
++		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i + 1)})
++		if len(s.chunks) > 1 && len(*s.activeChunk) == 1 {
++			_, reserved = s.nodeMemory()
++		}
++	}
++	if len(s.chunks) < 2 || len(w.Vector.roots) == 0 {
++		t.Fatal("expected live arena-owned roots and overbudget chunks")
++	}
++	// The last live root is in the actual chunk about to be detached.
++	last := s.chunks[len(s.chunks)-1]
++	if w.Vector.roots[len(w.Vector.roots)-1] != &last[len(last)-1] {
++		t.Fatal("last operand not in suffix chunk")
++	}
++	backing := w.Vector.roots[:cap(w.Vector.roots)]
++	live, storeCount, retireCount := len(w.Vector.roots), w.Vector.stores, w.Vector.retirements
++	sc.ctrlMerges = make([]ctrlFrameMerge, 2)
++	sc.ctrlMergeTouched = 2 // two touched, empty finalized control rows
++	sc.observeFixtureOperandCapacity(0)
++	row := w.OperandCapacities[0]
++	if row.NodeReservedBytes != reserved || row.RootCapacity != len(backing) || row.RootPeak != live || row.RootStores != storeCount {
++		t.Fatalf("pretrim receipt differs: %+v", row)
++	}
++	sc.finishStackFunctionAfterAttempt(true)
++	newUsed, newReserved := s.nodeMemory()
++	p := w.FinalizedTrim
++	if p.Sites != 1 || p.LiveRootsAtScrub != uint64(live) || p.RootPointerScrubs != uint64(len(backing)) || p.ControlRecipeChecks != 2 || p.ControlHolderRejects != 0 || len(w.Vector.roots) != 0 || cap(w.Vector.roots) != len(backing) || w.Vector.stores-storeCount != p.RootPointerScrubs || w.Vector.retirements != retireCount || newReserved > shared.MaxRetainedStackArenaBytes || newReserved >= reserved || sc.nodeScratchDiscarded != reserved-newReserved || w.OperandCapacities[0] != row {
++		t.Fatalf("finalized trim/backing invariants differ: work=%+v pre=%d post=%d discard=%d", p, reserved, newReserved, sc.nodeScratchDiscarded)
++	}
++	for i, p := range backing {
++		if p != nil {
++			t.Fatalf("root pointer backing[%d] retained a reference", i)
++		}
++	}
++	s.reset()
++	next := s.pushValue(storage{kind: stConst, typ: mtI64, cval: 73})
++	if s.logicalDepth != 1 || s.back() != next || !next.forestIsLive() || next.forestIsPending() || next.st.cval != 73 || next.st.coldIndex() != 0 || next.arg0 != nil || next.arg1 != nil {
++		t.Fatal("next ordinary stack use acquired stale state")
++	}
++	layoutEmit(t, "TRIM_ALLOCATION", map[string]any{"pretrim": row, "trim": p, "postTrimNodeUsed": newUsed, "postTrimNodeReserved": newReserved, "discardedNodeRequested": sc.nodeScratchDiscarded, "oldBackingAllNil": true, "semanticRetireDelta": w.Vector.retirements - retireCount, "compact": compactOperandNodes})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 15572498..980f284b 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -301,7 +301,12 @@ type fixtureElseRepublishWork struct {
+ 	RetaggedRoots, RetiredTail, RootPointerScrubs, AvoidedAllocRequests, AvoidedRootStores uint64
+ }
+ 
++type fixtureFinalizedTrimWork struct {
++	Sites, LiveRootsAtScrub, RootPointerScrubs, ControlRecipeChecks, ControlHolderRejects uint64
++}
++
+ type fixtureModuleWork struct {
++	FinalizedTrim                                                                                                                                             fixtureFinalizedTrimWork
+ 	ReuseClosedElseRoots                                                                                                                                      bool
+ 	ElseRepublish                                                                                                                                             fixtureElseRepublishWork
+ 	FuseNoncanonicalFlushPlan, RecordNoncanonicalFlushPlan                                                                                                    bool
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 6011217f..2f4d365d 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -420,7 +420,11 @@ func (s *stack) clearElemCold(e *elem) {
+ // The caller invokes it only after the function is complete and has severed
+ // scratch-owned node references. Keeping every chunk within the byte budget
+ // makes reuse independent of function ordering; giant overflow is ephemeral.
+-func (s *stack) finishFunction() (discarded uint64) {
++func (s *stack) finishFunction() uint64 {
++	return s.finishFunctionWithForestScrub(nil)
++}
++
++func (s *stack) finishFunctionWithForestScrub(work *fixtureFinalizedTrimWork) (discarded uint64) {
+ 	elemBytes := uint64(unsafe.Sizeof(elem{}))
+ 	retained, keep := uint64(0), 0
+ 	for i := range s.chunks {
+@@ -434,6 +438,18 @@ func (s *stack) finishFunction() (discarded uint64) {
+ 	if keep == len(s.chunks) {
+ 		return 0
+ 	}
++	if work != nil {
++		// The caller has finalized this function and checked for retained
++		// control recipes. Go scans the whole root pointer backing, even
++		// though the suffix has normally already been scrubbed.
++		v := s.forest
++		work.Sites++
++		work.LiveRootsAtScrub += uint64(len(v.roots))
++		work.RootPointerScrubs += uint64(cap(v.roots))
++		v.stores += uint64(cap(v.roots))
++		clear(v.roots[:cap(v.roots)])
++		v.roots = v.roots[:0]
++	}
+ 	for i := 0; i < keep; i++ {
+ 		clear(s.chunks[i][:cap(s.chunks[i])])
+ 	}

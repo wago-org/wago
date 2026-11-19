@@ -1118,3 +1118,11 @@ Apply `compact40-focused.patch` after `dd2afea5` to reach `ec3f7e0b2fa737a1b029c
 Compact elements measured 40 bytes instead of 48, with unchanged counts and capacities in all 20 compact rows, so requested used/reserved node bytes were five-sixths of the prior layout. The cold sample fell from 43,296 to 36,080 used bytes and from 49,152 to 40,960 reserved bytes. The 64-byte wide layout and separately accounted headers, roots, cold backing and cursor were unchanged. No mapping, timing or RSS measurements were made.
 
 Summary SHA-256: `23cc1bacd9057d68bfc6c2ef947439fefc7f4ec2f01316022c5beb3b73272a17`. No default or corpus qualification.
+
+### Finalized operand-storage trim
+
+Apply `finalized-trim-focused.patch` after `ec3f7e0b` to reach `71b3ff1edbbe9c7bebfd7e9b5e558656f727eed3` (tree `41b85fbe5a185db8d1a7138d8b501d769ea7ec05`). A compatibility correction before launch retained the existing no-argument trim entry point. The first focused gate passed four images and four ordinary calls, with two exact native/encoder-JSON pairs. The under-budget callback reported no trim.
+
+A separate allocation-only probe exercised the actual trim: requested capacity fell from 1,310,720 to 983,040 bytes, with 327,680 bytes discarded. It checked 24,576 root-length and 29,696 capacity scrub entries, two holders and zero semantic retirements. The probe retained the pretrim receipt and checked the next reset. Requested/discarded storage is not freed allocator bytes or process RSS; no forced GC or public-path execution claim.
+
+Summary SHA-256: `e5d581294fe9556a578ec946b94c1d361a2abc54c7b3e16c84fb02bac064ae9c`. No timing, corpus or default change.
