@@ -1142,3 +1142,9 @@ Apply `public-compiled-trim-focused.patch` after `f59172c2` to reach `181571bd`.
 Each first function used 27,005 nodes and scrubbed two live root entries, dropping root capacity from four to zero before compiling the successor. Wide requested node bytes were 1,728,320 used, 2,097,152 reserved before trim, and 1,048,576 reserved after trim. Compact used 1,080,200, reserved 1,310,720 before trim, and retained 983,040. Both mappings remained 1,048,576 bytes; append accounting was 1,048,576 wide and 983,040 compact.
 
 Summary SHA-256: `9dfe5443802ef91000655eacc062c298c4dd01103f72cc48dd51e0f945b585ea`. No allocator-reclamation, GC, RSS, timing, default-pressure, or corpus claim.
+
+### Scoped public dynamic calls: i32 and void
+
+Apply `public-dynamic-i32-void-focused.patch` after `181571bd` to reach `37c520a769608214939bb9222f2ba6a191ea51b5` (tree `caa71e0b58fd9c4ed7ff916615013e4c6d635a16`). The first scoped gate passed six public compiles, 36 outer calls and six nested calls, with three exact native/publicly serialized metadata pairs. The fixtures checked native leaf emission and the installed tag/flag, Go and cross-instance routes, same-instance reentry, and void-call ordering as observed in the callback and subsequent memory. The leaf count in the void caller belongs to its returning i32 sibling, not a native void leaf.
+
+Summary SHA-256: `894f837602588b56c40e5bb0f761b0c28e95b65b03ac5454bb272a880316ba7c`. This remains a private, opt-in fixture, not full-API or default-path qualification. No corpus, timing or RSS result.

@@ -1,0 +1,474 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 8faddaa1..7a160648 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1982,7 +1982,7 @@ func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType)
+ 		f.gcFrameRoots != nil || f.s.hasGCRoots || f.nGlobalPins != 0 || f.fpinnedLocalMask != 0 ||
+ 		f.intervalActive != 0 || f.fpinned != 0 ||
+ 		f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) ||
+-		len(ft.Params) > 2 || len(ft.Results) != 1 || !wasm.EqualValType(ft.Results[0], wasm.I64) ||
++		len(ft.Params) > 2 || len(ft.Results) > 1 ||
+ 		!sigIsIntOnly(ft) {
+ 		return fmt.Errorf("fixture forest: unsupported dynamic integer host import")
+ 	}
+@@ -1990,6 +1990,9 @@ func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType)
+ 	if !b.Dynamic || b.CrossInstance || b.EHTransfer || b.ImportIndex != idx {
+ 		return fmt.Errorf("fixture forest: unsupported dynamic import binding")
+ 	}
++	if len(ft.Results) == 0 && !f.hasFixtureReturningDynamicIntegerImport() {
++		return fmt.Errorf("fixture forest: void import requires a returning dynamic integer sibling")
++	}
+ 	roots := f.rootsBottomToTop()
+ 	base := len(roots) - len(ft.Params)
+ 	if base < 0 {
+@@ -2005,12 +2008,31 @@ func (f *fn) checkFixtureDynamicIntegerHostImport(idx uint32, ft *wasm.CompType)
+ 	return nil
+ }
+ 
++// Confirm that the normal module policy already requires synchronous calls
++// for an ordinary returning sibling. A forced sync option is not sufficient.
++func (f *fn) hasFixtureReturningDynamicIntegerImport() bool {
++	for i := 0; i < f.importedFunctionCount() && i < len(f.importBindings); i++ {
++		b := f.importBindings[i]
++		if !b.Dynamic || b.CrossInstance || b.EHTransfer || b.ImportIndex != uint32(i) {
++			continue
++		}
++		ft, ok := f.functionSignature(uint32(i))
++		if ok && len(ft.Params) <= 2 && len(ft.Results) == 1 && sigIsIntOnly(ft) {
++			return true
++		}
++	}
++	return false
++}
++
+ // The common flush precedes the split. Neither path may reach allocator
+ // eviction/relinquishment after it; the branch snapshot does not copy that state.
+-func (f *fn) checkFixtureDynamicIntegerHostResultGP() error {
++func (f *fn) checkFixtureDynamicIntegerHostSplit(hasResult bool) error {
+ 	if !f.s.canonicalSlots || f.intervalActive != 0 || f.pinned != 0 || f.fpinned != 0 {
+ 		return fmt.Errorf("fixture forest: unsupported active lease at dynamic import split")
+ 	}
++	if !hasResult {
++		return nil // both void continuations rebuild only canonical prefix slots
++	}
+ 	block := maskOf(R8).union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+ 	for _, r := range gpAlloc {
+ 		if f.regUser[r] == nil && !block.has(r) {
+@@ -2043,7 +2065,7 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	f.flush()
+ 	fixture := f.fixtureDynamicIntegerHostImports()
+ 	if fixture {
+-		if err := f.checkFixtureDynamicIntegerHostResultGP(); err != nil {
++		if err := f.checkFixtureDynamicIntegerHostSplit(len(ft.Results) != 0); err != nil {
+ 			return err
+ 		}
+ 	}
+@@ -2079,7 +2101,13 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType)
+ 	f.a.PatchRel32(done, f.a.Len())
+ 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
+ 	if fixture {
+-		f.sc.fixtureWork.DynamicIntegerHostImportSites++
++		w := f.sc.fixtureWork
++		w.DynamicIntegerHostImportSites++
++		if len(ft.Results) == 0 {
++			w.DynamicIntegerHostVoidSites++
++		} else if wasm.EqualValType(ft.Results[0], wasm.I32) {
++			w.DynamicIntegerHostI32Sites++
++		}
+ 	}
+ 	return nil
+ }
+@@ -2252,6 +2280,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+ 		}
+ 		f.a.CallReg(R11)
+ 		f.a.PatchRel32(done, f.a.Len())
++		if f.fixtureDynamicIntegerHostImports() {
++			f.sc.fixtureWork.DynamicIntegerHostNativeLeafSites++
++		}
+ 	}
+ 
+ 	f.reloadLocalsForCall() // non-STACK_REG model only
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 5e5f28c2..8c04337e 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -309,6 +309,7 @@ type fixtureFinalizedTrimWork struct {
+ type fixtureModuleWork struct {
+ 	DynamicIntegerHostImports                                                                                                                                 bool
+ 	DynamicIntegerHostImportSites                                                                                                                             uint64
++	DynamicIntegerHostI32Sites, DynamicIntegerHostVoidSites, DynamicIntegerHostNativeLeafSites                                                                uint64
+ 	FinalizedTrim                                                                                                                                             fixtureFinalizedTrimWork
+ 	ReuseClosedElseRoots                                                                                                                                      bool
+ 	ElseRepublish                                                                                                                                             fixtureElseRepublishWork
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+index b87ce119..81b44a52 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_public_fixture.go
+@@ -60,6 +60,20 @@ func (f *OwnedForestPublicFixture) DynamicImportSites() uint64 {
+ 	return f.work.DynamicIntegerHostImportSites
+ }
+ 
++func (f *OwnedForestPublicFixture) DynamicImportI32Sites() uint64 {
++	return f.work.DynamicIntegerHostI32Sites
++}
++
++func (f *OwnedForestPublicFixture) DynamicImportVoidSites() uint64 {
++	return f.work.DynamicIntegerHostVoidSites
++}
++
++// DynamicImportNativeLeafSites counts emitted register-leaf fallback edges,
++// not native registrations or runtime executions.
++func (f *OwnedForestPublicFixture) DynamicImportNativeLeafSites() uint64 {
++	return f.work.DynamicIntegerHostNativeLeafSites
++}
++
+ // OwnedForestPublicTrimObservation is a scalar snapshot taken in the existing
+ // serial memory-pressure callback, before the next function is compiled.
+ type OwnedForestPublicTrimObservation struct {
+diff --git a/src/wago/owned_forest_public_dynamic_integer_lanes_test.go b/src/wago/owned_forest_public_dynamic_integer_lanes_test.go
+new file mode 100644
+index 00000000..3fec7124
+--- /dev/null
++++ b/src/wago/owned_forest_public_dynamic_integer_lanes_test.go
+@@ -0,0 +1,341 @@
++//go:build linux && amd64 && !tinygo && !wago_target_tinygo && !wago_standalone && wago_owned_forest_public_fixture
++
++package wago
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++	"unsafe"
++
++	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	coreruntime "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func intLaneImport(name string, ty uint32) []byte {
++	p := append([]byte{3, 'e', 'n', 'v'}, wasmtest.ULEB(uint32(len(name)))...)
++	p = append(p, name...)
++	return append(append(p, 0), wasmtest.ULEB(ty)...)
++}
++func intLaneI32Consumer() []byte {
++	ft := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
++	// old x below call result, current (x XOR 95) is used after the call.
++	run := []byte{0x20, 0, 0x20, 0, 0x41, 0xdf, 0, 0x73, 0x21, 0, 0x20, 0, 0x10, 0, 0x73, 0x20, 0, 0x6a, 0x0b}
++	leaf := []byte{0x20, 0, 0x41, 3, 0x6c, 0x41, 1, 0x6b, 0x0b}
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(ft)),
++		wasmtest.Section(2, wasmtest.Vec(intLaneImport("step", 0))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{0})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1), wasmtest.ExportEntry("leaf", 0, 2))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run), wasmtest.Code(leaf))),
++	)
++}
++func intLaneVoidConsumer() []byte {
++	i, j := wasm.I32, wasm.I64
++	step := wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i})
++	effect := wasmtest.FuncType([]wasm.ValType{i, j}, nil)
++	runType := wasmtest.FuncType([]wasm.ValType{i, j}, []wasm.ValType{j})
++	// Retain old y. Preserve unsigned returning sibling result across the void
++	// call, and supply current y XOR 95 and original x to that call.
++	run := []byte{0x20, 1, 0x20, 1, 0x42, 0xdf, 0, 0x85, 0x21, 1, 0x20, 0, 0x10, 0, 0xad, 0x20, 0, 0x20, 1, 0x10, 1, 0x7c, 0x20, 1, 0x85, 0x0b}
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(step, effect, runType)),
++		wasmtest.Section(2, wasmtest.Vec(intLaneImport("step", 0), intLaneImport("effect", 1))),
++		wasmtest.Section(3, wasmtest.Vec([]byte{2})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run))),
++	)
++}
++func intLaneProducer() []byte {
++	i, j := wasm.I32, wasm.I64
++	step := wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i})
++	effect := wasmtest.FuncType([]wasm.ValType{i, j}, nil)
++	// step(x) = 5x - 9. effect saves both full typed arguments in its own memory.
++	stepBody := []byte{0x20, 0, 0x41, 5, 0x6c, 0x41, 9, 0x6b, 0x0b}
++	effectBody := []byte{0x41, 16, 0x20, 0, 0x36, 2, 0, 0x41, 24, 0x20, 1, 0x37, 3, 0, 0x0b}
++	return wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(step, effect)),
++		wasmtest.Section(3, wasmtest.Vec([]byte{0}, []byte{1})),
++		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("step", 0, 0), wasmtest.ExportEntry("effect", 0, 1), wasmtest.ExportEntry("memory", 2, 0))),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(stepBody), wasmtest.Code(effectBody))),
++	)
++}
++
++//go:norace
++//go:noinline
++func intLaneNativeLeaf(v int32) int32 { return v + 1 }
++
++type intLaneDispatch struct{ tag, home, code uint64 }
++
++func intLaneReadDispatch(t *testing.T, in *Instance, index int) intLaneDispatch {
++	t.Helper()
++	ptr := in.jm.CaptureInstanceContext().ImportDispatch
++	if ptr == 0 || index < 0 || index >= in.c.NumImports {
++		t.Fatal("missing ordinary dispatch entry")
++	}
++	cells := unsafe.Slice((*byte)(offHeapPtr(ptr)), in.c.NumImports*coreruntime.ImportDispatchEntryBytes)
++	e := cells[index*coreruntime.ImportDispatchEntryBytes:]
++	return intLaneDispatch{
++		binary.LittleEndian.Uint64(e[coreruntime.ImportDispatchCallerContextOffset:]) & (uint64(coreruntime.ImportDispatchCallerGoHostTag) | uint64(coreruntime.ImportDispatchCallerNativeLeafTag)),
++		binary.LittleEndian.Uint64(e[coreruntime.ImportDispatchHomeLinMemOffset:]),
++		binary.LittleEndian.Uint64(e[coreruntime.ImportDispatchCodePtrOffset:]),
++	}
++}
++func intLaneRequireDispatch(t *testing.T, in, producer *Instance, index, target int, tag uint64) {
++	t.Helper()
++	d := intLaneReadDispatch(t, in, index)
++	if d.tag != tag {
++		t.Fatalf("installed dispatch tag %x want %x", d.tag, tag)
++	}
++	if producer != nil {
++		if d.home != uint64(producer.jm.LinMemBase()) || d.code != uint64(producer.base)+uint64(producer.c.Entry[target]) {
++			t.Fatal("cross-instance binding does not use exact producer entry/home")
++		}
++	} else if d.home != uint64(in.jm.LinMemBase()) {
++		t.Fatal("Go/native leaf binding does not retain consumer home")
++	}
++}
++func intLaneRaw(t *testing.T, h HostCall, index int, want uint64) {
++	t.Helper()
++	lo, hi := h.RawParam(index)
++	if lo != want || hi != 0 {
++		t.Errorf("raw param %d got %x/%x, want %x/0", index, lo, hi, want)
++	}
++}
++func intLaneI32Run(t *testing.T, c, p *Compiled, lane string) (calls, nested int) {
++	t.Helper()
++	var in, prod *Instance
++	var x uint32
++	im := NewImports()
++	bind := func(f any) { im.HostFunc("env", "step", f).Params(ValI32).Results(ValI32) }
++	goTag := uint64(coreruntime.ImportDispatchCallerGoHostTag)
++	leafTag := uint64(coreruntime.ImportDispatchCallerNativeLeafTag)
++	tag := goTag
++	switch lane {
++	case "go":
++		bind(HostCallFunc(func(h HostCall) { calls++; intLaneRaw(t, h, 0, uint64(x)); h.SetRawResult(0, uint64(x*7+2), 0) }))
++	case "reentry":
++		bind(CallerHostCallFunc(func(caller Caller, h HostCall) {
++			calls++
++			intLaneRaw(t, h, 0, uint64(x))
++			got, e := in.InvokeFromHost(context.Background(), caller, "leaf", uint64(x))
++			if e != nil || len(got) != 1 || got[0] != uint64(x*3-1) {
++				t.Errorf("nested I32 leaf=%v err=%v", got, e)
++				return
++			}
++			nested++
++			h.SetRawResult(0, got[0], 0)
++		}))
++	case "cross":
++		tag = 0
++		var e error
++		prod, e = Instantiate(p, InstantiateOptions{})
++		if e != nil {
++			t.Fatal(e)
++		}
++		defer prod.Close()
++		export, e := prod.ExportedFunc("step")
++		if e != nil {
++			t.Fatal(e)
++		}
++		im.Function("env", "step", export)
++	case "leaf":
++		tag = leafTag
++		bind(intLaneNativeLeaf)
++	}
++	var e error
++	in, e = Instantiate(c, InstantiateOptions{Imports: im})
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer in.Close()
++	intLaneRequireDispatch(t, in, prod, 0, 0, tag)
++	if leaf := in.executionFlags.Load()&executionFlagNativeScalarLeaf != 0; leaf != (lane == "leaf") {
++		t.Fatalf("native scalar leaf flag=%v for %s", leaf, lane)
++	}
++	for _, old := range []uint32{0, 0x80000000, 0xffffffff} {
++		x = old ^ 95
++		var step uint32
++		switch lane {
++		case "go":
++			step = x*7 + 2
++		case "reentry":
++			step = x*3 - 1
++		case "cross":
++			step = x*5 - 9
++		case "leaf":
++			step = x + 1
++		}
++		got, e := in.Invoke("run", uint64(old))
++		if want := uint64((old ^ step) + x); e != nil || len(got) != 1 || got[0] != want {
++			t.Fatalf("%s i32 old %x: got %v err %v want %x", lane, old, got, e, want)
++		}
++	}
++	wantCalls, wantNested := 0, 0
++	if lane == "go" || lane == "reentry" {
++		wantCalls = 3
++	}
++	if lane == "reentry" {
++		wantNested = 3
++	}
++	if calls != wantCalls || nested != wantNested {
++		t.Fatalf("%s Go callbacks/nested %d/%d want %d/%d", lane, calls, nested, wantCalls, wantNested)
++	}
++	return
++}
++
++func intLaneVoidRun(t *testing.T, c, p *Compiled, cross bool) (returning, effects int) {
++	t.Helper()
++	var x uint32
++	var y uint64
++	var order []string
++	var mem *Memory
++	wantMemory := make([]byte, 65536)
++	im := NewImports()
++	im.HostFunc("env", "step", HostCallFunc(func(h HostCall) {
++		returning++
++		order = append(order, "step")
++		if cross && (mem == nil || !bytes.Equal(mem.UnsafeBytes(), wantMemory)) {
++			t.Error("cross-instance void effect preceded the returning step callback")
++		}
++		intLaneRaw(t, h, 0, uint64(x))
++		h.SetRawResult(0, uint64(x^0x9e3779b9), 0)
++	})).Params(ValI32).Results(ValI32)
++	var prod *Instance
++	if cross {
++		var e error
++		prod, e = Instantiate(p, InstantiateOptions{})
++		if e != nil {
++			t.Fatal(e)
++		}
++		defer prod.Close()
++		export, e := prod.ExportedFunc("effect")
++		if e != nil {
++			t.Fatal(e)
++		}
++		im.Function("env", "effect", export)
++	} else {
++		im.HostFunc("env", "effect", HostCallFunc(func(h HostCall) {
++			effects++
++			order = append(order, "effect")
++			intLaneRaw(t, h, 0, uint64(x))
++			intLaneRaw(t, h, 1, y^95)
++			if h.ResultCount() != 0 {
++				t.Error("void callback exposes a result")
++			}
++		})).Params(ValI32, ValI64)
++	}
++	in, e := Instantiate(c, InstantiateOptions{Imports: im})
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer in.Close()
++	goTag := uint64(coreruntime.ImportDispatchCallerGoHostTag)
++	intLaneRequireDispatch(t, in, nil, 0, 0, goTag)
++	tag := goTag
++	if cross {
++		tag = 0
++	}
++	intLaneRequireDispatch(t, in, prod, 1, 1, tag)
++	if cross {
++		mem = prod.Memory()
++		if mem == nil {
++			t.Fatal("missing producer memory")
++		}
++	}
++	for _, sample := range [][2]uint64{{0, 1}, {0x80000005, 0xa187009901002033}, {0xffffffff, 0xffeeccaa88775533}} {
++		x, y = uint32(sample[0]), sample[1]
++		order = order[:0]
++		if cross && !bytes.Equal(mem.UnsafeBytes(), wantMemory) {
++			t.Fatal("effect ran before invocation")
++		}
++		got, e := in.Invoke("run", uint64(x), y)
++		if want := (y + uint64(x^0x9e3779b9)) ^ (y ^ 95); e != nil || len(got) != 1 || got[0] != want {
++			t.Fatalf("void-lane caller result %v err %v want %x", got, e, want)
++		}
++		if cross {
++			if len(order) != 1 || order[0] != "step" {
++				t.Fatalf("returning callback lane %v", order)
++			}
++			binary.LittleEndian.PutUint32(wantMemory[16:], x)
++			binary.LittleEndian.PutUint64(wantMemory[24:], y^95)
++			if !bytes.Equal(mem.UnsafeBytes(), wantMemory) {
++				t.Fatal("unexpected full producer memory after void effect")
++			}
++		} else if len(order) != 2 || order[0] != "step" || order[1] != "effect" {
++			t.Fatalf("Go synchronous effect order %v", order)
++		}
++	}
++	if returning != 3 || (!cross && effects != 3) || (cross && effects != 0) {
++		t.Fatalf("returning=%d Go effects=%d cross=%v", returning, effects, cross)
++	}
++	return
++}
++
++func TestScopedPublicDynamicIntegerLanes(t *testing.T) {
++	arm := os.Getenv("WAGO_ORDINARY_DYNAMIC_INTEGER_LANES_ARM")
++	if arm != "wide" && arm != "compact" {
++		t.Fatal("run only under the predeclared gate")
++	}
++	emit := func(kind string, v any) {
++		q, e := json.Marshal(v)
++		if e != nil {
++			t.Fatal(e)
++		}
++		t.Logf("PUBLIC_INTEGER_LANES_%s %s", kind, q)
++	}
++	compile := func(name string, body []byte, sites, i32, native, void uint64) *Compiled {
++		t.Helper()
++		cfg := NewRuntimeConfig().WithFunctionWorkers(1).WithMaxModuleBytes(uint64(len(body)))
++		proof := railshot.NewOwnedForestPublicFixture(arm == "compact")
++		cfg.ownedForestPublicFixture = proof
++		c, e := Compile(cfg, body)
++		if e != nil {
++			t.Fatalf("%s public compile: %v", name, e)
++		}
++		t.Cleanup(func() {
++			if e := c.Close(); e != nil {
++				t.Error(e)
++			}
++		})
++		if proof.DynamicImportSites() != sites || proof.DynamicImportI32Sites() != i32 || proof.DynamicImportNativeLeafSites() != native || proof.DynamicImportVoidSites() != void {
++			t.Fatalf("%s emitted sites=%d/%d/%d/%d want %d/%d/%d/%d", name, proof.DynamicImportSites(), proof.DynamicImportI32Sites(), proof.DynamicImportNativeLeafSites(), proof.DynamicImportVoidSites(), sites, i32, native, void)
++		}
++		if c.dynamicImports != (sites > 0) || (sites > 0 && !c.supportsGoHostDispatchTag()) {
++			t.Fatal("missing public dispatch metadata")
++		}
++		var out bytes.Buffer
++		if _, e = c.WriteCodeTo(&out); e != nil {
++			t.Fatal(e)
++		}
++		md, e := compiledMetadataBytes(c, true)
++		if e != nil {
++			t.Fatal(e)
++		}
++		emit("ARTIFACT", map[string]any{"arm": arm, "module": name, "body": fmt.Sprintf("%x", sha256.Sum256(body)), "native": fmt.Sprintf("%x", sha256.Sum256(out.Bytes())), "metadata": fmt.Sprintf("%x", sha256.Sum256(md)), "nativeBytes": out.Len(), "metadataBytes": len(md), "sites": sites, "i32Sites": i32, "nativeLeafSites": native, "voidSites": void})
++		return c
++	}
++	i := compile("i32-caller", intLaneI32Consumer(), 1, 1, 1, 0)
++	v := compile("void-caller", intLaneVoidConsumer(), 2, 1, 1, 1)
++	p := compile("producer", intLaneProducer(), 0, 0, 0, 0)
++	for _, lane := range []string{"go", "reentry", "cross", "leaf"} {
++		t.Run("i32-"+lane, func(t *testing.T) {
++			calls, nested := intLaneI32Run(t, i, p, lane)
++			emit("RUNTIME", map[string]any{"lane": "i32-" + lane, "outer": 3, "callbacks": calls, "nested": nested})
++		})
++	}
++	for _, lane := range []string{"go", "cross"} {
++		t.Run("void-"+lane, func(t *testing.T) {
++			returning, effects := intLaneVoidRun(t, v, p, lane == "cross")
++			emit("RUNTIME", map[string]any{"lane": "void-" + lane, "outer": 3, "callbacks": returning + effects, "nested": 0})
++		})
++	}
++}
