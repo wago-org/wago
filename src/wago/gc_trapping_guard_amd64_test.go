@@ -13,12 +13,18 @@ import (
 )
 
 func TestGCTrappingGuard(t *testing.T) {
-	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-trapping-guard.wasm")
+	for _, fixture := range []string{"gc-trapping-guard", "gc-trapping-guard-direct"} {
+		t.Run(fixture, func(t *testing.T) { testGCTrappingGuardFixture(t, fixture) })
+	}
+}
+
+func testGCTrappingGuardFixture(t *testing.T, fixture string) {
+	data, err := os.ReadFile("../../tests/fixtures/wasm/" + fixture + ".wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for range []bool{false} {
-		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	for _, inline := range []bool{true, false} {
+		c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("inline", inline), data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,14 +58,25 @@ func TestGCTrappingGuard(t *testing.T) {
 				if _, err = in.Invoke(setup); err != nil {
 					t.Fatal(err)
 				}
-				for _, name := range []string{"read", "nullable", "roots", "dirty"} {
+				names := []string{"read", "nullable", "roots", "dirty"}
+				if fixture == "gc-trapping-guard-direct" {
+					names = append(names, "roots-call")
+				}
+				for _, name := range names {
 					for _, index := range []uint64{1, 4} {
+						before := in.gc.Stats()
 						got, err := in.Invoke(name, index|uint64(1)<<40)
 						if setup == "init" && index == 1 {
 							if err != nil || len(got) != 1 {
 								t.Fatalf("%s=%v,%v", name, got, err)
 							}
-							if name == "roots" && got[0] != 17 {
+							if strings.HasPrefix(name, "roots") && cfg.CollectEveryAlloc {
+								after := in.gc.Stats()
+								if after.FullCollections+after.MinorCollections <= before.FullCollections+before.MinorCollections {
+									t.Fatal("root probe did not collect")
+								}
+							}
+							if strings.HasPrefix(name, "roots") && got[0] != 17 {
 								t.Fatalf("root result=%v", got)
 							}
 							continue
@@ -135,7 +152,13 @@ func BenchmarkGCTrappingGuard(b *testing.B) {
 // the physical extent cannot hold the count field. Restore the header before
 // teardown so this diagnostic does not corrupt later collector checks.
 func TestGCTrappingGuardFirstExtent(t *testing.T) {
-	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-trapping-guard.wasm")
+	for _, fixture := range []string{"gc-trapping-guard", "gc-trapping-guard-direct"} {
+		t.Run(fixture, func(t *testing.T) { testGCTrappingGuardFirstExtentFixture(t, fixture) })
+	}
+}
+
+func testGCTrappingGuardFirstExtentFixture(t *testing.T, fixture string) {
+	data, err := os.ReadFile("../../tests/fixtures/wasm/" + fixture + ".wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +200,60 @@ func TestGCTrappingGuardFirstExtent(t *testing.T) {
 		_, err = in.Invoke("larger", tc.index)
 		if !errors.As(err, &trap) || trap.Code != tc.code {
 			t.Fatalf("larger index%d=%v want trap%d", tc.index, err, tc.code)
+		}
+	}
+}
+
+func TestGCTrappingGuardDirectComparisons(t *testing.T) {
+	data, err := os.ReadFile("../../tests/fixtures/wasm/gc-trapping-guard-direct.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err = in.Invoke("init"); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := in.Invoke("read", 1)
+	if err != nil || len(expected) != 1 {
+		t.Fatalf("reference result=%v,%v", expected, err)
+	}
+	cases := []struct {
+		op    string
+		traps [4]bool
+	}{
+		{"eq", [4]bool{false, true, false, false}},
+		{"ne", [4]bool{true, false, true, true}},
+		{"lt_s", [4]bool{true, false, false, true}},
+		{"lt_u", [4]bool{true, false, false, false}},
+		{"gt_s", [4]bool{false, false, true, false}},
+		{"gt_u", [4]bool{false, false, true, true}},
+		{"le_s", [4]bool{true, true, false, true}},
+		{"le_u", [4]bool{true, true, false, false}},
+		{"ge_s", [4]bool{false, true, true, false}},
+		{"ge_u", [4]bool{false, true, true, true}},
+	}
+	for _, tc := range cases {
+		for i, index := range []uint64{3, 4, 5, 0xffffffff} {
+			for _, upper := range []uint64{0, 1 << 40} {
+				got, err := in.Invoke("cmp-"+tc.op, index|upper)
+				if tc.traps[i] {
+					var trap *TrapError
+					if !errors.As(err, &trap) || trap.Code != TrapUnreachable {
+						t.Errorf("%s(%#x)=%v,%v; want unreachable", tc.op, index|upper, got, err)
+					}
+				} else if err != nil || len(got) != 1 || got[0] != expected[0] {
+					t.Errorf("%s(%#x)=%v,%v; want %v", tc.op, index|upper, got, err, expected)
+				}
+			}
 		}
 	}
 }

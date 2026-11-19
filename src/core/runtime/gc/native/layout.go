@@ -17,7 +17,7 @@ import (
 // every payload. It is represented here for layout documentation/tests; heap
 // memory stores the fields little-endian, not as Go heap objects.
 type ObjHeader struct {
-	TypeID uint32
+	TypeID uint32 // exact canonical TypeID
 	Size   uint32 // total object size including header
 	Aux    uint32 // array length, or forwarding metadata during copying
 	Flags  uint32 // generation/color/age/pointer-free/forwarding bits
@@ -33,6 +33,34 @@ const (
 
 const HeaderSize = uint32(unsafe.Sizeof(ObjHeader{}))
 const PayloadOffset = HeaderSize
+
+// The type projection uses spare bits in the existing object flags word. The
+// TypeID word remains exact, so concrete equality needs one raw load and all
+// uint32 canonical IDs retain their identity.
+const (
+	FlagTypeStruct    uint32 = 1 << 24
+	FlagTypeArray     uint32 = 1 << 25
+	FlagTypeFinal     uint32 = 1 << 26
+	FlagTypeFastValid uint32 = 1 << 31
+	FlagTypeAny              = FlagTypeStruct | FlagTypeArray
+	FlagTypeEq               = FlagTypeAny
+)
+
+// ObjectTypeFlags derives the immutable header projection from one validated
+// descriptor. It is the only production constructor for these flag bits.
+func ObjectTypeFlags(d TypeDesc) uint32 {
+	if d.Kind != KindStruct && d.Kind != KindArray {
+		return 0
+	}
+	flags := uint32(FlagTypeFastValid)
+	if d.Final {
+		flags |= FlagTypeFinal
+	}
+	if d.Kind == KindStruct {
+		return flags | FlagTypeStruct
+	}
+	return flags | FlagTypeArray
+}
 
 // ErrAllocationTooLarge reports an object whose physical aligned extent cannot
 // be represented by the collector's uint32 heap ABI.

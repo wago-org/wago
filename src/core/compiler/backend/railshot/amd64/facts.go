@@ -23,7 +23,8 @@ const (
 	storageLogicalRoot
 	factBytesBelow16 // Every unsigned byte of a v128 value is in [0, 15].
 	storageCapturedBounds
-	valueFactMask = factUpper32Zero | factBoolean | factBytesBelow16
+	factGCStoredRef
+	valueFactMask = factUpper32Zero | factBoolean | factBytesBelow16 | factGCStoredRef
 )
 
 func (facts valueFacts) has(want valueFacts) bool { return facts&want == want }

@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
@@ -324,6 +325,35 @@ func TestGCFrameLocalLivenessConsumesMixedWidthMemarg(t *testing.T) {
 	}
 	if _, err := gcFrameLocalLivenessArenaWithClassifier(body, []shared.GCFrameLocal{{Index: 0}}, &classifier); err != nil {
 		t.Fatalf("mixed-width GC liveness walk: %v", err)
+	}
+}
+
+func TestGCFrameLocalLivenessScratchReuseDoesNotAliasMasks(t *testing.T) {
+	classifier := wasm.NewModuleInstructionClassifier(nil, true)
+	locals := []shared.GCFrameLocal{{Index: 0}, {Index: 1}}
+	bodies := [][]byte{
+		{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b},
+		{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x01, 0x1a, 0x0b},
+	}
+	var scratch gcFrameLivenessScratch
+	var first gcFrameLiveMasks
+	for i, body := range bodies {
+		want, err := gcFrameLocalLivenessArenaWithClassifier(body, locals, &classifier)
+		if err != nil {
+			t.Fatalf("ordinary body %d: %v", i, err)
+		}
+		got, err := gcFrameLocalLivenessArenaWithScratch(body, locals, &classifier, &scratch)
+		if err != nil {
+			t.Fatalf("scratch body %d: %v", i, err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("scratch body %d = %+v, want %+v", i, got, want)
+		}
+		if i == 0 {
+			first = got
+		} else if !reflect.DeepEqual(first.words, []uint64{1}) {
+			t.Fatalf("first retained mask changed after scratch reuse: %v", first.words)
+		}
 	}
 }
 

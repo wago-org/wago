@@ -50,7 +50,12 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	f.prepareGCResolvedFB(sub)
+	// Ref.cast lowering needs its decoded source and target before it can decide
+	// whether a proved no-op declared-local cast may retain the certificate.
+	if sub != 22 && sub != 23 {
+		f.prepareGCResolvedFB(sub)
+		f.gcPendingReference = gcReferenceTypeFact{}
+	}
 	f.prepareGCFreshStructFB(sub)
 	f.gcOpcodeBarrier = false
 	defer func() { f.recordGCOpcodeBytes(sub, f.a.Len()-before) }()
@@ -143,7 +148,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		if native {
 			f.nativeStructAllocType = typeIndex + 1
-			f.nativeStructAllocDead = scalarReplacement
+			f.nativeStructAllocVirtual = f.certifiedDeadConstructor(typeIndex, r)
+			f.nativeStructAllocDead = scalarReplacement || f.nativeStructAllocVirtual
 		}
 		if err := f.callGCStructHelper(gcStructAllocOne, params, []wasm.ValType{result}); err != nil {
 			return err
@@ -174,6 +180,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 				value:       freshValue,
 			})
 		}
+		f.skipProvedGCAllocationCast(r, typeIndex)
 		return nil
 	case 1: // struct.new_default typeidx
 		typeIndex, err := r.U32()
@@ -232,6 +239,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			return nil
 		}
 		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
+			f.skipProvedGCFieldResultCast(r, resultType)
 			return nil
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
@@ -240,6 +248,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if err := f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
 			return err
 		}
+		f.skipProvedGCFieldResultCast(r, resultType)
 		return nil
 	case 5: // struct.set typeidx fieldidx
 		typeIndex, err := r.U32()
@@ -644,26 +653,96 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	f.materializePendingTraps()
+	sourceFact := f.gcPendingReference
+	f.setPendingGCCastReference(sub, heap, exactTarget)
 	sourceLocal, hasSourceLocal := gcLocalProvenance(f.s.back())
 	finalTarget := false
+	objectTarget := false
+	structTarget := false
 	if heap >= 0 {
-		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final {
-			finalTarget = true
+		if target, ok := f.stagedGCType(uint32(heap)); ok {
+			finalTarget = target.Final
+			objectTarget = target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray
+			structTarget = target.Comp.Kind == wasm.CompStruct
 		}
 	}
+	originalSourceLocal := hasSourceLocal && sourceLocal >= 0 && sourceLocal < f.nLocals
+	staticDeclaredLocal := f.gcStructHelpers && objectTarget && originalSourceLocal && sourceLocal >= f.nParams &&
+		staticGCDeclaredLocalCast(f.m, f.ft, f.localRuns, sourceLocal, sub, heap, exactTarget)
+	staticLocalFlow := f.gcStructHelpers && objectTarget && sourceFact.provesCast(f.m, sub, heap, exactTarget)
+	if f.gcStructHelpers && objectTarget && sourceFact.valid() {
+		f.stats.peep("gc-local-type-cast-candidate")
+		if !staticLocalFlow {
+			switch {
+			case sub == 22 && sourceFact.flags&gcReferenceFactNullable != 0:
+				f.stats.peep("gc-local-type-cast-retained-null")
+			case exactTarget:
+				f.stats.peep("gc-local-type-cast-retained-exact")
+			default:
+				f.stats.peep("gc-local-type-cast-retained-subtype")
+			}
+		}
+	}
+	reuseResolvedStruct := f.gcStructHelpers && structTarget && sub == 22 && !exactTarget &&
+		hasSourceLocal && f.gcResolved.valid && f.gcResolved.local == sourceLocal && f.gcResolved.typeIndex == uint32(heap)
+	if !staticDeclaredLocal && !staticLocalFlow && !reuseResolvedStruct {
+		// Opcode preparation defers ref.cast invalidation until its immediate and
+		// source are known. Every cast except this proved no-op keeps the ordinary
+		// transient-address invalidation rule.
+		f.invalidateGCResolvedObject()
+	}
+	f.materializePendingTraps()
+	if f.gcStructHelpers && objectTarget {
+		f.skipIdenticalGCCasts(r, sub, heap, exactTarget)
+	}
 	if f.gcStructHelpers && heap >= 0 {
-		if fused, err := f.tryFuseFinalCastStructGet(uint32(heap), sub == 23, r); fused || err != nil {
+		if staticLocalFlow {
+			f.markTopGCReference()
+			f.stats.peep("gc-local-type-cast-elide")
+			return nil
+		}
+		if staticDeclaredLocal {
+			f.markTopGCReference()
+			if reuseResolvedStruct {
+				f.gcResolved.inputTop = true
+			}
+			f.stats.peep("gc-static-local-cast-elide")
+			return nil
+		}
+		if fused, err := f.tryFuseCastStructGet(uint32(heap), sub == 23, exactTarget, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayGet(uint32(heap), sub == 23, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
 		if fused, err := f.tryFuseFinalCastArrayLen(uint32(heap), sub == 23, r); fused || err != nil {
+			// The fused read replaces the cast result with a projected value.
+			// Its type is independent of the container's successful cast.
+			f.gcPendingReference = gcReferenceTypeFact{}
 			return err
 		}
+		if reuseResolvedStruct {
+			f.invalidateGCResolvedObject()
+		}
+		if objectTarget && originalSourceLocal && sourceLocal < f.nParams &&
+			staticGCParameterCast(f.m, f.ft, sourceLocal, sub, heap, exactTarget) {
+			f.markTopGCReference()
+			stat := "gc-static-param-cast-elide"
+			if f.inlineDepth != 0 {
+				stat = "gc-static-cast-call-elide"
+			}
+			f.stats.peep(stat)
+			return nil
+		}
 		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
-			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget); err != nil {
+			trustStored := finalTarget && sub == 22 && !exactTarget
+			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget, trustStored); err != nil {
 				return err
 			}
 			if sub == 22 {
@@ -739,12 +818,15 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	return nil
 }
 
-func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.Reader) (bool, error) {
+func (f *fn) tryFuseCastStructGet(typeIndex uint32, nullable, exactTarget bool, r *wasm.Reader) (bool, error) {
 	if done, err := f.tryGCTrappingGuard(typeIndex, nullable, r); done || err != nil {
 		return done, err
 	}
 	st, ok := f.stagedStructType(typeIndex)
-	if !ok || !st.Final {
+	if !ok {
+		return false, nil
+	}
+	if exactTarget && !st.Final {
 		return false, nil
 	}
 	start := r.Offset()
@@ -783,16 +865,34 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
 	}
 	if direct {
 		layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex)
-		if !layoutOK || !final || layout.Size != uint32(scalar.size) {
-			return false, fmt.Errorf("amd64: final cast/load field %d.%d has inconsistent layout", typeIndex, fieldIndex)
+		if !layoutOK || layout.Size != uint32(scalar.size) {
+			return false, fmt.Errorf("amd64: cast/load field %d.%d has inconsistent layout", typeIndex, fieldIndex)
+		}
+		if !final {
+			if !gcSharedStubsEnabled {
+				_ = r.JumpTo(start)
+				return false, nil
+			}
+			f.stats.peep("open-cast-scalar-get-fuse")
+			local, hasLocal := gcLocalProvenance(f.s.back())
+			cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
+			return true, f.emitNativeOpenCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable, cache)
 		}
 		f.stats.peep("final-cast-scalar-get-fuse")
-		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable)
+		local, hasLocal := gcLocalProvenance(f.s.back())
+		cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
+		return true, f.emitNativeFinalCastStructScalarGet(typeIndex, layout.Offset, scalar, sub == 3, nullable, cache)
+	}
+	if !st.Final {
+		_ = r.JumpTo(start)
+		return false, nil
 	}
 	if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && layout.CollectorRef {
 		if final && layout.Size == 4 {
 			f.stats.peep("final-cast-struct-get-fuse")
-			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable); err != nil {
+			local, hasLocal := gcLocalProvenance(f.s.back())
+			cache := hasLocal && f.cacheGCCastStructAddress(r, local, typeIndex)
+			if err := f.emitNativeFinalCastStructRefGet(typeIndex, layout.Offset, nullable, cache); err != nil {
 				return true, err
 			}
 			return true, nil
@@ -1151,7 +1251,13 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		payload = helper
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
-	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
+		return err
+	}
+	if len(results) == 1 {
+		f.setPendingGCReference(results[0])
+	}
+	return nil
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {

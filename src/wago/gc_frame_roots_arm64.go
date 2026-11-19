@@ -88,6 +88,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 	}
 	var safepointBase uint32
 	ehMapIndex := 0
+	var livenessScratch gcFrameLivenessScratch
 	for function := range m.Code {
 		hasFixedRoots := false
 		if ehMapIndex < len(ehMaps) && ehMaps[ehMapIndex].LocalFunction == uint32(function) {
@@ -149,7 +150,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots, _ bool, diagnostic *string, 
 		if plan.Conservative {
 			liveMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
+			liveMasks, err = gcFrameLocalLivenessArenaWithScratch(m.Code[function].BodyBytes, plan.Locals, &classifier, &livenessScratch)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)

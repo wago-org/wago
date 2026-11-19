@@ -676,3 +676,35 @@ func TestBytecodeSkipClassificationHelpers(t *testing.T) {
 		t.Fatal("unknown fb classification changed")
 	}
 }
+
+func TestDeclaredTypeSubtype(t *testing.T) {
+	m := &Module{Types: []RecType{
+		{SubTypes: []SubType{
+			{Comp: CompType{Kind: CompStruct}},
+			{Supers: []TypeIdx{{Index: 0, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+			{Supers: []TypeIdx{{Index: 1, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+		}},
+		{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct}}}},
+	}}
+	for _, tc := range []struct {
+		name             string
+		actual, required uint32
+		depth            int
+		want             bool
+	}{
+		{name: "identity", actual: 2, required: 2, depth: 0, want: true},
+		{name: "direct", actual: 2, required: 1, depth: 1, want: true},
+		{name: "transitive", actual: 2, required: 0, depth: 2, want: true},
+		{name: "depth-bound", actual: 2, required: 0, depth: 1},
+		{name: "unrelated", actual: 3, required: 0, depth: 4},
+		{name: "unknown-actual", actual: 4, required: 0, depth: 4},
+		{name: "unknown-required", actual: 2, required: 4, depth: 4},
+		{name: "negative-depth", actual: 2, required: 2, depth: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := m.DeclaredTypeSubtype(tc.actual, tc.required, tc.depth); got != tc.want {
+				t.Fatalf("DeclaredTypeSubtype(%d, %d, %d)=%t want%t", tc.actual, tc.required, tc.depth, got, tc.want)
+			}
+		})
+	}
+}
