@@ -1,0 +1,11 @@
+{
+  "protocol": "portable-AMD64-Linux-AA384-v2, not an exact replica",
+  "wago": {"repository": "https://github.com/wago-org/wago", "revision": "b5ab03f924e6b74ee3b558e34ad9cb32c9026acd", "license": "MPL-2.0"},
+  "wasmbench": {"repository": "https://github.com/JairusSW/wasm-bench", "revision": "ca62116e0df59639e968f371ec0025395aabbef0", "license": "Apache-2.0"},
+  "toolchain": "Go 1.27.1 linux/amd64, CGO off, PGO off, trimpath, no VCS stamp, explicit T402000/R4096",
+  "dependency_sources": "Pinned module requirements and checksums; offline module cache must be supplied by operator",
+  "case_change": {"removed": "wago/coremark/2k-performance", "added": "wago/many_funcs/run", "reason": "the recovered historical CoreMark artifact is not the pinned checkout blob; new synthetic workload provides many-function coverage, not CoreMark equivalence"},
+  "input_source": "All four artifacts extracted as exact tracked Git blobs at the pinned Wago revision; no Wasm binaries in kit",
+  "pcre2": {"repository": "https://github.com/PCRE2Project/pcre2.git", "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d", "license": "BSD-3-Clause WITH PCRE2-exception", "recipe": "corpus/workloads/semantic/pcre2/build.sh"},
+  "notice_scope": "Local source notices, not clearance to redistribute a built adapter. Use source and operator-local build."
+}

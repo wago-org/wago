@@ -1,0 +1,22 @@
+Wasmbench
+Copyright 2026 Jairus Tanaka and Wasmbench contributors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Contributors:
+* Jairus Tanaka <me@jairus.dev>
+
+The corpus fixtures retain their separately declared licenses; see corpus/LICENSE
+and the SPDX identifiers and provenance in individual files and manifests.
+The Preview 2 filesystem-reset fixture is Apache-2.0. MIT-identified corpus,
+component and source-toolchain fixtures remain MIT-licensed.
+
+Runtime adapters integrate third-party engines through their embedding APIs.
+Those engines and other dependencies retain their upstream copyright notices
+and licenses. Dependency versions are recorded in go.mod, go.sum and
+adapters/wasmtime/Cargo.lock. Imported Wago and other external corpora retain
+their own license and provenance records; this project does not relicense them.
+
+README, changelog and repository-documentation conventions were adapted from
+Wago (https://github.com/wago-org/wago). Wago runtime attribution is not a claim
+that its compiler implementation is bundled or owned by Wasmbench.

@@ -1,0 +1,16 @@
+module github.com/wasmbench/wasmbench/adapters/wago
+
+go 1.26.0
+
+require (
+	github.com/wago-org/component-model v0.1.6
+	github.com/wago-org/wago v0.1.0-beta.8.0.20260916050830-c9ed2455acd9
+	github.com/wago-org/wasi v0.3.1
+	github.com/wasmbench/wasmbench v0.0.0
+)
+
+require golang.org/x/sys v0.44.0 // indirect
+
+replace github.com/wago-org/wago => @WAGO@
+
+replace github.com/wasmbench/wasmbench => @WASMBENCH@

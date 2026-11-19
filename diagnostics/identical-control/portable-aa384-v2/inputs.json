@@ -1,0 +1,273 @@
+[
+  {
+    "schema": 1,
+    "id": "wago/tiny/add",
+    "family": "algorithms",
+    "artifact": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a.wasm",
+    "sha256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a",
+    "abi": "core",
+    "features": [],
+    "export": "add",
+    "args": [
+      "7",
+      "5"
+    ],
+    "original_contract": {
+      "desc": "minimal module; fixed pipeline overhead",
+      "exec": [
+        {
+          "export": "add",
+          "args": [
+            7,
+            5
+          ],
+          "want": [
+            12
+          ]
+        }
+      ],
+      "id": "tiny",
+      "artifact": "workloads/synthetic/tiny.wasm",
+      "tags": [
+        "micro"
+      ],
+      "artifact_sha256": "b1db87bef75ea124f339b6331951ae1406581add804b44f6b6ccf696d0c3674a"
+    },
+    "provenance": {
+      "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+      "importer": "wago-catalog-v1",
+      "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+      "algorithm": "core-call",
+      "category": "Calls & memory",
+      "rebuild": {
+        "sources": [
+          {
+            "repository": "https://github.com/wago-org/wago",
+            "revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+            "recipe": "corpus/build/wat.sh"
+          }
+        ],
+        "recipe": "scripts/corpus-rebuild.mjs",
+        "recipeSha256": "87fbb968c9d2e900c00fc4eb39302a33806a234a9e82e1844faf8eff95fd7419",
+        "inputsSha256": "16ac1fe432723b340d62c5a22c8ccf0909ebafe9f6d922445eea40ecb8656ac8",
+        "originalRecipe": "corpus/build/wat.sh"
+      }
+    },
+    "work_unit": "invocation",
+    "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {
+      "kind": "exact_u64",
+      "expected": [
+        "12"
+      ]
+    },
+    "license": "see upstream artifact provenance; not inferred from repository license",
+    "generator": "wasm-fyi-source-build-v1",
+    "source": "wago"
+  },
+  {
+    "schema": 1,
+    "id": "wago/fib_rec/fib",
+    "family": "algorithms",
+    "artifact": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14.wasm",
+    "sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14",
+    "abi": "core",
+    "features": [],
+    "export": "fib",
+    "args": [
+      "28"
+    ],
+    "original_contract": {
+      "desc": "recursion; call/return heavy",
+      "exec": [
+        {
+          "export": "fib",
+          "args": [
+            28
+          ],
+          "want": [
+            317811
+          ]
+        }
+      ],
+      "id": "fib_rec",
+      "artifact": "workloads/synthetic/fib_rec.wasm",
+      "tags": [
+        "calls"
+      ],
+      "artifact_sha256": "31bae4eca49a7c769ab1cdc36814d2c8df75679f3a0af865534629fd88e5dd14"
+    },
+    "provenance": {
+      "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+      "importer": "wago-catalog-v1",
+      "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+      "algorithm": "recursive-fibonacci",
+      "category": "Calls & memory",
+      "rebuild": {
+        "sources": [
+          {
+            "repository": "https://github.com/wago-org/wago",
+            "revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+            "recipe": "corpus/build/wat.sh"
+          }
+        ],
+        "recipe": "scripts/corpus-rebuild.mjs",
+        "recipeSha256": "87fbb968c9d2e900c00fc4eb39302a33806a234a9e82e1844faf8eff95fd7419",
+        "inputsSha256": "16ac1fe432723b340d62c5a22c8ccf0909ebafe9f6d922445eea40ecb8656ac8",
+        "originalRecipe": "corpus/build/wat.sh"
+      }
+    },
+    "work_unit": "invocation",
+    "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {
+      "kind": "exact_u64",
+      "expected": [
+        "317811"
+      ]
+    },
+    "license": "see upstream artifact provenance; not inferred from repository license",
+    "generator": "wasm-fyi-source-build-v1",
+    "source": "wago"
+  },
+  {
+    "schema": 1,
+    "id": "wago/many_funcs/run",
+    "family": "algorithms",
+    "artifact": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd.wasm",
+    "sha256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd",
+    "abi": "core",
+    "features": [],
+    "export": "run",
+    "args": [
+      "5"
+    ],
+    "original_contract": {
+      "desc": "300 small functions; per-function compile cost",
+      "exec": [
+        {
+          "export": "run",
+          "args": [
+            5
+          ],
+          "want": [
+            464
+          ]
+        }
+      ],
+      "id": "many_funcs",
+      "artifact": "workloads/synthetic/many_funcs.wasm",
+      "tags": [
+        "scale"
+      ],
+      "artifact_sha256": "d3e33dac6c06b36b839936de79163453d52107a06e525886d98d5d8bef054fbd"
+    },
+    "provenance": {
+      "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+      "importer": "wago-catalog-v1",
+      "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+      "algorithm": "many-function-callchain",
+      "category": "Calls & memory",
+      "rebuild": {
+        "sources": [
+          {
+            "repository": "https://github.com/wago-org/wago",
+            "revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+            "recipe": "corpus/build/wat.sh"
+          }
+        ],
+        "recipe": "scripts/corpus-rebuild.mjs",
+        "recipeSha256": "87fbb968c9d2e900c00fc4eb39302a33806a234a9e82e1844faf8eff95fd7419",
+        "inputsSha256": "16ac1fe432723b340d62c5a22c8ccf0909ebafe9f6d922445eea40ecb8656ac8",
+        "originalRecipe": "corpus/build/wat.sh"
+      }
+    },
+    "work_unit": "invocation",
+    "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {
+      "kind": "exact_u64",
+      "expected": [
+        "464"
+      ]
+    },
+    "license": "see upstream artifact provenance; not inferred from repository license",
+    "generator": "wasm-fyi-source-build-v1",
+    "source": "wago"
+  },
+  {
+    "schema": 1,
+    "id": "wago/pcre2/compile-match",
+    "family": "algorithms",
+    "artifact": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda.wasm",
+    "sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+    "abi": "core",
+    "features": [],
+    "export": "pcre2_run",
+    "args": [],
+    "original_contract": {
+      "id": "pcre2/compile-match",
+      "artifact": "workloads/semantic/pcre2/pcre2.wasm",
+      "artifact_sha256": "2d00dceff9bbb44ce56ce1e0ad4e1ee09c160da4bc7c4f44634dfee91d966eda",
+      "abi": "core",
+      "source": {
+        "repository": "https://github.com/PCRE2Project/pcre2.git",
+        "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d",
+        "revision_date": "2026-09-16",
+        "license": "BSD-3-Clause WITH PCRE2-exception",
+        "toolchain": "wasi-sdk",
+        "toolchain_version": "34.0"
+      },
+      "invoke": {
+        "export": "pcre2_run"
+      },
+      "expect": {
+        "return": [
+          "0x84e7c9d181489c1f"
+        ]
+      },
+      "limits": {
+        "timeout_ms": 15000
+      },
+      "tags": [
+        "regex",
+        "unicode",
+        "parser",
+        "c"
+      ]
+    },
+    "provenance": {
+      "catalog_sha256": "e02b20f2ccf9db3bc4649270c8d8eeff2b29bdb6acb6ecb47fab2697cd811a9f",
+      "importer": "wago-catalog-v1",
+      "source_revision": "9f01d145d54ac7ab458b6b2f6047db90a757410a",
+      "algorithm": "regex-compilation-matching",
+      "category": "Text & parsing",
+      "rebuild": {
+        "sources": [
+          {
+            "recipe": "corpus/workloads/semantic/pcre2/build.sh",
+            "repository": "https://github.com/PCRE2Project/pcre2.git",
+            "revision": "085f8170c27b8336f0bd61f8e99518717ad0950d"
+          }
+        ],
+        "recipe": "scripts/corpus-rebuild.mjs",
+        "recipeSha256": "87fbb968c9d2e900c00fc4eb39302a33806a234a9e82e1844faf8eff95fd7419",
+        "inputsSha256": "16ac1fe432723b340d62c5a22c8ccf0909ebafe9f6d922445eea40ecb8656ac8",
+        "originalRecipe": "corpus/workloads/semantic/pcre2/build.sh"
+      }
+    },
+    "work_unit": "invocation",
+    "units_per_invocation": 1,
+    "reset": "fresh_instance_per_sample",
+    "oracle": {
+      "kind": "exact_u64",
+      "expected": [
+        "9576845034281016351"
+      ]
+    },
+    "license": "see upstream artifact provenance; not inferred from repository license",
+    "source": "pcre2.git",
+    "generator": "wasm-fyi-source-build-v1"
+  }
+]
