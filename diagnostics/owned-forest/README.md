@@ -931,3 +931,31 @@ defaults and prior census results are unchanged.
 
 Focused summary SHA-256:
 `f265ef10fefdcd62ff9e90ca6198a62c937ad3b49a2d10a6498bf190c684de72`.
+
+## Focused regional V128 loops
+
+Apply v128-loop-focused.patch on top of 8f281704. Production source
+1b367a64 remained unchanged across the three fixture attempts. The
+first two missed activation; the fixed-load/tee refinement alone did
+not suffice. The final fixture added dummy accesses inside the loop
+to obtain the required natural pin ranking without optimizer overrides.
+
+At 22c9b92b, eight images and 48 ordinary calls passed, with four
+exact native and encoder-metadata pairs. Each image recorded one
+generic loop header and one generic backedge, six regional admissions,
+six writebacks, one rotor eviction, five boundary writebacks, and five
+alias rebases. Forest rebase scans visited 72 or 73 entries depending on
+the variant; zero in the list-specific counter is not a savings estimate.
+Full-width old/current/zero values, preserved vector prefix, and
+per-iteration markers were checked for loop counts one through three.
+
+Preflight uses a fixed 16-entry lexical classification stack. In
+the two fixture variants it scanned 313 bytes / 138 opcodes or
+320 bytes / 142 opcodes, reaching peak depth one. Classification
+is separate from actual lowering; these are not cost or speed results.
+The scope is zero-parameter loops with empty or integer scalar results;
+the tests do not establish nested loops, broad SIMD, public serialized
+metadata, corpus coverage, timing, or historical repair. Defaults unchanged.
+
+Focused summary SHA-256:
+`4520af0b00c1ded70fbc72431d150ce8d928c2ebb5d13e5185c7796b09cb9b49`.

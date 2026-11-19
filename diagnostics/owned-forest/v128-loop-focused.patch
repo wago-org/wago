@@ -1,0 +1,336 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index c0cab80e..b842405d 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1933,6 +1933,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128SIMD:                  work.TemporaryV128SIMD,
+ 			TemporaryV128Locals:                work.TemporaryV128Locals,
+ 			TemporaryV128RegionalLocals:        work.TemporaryV128RegionalLocals,
++			TemporaryV128Loops:                 work.TemporaryV128Loops,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index d2f8fe76..205e0e9b 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -1526,6 +1526,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
+ 			return
+ 		}
+ 		f.a.JmpBack(fr.controlSite)
++		if f.fixtureV128LoopsEnabled() {
++			f.sc.fixtureWork.TemporaryV128LoopBackedges++
++		}
+ 	case cfFunc:
+ 		// Result slots are canonical; this taken edge leaves the function.
+ 		var writes regallocWriteMask
+@@ -2017,6 +2020,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 			}
+ 			fr.controlSite = f.a.Len()
+ 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
++			if f.fixtureV128LoopsEnabled() {
++				f.sc.fixtureWork.TemporaryV128LoopHeaders++
++			}
+ 		}
+ 	}
+ 	f.pushCtrl(&fr)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 9dfcc947..a583ad32 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,10 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128Loops                                                                              bool
++	TemporaryV128LoopHeaders, TemporaryV128LoopBackedges                                            uint64
++	TemporaryV128PreflightBytes, TemporaryV128PreflightOpcodes                                      uint64
++	TemporaryV128PreflightLoopStackPeak                                                             int
+ 	TemporaryV128RegionalLocals                                                                     bool
+ 	TemporaryV128RegionAdmissions, TemporaryV128RegionWritebacks                                    uint64
+ 	TemporaryV128RegionAliasRebases, TemporaryV128RegionRebaseVisits                                uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 32faea0f..573c82d2 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,10 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128LoopsEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128Loops
++}
++
+ // Preflight the entire validated body, not just the instructions visited by
+ // bodyLoop. Existing SIMD selectors can consume adjacent operations, including
+ // a load/extract packet and store/repeated-address/load packet.
+@@ -52,6 +56,14 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 	}
+ 
+ 	r := wasm.NewReader(body)
++	work := f.sc.fixtureWork
++	defer func() { work.TemporaryV128PreflightBytes += uint64(r.Offset()) }()
++	type loopProof struct {
++		depth int
++		hasFD bool
++	}
++	var loopScratch [16]loopProof
++	loops := loopScratch[:0]
+ 	depth := 1
+ 	sawSIMD := false
+ 	for r.HasNext() {
+@@ -59,6 +71,7 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 		if err != nil {
+ 			return false, err
+ 		}
++		work.TemporaryV128PreflightOpcodes++
+ 		switch {
+ 		case op == 0xfd:
+ 			sub, err := r.U32()
+@@ -83,13 +96,35 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+ 			}
+ 			sawSIMD = true
+-		case op == 0x02 || op == 0x04:
++			if n := len(loops); n != 0 {
++				loops[n-1].hasFD = true
++			}
++		case op == 0x02 || op == 0x03 || op == 0x04:
++			if op == 0x03 && !work.TemporaryV128Loops {
++				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD body opcode %#x", op)
++			}
+ 			bt, err := r.Byte()
+ 			if err != nil || (bt != 0x40 && bt != 0x7f && bt != 0x7e) {
+ 				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD control signature")
+ 			}
+ 			depth++
++			if op == 0x03 {
++				if len(loops) == len(loopScratch) {
++					return false, fmt.Errorf("fixture forest: temporary SIMD loop proof nesting exceeds bound")
++				}
++				loops = append(loops, loopProof{depth: depth})
++				work.TemporaryV128PreflightLoopStackPeak = max(work.TemporaryV128PreflightLoopStackPeak, len(loops))
++			}
+ 		case op == 0x0b:
++			if n := len(loops); n != 0 && loops[n-1].depth == depth {
++				// An owned SIMD loop must contain a supported raw FD in
++				// its own body. The existing whole-loop bytecode recipes
++				// for map, region, and integer reduction reject raw FD.
++				if !loops[n-1].hasFD {
++					return false, fmt.Errorf("fixture forest: temporary SIMD loop has no closed SIMD operation")
++				}
++				loops = loops[:n-1]
++			}
+ 			depth--
+ 			if depth == 0 {
+ 				if r.HasNext() {
+@@ -106,7 +141,7 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 			if err := f.checkFixtureSIMDMemory(r); err != nil {
+ 				return false, err
+ 			}
+-		case op == 0x03 || op == 0x0e || op == 0x10 || op == 0x1b ||
++		case op == 0x0e || op == 0x10 || op == 0x1b ||
+ 			op == 0x23 || op == 0x24 || op == 0x3f || op == 0xfc || !fixtureScalarOpcode(op):
+ 			return false, fmt.Errorf("fixture forest: unsupported temporary SIMD body opcode %#x", op)
+ 		default:
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_loop_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_loop_independent_test.go
+new file mode 100644
+index 00000000..7fbde3a7
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_loop_independent_test.go
+@@ -0,0 +1,195 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128LoopModule(t *testing.T, scalarResult bool) *wasm.Module {
++	t.Helper()
++	// Param0 is an old scalar prefix, param1 a finite count (1..3).
++	b := []byte{1, 16, 0x7b, 0x20, 0}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	// Keep all 16 distinct bytes beneath the loop control boundary.
++	pc(512)
++	ld(112)
++	bt := byte(0x40)
++	if scalarResult {
++		bt = 0x7f
++	}
++	b = append(b, 0x03, bt) // one direct valbyte, zero parameters
++	// Score these fixed-home locals at the same natural loop depth as
++	// the regional targets. No optimization settings are changed.
++	for i := byte(2); i < 10; i++ {
++		for range 3 {
++			b = append(b, 0x20, i, 0x22, i, 0x21, i)
++		}
++	}
++	pc(448)
++	b = append(b, 0x20, 1, 0x6a, 0x20, 1, 0x3a, 0, 0)
++	for i := range 5 {
++		// Static in-bounds source loads preserve prior live read leases;
++		// the separately observed loop marker proves dynamic iterations.
++		pc(256 + i*16)
++		ld(16 * i)
++		// The admitted tee keeps its borrowed value as an actual operand.
++		// This ordinary get feeds unchanged lookahead; drop consumes only it.
++		b = append(b, 0x22, byte(10+i), 0x20, byte(10+i), 0x1a)
++	}
++	// br_if drains the regional leases with five aliases still live.
++	// Taken backedges discard these iteration temporaries. Fallthrough
++	// overwrites one local while retaining its old alias, then stores them.
++	b = append(b, 0x20, 1, 0x41, 1, 0x6b, 0x22, 1, 0x0d, 0)
++	ld(96)
++	b = append(b, 0x21, 10)
++	for range 5 {
++		st()
++	}
++	pc(352)
++	b = append(b, 0x20, 10)
++	st()
++	pc(368)
++	b = append(b, 0x20, 17)
++	st()
++	if scalarResult {
++		pc(11)
++	}
++	b = append(b, 0x0b)
++	if scalarResult {
++		b = append(b, 0x21, 1)
++	}
++	st() // original distinct-half V128 prefix, retained through all iterations
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73)
++	if scalarResult {
++		b = append(b, 0x20, 1, 0x73)
++	}
++	b = append(b, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128LoopRun(t *testing.T, cm *encoder.CompiledModule, condition uint32, salt int, scalarResult bool) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 5 {
++		copy(want[256+i*16:], mem[16*i:16*(i+1)])
++	}
++	copy(want[352:], mem[96:112])
++	clear(want[368:384])
++	for i := uint32(1); i <= condition; i++ {
++		want[448+i] = byte(i)
++	}
++	copy(want[512:], mem[112:128])
++	expectedLane := binary.LittleEndian.Uint32(mem[112:116])
++	if scalarResult {
++		expectedLane ^= 11
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0x1234beef + salt)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(condition))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != old^expectedLane {
++		t.Fatalf("cond=%d got=%x want=%x err=%v", condition, got, old^expectedLane, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("condition=%d byte[%d]=%x want=%x", condition, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128LoopOrdinary(t *testing.T) {
++	for _, name := range []string{"empty", "scalar-result"} {
++		t.Run(name, func(t *testing.T) {
++			scalarResult := name == "scalar-result"
++			m := ownedV128LoopModule(t, scalarResult)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128RegionalLocals: true, TemporaryV128Loops: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive lane: %+v", work)
++					}
++					peep := stats.Funcs[0].Peephole
++					if peep["vector-region-admit"] < 5 || peep["vector-region-writeback"] < 5 {
++						t.Fatalf("actual regional selector inactive: %v", peep)
++					}
++					if work.TemporaryV128LoopHeaders != 1 || work.TemporaryV128LoopBackedges != 1 || work.TemporaryV128PreflightLoopStackPeak != 1 || work.TemporaryV128PreflightBytes == 0 || work.TemporaryV128PreflightOpcodes == 0 {
++						t.Fatalf("inactive loop header or preflight accounting: %+v", work)
++					}
++					if work.TemporaryV128RegionAdmissions < 5 || work.TemporaryV128RegionWritebacks < 5 || work.TemporaryV128RegionEvictions == 0 || work.TemporaryV128RegionBoundaryWritebacks < 4 || work.TemporaryV128RegionAliasRebases < 5 || candidate && work.TemporaryV128RegionRebaseVisits == 0 {
++						t.Fatalf("inactive eviction/boundary/live alias rebase: %+v", work)
++					}
++					for _, cond := range []uint32{1, 2, 3} {
++						for _, salt := range []int{3, 29} {
++							ownedV128LoopRun(t, cm, cond, salt, scalarResult)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peep, work)
++				}
++			}
++		})
++	}
++}
