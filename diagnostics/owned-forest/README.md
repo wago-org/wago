@@ -97,3 +97,19 @@ and native parity, not executing an out-of-bounds access. The effect
 fixture had zero spills; two spills in the separate pressure fixture do
 not prove reentrant effect traversal under allocation pressure. Prefix
 skips are still unported. No net cost, throughput, or migration claim.
+
+## Focused safety closure
+
+The bundled fixture now captures e887bc79. Attempt two passed 12
+top-level tests and eight rejection subcases. A nested effect traversal
+under load pressure selected the deepest victim, spilled twice, and
+resumed the remaining loads. The executed trap fixture used actual
+emitTrapStubs and Engine.Call. In both arms it ran a valid access at
+address 0, trapped on out-of-bounds address 65535 at function 3, PC 37,
+then successfully repeated the valid access. Native code matched exactly.
+
+The first attempt at 77cb6845 failed the trap-PC check. The fixture had
+omitted the absent module-global lease sentinel; e887bc79 initializes it.
+This was a test fixture correction, not a production semantic fix.
+These cases extend the earlier focused coverage, not the full corpus.
+No timing, net-cost, node-shrinkage, or promotion claim.

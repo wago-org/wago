@@ -561,7 +561,7 @@ index 00000000..3c0dbe52
 +}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
 new file mode 100644
-index 00000000..60d4093d
+index 00000000..e737cc53
 --- /dev/null
 +++ b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
 @@ -0,0 +1,251 @@
@@ -581,7 +581,7 @@ index 00000000..60d4093d
 +// Deliberately poison the legacy sentinel. A candidate that touches the list
 +// cannot silently pass by rebuilding it behind the fixture's back.
 +func independentForestFn(candidate bool) *fn {
-+	f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch(), m: &wasm.Module{}, localSlot: []uint32{0}, nLocalSlots: 1, globalCellReg: regNone, memSizeReg: regNone, policy: currentCodegenPolicy()}
++	f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch(), m: &wasm.Module{}, localSlot: []uint32{0}, nLocalSlots: 1, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, policy: currentCodegenPolicy()}
 +	if candidate {
 +		f.s.forest = &fixtureForest{}
 +		f.s.head.prev = nil
@@ -1091,6 +1091,164 @@ index 00000000..3f0b7869
 +	if limit == s.head {
 +		s.pendingEffects &^= mask
 +		s.pendingPrefix = s.back() // observation only; no physical cursor.
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_safety_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_safety_independent_test.go
+new file mode 100644
+index 00000000..e1e29486
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_safety_independent_test.go
+@@ -0,0 +1,152 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"errors"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"testing"
++)
++
++func TestOwnedForestSafetyReentrantLoadPressure(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.a.MovReg64(RBX, RSP)
++		f.a.MovImm32(RDI, 17)
++		f.a.Store32(RSP, 768, RDI)
++		f.a.MovImm32(RDI, 23)
++		f.a.Store32(RSP, 772, RDI)
++		f.a.MovImm32(R12, 0)
++		f.locals[0] = localDef{state: lsReg, reg: R12, typ: mtI32}
++		f.pinnedLocalMask = f.pinnedLocalMask.add(R12)
++		var nodes []*elem
++		want := uint64(40)
++		for i, r := range gpAlloc {
++			if r == R12 {
++				continue
++			}
++			f.a.MovImm32(r, int32(i+1))
++			nodes = append(nodes, f.pushReg(r, mtI32))
++			want += uint64(i + 1)
++		}
++		deepest := nodes[0]
++		left := f.pushValue(memRefStorage(R12, 768, 4, false, false, 0))
++		right := f.pushValue(memRefStorage(R12, 772, 4, false, false, 0))
++		f.pushBinOp(opAdd, mtI32)
++		parent := f.s.back()
++		for _, r := range gpAlloc {
++			if r != R12 && f.regUser[r] == nil {
++				t.Fatalf("pressure missing register %d", r)
++			}
++		}
++		if !parent.isDeferred() || left.st.kind != stMemRef || right.st.kind != stMemRef {
++			t.Fatal("loads not deferred before barrier")
++		}
++		before := uint64(0)
++		if candidate {
++			before = f.s.forest.spills
++		}
++		f.materializePendingLoads()
++		if deepest.st.kind != stSlot || !parent.isDeferred() {
++			t.Fatal("wrong victim or prematurely consumed parent")
++		}
++		for _, e := range []*elem{left, right} {
++			if e.st.kind != stReg && e.st.kind != stSlot {
++				t.Fatal("outer scan did not resume across nested allocator")
++			}
++		}
++		if candidate && f.s.forest.spills <= before {
++			t.Fatal("barrier did not force nested GP spill")
++		}
++		independentForestNilLinks(t, f, append(nodes, left, right, parent))
++		for range nodes {
++			f.pushBinOp(opAdd, mtI32)
++		}
++		closureFinish(t, f, want)
++		closureRun(t, f, want)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("pressure effect native mismatch")
++		}
++	}
++}
++func TestOwnedForestSafetyExecutedOOB(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.wasmPC = 37
++		f.traceFuncIdx = 3
++		f.a.MovReg64(RBX, RSI)
++		f.a.Push(RCX)
++		f.a.SubRsp(256)
++		f.a.Load32(RAX, RDI, 0)
++		f.a.Store32(RSP, f.localAddr(0), RAX)
++		addr := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		r := wasm.ReaderFrom([]byte{2, 0})
++		if err := f.memLoad(&r, 4, false, false); err != nil {
++			t.Fatal(err)
++		}
++		load := f.s.back()
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++		f.pushBinOp(opEq, mtI32)
++		out := f.materialize(f.s.back())
++		f.a.MovReg64(RAX, out)
++		f.a.AddRsp(256)
++		f.a.Pop(RCX)
++		f.a.Store64(RCX, 0, RAX)
++		f.a.Ret()
++		f.emitTrapStubs()
++		independentForestNilLinks(t, f, []*elem{addr, load, f.s.back()})
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else {
++			if !bytes.Equal(oracle, f.a.B) {
++				t.Fatal("finalized OOB native mismatch")
++			}
++			if f.s.forest.flagsTransitions == 0 {
++				t.Fatal("fold not active")
++			}
++		}
++		eng, err := wr.NewEngine()
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer eng.Close()
++		jm, err := wr.NewJobMemory(65536)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer jm.Close()
++		ar, err := wr.NewArena(4096)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer ar.Close()
++		mem, entry, err := wr.MapCode(f.a.B)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer wr.Unmap(mem)
++		args, res, trap := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++		jm.LinearMemory()[0] = 3
++		for _, address := range []uint64{0, 65535, 0} {
++			binary.LittleEndian.PutUint64(args, address)
++			err = eng.Call(entry, args, jm.LinearMemory(), trap, res)
++			if address == 0 {
++				if err != nil || binary.LittleEndian.Uint64(res) != 1 {
++					t.Fatalf("valid after trap: %v result=%d", err, binary.LittleEndian.Uint64(res))
++				}
++			} else {
++				var te *wr.TrapError
++				if !errors.As(err, &te) || te.Code != wr.TrapLinMemOutOfBounds || len(te.Frames) != 1 || te.Frames[0].FunctionIndex != 3 || !te.Frames[0].HasProgramCounter || te.Frames[0].ProgramCounter != 37 {
++					t.Fatalf("wrong executed trap: %+v", err)
++				}
++			}
++		}
 +	}
 +}
 diff --git a/src/core/compiler/backend/railshot/amd64/references.go b/src/core/compiler/backend/railshot/amd64/references.go
