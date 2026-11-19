@@ -308,3 +308,31 @@ reached two legacy bodies, with no alternate ABI or rejection.
 Encoder-exported JSON parity is not public artifact codec parity.
 This focused case does not establish broad wrapper, corpus, timing,
 or prior-defect coverage. Compiler defaults remain unchanged.
+
+## Censored 114-module compile census
+
+One untimed run at 3383092b made 228 public Compile calls. The same
+31 held modules were excluded from both arms before loading. The
+baseline matched native output and public codec metadata on all 114
+included modules. The candidate completed 77 modules with actual
+forest dispatch, all matching native code and public codec metadata
+exactly (75 forest-only, two mixed, none shared-only). The other
+37 were explicit scope gaps; no unexpected or accounting errors
+were observed within this subset. This is not a 145-module gate,
+a repair verification for the held 31, or a runtime or timing run.
+
+First blockers: opcode 0x2b (14), 0xfc (10), 0x44 (4), 0x11 (3),
+and 0xb8 (1); selected inline ownership (2), specialized function
+state (2), and adjacent div/rem selector (1). These are first
+reported blockers, not exhaustive diagnoses of the modules.
+
+Matched completions dispatched 31,358 opcodes in 80 legacy bodies
+and included 301 shared-scalar bodies in each arm. Baseline counters
+recorded 184,092 list link writes, 23,805 cursor visits, 2,739 effect
+visits, and 18 spill-prefix visits. Forest counters recorded 38,784
+root stores, 60,812 cursor writes, 22,597 cursor visits, 23,074
+retirements, 297 grows, 165 spills, and six flags transitions.
+These are incomplete and different units, not a net work estimate.
+Candidate matched maxima: root capacity 64 pointers (512 bytes),
+34 live roots, and cursor depth 7; measured struct sizes were elem
+64, cursor 200, and forest 104 bytes.
