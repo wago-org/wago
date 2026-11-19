@@ -570,3 +570,34 @@ were untouched, and defaults are unchanged.
 
 Focused summary SHA-256:
 `28f0d3dfcba854cf9652a9814782cc4d855cae3d80bf1289692c8aa39f559d85`.
+
+## Nine-capability censored compile census
+
+One untimed run at 39f93798 made 228 public Compile calls across paired
+arms, both using the same nine experimental capabilities. Forest
+ownership alone varied. The same 31 held modules were excluded in both
+arms before workload reads. All 114 baseline modules matched; 90 candidate
+modules completed with actual forest dispatch, and all 90 matched native
+code and public serialized metadata exactly. The other 24 were explicit
+scope rejections. No unexpected or accounting errors occurred. Exit 0
+means the strict gate passed, not that all 114 modules are supported.
+
+First rejections: memory.size (17), specialized function state (2),
+integer call shape (2), selected inline ownership (2), and FC3 (1).
+Completed modules dispatched 71,587 opcodes across 137 legacy bodies
+and included 307 shared-scalar bodies. The 24 abandoned modules had 148
+attempts, 124 completed functions and 74,573 opcodes, not completed-module
+coverage. Four adjacent div/rem seek visits occurred only in abandoned
+modules; these are a subset of cursor visits, not proven pair emissions.
+
+Matched list counts were 422,392 link writes and 71,934 cursor visits.
+Forest counts were 89,513 root stores, 179,478 cursor writes, 69,244
+cursor visits, 53,346 retirements, 348 grows and 218 spills. These distinct,
+incomplete units do not imply net savings. Completed maxima were 64
+root pointers (512 bytes), 34 live roots and cursor depth 7.
+
+No guest execution, timing, held-input repair verification, or promotion.
+The previous 83-of-114 exit-1 result at 054dc7f8 is unchanged.
+
+Summary SHA-256: `b78e563cbff78d35dbd4060983c7999d824d267e1403db76abf737d5a97f0852`.
+Rows SHA-256: `e6b534724d996801d1790b9098ab7d77757efbd0a7a7d7d1be4b420ce8b9de05`.
