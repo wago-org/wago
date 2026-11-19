@@ -709,3 +709,26 @@ inputs. Earlier censuses and compiler defaults are unchanged.
 
 Summary SHA-256: `107b5852026824efa8682d19d8d41baa6e0ee0cbf09ab6c426d83000f44cbcb3`.
 Rows SHA-256: `c3661febf69bca6419b9feea470cc3e84e3cda6075a37afc513cd4f5f0e5d31e`.
+
+## Focused memory.grow for defined memory32
+
+Apply memory-grow-focused.patch on top of 89d31452. The experimental
+helper stages five GP roles before the first split for local unshared
+memory32 at index zero. Both ownership arms used that same helper.
+The default helper and inline growth are outside this experiment.
+
+The gate at 7e560893 passed eight images and 32 ordinary calls (16
+zero-delta and 16 successful one-page growth), with four exact native
+and encoder-exported JSON pairs. Each image emitted one staged grow.
+The four pressure images each recorded four actual prebranch spills;
+the four basic images recorded none. The checks covered old aliases,
+old and new page counts, retained bytes, post-growth stores and loads,
+and all logical memory. Ordinary/interruptible native sizes were
+291/340 bytes (basic) and 460/509 (pressure).
+
+No failed growth, default-helper execution, public artifact codec,
+held workload, corpus, or timing check. Compiler defaults and prior
+census outcomes remain unchanged.
+
+Focused summary SHA-256:
+`dde725dfc4f76e5cf3e58c54a1238f8cea28c3ffdf95e36878924c0a87de2b37`.

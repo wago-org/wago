@@ -1,0 +1,320 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index d1f73f41..7ca5b446 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1922,6 +1922,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPUnsignedF64ToI32Saturation: work.ScalarFPUnsignedF64ToI32Saturation,
+ 			IntegerControlInline:               work.IntegerControlInline,
+ 			IntegerControlInlineComposition:    work.IntegerControlInlineComposition,
++			PrivateMemory32Grow:                work.PrivateMemory32Grow,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 7e042f45..f5912332 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -121,6 +121,16 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 					return err
+ 				}
+ 			}
++			if op == 0x40 {
++				probe := *r
++				index, err := probe.U32()
++				if err != nil {
++					return err
++				}
++				if err := f.checkFixtureMemoryGrow(index); err != nil {
++					return err
++				}
++			}
+ 			if op == 0xfc {
+ 				// Preflight before interval/control effects can touch operands.
+ 				probe := *r
+@@ -302,7 +312,8 @@ func fixtureScalarFPOpcode(op byte) bool {
+ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
+ 		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) &&
+-		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) {
++		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) &&
++		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 96ca6985..065b60fd 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1832,6 +1832,22 @@ func (f *fn) memorySize(r *wasm.Reader) error {
+ 	return nil
+ }
+ 
++func (f *fn) fixturePrivateMemoryGrowEnabled() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.PrivateMemory32Grow
++}
++
++func (f *fn) checkFixtureMemoryGrow(index uint32) error {
++	if !f.fixturePrivateMemoryGrowEnabled() || f.checkFixtureMemorySize(index) != nil {
++		return fmt.Errorf("fixture forest: unsupported memory.grow state")
++	}
++	if !f.unreachable {
++		if delta := f.s.back(); delta == nil || rootMachineType(delta) != mtI32 {
++			return fmt.Errorf("fixture forest: unsupported memory.grow delta")
++		}
++	}
++	return nil
++}
++
+ // memoryGrow grows linear memory by the popped page delta, pushing the previous
+ // size in pages or -1 on failure. The reservation is mapped up front, so this is
+ // a pure size-cache update (matching src/core/encoder/amd64); the base never moves.
+@@ -1840,6 +1856,12 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil {
++		if err := f.checkFixtureMemoryGrow(memoryIndex); err != nil {
++			return err
++		}
++	}
++	staged := f.fixturePrivateMemoryGrowEnabled() && f.checkFixtureMemorySize(memoryIndex) == nil
+ 	if f.memoryShared(memoryIndex) {
+ 		return f.sharedMemoryGrow(memoryIndex)
+ 	}
+@@ -1857,6 +1879,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
+ 		failDelta = f.a.JccPlaceholder(condNE)
+ 		f.release(high)
+ 	}
++	spillStart := 0
++	if staged {
++		spillStart = len(f.sc.fixtureWork.Spills)
++	}
+ 	res := f.allocReg(maskOf(delta))
+ 	base := RBX
+ 	dir := regNone
+@@ -1868,6 +1894,22 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
+ 		base = f.allocReg(maskOf(delta).add(res).add(dir))
+ 		f.a.Load64(base, dir, entry)
+ 	}
++	nw, mx := regNone, regNone
++	if staged {
++		// No native path may skip allocator spills or local homing.
++		// Scratch registers have no operand owners, so pin them as well as
++		// passing explicit avoid masks during nested acquisition.
++		saved := f.pinned
++		f.pinned = f.pinned.union(maskOf(res, base, f.memSizeReg))
++		avoid := maskOf(delta, res, base, f.memSizeReg)
++		nw = f.allocReg(avoid)
++		f.pinned = f.pinned.add(nw)
++		mx = f.allocReg(avoid.add(nw))
++		f.pinned = f.pinned.add(mx)
++		dir = f.allocReg(avoid.add(nw).add(mx))
++		f.pinned = saved
++		f.sc.fixtureWork.MemoryGrowPrebranchSpills += uint64(len(f.sc.fixtureWork.Spills) - spillStart)
++	}
+ 	f.a.Load32(res, base, -bdCurPages) // old pages — the success result
+ 	// memory.grow 0 cannot change memory state and always returns the current
+ 	// size. Bypass maximum checks and cache publication; this operation is used
+@@ -1878,17 +1920,23 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
+ 	if dir != regNone {
+ 		avoid = avoid.add(dir)
+ 	}
+-	nw := f.allocReg(avoid)
++	if !staged {
++		nw = f.allocReg(avoid)
++	}
+ 	f.a.MovRegReg32(nw, res)
+ 	f.a.Add32(nw, delta) // new = old + delta; CF on u32 overflow
+ 	failOverflow := f.a.JccPlaceholder(condB)
+-	mx := f.allocReg(avoid.add(nw))
++	if !staged {
++		mx = f.allocReg(avoid.add(nw))
++	}
+ 	f.a.Load32(mx, base, -bdMaxPages)
+ 	f.a.Cmp32(nw, mx)
+ 	failMax := f.a.JccPlaceholder(condA) // new > declared/runtime max
+ 	noPolicyDir := -1
+ 	if memoryIndex == 0 {
+-		dir = f.allocReg(avoid.add(nw).add(mx))
++		if !staged {
++			dir = f.allocReg(avoid.add(nw).add(mx))
++		}
+ 		f.a.Load64(dir, RBX, -offMemoryDirPtr)
+ 		f.a.TestSelf(dir, true)
+ 		noPolicyDir = f.a.JccPlaceholder(condE)
+@@ -1958,6 +2006,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
+ 	} else {
+ 		f.pushReg(res, mtI32)
+ 	}
++	if staged {
++		f.sc.fixtureWork.MemoryGrowEmissions++
++	}
+ 	return nil
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index ec952810..60e68141 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	PrivateMemory32Grow                                                                             bool
++	MemoryGrowEmissions, MemoryGrowPrebranchSpills                                                  uint64
+ 	IntegerControlInlineComposition                                                                 bool
+ 	ScalarFPUnsignedF64ToI32Saturation                                                              bool
+ 	FPUnsignedF64ToI32SaturationEmissions, FPUnsignedF64ToI32SaturationBoundPressure                uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_memory_grow_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_memory_grow_independent_test.go
+new file mode 100644
+index 00000000..2c1b8d80
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_memory_grow_independent_test.go
+@@ -0,0 +1,147 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedMemoryGrowModule(t *testing.T, snapshots int) *wasm.Module {
++	t.Helper()
++	// Params are delta, valid post-growth store address, and caller alias.
++	// The prefix captures an old local and the old byte at address 0.
++	b := []byte{0, 0x20, 2, 0x41, 0, 0x2d, 0, 0}
++	for range snapshots {
++		b = append(b, 0x3f, 0)
++	}
++	b = append(b, 0x20, 0, 0x40, 0)
++	// Sum the separately captured old values, grow's old-page result,
++	// then read the current size after the staged grow completes.
++	for range snapshots + 2 {
++		b = append(b, 0x6a)
++	}
++	b = append(b, 0x3f, 0, 0x6a, 0x41, 23, 0x21, 2, 0x20, 2, 0x6a)
++	// Store and reread a caller-selected, in-bounds address. For delta=1
++	// this uses the new page; for delta=0 it stays inside the initial page.
++	b = append(b, 0x20, 1, 0x41, 37, 0x36, 2, 0, 0x20, 1, 0x28, 2, 0, 0x6a, 0x0b)
++	i := wasm.I32
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i, i, i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 2})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(b))), b...))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedMemoryGrowRun(t *testing.T, cm *encoder.CompiledModule, delta, old uint32, snapshots int) {
++	t.Helper()
++	wantPages := 1 + delta
++	addr := uint32(8)
++	if delta == 1 {
++		addr = 65536
++	}
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemoryGrowable(65536, 2*65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	jm.CurrentBytes()[0] = 0x5a
++	jm.CurrentBytes()[65535] = 0xc7
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	a, out, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range []uint32{delta, addr, old} {
++		binary.LittleEndian.PutUint64(a[i*8:], uint64(v))
++	}
++	err = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, out)
++	want := old + 0x5a + uint32(snapshots) + 1 + wantPages + 23 + 37
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != want || jm.CurrentPages() != wantPages {
++		t.Fatalf("delta=%d got=%x want=%x pages=%d wantPages=%d err=%v", delta, got, want, jm.CurrentPages(), wantPages, err)
++	}
++	full := make([]byte, int(wantPages)*65536)
++	full[0], full[65535] = 0x5a, 0xc7
++	binary.LittleEndian.PutUint32(full[addr:addr+4], 37)
++	if !bytes.Equal(jm.CurrentBytes(), full) {
++		t.Fatal("wrong memory contents after grow and store")
++	}
++}
++
++func TestOwnedForestMemoryGrowOrdinary(t *testing.T) {
++	for _, pressure := range []bool{false, true} {
++		name, snapshots := "ordinary", 1
++		if pressure {
++			name, snapshots = "gp-pressure", 16
++		}
++		t.Run(name, func(t *testing.T) {
++			m := ownedMemoryGrowModule(t, snapshots)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					// Both arms select the same staged helper, never the default grow.
++					work := &fixtureModuleWork{Forest: candidate, PrivateMemory32Grow: true}
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 ||
++						work.MemoryGrowEmissions != 1 || work.MemorySizeEmissions != uint64(snapshots+1) {
++						t.Fatalf("inactive staged grow path: %+v", work)
++					}
++					if pressure && work.MemoryGrowPrebranchSpills == 0 {
++						t.Fatalf("staged GP spill witness inactive: %+v", work)
++					}
++					for _, delta := range []uint32{0, 1} {
++						for _, old := range []uint32{19, 0xfffffff0} {
++							ownedMemoryGrowRun(t, cm, delta, old, snapshots)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("staged list/forest native or encoder metadata differs")
++					}
++					t.Logf("intr=%v forest=%v bytes=%d work=%+v", intr, candidate, len(cm.Code), work)
++				}
++			}
++		})
++	}
++}
