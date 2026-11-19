@@ -350,3 +350,22 @@ Scope was in-bounds memory.copy and memory.fill only (FC 10 and 11).
 General floating point remains fenced; the vector path uses scratch
 only. No other FC operations, exceptional input, held modules, full
 corpus, public artifact codec parity, or timing are claimed.
+
+## Focused private scalar floating point
+
+Apply fp-focused.patch on top of 81380949. At ffa9cd4f the
+ordinary gate passed 48 images, 96 calls, and 24 exact native
+and encoder-exported JSON pairs. It recorded 16 float local
+sinks, 16 deferred compares for branches, and 16 branch fusions.
+Three paired direct emission-only checks covered eligible XMM
+victim selection, a nested XMM/GP effect walk, and recursive XMM
+spilling initiated from GP allocation. These do not establish
+spill counts in compiled modules.
+
+This is a private scalar FP lane with integer or void ABI
+boundaries. Inline admission checks for FP intermediates before
+binding; no reduction in preflight or cursor overhead has been
+measured. Encoder JSON is not public artifact codec parity.
+No exceptional-input, held-input, corpus, or timing gate ran.
+The earlier censored result remains 77 of 114, not an updated
+coverage estimate. Compiler defaults are unchanged.

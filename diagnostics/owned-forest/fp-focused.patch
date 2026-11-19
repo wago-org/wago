@@ -1,0 +1,498 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 686c9351..34462ea3 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -374,7 +374,8 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		if target != nil {
+ 			if !sigIsIntOnly(ft) || target.recursive() || target.hasCtrl ||
+ 				target.tupleSelect() || target.tupleLoop() || target.tailLoop() ||
+-				!f.fixtureInlineIntegerLocals(target) {
++				!f.fixtureInlineIntegerLocals(target) ||
++				(f.fixtureScalarFPEnabled() && !f.fixtureInlineIntegerBody(target)) {
+ 				if f.sc != nil && f.sc.fixtureWork != nil {
+ 					f.sc.fixtureWork.InlineCallGaps++
+ 				}
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index b19a424e..9514c09b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1911,7 +1911,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			return nil, fmt.Errorf("fixture forest: require serial ordinary compilation without legacy checker/census")
+ 		}
+ 		work := opts.fixtureWork
+-		*work = fixtureModuleWork{Forest: work.Forest}
++		*work = fixtureModuleWork{Forest: work.Forest, ScalarFP: work.ScalarFP}
+ 		defer work.releaseRoots()
+ 	}
+ 	relocs := make([][]callReloc, n)
+@@ -3681,6 +3681,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		return nil, nil, 0, fmt.Errorf("unknown function type")
+ 	}
+ 	c := &m.Code[funcIdx]
++	if work := sc.fixtureWork; work != nil && work.Forest {
++		if !sigIsIntOnly(ft) {
++			return nil, nil, 0, fmt.Errorf("fixture forest: unsupported noninteger function ABI")
++		}
++		for _, run := range c.Locals.Runs {
++			if !isIntValType(run.Type) && !(work.ScalarFP && isFloatValType(run.Type)) {
++				return nil, nil, 0, fmt.Errorf("fixture forest: unsupported local declaration")
++			}
++		}
++	}
+ 	// Module hint construction already validated and counted the parameters and
+ 	// local runs. Reuse that result.
+ 	nLocals := hints.nLocals
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index ad646ea1..918fcfbb 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -203,8 +203,18 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 	return nil
+ }
+ 
++func (f *fn) fixtureScalarFPEnabled() bool {
++	return f.s != nil && f.s.forest != nil && f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFP
++}
++
++func fixtureScalarFPOpcode(op byte) bool {
++	return op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39 ||
++		op == 0x43 || op == 0x44 || op >= 0x5b && op <= 0x66 ||
++		op >= 0x8b && op <= 0xa6 || op >= 0xa8 && op <= 0xab || op >= 0xae && op <= 0xbf
++}
++
+ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+-	if !fixtureScalarOpcode(op) {
++	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+@@ -255,6 +265,19 @@ var integerBinaryOps = [...]wOp{opAdd, opSub, opMul, opDivS, opDivU, opRemS, opR
+ // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
+ // conversions). Called only when reachable; dead code is skipped by the body loop.
+ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
++	if f.s != nil && f.s.forest != nil && (op == 0x23 || op == 0x24) {
++		// These opcodes can select float or reference storage without a
++		// distinct source opcode. Inspect the declaration before lowering.
++		probe := *r
++		x, err := probe.U32()
++		if err != nil {
++			return err
++		}
++		gt, ok := f.globalType(x)
++		if !ok || !isIntValType(wasm.GlobalValueType(gt)) {
++			return fmt.Errorf("fixture forest: unsupported noninteger global")
++		}
++	}
+ 	switch op {
+ 	case 0x08: // throw
+ 		return f.opThrow(r)
+@@ -282,6 +305,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ 	case 0x1a: // drop
+ 		f.dropValue()
+ 	case 0x1b: // select
++		if f.fixtureScalarFPEnabled() && rootMachineType(f.s.forestLast(1)).isFloat() {
++			return fmt.Errorf("fixture forest: unsupported float select")
++		}
+ 		if done, err := f.trySelectLocalSink(r); done || err != nil {
+ 			return err
+ 		}
+@@ -774,6 +800,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ // checkFixtureBulkMemory validates the closed fixture subset without consuming
+ // the emitter reader or changing stack, region, or memory-forwarding state.
+ func (f *fn) checkFixtureBulkMemory(sub uint32, probe wasm.Reader) error {
++	if f.fixtureScalarFPEnabled() {
++		return fmt.Errorf("fixture forest: unsupported bulk memory in scalar FP stage")
++	}
+ 	count := 1
+ 	switch sub {
+ 	case 10:
+@@ -920,11 +949,22 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
+ 		}
+ 		return false, nil
+ 	}
+-	left := right
+-	if arity == 2 {
+-		left = baseOfValentBlock(right).prev
++	if f.s.forest != nil {
++		c := f.s.fixtureScan(false)
++		if arity < 1 || c.endRoot < arity {
++			panic("fixture forest: invalid scalar FP sink operand suffix")
++		}
++		// Earlier roots may retain the destination's old value. The
++		// consumed suffix can read it directly before the sink writes it.
++		c.endRoot -= arity
++		f.realizeLocalRefsCursor(x, nil, c)
++	} else {
++		left := right
++		if arity == 2 {
++			left = baseOfValentBlock(right).prev
++		}
++		f.realizeLocalRefs(x, left)
+ 	}
+-	f.realizeLocalRefs(x, left)
+ 	f.evictRelinquishedFReg(pr)
+ 	emit(pr)
+ 	f.markLocalDirty(x)
+diff --git a/src/core/compiler/backend/railshot/amd64/float_compare_branch.go b/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
+index 54764946..c8705245 100644
+--- a/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
++++ b/src/core/compiler/backend/railshot/amd64/float_compare_branch.go
+@@ -48,7 +48,7 @@ func (f *fn) fcmpNext(r *wasm.Reader, kind wOp, f64 bool) {
+ 			}
+ 			if op != opNone {
+ 				right := f.s.back()
+-				left := baseOfValentBlock(right).prev
++				left := f.s.selectorPrevious(right, 1)
+ 				node := f.s.tryAlloc()
+ 				if node == nil {
+ 					node = f.s.allocNextChunk()
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 7e04e66b..6a2a701e 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -110,17 +110,21 @@ func (f *fn) allocBulkFReg(avoid regMask) Reg {
+ // allocFReg returns a free XMM register, spilling the deepest float-resident stack
+ // value if none is free.
+ func (f *fn) allocFReg(avoid regMask) Reg {
+-	if f.s.forest != nil {
++	if f.s.forest != nil && !f.fixtureScalarFPEnabled() {
+ 		panic("fixture forest: unported FP allocation")
+ 	}
+-	if ownedForestCensusEnabled {
++	if ownedForestCensusEnabled && f.s.forest == nil {
+ 		f.observeOwnedForest("fp-allocation")
+ 	}
+ 	if r := f.freeFReg(avoid); r != regNone {
+ 		return r
+ 	}
+ 	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
+-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(true); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+ 			r := e.st.reg
+ 			if profileEnabled {
+@@ -153,7 +157,11 @@ func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {
+ 			continue
+ 		}
+ 		borrowed := false
+-		for e := f.s.head.next; e != f.s.head; e = e.next {
++		for c := f.s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
+ 			if subtreeRefsLocal(e, x) {
+ 				borrowed = true
+ 				break
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 2a56b981..6dea7d9c 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1252,6 +1252,40 @@ func (f *fn) fixtureInlineIntegerLocals(t *inlineTarget) bool {
+ 	return true
+ }
+ 
++// fixtureInlineIntegerBody checks a naturally selected straight-line target
++// before inlineCall binds its arguments. Integer signatures and locals alone
++// do not exclude floating intermediates or accesses to floating globals.
++func (f *fn) fixtureInlineIntegerBody(t *inlineTarget) bool {
++	if t.isI32AddConst() {
++		return true // The selected shortcut emits only the recognized i32 add.
++	}
++	r := wasm.NewReader(t.body)
++	for r.HasNext() {
++		op, err := r.Byte()
++		if err != nil || !fixtureScalarOpcode(op) || op == 0xfc {
++			return false
++		}
++		switch op {
++		case 0x0b:
++			return !r.HasNext()
++		case 0x23, 0x24:
++			x, err := r.U32()
++			if err != nil {
++				return false
++			}
++			gt, ok := f.globalType(x)
++			if !ok || !isIntValType(wasm.GlobalValueType(gt)) {
++				return false
++			}
++		default:
++			if f.classifier.SkipImmediate(r, op) != nil {
++				return false
++			}
++		}
++	}
++	return false
++}
++
+ func (f *fn) realizeInlineLocalBeforeWrite(local int) {
+ 	if f.s.forest != nil {
+ 		f.realizeLocalRefsCursor(local, nil, f.s.fixtureScan(false))
+@@ -1453,6 +1487,9 @@ func (f *fn) inlineBody(body []byte) error {
+ 			return err
+ 		}
+ 		if f.s.forest != nil {
++			if !fixtureScalarOpcode(op) {
++				return fmt.Errorf("fixture forest: unsupported inline opcode %#x", op)
++			}
+ 			if err := f.checkFixtureScalarOpcode(op); err != nil {
+ 				return err
+ 			}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index b678c9aa..636ac1e2 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -274,7 +274,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ type fixtureModuleWork struct {
+ 	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps uint64
+ 	Opcodes                                                           uint64
+-	Forest                                                            bool
++	Forest, ScalarFP                                                  bool
+ 	Attempts, Completed, Rejected                                     int
+ 	List                                                              fixtureListWork
+ 	Vector                                                            fixtureForest
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_independent_test.go
+new file mode 100644
+index 00000000..2b469df1
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_independent_test.go
+@@ -0,0 +1,234 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"math"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++type ownedFPShape struct {
++	integer                                                  wasm.ValType
++	floatCode, load, store, add, eq, ne, intoFP, fromFP, xor byte
++	bits                                                     func(float64) uint64
++	quiet, sign                                              uint64
++}
++
++func (sh ownedFPShape) constant(b []byte, x float64) []byte {
++	v := sh.bits(x)
++	if sh.floatCode == 0x7d {
++		return binary.LittleEndian.AppendUint32(append(b, 0x43), uint32(v))
++	}
++	return binary.LittleEndian.AppendUint64(append(b, 0x44), v)
++}
++
++func TestOwnedForestScalarFPOrdinary(t *testing.T) {
++	for _, sh := range []ownedFPShape{
++		{wasm.I32, 0x7d, 0x2a, 0x38, 0x92, 0x5b, 0x5c, 0xbe, 0xbc, 0x73, func(x float64) uint64 { return uint64(math.Float32bits(float32(x))) }, 0x7fc01234, 1 << 31},
++		{wasm.I64, 0x7c, 0x2b, 0x39, 0xa0, 0x61, 0x62, 0xbf, 0xbd, 0x85, math.Float64bits, 0x7ff8000000001234, 1 << 63},
++	} {
++		for _, name := range []string{"load-store", "local-set", "local-tee", "compare-eq", "compare-ne", "pressure"} {
++			t.Run(fmt.Sprintf("width=%x/%s", sh.floatCode, name), func(t *testing.T) {
++				out := sh.integer
++				var b []byte
++				var expect func(a, b uint64) uint64
++				params := []wasm.ValType{sh.integer, sh.integer}
++				align := byte(2)
++				if sh.floatCode == 0x7c {
++					align = 3
++				}
++				switch name {
++				case "load-store":
++					// Nonconstant integer prefix feeds XMM, with exact float bits
++					// crossing back to GP only after the in-bounds store/load.
++					b = []byte{0, 0x41, 0, 0x20, 0, 0x20, 1, sh.xor, sh.intoFP}
++					b = sh.constant(b, 2.5)
++					b = append(b, sh.add, sh.store, align, 0, 0x41, 0, sh.load, align, 0, sh.fromFP, 0x0b)
++					expect = func(a, b uint64) uint64 { return sh.bits(5.75) }
++				case "local-set", "local-tee":
++					b = []byte{1, 1, sh.floatCode, 0x20, 0, sh.intoFP, 0x21, 2, 0x20, 2, 0x20, 2}
++					b = sh.constant(b, 2.5)
++					opcode := byte(0x21)
++					if name == "local-tee" {
++						opcode = 0x22
++					}
++					b = append(b, sh.add, opcode, 2)
++					if name == "local-set" {
++						b = append(b, 0x20, 2)
++					}
++					// New value leaves XMM; preserved old reference remains live
++					// below it until the second reinterpret.
++					b = append(b, sh.fromFP, 0x21, 1, sh.fromFP, 0x20, 1, sh.xor, 0x0b)
++					expect = func(a, b uint64) uint64 { return a ^ sh.bits(5.75) }
++				case "compare-eq", "compare-ne":
++					out = wasm.I32
++					cmp := sh.eq
++					if name == "compare-ne" {
++						cmp = sh.ne
++					}
++					b = []byte{0, 0x20, 0, sh.intoFP, 0x20, 1, sh.intoFP, cmp, 0x04, 0x7f, 0x41, 11, 0x05, 0x41, 17, 0x0b, 0x0b}
++				case "pressure":
++					b = []byte{0}
++					for range 24 {
++						b = append(b, 0x20, 0, 0x20, 1, sh.xor, sh.intoFP)
++						b = sh.constant(b, 0.75)
++						b = append(b, sh.add)
++					}
++					for range 23 {
++						b = append(b, sh.add)
++					}
++					b = append(b, sh.fromFP, 0x0b)
++					expect = func(a, b uint64) uint64 { return sh.bits(96) }
++				}
++				m := modMem(t, 1, params, []wasm.ValType{out}, b)
++				for _, intr := range []bool{false, true} {
++					var oracle, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						var stats ModuleStats
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true}
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++							t.Fatalf("inactive scalar FP legacy body: %+v", work)
++						}
++						peeps := stats.Funcs[0].Peephole
++						if (name == "local-set" || name == "local-tee") && peeps["float-local-sink"] != 1 {
++							t.Fatalf("float local sink inactive: %v", peeps)
++						}
++						if (name == "compare-eq" || name == "compare-ne") && (peeps["float-branch-defer"] != 1 || peeps["float-branch-fuse"] != 1) {
++							t.Fatalf("float branch inactive: %v", peeps)
++						}
++						run := func(a, b, want uint64) {
++							got, err := ownedRunModule(t, cm, []uint64{a, b})
++							if got != want || err != nil {
++								t.Fatalf("intr=%v forest=%v args=%x,%x got=%x want=%x err=%v", intr, candidate, a, b, got, want, err)
++							}
++						}
++						if expect != nil {
++							a := sh.bits(3.25)
++							key := uint64(0x123)
++							if name == "local-set" || name == "local-tee" {
++								key = 0
++							}
++							run(a^key, key, expect(a, key))
++						} else {
++							for _, pair := range [][3]uint64{{sh.quiet, sh.quiet, 0}, {sh.sign, 0, 1}, {sh.bits(3.25), sh.bits(-2), 0}, {sh.bits(4), sh.bits(4), 1}} {
++								want := pair[2]
++								if name == "compare-ne" {
++									want = 1 - want
++								}
++								if want == 1 {
++									want = 11
++								} else {
++									want = 17
++								}
++								run(pair[0], pair[1], want)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							oracle = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(oracle, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++					}
++				}
++			})
++		}
++	}
++}
++
++// Synthetic ownership checks only: no execution of these emitted snippets.
++func TestOwnedForestScalarFPOrdinaryPressureOwnership(t *testing.T) {
++	for _, lane := range []string{"oldest", "barrier", "cross-bank"} {
++		var oracle []byte
++		for _, candidate := range []bool{false, true} {
++			f := closureStart(candidate)
++			f.sc = &scratch{fixtureWork: &fixtureModuleWork{Forest: candidate, ScalarFP: true}}
++			f.fpinned = maskOf(0)
++			var floats [16]*elem
++			for r := Reg(1); r < 16; r++ {
++				floats[r] = f.pushFReg(r, mtF64)
++			}
++			switch lane {
++			case "oldest":
++				// Avoid the oldest stack owner and pin an independent XMM.
++				if r := f.allocFReg(maskOf(1)); r != 2 || floats[2].st.kind != stSlot || floats[2].st.typ != mtF64 || f.fregUser[2] != nil || f.fregUser[1] != floats[1] {
++					t.Fatalf("candidate=%v wrong XMM victim, allocated %d", candidate, r)
++				}
++			case "barrier":
++				f.locals[0] = localDef{state: lsReg, reg: R12, typ: mtI32}
++				f.pinnedLocalMask = f.pinnedLocalMask.add(R12)
++				var deepest *elem
++				for _, r := range gpAlloc {
++					if r == R12 {
++						continue
++					}
++					e := f.pushReg(r, mtI32)
++					if deepest == nil {
++						deepest = e
++					}
++				}
++				// One outer full effect walk forces an XMM spill from its
++				// first pending load, then resumes and forces a GP spill.
++				floatLoad := f.pushValue(fmemRefStorage(R12, 8, true, 0))
++				intLoad := f.pushValue(memRefStorage(R12, 16, 4, false, false, 0))
++				if floatLoad.st.kind != stMemRef || intLoad.st.kind != stMemRef {
++					t.Fatal("pending loads absent")
++				}
++				f.materializePendingLoads()
++				if floats[1].st.kind != stSlot || floats[1].st.typ != mtF64 || deepest.st.kind != stSlot {
++					t.Fatalf("candidate=%v pending effect walk did not force both oldest-owner spills", candidate)
++				}
++				if floatLoad.st.kind != stReg || f.fregUser[floatLoad.st.reg] != floatLoad ||
++					intLoad.st.kind != stReg || f.regUser[intLoad.st.reg] != intLoad {
++					t.Fatalf("candidate=%v outer walk failed to resume across nested allocators", candidate)
++				}
++				if candidate {
++					independentForestNilLinks(t, f, []*elem{floats[1], deepest, floatLoad, intLoad})
++				}
++			case "cross-bank":
++				// The only unreserved GP is owned by an ordinary pending FP
++				// load, so the GP victim scan itself invokes the XMM allocator.
++				address := gpAlloc[0]
++				for _, r := range gpAlloc[1:] {
++					f.reserved = f.reserved.add(r)
++				}
++				pending := f.pushValue(fmemRefStorage(address, 8, true, -1))
++				f.regUser[address] = pending
++				if r := f.allocReg(0); r != address || pending.st.kind != stSlot || pending.st.typ != mtF64 ||
++					floats[1].st.kind != stSlot || floats[1].st.typ != mtF64 ||
++					f.regUser[address] != nil || f.fregUser[1] != nil {
++					t.Fatalf("candidate=%v GP pressure did not spill oldest XMM owner and pending load: allocated %d", candidate, r)
++				}
++				if candidate {
++					independentForestNilLinks(t, f, []*elem{floats[1], pending})
++				}
++
++			}
++			if !candidate {
++				oracle = append([]byte(nil), f.a.B...)
++			} else if !bytes.Equal(oracle, f.a.B) {
++				t.Fatalf("lane=%s pressure lowering differs", lane)
++			}
++		}
++	}
++}
