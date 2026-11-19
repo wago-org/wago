@@ -1,0 +1,251 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_pair.go
+index acfddbf0..fdc90469 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_pair.go
+@@ -20,7 +20,7 @@ func (f *fn) tryDivRemPair(r *wasm.Reader, opcode byte, op wOp, typ machineType)
+ 		return false
+ 	}
+ 	right := f.s.back()
+-	left := baseOfValentBlock(right).prev
++	left := f.s.selectorPrevious(right, 1)
+ 	local := func(e *elem) bool {
+ 		return e != f.s.head && e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.typ == typ
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_selector_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_selector_independent_test.go
+new file mode 100644
+index 00000000..c365b564
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_selector_independent_test.go
+@@ -0,0 +1,207 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"testing"
++)
++
++func TestOwnedForestSelectorRepeatedLocal(t *testing.T) {
++	for _, tc := range []struct {
++		op   wOp
++		want uint64
++	}{{opAdd, 17}, {opSub, 3}, {opMul, 34}} {
++		t.Run(fmt.Sprint(tc.op), func(t *testing.T) {
++			var oracle []byte
++			for _, candidate := range []bool{false, true} {
++				f := closureStart(candidate)
++				f.a.MovImm32(RDI, 7)
++				f.a.Store32(RSP, f.localAddr(0), RDI)
++				local := func() { f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0}) }
++				con := func(v int64) { f.pushValue(storage{kind: stConst, typ: mtI32, cval: v}) }
++				local()
++				con(1)
++				f.pushBinOp(opXor, mtI32)
++				prior := f.s.back()
++				if !prior.isDeferred() {
++					t.Fatal("prior must remain deferred")
++				}
++				local()
++				con(3)
++				f.pushBinOp(opXor, mtI32)
++				local()
++				f.pushBinOp(tc.op, mtI32)
++				if !f.s.back().isValue() {
++					t.Fatal("repeated-local early materialization did not activate")
++				}
++				con(29)
++				r := wasm.ReaderFrom(nil)
++				f.setLocal(&r, 0, false)
++				f.pushBinOp(opAdd, mtI32)
++				closureFinish(t, f, tc.want)
++				closureRun(t, f, tc.want)
++				if !candidate {
++					oracle = append([]byte(nil), f.a.B...)
++				} else if !bytes.Equal(oracle, f.a.B) {
++					t.Fatal("native differs")
++				}
++			}
++		})
++	}
++}
++
++func TestOwnedForestSelectorNearbyBoundary(t *testing.T) {
++	for _, fill := range []int{0, 14, 15, 16, 17} {
++		for _, candidate := range []bool{false, true} {
++			f := independentForestFn(candidate)
++			f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++			f.pushBinOp(opXor, mtI32)
++			for i := 0; i < fill; i++ {
++				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
++			}
++			top := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 99})
++			if got := f.hasNearbyDeferredRoot(top); got != (fill < 16) {
++				t.Fatalf("candidate=%v fill=%d got=%v", candidate, fill, got)
++			}
++		}
++	}
++}
++
++func TestOwnedForestSelectorDivRem(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.localSlot = []uint32{0, 1}
++		f.nLocalSlots = 2
++		f.localType = []machineType{mtI32, mtI32}
++		f.locals = []localDef{{state: lsMem, reg: regNone, typ: mtI32}, {state: lsMem, reg: regNone, typ: mtI32}}
++		f.a.MovImm32(RDI, 23)
++		f.a.Store32(RSP, f.localAddr(0), RDI)
++		f.a.MovImm32(RDI, 5)
++		f.a.Store32(RSP, f.localAddr(1), RDI)
++		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
++		bad := wasm.ReaderFrom([]byte{0x20, 1, 0x20, 0, 0x70})
++		if f.tryDivRemPair(&bad, 0x6e, opDivU, mtI32) || bad.Offset() != 0 {
++			t.Fatal("nonmatching probe mutated reader")
++		}
++		r := wasm.ReaderFrom([]byte{0x20, 0, 0x20, 1, 0x70})
++		if !f.tryDivRemPair(&r, 0x6e, opDivU, mtI32) || r.Offset() != 5 || f.s.logicalDepth != 2 {
++			t.Fatal("paired selector did not activate")
++		}
++		f.pushBinOp(opAdd, mtI32)
++		closureFinish(t, f, 7)
++		closureRun(t, f, 7)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("native differs")
++		}
++	}
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		r := wasm.ReaderFrom([]byte{0x20, 0, 0x20, 0, 0x70})
++		if f.tryDivRemPair(&r, 0x6e, opDivU, mtI32) || r.Offset() != 0 {
++			t.Fatal("single-root probe crossed boundary")
++		}
++	}
++}
++
++func TestOwnedForestSelectorDivisionModules(t *testing.T) {
++	for _, signed := range []bool{false, true} {
++		div, rem := byte(0x6e), byte(0x70)
++		if signed {
++			div, rem = 0x6d, 0x6f
++		}
++		// Fallthrough loop naturally retains the legacy driver without altering policy.
++		body := []byte{0, 0x03, 0x40, 0x01, 0x0b, 0x20, 0, 0x20, 1, div, 0x20, 0, 0x20, 1, rem, 0x6a, 0x0b}
++		m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++		for _, intr := range []bool{false, true} {
++			var oracle []byte
++			for _, candidate := range []bool{false, true} {
++				w := &fixtureModuleWork{Forest: candidate}
++				cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
++				if e != nil {
++					t.Fatal(e)
++				}
++				if w.LegacyBodies != 1 || w.Opcodes == 0 {
++					t.Fatalf("inactive: %+v", w)
++				}
++				for _, args := range [][]uint64{{23, 5}, {23, 0}, {0x80000000, 0xffffffff}} {
++					got, e := ownedRunModule(t, cm, args)
++					trapExpected := args[1] == 0 || (signed && args[0] == 0x80000000)
++					if trapExpected {
++						var tr *wr.TrapError
++						code := wr.TrapDivZero
++						if args[1] != 0 {
++							code = wr.TrapDivOverflow
++						}
++						if !errors.As(e, &tr) || tr.Code != code || len(tr.Frames) != 1 || !tr.Frames[0].HasProgramCounter || tr.Frames[0].ProgramCounter != 9 {
++							t.Fatalf("signed=%v candidate=%v exact DIV PC9 expected: %v", signed, candidate, e)
++						}
++					} else {
++						want := uint64(uint32(args[0])/uint32(args[1]) + uint32(args[0])%uint32(args[1]))
++						if e != nil || got != want {
++							t.Fatalf("got=%d want=%d err=%v", got, want, e)
++						}
++					}
++				}
++				if !candidate {
++					oracle = append([]byte(nil), cm.Code...)
++				} else if !bytes.Equal(oracle, cm.Code) {
++					t.Fatal("module native differs")
++				}
++				if cm.CodeImage != nil {
++					cm.CodeImage.Close()
++				}
++			}
++		}
++	}
++}
++
++func TestOwnedForestSelectorRepeatedModules(t *testing.T) {
++	for _, tc := range []struct {
++		opcode byte
++		value  uint64
++	}{{0x6a, 48}, {0x6b, 34}, {0x6c, 65}} {
++		body := []byte{0, 0x41, 20, 0x20, 2, 0x28, 2, 0, 0x20, 0, 0x20, 1, 0x73, 0x20, 1, tc.opcode, 0x6a, 0x6a, 0x0b}
++		m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++		for _, intr := range []bool{false, true} {
++			var oracle []byte
++			for _, candidate := range []bool{false, true} {
++				w := &fixtureModuleWork{Forest: candidate}
++				cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
++				if e != nil {
++					t.Fatal(e)
++				}
++				if w.LegacyBodies != 1 || w.Opcodes == 0 {
++					t.Fatal("legacy path inactive")
++				}
++				got, e := ownedRunModule(t, cm, []uint64{3, 7, 0})
++				if e != nil || got != tc.value {
++					t.Fatalf("op=%x result=%d want=%d err=%v", tc.opcode, got, tc.value, e)
++				}
++				_, e = ownedRunModule(t, cm, []uint64{3, 7, 65535})
++				var tr *wr.TrapError
++				if !errors.As(e, &tr) || tr.Code != wr.TrapLinMemOutOfBounds || len(tr.Frames) != 1 || tr.Frames[0].ProgramCounter != 5 {
++					t.Fatalf("exact earlier load PC5: %v", e)
++				}
++				if !candidate {
++					oracle = append([]byte(nil), cm.Code...)
++				} else if !bytes.Equal(oracle, cm.Code) {
++					t.Fatal("native differs")
++				}
++				if cm.CodeImage != nil {
++					cm.CodeImage.Close()
++				}
++			}
++		}
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 657c8fcf..fcbff27d 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -34,6 +34,20 @@ func treeUsesBorrowedLocal(e *elem, kind storageKind, idx uint32) bool {
+ // compete with this tree for registers; constants and already-placed values do
+ // not justify materializing this expression early on their own.
+ func (f *fn) hasNearbyDeferredRoot(node *elem) bool {
++	if v := f.s.forest; v != nil {
++		if f.s.back() != node {
++			panic("fixture forest: repeated-local root not at top")
++		}
++		// A prior concrete root contributes exactly one physical node;
++		// the first deferred root is itself encountered before its children,
++		// and terminates the original reversed postorder scan.
++		for i, n := len(v.roots)-2, 0; i >= 0 && n < 16; i, n = i-1, n+1 {
++			if v.roots[i].isDeferred() {
++				return true
++			}
++		}
++		return false
++	}
+ 	for e, n := baseOfValentBlock(node).prev, 0; e != f.s.head && n < 16; e, n = e.prev, n+1 {
+ 		if e.st.hasLogicalRoot() && e.isDeferred() {
+ 			return true

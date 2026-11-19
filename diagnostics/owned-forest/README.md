@@ -174,3 +174,17 @@ coverage remain incomplete. The observed cursor depth peaked at 7 and
 retained root capacity at 32 pointers; elem measured 64 bytes. These
 are not allocation, RSS, speed, or node-shrink measurements. Later
 fixes and focused tests are not part of this census.
+
+## Untested selector-read checkpoint
+
+Apply selector-reads-untested.patch on top of c9b12d78 (the cumulative
+actual fixture). It archives source-reviewed 72d31b26 and tests
+0af32c65 and 2ea18fc1. The source changes route paired-division and
+repeated-local selector reads through forest roots. Patch checks passed;
+test execution was held, so no focused run occurred.
+
+The original 31 recovered nil-pointer panics remain unresolved by
+execution evidence. A source-only audit correlated 18 with division and
+13 with arithmetic paths; those associations are not proven causes.
+The prior failed corpus census and its raw classifications stand.
+This snapshot provides no new corpus, runtime, or performance result.
