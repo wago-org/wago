@@ -1022,3 +1022,11 @@ Apply `v128-compare-mask-focused.patch` after `7ab5e01a`. The alternative ends a
 The first executed gate passed 40 images and 80 ordinary calls, with 20 exact native and encoder-JSON pairs. The 32 routine images each added one local pin. The eight pressure images each recorded one slot-floor raise and six full-width spills. Every mask image recorded one source-protection event; the word-mask cases observed the current local home after packing. Full-memory old/current values and asymmetric lane masks matched. The earlier staged observation was corrected before launch and never ran. Source-protection counters do not show nested GP-to-FP activity.
 
 Focused summary SHA-256: `44878fdfb4f90a03461156df96afae8362ebda906844a0dc9f3be30f07513041`. No default-helper comparison, corpus, public serialization, historical repair, or timing claim.
+
+### V128 select with deferred predicates
+
+Apply `v128-select-focused.patch` after `bf231ffb`. The alternative ends at `8065d7f6334fe737b5ab8d13353febf922f14e49` (tree `0ade06fec08411178c7ded026c2aedef7853cb74`). It covers typed V128 select with the i32 result of deferred i64.eqz and plain V128 select with deferred unsigned i64 comparison.
+
+The focused run passed 12 images and 48 ordinary calls with six exact native and encoder-JSON pairs. Each image recorded one select and one deferred i64 predicate. Four pressure images each recorded eight actual full-width spills; those spills are not attributed to the select itself. An independent whole-memory oracle covered old, live, selected, and post-select home values for both conditions.
+
+Focused summary SHA-256: `fd8d5f61e51062798674d4d9574d9c93e7c5dfcb19a5571df6147221640480d7`. No FD82, GP spill, held-input, corpus, public serialization, or timing claim. Active source and defaults are unchanged.

@@ -1,0 +1,333 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 40ad6616..7b47497b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1941,6 +1941,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128UnsignedShifts:        work.TemporaryV128UnsignedShifts,
+ 			TemporaryV128IntegerBinary:         work.TemporaryV128IntegerBinary,
+ 			TemporaryV128CompareMasks:          work.TemporaryV128CompareMasks,
++			TemporaryV128Select:                work.TemporaryV128Select,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 39b5a3b1..c69555be 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -88,11 +88,16 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 		if f.sc != nil && f.sc.fixtureWork != nil {
+ 			f.sc.fixtureWork.Opcodes++
+ 		}
++		if f.fixtureTemporarySIMD && (op == 0x1b || op == 0x1c) {
++			if err := f.checkFixtureV128Select(op, *r); err != nil {
++				return err
++			}
++		}
+ 		if f.s.forest != nil {
+ 			if err := f.checkFixtureScalarOpcode(op); err != nil {
+ 				return err
+ 			}
+-			if op == 0x1b || op == 0x1c {
++			if !f.fixtureTemporarySIMD && (op == 0x1b || op == 0x1c) {
+ 				if err := f.checkFixtureSelect(op, *r); err != nil {
+ 					return err
+ 				}
+@@ -294,6 +299,9 @@ func (f *fn) checkFixtureSelect(op byte, probe wasm.Reader) error {
+ 		return nil // No concrete alternatives in the polymorphic stack.
+ 	}
+ 	b, a := f.s.forestLast(1), f.s.forestLast(2)
++	if (a != nil && rootMachineType(a) == mtV128) || (b != nil && rootMachineType(b) == mtV128) {
++		return fmt.Errorf("fixture forest: unsupported vector select")
++	}
+ 	if op == 0x1b && (b == nil || a == nil ||
+ 		!rootMachineType(a).isFloat() && !rootMachineType(b).isFloat()) {
+ 		return nil // Existing integer lane.
+@@ -322,7 +330,7 @@ func fixtureScalarFPOpcode(op byte) bool {
+ 
+ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
+-		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) &&
++		!(op == 0x1c && (f.fixtureScalarFPSelectEnabled() || f.fixtureV128SelectEnabled())) &&
+ 		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) &&
+ 		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) && !(op == 0xfd && f.fixtureTemporarySIMD) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+@@ -1272,6 +1280,9 @@ func (f *fn) emitSelect() {
+ 	// Reserve it while branch expressions are realized, just like a borrowed
+ 	// CMOV source; fixed-role registers can be reclaimed by those expressions.
+ 	savedReserved, savedPinned := f.reserved, f.pinned
++	fixtureVectorSelect := (at.isV128() || bt.isV128()) && f.fixtureV128SelectEnabled()
++	savedFPinned := f.fpinned
++	deferredI64Predicate := fixtureVectorSelect && fixtureDeferredI64Predicate(cond)
+ 	// Keep the extra reservation for a select whose first arm still needs
+ 	// expression lowering; simple alternatives are cheaper to materialize
+ 	// through the ordinary path without extending a pinned register's lifetime.
+@@ -1308,6 +1319,13 @@ func (f *fn) emitSelect() {
+ 		f.erase(b)
+ 		f.erase(a)
+ 		f.pushVReg(aX)
++		if fixtureVectorSelect {
++			f.fpinned = savedFPinned
++			f.sc.fixtureWork.TemporaryV128Selects++
++			if deferredI64Predicate {
++				f.sc.fixtureWork.TemporaryV128SelectDeferredI64Predicates++
++			}
++		}
+ 		return
+ 	}
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 13ca8781..23f70d2a 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128Select                                                                                                                                       bool
++	TemporaryV128Selects, TemporaryV128SelectDeferredI64Predicates                                                                                            uint64
+ 	TemporaryV128CompareMasks                                                                                                                                 bool
+ 	TemporaryV128SignedCompares, TemporaryV128UnsignedCompares, TemporaryV128ByteMasks, TemporaryV128WordMasks                                                uint64
+ 	TemporaryV128CompareSlotLeases, TemporaryV128CompareLocalLeases, TemporaryV128MaskSlotLeases, TemporaryV128MaskLocalLeases, TemporaryV128MaskGPSourcePins uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 3a5f70bc..7f44c1ae 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,55 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128SelectEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128Select
++}
++
++func fixtureV128SelectImmediate(r *wasm.Reader) error {
++	n, err := r.U32()
++	if err != nil {
++		return err
++	}
++	if n != 1 {
++		return fmt.Errorf("fixture forest: unsupported typed vector select immediate")
++	}
++	bt, err := r.Byte()
++	if err != nil {
++		return err
++	}
++	if bt != 0x7b {
++		return fmt.Errorf("fixture forest: unsupported typed vector select immediate")
++	}
++	return nil
++}
++
++func (f *fn) checkFixtureV128Select(op byte, r wasm.Reader) error {
++	if !f.fixtureV128SelectEnabled() {
++		return fmt.Errorf("fixture forest: unsupported vector select")
++	}
++	if op == 0x1c {
++		if err := fixtureV128SelectImmediate(&r); err != nil {
++			return err
++		}
++	}
++	if f.unreachable {
++		return nil
++	}
++	c := f.s.back()
++	if c == nil || c == f.s.head || !fixtureI32SelectCondition(c) {
++		return fmt.Errorf("fixture forest: unsupported vector select condition")
++	}
++	b := f.s.selectorPrevious(c, 1)
++	if b == nil || b == f.s.head || rootMachineType(b) != mtV128 {
++		return fmt.Errorf("fixture forest: unsupported vector select alternatives")
++	}
++	a := f.s.selectorPrevious(b, 2)
++	if a == nil || a == f.s.head || rootMachineType(a) != mtV128 {
++		return fmt.Errorf("fixture forest: unsupported vector select alternatives")
++	}
++	return nil
++}
++
+ func (f *fn) fixtureV128CompareMasksEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128CompareMasks
+ }
+@@ -277,7 +326,16 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 			if err := f.checkFixtureSIMDMemory(r); err != nil {
+ 				return false, err
+ 			}
+-		case op == 0x0e || op == 0x10 || op == 0x1b ||
++		case op == 0x1b || op == 0x1c:
++			if !work.TemporaryV128Select {
++				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD body opcode %#x", op)
++			}
++			if op == 0x1c {
++				if err := fixtureV128SelectImmediate(r); err != nil {
++					return false, err
++				}
++			}
++		case op == 0x0e || op == 0x10 ||
+ 			op == 0x23 || op == 0x24 || op == 0x3f || op == 0xfc || !fixtureScalarOpcode(op):
+ 			return false, fmt.Errorf("fixture forest: unsupported temporary SIMD body opcode %#x", op)
+ 		default:
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_select_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_select_independent_test.go
+new file mode 100644
+index 00000000..95fcc304
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_select_independent_test.go
+@@ -0,0 +1,159 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128SelectModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 1, 0x7b, 0x20, 0}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	pc(544)
++	ld(0)
++	b = append(b, 0x21, 3, 0x20, 3)
++	pc(512)
++	b = append(b, 0x20, 3)
++	ld(16)
++	b = append(b, 0x21, 3, 0x20, 3)
++	if lane == "pressure" {
++		for i := 2; i <= 21; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++		b = append(b, 0x1a)
++	}
++	b = append(b, 0x20, 1)
++	if lane == "typed-eqz" {
++		b = append(b, 0x50, 0x1c, 1, 0x7b)
++	} else {
++		b = append(b, 0x20, 2, 0x54, 0x1b) // unsigned i64 compare yields semantic i32
++	}
++	st()
++	st() // original full-width local read survives overwrite and select
++	pc(528)
++	b = append(b, 0x20, 3)
++	st() // current local verified after select
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128SelectRun(t *testing.T, cm *encoder.CompiledModule, lane string, x, y uint64, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	choose := x < y
++	if lane == "typed-eqz" {
++		choose = x == 0
++	}
++	src := 16
++	if choose {
++		src = 0
++	}
++	want := append([]byte(nil), mem...)
++	copy(want[512:], mem[src:src+16])
++	copy(want[528:], mem[16:32])
++	copy(want[544:], mem[:16])
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + salt)
++	for i, v := range []uint64{uint64(old), x, y} {
++		binary.LittleEndian.PutUint64(in[i*8:], v)
++	}
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(want[512:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s x=%x y=%x got=%x want=%x err=%v", lane, x, y, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s byte[%d]=%x want=%x", lane, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128SelectOrdinary(t *testing.T) {
++	for _, lane := range []string{"typed-eqz", "plain-compare", "pressure"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedV128SelectModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128Select: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 || work.TemporaryV128Selects != 1 || work.TemporaryV128SelectDeferredI64Predicates != 1 {
++						t.Fatalf("inactive select/deferred condition: %+v", work)
++					}
++					if lane == "pressure" && work.TemporaryV128Spills == 0 {
++						t.Fatalf("actual vector pressure absent: %+v", work)
++					}
++					for i, data := range [][2]uint64{{0, 1}, {1, 0}, {1 << 32, 1}, {7, 1 << 63}} {
++						ownedV128SelectRun(t, cm, lane, data[0], data[1], 3+i*17)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
