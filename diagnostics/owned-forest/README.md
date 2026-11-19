@@ -221,3 +221,22 @@ storage-form cleanup was source-reviewed but not individually
 exercised by those tests. No exceptional-input, crash, or corpus gate
 ran; the 31 original corpus panics remain unverified. This is focused
 correctness evidence, not a coverage expansion or speed claim.
+
+## Focused scalar branch tables
+
+Apply brtable-focused.patch on top of 5e1316ca. It archives 3149f705,
+including implementation commits 61f3ee94 and df6deac0. The gate
+passed 20 ordinary valid-input images and 112 runtime calls, with
+10 exact native pairs. All 10 candidate images used the forest
+without fallback. Same-compile counters showed chain dispatch
+(jump 0, compact 0), dense delta (1, 0), and compact IDs (1, 1)
+in both arms and both interruption modes.
+
+Coverage includes i32 single-result nested blocks with retained
+prefix and payload snapshots, repeated and default-shared labels,
+default-only dispatch, ordinary out-of-range default, and a finite
+zero-arity loop/block case. No separate register-merge activation was
+observed. This does not verify i64, multivalue, floating point,
+exception handling, function targets, or the 31 original corpus
+panics. No exceptional-input or corpus run, timing or net savings
+claim, or default change.
