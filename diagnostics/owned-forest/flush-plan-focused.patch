@@ -1,0 +1,373 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 0e8d8481..15a92006 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1944,8 +1944,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		work := opts.fixtureWork
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+-			RecordOperandLayout:  work.RecordOperandLayout,
+-			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
++			RecordOperandLayout:         work.RecordOperandLayout,
++			FuseNoncanonicalFlushPlan:   work.FuseNoncanonicalFlushPlan,
++			RecordNoncanonicalFlushPlan: work.RecordNoncanonicalFlushPlan,
++			ScalarFPBlockResults:        work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 			ImmutableIntegerIndirect:           work.ImmutableIntegerIndirect,
+ 			ScalarFPMixedDirectCalls:           work.ScalarFPMixedDirectCalls,
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 190f747a..4fef1d12 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -1046,7 +1046,19 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 	f.stats.addFlush()
+ 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
+ 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
++	var receipt *fixtureFlushPlanWork
++	var fuse bool
++	if f.sc != nil && f.sc.fixtureWork != nil {
++		work := f.sc.fixtureWork
++		fuse = work.FuseNoncanonicalFlushPlan
++		if work.RecordNoncanonicalFlushPlan {
++			receipt = &work.NoncanonicalFlushPlan
++		}
++	}
+ 	if f.s.canonicalSlots {
++		if receipt != nil {
++			receipt.CanonicalBitExits++
++		}
+ 		return
+ 	}
+ 	roots := f.rootsBottomToTop()
+@@ -1063,16 +1075,39 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 	// time path above instead of rescanning and rebuilding the same prefix.
+ 	if canonicalSlotLayout(roots) {
+ 		f.s.canonicalSlots = true
++		if receipt != nil {
++			receipt.CanonicalLayoutExits++
++		}
+ 		return
+ 	}
+ 	gcRoots := f.tmpGCRoots[:0]
+ 	canonicalEnd := 0
+-	for _, root := range roots {
+-		canonicalEnd += rootMachineType(root).stackSlots()
+-		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
++	var wide bool
++	if fuse {
++		plan := f.planFusedNoncanonicalFlush(roots)
++		gcRoots, canonicalEnd = plan.gcRoots, plan.total
++		if receipt != nil {
++			receipt.FusedPlans++
++		}
++		f.countFixtureFlushPlan(receipt, uint64(len(roots)))
++		wide = f.flushWidePrepared(roots, gcRoots, plan.types, plan.total, plan.gpValues, plan.fpValues, plan.needsStage, stageRegisterPressure)
++	} else {
++		for _, root := range roots {
++			canonicalEnd += rootMachineType(root).stackSlots()
++			gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
++		}
++		f.tmpGCRoots = gcRoots
++		f.countFixtureFlushPlan(receipt, uint64(len(roots))*2)
++		wide = f.flushWideStack(roots, gcRoots, stageRegisterPressure)
+ 	}
+-	f.tmpGCRoots = gcRoots
+-	if f.flushWideStack(roots, gcRoots, stageRegisterPressure) {
++	if receipt != nil {
++		if wide {
++			receipt.WideRoutes++
++		} else {
++			receipt.NarrowRoutes++
++		}
++	}
++	if wide {
+ 		return
+ 	}
+ 	// A deferred root can spill a later value during this loop. Its new home
+@@ -1124,6 +1159,46 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 	f.setDepthTypesWithGCRoots(types, gcRoots)
+ }
+ 
++// Planner counts exclude canonical-layout checks and later emitter reads.
++func (f *fn) countFixtureFlushPlan(w *fixtureFlushPlanWork, rootReads uint64) {
++	if w != nil {
++		w.Plans++
++		w.RootVisits += rootReads
++		w.RootTypeReads += rootReads
++	}
++}
++
++type fixtureNoncanonicalFlushPlan struct {
++	types                     []machineType
++	gcRoots                   []bool
++	total, gpValues, fpValues int
++	needsStage                bool
++}
++
++// Both old prepasses inspect the same stable root image. No materialization
++// occurs here. In each iteration the hazard uses the preceding widths, not
++// the width after this root's eventual canonical store.
++func (f *fn) planFusedNoncanonicalFlush(roots []*elem) fixtureNoncanonicalFlushPlan {
++	plan := fixtureNoncanonicalFlushPlan{types: f.tmpFlushTypes[:0], gcRoots: f.tmpGCRoots[:0]}
++	for _, root := range roots {
++		typ := rootMachineType(root)
++		plan.gcRoots = append(plan.gcRoots, root.isValue() && root.st.hasGCRoot())
++		plan.types = append(plan.types, typ)
++		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() < plan.total ||
++			root.isDeferred() && f.flushSpillBefore(root, plan.total) {
++			plan.needsStage = true
++		}
++		if typ.isFloat() || typ.isV128() {
++			plan.fpValues++
++		} else {
++			plan.gpValues++
++		}
++		plan.total += typ.stackSlots()
++	}
++	f.tmpGCRoots = plan.gcRoots
++	return plan
++}
++
+ func canonicalSlotLayout(roots []*elem) bool {
+ 	slot := 0
+ 	for _, root := range roots {
+@@ -1159,6 +1234,10 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure
+ 		}
+ 		total += typ.stackSlots()
+ 	}
++	return f.flushWidePrepared(roots, gcRoots, types, total, gpValues, fpValues, needsStage, stageRegisterPressure)
++}
++
++func (f *fn) flushWidePrepared(roots []*elem, gcRoots []bool, types []machineType, total, gpValues, fpValues int, needsStage, stageRegisterPressure bool) bool {
+ 	if stageRegisterPressure {
+ 		// Keep the scratch-register reserve available while materializing deferred
+ 		// wrapper arguments. Otherwise a flush that begins with no spilled roots
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index f7ae478e..a30ff62d 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -52,7 +52,7 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 		}
+ 		for _, intr := range []bool{false, true} {
+ 			t.Run(fmt.Sprintf("%s/interruptible=%t", tc.name, intr), func(t *testing.T) {
+-				w := &fixtureModuleWork{Forest: forest, RecordOperandLayout: true}
++				w := &fixtureModuleWork{Forest: forest, RecordOperandLayout: true, RecordNoncanonicalFlushPlan: true, FuseNoncanonicalFlushPlan: compactOperandNodes}
+ 				switch tc.name {
+ 				case "v128-control-overlap":
+ 					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128RegionalLocals, w.TemporaryV128BlockResults = true, true, true, true
+@@ -87,6 +87,7 @@ func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
+ 					t.Fatal(err)
+ 				}
+ 				receipt := map[string]any{"arm": arm, "case": tc.name, "intr": intr, "nativeSHA": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoderSHA": fmt.Sprintf("%x", sha256.Sum256(enc)), "codeBytes": len(cm.Code), "bodyBytes": bytesTotal, "bodyHashes": bodyHashes, "layout": l, "caps": w.OperandCapacities, "forestHeaderBytes": unsafe.Sizeof(fixtureForest{}), "coldSidecarElemBytes": unsafe.Sizeof(elemCold{}), "attempts": w.Attempts, "legacy": w.LegacyBodies, "opcodes": w.Opcodes, "rootStores": w.Vector.stores, "rootRetirements": w.Vector.retirements, "cursorVisits": w.Vector.visits, "listLinkWrites": w.List.linkWrites, "listEffectVisits": w.List.effectVisits, "classifier": w.TemporaryV128Classifier, "inlineClassifier": w.TemporaryV128InlineClassifier, "vectorPreflightBytes": w.TemporaryV128PreflightBytes, "vectorPreflightOpcodes": w.TemporaryV128PreflightOpcodes}
++				receipt["flushPlan"] = w.NoncanonicalFlushPlan
+ 				receipt["hintClassifier"] = w.TemporaryV128HintClassifier
+ 				receipt["hintSharedBytes"] = w.TemporaryV128HintSharedBytes
+ 				receipt["hintFactsUsed"] = w.TemporaryV128HintFactsUsed
+@@ -1158,3 +1159,188 @@ func TestOwnedForestSparseHintRetentionOrdinary(t *testing.T) {
+ 		}
+ 	})
+ }
++
++// This oracle reproduces the old independent prepasses. It is used on an
++// immutable explicit root image, without reading the candidate's plan.
++func layoutOldFlushPlan(roots []*elem) (types []machineType, gc []bool, total, gp, fp int, low bool) {
++	var canonicalEnd int
++	for _, x := range roots {
++		canonicalEnd += rootMachineType(x).stackSlots()
++		gc = append(gc, x.isValue() && x.st.hasGCRoot())
++	}
++	var hazard func(*elem, int) bool
++	hazard = func(x *elem, d int) bool {
++		if x == nil || d == 0 {
++			return false
++		}
++		if x.isValue() {
++			return x.st.kind == stSlot && x.st.slotIndex() < d
++		}
++		return hazard(x.arg0, d) || hazard(x.arg1, d)
++	}
++	for _, x := range roots {
++		typ := rootMachineType(x)
++		types = append(types, typ)
++		low = hazard(x, total) || low
++		if typ.isFloat() || typ.isV128() {
++			fp++
++		} else {
++			gp++
++		}
++		total += typ.stackSlots()
++	}
++	if canonicalEnd != total {
++		panic("old flush totals disagree")
++	}
++	return
++}
++
++func TestOwnedForestFlushPlanTupleOrdinary(t *testing.T) {
++	val := func(k storageKind, typ machineType, slot uint32) *elem {
++		return &elem{st: storage{kind: k, typ: typ, slot: slot}}
++	}
++	def := func(a, b *elem) *elem {
++		return &elem{st: storage{kind: deferredStorageKind, typ: mtI32}, arg0: a, arg1: b}
++	}
++	gcRoot := val(stReg, mtI64, 0)
++	gcRoot.st.setGCRoot(true)
++	v := val(stSlot, mtV128, 0)
++	for _, c := range []struct {
++		name           string
++		roots          []*elem
++		total, gp, fp  int
++		low, canonical bool
++	}{
++		{"empty", nil, 0, 0, 0, false, true},
++		{"canonical-mixed", []*elem{v, val(stSlot, mtF64, 2), val(stSlot, mtI32, 3)}, 4, 1, 2, false, true},
++		{"low-nested-child-after-v128", []*elem{v, def(val(stReg, mtI32, 0), def(val(stSlot, mtI32, 1), nil))}, 3, 1, 1, true, false},
++		{"equal-threshold-child-and-gc", []*elem{v, def(val(stSlot, mtI32, 2), nil), gcRoot}, 4, 2, 1, false, false},
++		{"low-slot-root-after-v128", []*elem{v, val(stSlot, mtI32, 1)}, 3, 1, 1, true, false},
++		{"late-custom-plan-only", []*elem{v, val(stReg, mtCustom, 0)}, 3, 1, 1, false, false},
++	} {
++		t.Run(c.name, func(t *testing.T) {
++			f := &fn{}
++			wantTypes, wantGC, total, gp, fp, low := layoutOldFlushPlan(c.roots)
++			if total != c.total || gp != c.gp || fp != c.fp || low != c.low || canonicalSlotLayout(c.roots) != c.canonical {
++				t.Fatalf("old tuple mismatch total=%d gp=%d fp=%d low=%t", total, gp, fp, low)
++			}
++			got := f.planFusedNoncanonicalFlush(c.roots)
++			if !reflect.DeepEqual(got.types, wantTypes) || !reflect.DeepEqual(got.gcRoots, wantGC) || got.total != total || got.gpValues != gp || got.fpValues != fp || got.needsStage != low {
++				t.Fatalf("new tuple=%+v types=%v gc=%v", got, wantTypes, wantGC)
++			}
++		})
++	}
++}
++
++func TestOwnedForestFlushPlanReentrantOrdinary(t *testing.T) {
++	for _, lane := range []string{"gp-deferred-narrow", "gp-wrapper-budget-wide", "v128-wrapper-pressure-wide"} {
++		t.Run(lane, func(t *testing.T) {
++			var original []byte
++			for _, fused := range []bool{false, true} {
++				w := &fixtureModuleWork{Forest: true, RecordNoncanonicalFlushPlan: true, FuseNoncanonicalFlushPlan: fused}
++				sc := newCompileScratch(64)
++				sc.fixtureWork = w
++				sc.ensureTargetStack()
++				f := &fn{a: &encoder.Asm{}, s: sc.stack, sc: sc, m: &wasm.Module{}, localSlot: []uint32{0}, nLocalSlots: 1, globalCellReg: regNone, memSizeReg: regNone, moduleGlobalRegionalLease: regNone, policy: currentCodegenPolicy(), fixtureTemporarySIMD: lane == "v128-wrapper-pressure-wide"}
++				f.localType = []machineType{mtI32}
++				f.locals = []localDef{{state: lsMem, reg: regNone, typ: mtI32}}
++				f.a.Push(RBX)
++				f.a.Push(RCX)
++				f.a.SubRsp(1024)
++				width, want := 0, uint64(0)
++				if lane != "v128-wrapper-pressure-wide" {
++					f.a.MovReg64(RBX, RSP)
++					f.a.MovImm32(RDI, 17)
++					f.a.Store32(RSP, 768, RDI)
++					f.a.MovImm32(RDI, 23)
++					f.a.Store32(RSP, 772, RDI)
++					f.a.MovImm32(R12, 0)
++					f.locals[0] = localDef{state: lsReg, reg: R12, typ: mtI32}
++					f.pinnedLocalMask = f.pinnedLocalMask.add(R12)
++					f.pushValue(memRefStorage(R12, 768, 4, false, false, 0))
++					f.pushValue(memRefStorage(R12, 772, 4, false, false, 0))
++					f.pushBinOp(opAdd, mtI32)
++					if !f.s.back().isDeferred() {
++						t.Fatal("missing deepest deferred root")
++					}
++					want, width = 40, 1
++					for i, r := range gpAlloc {
++						if r == R12 {
++							continue
++						}
++						f.a.MovImm32(r, int32(i+1))
++						f.pushReg(r, mtI32)
++						want += uint64(i + 1)
++						width++
++					}
++				} else {
++					// Slot 40 is outside canonical destinations. Every XMM is
++					// occupied by live later roots when the first slot reloads.
++					f.a.MovImm32(RDI, 17)
++					f.a.Store64(RSP, f.spillOff(40), RDI)
++					f.a.MovImm32(RDI, 23)
++					f.a.Store64(RSP, f.spillOff(41), RDI)
++					f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 40})
++					want, width = 40, 2
++					for j := 0; j < 16; j++ {
++						lo, hi := int32(101+3*j), int32(401+7*j)
++						f.a.MovImm32(RDI, lo)
++						f.a.Store64(RSP, 768, RDI)
++						f.a.MovImm32(RDI, hi)
++						f.a.Store64(RSP, 776, RDI)
++						f.mov128LoadDisp(Reg(j), RSP, 768)
++						f.pushVReg(Reg(j))
++						want += uint64(lo + hi)
++						width += 2
++					}
++				}
++				n := len(w.Vector.roots)
++				preGP, preV128 := w.Vector.spills, w.TemporaryV128Spills
++				if lane == "gp-deferred-narrow" {
++					f.flush()
++				} else {
++					f.flushWrapper()
++				}
++				gpSpills, v128Spills := w.Vector.spills-preGP, w.TemporaryV128Spills-preV128
++				r := w.NoncanonicalFlushPlan
++				wide, narrow := uint64(0), uint64(1)
++				if lane != "gp-deferred-narrow" {
++					wide, narrow = 1, 0
++				}
++				reads, fusedPlans := uint64(2*n), uint64(0)
++				if fused {
++					reads, fusedPlans = uint64(n), 1
++				}
++				requiredSpill := gpSpills > 0 && v128Spills == 0
++				if lane == "v128-wrapper-pressure-wide" {
++					requiredSpill = v128Spills > 0 && gpSpills == 0
++				}
++				if r.Plans != 1 || r.FusedPlans != fusedPlans || r.RootVisits != reads || r.RootTypeReads != reads || r.WideRoutes != wide || r.NarrowRoutes != narrow || !requiredSpill || !canonicalSlotLayout(w.Vector.roots) {
++					t.Fatalf("flush route/actual reentrant spill absent: receipt=%+v gpSpills=%d v128Spills=%d", r, gpSpills, v128Spills)
++				}
++				// Use every canonical slot, both V128 halves included, after
++				// actual materialization. The frame was reserved up front.
++				f.a.MovImm32(RAX, 0)
++				for i := 0; i < width; i++ {
++					f.a.Load64(RDX, RSP, f.spillOff(i))
++					f.a.Add64(RAX, RDX)
++				}
++				f.a.AddRsp(1024)
++				f.a.Pop(RCX)
++				f.a.Pop(RBX)
++				f.a.Store64(RCX, 0, RAX)
++				f.a.Ret()
++				got, e := layoutProbeOwnedRunModule(t, &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}, nil)
++				if e != nil || got != want {
++					t.Fatalf("canonical sum got=%d want=%d err=%v", got, want, e)
++				}
++				if !fused {
++					original = append([]byte(nil), f.a.B...)
++				} else if !bytes.Equal(original, f.a.B) {
++					t.Fatal("old/new direct emission bytes differ")
++				}
++				layoutEmit(t, "FLUSH_EMIT", map[string]any{"lane": lane, "fused": fused, "plan": r, "gpSpillsDuringFlush": gpSpills, "v128SpillsDuringFlush": v128Spills, "slots": width, "nativeBytes": len(f.a.B), "typeScratchCap": cap(f.tmpFlushTypes), "gcScratchCap": cap(f.tmpGCRoots), "narrowTypeScratchCap": cap(f.tmpTypes)})
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 4449c690..d63b5aef 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -290,7 +290,14 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ }
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
++type fixtureFlushPlanWork struct {
++	CanonicalBitExits, CanonicalLayoutExits                                uint64
++	Plans, FusedPlans, RootVisits, RootTypeReads, WideRoutes, NarrowRoutes uint64
++}
++
+ type fixtureModuleWork struct {
++	FuseNoncanonicalFlushPlan, RecordNoncanonicalFlushPlan                                                                                                    bool
++	NoncanonicalFlushPlan                                                                                                                                     fixtureFlushPlanWork
+ 	TemporaryV128HintClassification                                                                                                                           bool
+ 	TemporaryV128HintClassifier                                                                                                                               fixtureVectorClassificationWork
+ 	TemporaryV128HintSharedBytes, TemporaryV128HintFactsUsed, TemporaryV128HintFallbacks                                                                      uint64

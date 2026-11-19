@@ -1094,3 +1094,11 @@ Apply `sparse-hint-facts-focused.patch` after `62794c20` to reach `fd61962a6ebe8
 On the mixed fixture, requested backing fell from 96 to 4 bytes. The table header grew from 24 to 48 bytes, so the charged footprint fell from 120 to 52 bytes. The 96-function error-free fixture recorded 96 state bytes, no error backing, and a 48-byte header; the old 2,304-byte dense backing is derived, not measured on that fixture. Seven sparse errors used eight reserved records (192 bytes) plus 24 state bytes and the 48-byte header, with four grows and seven copies. These totals exclude error objects, transient overlap, allocator rounding, timing and RSS.
 
 Summary SHA-256: `3788ed1ba7a67713e6a3d2f210f5a079e973918e36fb953e0e68fca126e65bb7`. No public serializer, corpus, historical replay, or default change.
+
+### Flush planning: child checks passed, wrapper failed
+
+Apply `flush-plan-focused.patch` after `fd61962a` to reach `4ad04af0cfb9da58a1a08b513a8f659001deafd4` (tree `1196a4c21b90f974bcd1cb94ab6f852b63171447`). Child builds, semantic tests and strict comparisons passed: 36 ordinary images, 114 calls and 24 body/native/encoder-JSON comparisons, plus six direct emission/call cases and three exact direct native pairs.
+
+Successful planner root visits and type reads went from 630 to 315 per mode in this focused fixture. The counts are source-derived and do not measure machine stores, recursive hazard work, emitter rereads or runtime. Direct pairs retained exact emitted bytes and scratch capacities.
+
+The outer runner still exited 1. A later source-only inspection showed that its final check compared the Git-state dictionary with a flush-count dictionary via a shadowed variable. The start and durable exit records and independent source recheck agreed. The failed wrapper result is retained and the gate was not rerun. Summary SHA-256: `72ef796d7a85787c6d550db3fd4c76619a97c2f49da76eab04dcab41cbdafc7d`; separate attribution SHA-256: `f3357817dde88125bcc5a84dd32428036cc7aca08617fa95b5ea65e9f4f84fc7`. No corpus, timing, RSS, public serializer or default change.
