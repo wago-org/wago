@@ -662,3 +662,21 @@ unchanged.
 
 Focused summary SHA-256:
 `1d42b8b0db565175b41018052c6ebc6fc1679ac03bec76f8824f3e288bda1a75`.
+
+## Focused inline composition with fill and empty branch-table edges
+
+Apply inline-composition-focused.patch on top of 0ef1a34a. At 89d31452
+the focused gate passed eight images and 32 ordinary calls with four
+exact native and encoder-metadata pairs. Each image recorded one
+inline splice and one unrolled FC11 fill. The four table images
+recorded two empty edges each, with no jump or compact table selection
+(short chain only). The tests checked all 64 KiB of memory and the
+retained caller prefix.
+
+This separate capability is limited to nonrecursive control inlining.
+Preflight checks FC11's memory and internal zero-arity table/default
+targets before binding. No larger table strategy, public artifact
+codec, corpus, or timing result. Defaults remain unchanged.
+
+Focused summary SHA-256:
+`bfba819a04051e187d677d667375107e184042b38787f4007ad97f91cb265732`.

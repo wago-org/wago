@@ -1,0 +1,221 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 8ba5d5e8..d1f73f41 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1921,6 +1921,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPSignedSaturation:           work.ScalarFPSignedSaturation,
+ 			ScalarFPUnsignedF64ToI32Saturation: work.ScalarFPUnsignedF64ToI32Saturation,
+ 			IntegerControlInline:               work.IntegerControlInline,
++			IntegerControlInlineComposition:    work.IntegerControlInlineComposition,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 01822611..106e5356 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1310,19 +1310,44 @@ func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
+ 	}
+ 	r := wasm.NewReader(t.body)
+ 	depth := 1 // synthetic function-result frame
++	var emptyFrames uint64
++	compose := !t.recursive() && f.sc != nil && f.sc.fixtureWork != nil &&
++		f.sc.fixtureWork.IntegerControlInlineComposition
+ 	for r.HasNext() {
+ 		op, err := r.Byte()
+ 		if err != nil || !fixtureScalarOpcode(op) {
+ 			return false
+ 		}
+ 		switch op {
+-		case 0x03, 0x0e, 0x23, 0x24, 0xfc: // loop, br_table, globals, prefixed effects
++		case 0x03, 0x23, 0x24: // loops and globals stay outside this lane
+ 			return false
++		case 0xfc:
++			sub, err := r.U32()
++			if !compose || err != nil || sub != 11 || f.checkFixtureFC(sub, *r) != nil {
++				return false
++			}
++			// checkFixtureFC validates a reader copy; advance our own now.
++			if _, err := r.U32(); err != nil {
++				return false
++			}
++			continue
++		case 0x0e:
++			if !compose || depth > 64 || !fixtureInlineEmptyBranchTable(r, depth, emptyFrames) {
++				return false
++			}
++			continue
+ 		case 0x02, 0x04:
+ 			bt, ok := r.Peek()
+ 			if !ok || (bt != 0x40 && bt != 0x7f && bt != 0x7e) {
+ 				return false
+ 			}
++			if compose && depth < 64 {
++				bit := uint64(1) << depth
++				emptyFrames &^= bit
++				if bt == 0x40 {
++					emptyFrames |= bit
++				}
++			}
+ 			depth++
+ 		case 0x0b:
+ 			depth--
+@@ -1353,6 +1378,23 @@ func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
+ 	return false
+ }
+ 
++// Every table label, including the default, must name an empty frame inside
++// the callee. Bit zero represents the synthetic return and is never eligible.
++func fixtureInlineEmptyBranchTable(r *wasm.Reader, depth int, emptyFrames uint64) bool {
++	n, err := r.U32()
++	if err != nil || uint64(n)+1 > uint64(r.BytesLeft()) {
++		return false
++	}
++	for i := uint32(0); i <= n; i++ {
++		label, err := r.U32()
++		if err != nil || uint64(label) >= uint64(depth-1) ||
++			emptyFrames&(uint64(1)<<(depth-1-int(label))) == 0 {
++			return false
++		}
++	}
++	return true
++}
++
+ func (f *fn) realizeInlineLocalBeforeWrite(local int) {
+ 	if f.s.forest != nil {
+ 		f.realizeLocalRefsCursor(local, nil, f.s.fixtureScan(false))
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 9715e9c8..ec952810 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	IntegerControlInlineComposition                                                                 bool
+ 	ScalarFPUnsignedF64ToI32Saturation                                                              bool
+ 	FPUnsignedF64ToI32SaturationEmissions, FPUnsignedF64ToI32SaturationBoundPressure                uint64
+ 	ScalarFPInternalDirectCalls                                                                     bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_inline_composition_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_composition_independent_test.go
+new file mode 100644
+index 00000000..0bd78a32
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_inline_composition_independent_test.go
+@@ -0,0 +1,117 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedInlineCompositionModule(t *testing.T, combined bool) *wasm.Module {
++	t.Helper()
++	i32 := wasm.I32
++	caller := []byte{0, 0x20, 0, 0x20, 1, 0x20, 2, 0x10, 1, 0x41, 23, 0x21, 0, 0x20, 0, 0x6a, 0x0b}
++	leaf := []byte{1, 1, 0x7f,
++		0x41, 32, 0x20, 0, 0x41, 8, 0xfc, 11, 0,
++		0x41, 1, 0x21, 2}
++	if combined {
++		leaf = append(leaf,
++			0x02, 0x40, 0x02, 0x40, 0x02, 0x40,
++			0x20, 1, 0x0e, 2, 0, 1, 2,
++			0x0b, 0x20, 2, 0x41, 2, 0x6a, 0x21, 2,
++			0x0b, 0x20, 2, 0x41, 4, 0x6a, 0x21, 2,
++			0x0b)
++	} else {
++		leaf = append(leaf, 0x02, 0x40, 0x20, 1, 0x0d, 0, 0x41, 3, 0x21, 2, 0x0b)
++	}
++	leaf = append(leaf, 0x41, 40, 0x20, 2, 0x3a, 0, 0, 0x0b)
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i32, i32, i32}, []wasm.ValType{i32}), wasmtest.FuncType([]wasm.ValType{i32, i32}, nil))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(leaf))), leaf...))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestInlineCompositionOrdinary(t *testing.T) {
++	for _, name := range []string{"fill", "fill-table"} {
++		t.Run(name, func(t *testing.T) {
++			combined := name == "fill-table"
++			m := ownedInlineCompositionModule(t, combined)
++			rows := []struct {
++				args   [4]int
++				marker byte
++			}{
++				{[4]int{7, 0x123, 0, 0}, 7},
++				{[4]int{11, 0x2fa, 1, 0}, 5},
++				{[4]int{13, 0x374, 2, 0}, 1},
++				{[4]int{19, 0x4ff, 0xffffffff, 0}, 1},
++			}
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, IntegerControlInline: true, IntegerControlInlineComposition: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 || work.IntegerControlInlineLeaves != 1 || work.IntegerControlInlineRecursive != 0 {
++						t.Fatalf("inactive composition: %+v", work)
++					}
++					st := stats.Funcs[0]
++					// Source has exactly one FC11 and internal br_table, and no separate
++					// call lowering is accepted. Two explicit indices use the chain path.
++					if st.Calls["inline"] != 1 || st.Calls["regabi"] != 0 || st.Calls["wrapper"] != 0 || st.Calls["mixed"] != 0 ||
++						st.Peephole["memfill-unroll"] != 1 || st.Peephole["br-table-jump"] != 0 || st.Peephole["br-table-compact"] != 0 {
++						t.Fatalf("wrong composition strategy: calls=%v peeps=%v", st.Calls, st.Peephole)
++					}
++					for _, row := range rows {
++						want := make([]byte, 65536)
++						for i := range want {
++							want[i] = byte(i*29 + 13)
++						}
++						for i := 32; i < 40; i++ {
++							want[i] = byte(row.args[1])
++						}
++						want[40] = 1
++						if combined {
++							want[40] = row.marker
++						} else if row.args[2] == 0 {
++							want[40] = 3
++						}
++						ownedBulkRun(t, cm, row.args, want)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v forest=%v bytes=%d calls=%v peeps=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, st.Peephole, work)
++				}
++			}
++		})
++	}
++}
