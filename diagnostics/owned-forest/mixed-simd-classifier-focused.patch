@@ -1,0 +1,443 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 557b5e46..7cf1e03e 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -408,6 +408,15 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 	target := f.selectedInlineTarget(idx)
+ 	if f.s.forest != nil {
+ 		if target != nil {
++			if f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.TemporaryV128PerFunction {
++				vector, err := classifyFixtureVectorBody(f.m, &f.classifier, target.body, &f.sc.fixtureWork.TemporaryV128InlineClassifier)
++				if err != nil {
++					return err
++				}
++				if vector {
++					return fmt.Errorf("fixture forest: selected inline vector state is not ported")
++				}
++			}
+ 			supportedBody := false
+ 			if target.hasCtrl {
+ 				supportedBody = f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.IntegerControlInline &&
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 8ea970cd..a2239f8d 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -395,24 +395,25 @@ type fn struct {
+ 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
+ 	// an eligible local; locals[x].reg is populated only while its cached value is
+ 	// live. Physical registers are selected and reclaimed dynamically.
+-	intervalReg          []Reg
+-	intervalLast         []uint32
+-	intervalScore        []uint32
+-	intervalEvents       []intervalLocalEvent
+-	intervalHead         []uint32
+-	intervalOwner        [16]int
+-	intervalRegLimit     int
+-	intervalActive       int
+-	intervalNext         bool
+-	intervalI64Weight    bool
+-	intervalScratch      bool
+-	intervalR8           bool
+-	intervalRSI          bool
+-	intervalControl      bool
+-	moduleHasSIMD        bool
+-	fixtureTemporarySIMD bool
+-	localWritten         uint64 // conservative lexical write history for the first 64 locals
+-	loopLocalParams      loopLocalParamHomes
++	intervalReg              []Reg
++	intervalLast             []uint32
++	intervalScore            []uint32
++	intervalEvents           []intervalLocalEvent
++	intervalHead             []uint32
++	intervalOwner            [16]int
++	intervalRegLimit         int
++	intervalActive           int
++	intervalNext             bool
++	intervalI64Weight        bool
++	intervalScratch          bool
++	intervalR8               bool
++	intervalRSI              bool
++	intervalControl          bool
++	moduleHasSIMD            bool
++	fixtureTemporarySIMD     bool
++	fixtureScalarSIMDSibling bool
++	localWritten             uint64 // conservative lexical write history for the first 64 locals
++	loopLocalParams          loopLocalParamHomes
+ 
+ 	// Register occupancy: regUser[r] is the value elem currently resident in
+ 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
+@@ -1935,6 +1936,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128RegionalLocals:        work.TemporaryV128RegionalLocals,
+ 			TemporaryV128Loops:                 work.TemporaryV128Loops,
+ 			TemporaryV128BlockResults:          work.TemporaryV128BlockResults,
++			TemporaryV128PerFunction:           work.TemporaryV128PerFunction,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+@@ -3718,6 +3720,22 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		return nil, nil, 0, fmt.Errorf("unknown function type")
+ 	}
+ 	c := &m.Code[funcIdx]
++	classified, vectorBody := false, false
++	if work := sc.fixtureWork; work != nil && work.TemporaryV128PerFunction {
++		if !work.TemporaryV128SIMD {
++			return nil, nil, 0, fmt.Errorf("fixture forest: per-function SIMD classification requires temporary SIMD")
++		}
++		classified = true
++		vectorBody, err = classifyFixtureVectorBody(m, &sc.classifier, c.BodyBytes, &work.TemporaryV128Classifier)
++		if err != nil {
++			return nil, nil, 0, err
++		}
++		vectorBody = work.TemporaryV128Classifier.signatureHasVector(ft) || vectorBody
++		for _, run := range c.Locals.Runs {
++			work.TemporaryV128Classifier.TypeVisits++
++			vectorBody = wasm.EqualValType(run.Type, wasm.V128) || vectorBody
++		}
++	}
+ 	if work := sc.fixtureWork; work != nil && work.Forest {
+ 		fixtureFPABI := work.ScalarFP && work.ScalarFPFunctionABI &&
+ 			fixtureScalarFPFunctionSignature(ft, work.maxFixtureFPArgs()) &&
+@@ -3790,6 +3808,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	f.stats, f.policy, f.gcFrameRoots = stats, policy, gcFrameRoots
+ 	f.moduleEH, f.threadedMemory0 = moduleEH, mt0.Shared
+ 	f.hasLoop, f.moduleHasSIMD = hints.flags.has(hintHasLoop), moduleHasSIMD
++	f.fixtureScalarSIMDSibling = classified && !vectorBody && moduleHasSIMD
++	if f.fixtureScalarSIMDSibling {
++		sc.fixtureWork.TemporaryV128ScalarSiblings++
++	}
+ 	f.compactLoopAlign32 = policy.EnabledOption(optCompactLoopAlign32) && len(c.BodyBytes) <= 64
+ 	f.bmi2Rorx = bmi2Rorx
+ 	f.gcSharedResolver, f.gcDeferResolver = hints.flags.has(hintGCSharedResolver), hints.flags.has(hintGCDeferredResolver)
+@@ -4217,10 +4239,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		fpPinLimit = 8
+ 	}
+ 	if work := sc.fixtureWork; work != nil && work.TemporaryV128SIMD &&
+-		(f.moduleHasSIMD || work.TemporaryV128Locals && f.fixtureHasVectorLocal()) {
++		(classified && vectorBody || !classified && (f.moduleHasSIMD || work.TemporaryV128Locals && f.fixtureHasVectorLocal())) {
+ 		sawSIMD, err := f.preflightFixtureTemporarySIMD(c.BodyBytes)
+ 		if err != nil {
+-			if work.Forest {
++			if work.Forest || classified {
+ 				return nil, nil, 0, err
+ 			}
+ 		} else {
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 9de0d0be..39b5a3b1 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -327,7 +327,7 @@ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 		!(op == 0x40 && f.fixturePrivateMemoryGrowEnabled()) && !(op == 0xfd && f.fixtureTemporarySIMD) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+-	if f.moduleEH || (f.moduleHasSIMD && !f.fixtureTemporarySIMD) || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
++	if f.moduleEH || (f.moduleHasSIMD && !f.fixtureTemporarySIMD && !f.fixtureScalarSIMDSibling) || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+ 		(f.vectorRegion.enabled && !f.fixtureV128RegionEnabled()) {
+ 		return fmt.Errorf("fixture forest: unsupported specialized function state")
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 70ea21ff..90688391 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,9 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128PerFunction                                                                                                                 bool
++	TemporaryV128ScalarSiblings                                                                                                              uint64
++	TemporaryV128Classifier, TemporaryV128InlineClassifier                                                                                   fixtureVectorClassificationWork
+ 	TemporaryV128BlockResults                                                                                                                bool
+ 	TemporaryV128BlockSlotMerges, TemporaryV128BlockStraightFallthroughs, TemporaryV128BlockTwoSlotMoves, TemporaryV128BlockOverlappingMoves uint64
+ 	TemporaryV128Loops                                                                                                                       bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_simd_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_simd_independent_test.go
+new file mode 100644
+index 00000000..0a723f1a
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_mixed_simd_independent_test.go
+@@ -0,0 +1,162 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedMixedSIMDClassifierModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	i := wasm.I32
++	// Preserve the first x across direct and naturally selected inline calls.
++	// The typed mutable global is also read directly in ordinary scalar bodies.
++	caller := []byte{0, 0x20, 0, 0x20, 0, 0x10, 1, 0x6a, 0x20, 0, 0x10, 2, 0x6a, 0x23, 0, 0x6a, 0x0b}
++	direct := []byte{0, 0x03, 0x40, 1, 0x0b}
++	direct = append(direct, bytes.Repeat([]byte{1}, 512)...)
++	direct = append(direct, 0x20, 0, 0x23, 0, 0x6a, 0x0b)
++	leaf := []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x0b}
++	// Read full vector, xor constant, store to offset 32; independent scalar
++	// return reads lane 0 from the transformed destination.
++	vec := []byte{0, 0x20, 0, 0x41, 32, 0x41, 0, 0xfd, 0, 4, 0, 0xfd, 12}
++	vec = append(vec, ownedSIMDTempMask[:]...)
++	vec = append(vec, 0xfd, 81, 0xfd, 11, 4, 0, 0x41, 32, 0xfd, 0, 4, 0, 0xfd, 27, 0, 0x73, 0x0b)
++	code := func(b []byte) []byte { return append(wasmtest.ULEB(uint32(len(b))), b...) }
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(i, true, []byte{0x41, 17, 0x0b}))),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("scalar", 0, 0), wasmtest.ExportEntry("vector", 0, 3))),
++		wasmtest.Section(10, wasmtest.Vec(code(caller), code(direct), code(leaf), code(vec))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedMixedSIMDClassifierRun(t *testing.T, cm *encoder.CompiledModule) {
++	t.Helper()
++	if len(cm.Entry) != 4 || len(cm.InternalEntry) != 4 || cm.Entry[0] >= cm.InternalEntry[0] || cm.Entry[3] >= cm.InternalEntry[3] {
++		t.Fatal("missing genuine exported adapters")
++	}
++
++	for _, x := range []uint32{7, 0x80000001, 0xfffffff0} {
++		want := 3*x + 37
++		got, err := ownedRunModule(t, cm, []uint64{uint64(x)})
++		if err != nil || got != uint64(want) {
++			t.Fatalf("scalar x=%x got=%x want=%x err=%v", x, got, want, err)
++		}
++		ownedMixedSIMDVectorRun(t, cm, x)
++
++	}
++}
++
++func ownedMixedSIMDMetadata(t *testing.T, cm *encoder.CompiledModule) []byte {
++	t.Helper()
++	meta := *cm
++	meta.Code, meta.CodeImage = nil, nil
++	encoded, err := json.Marshal(meta)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return encoded
++}
++
++func ownedMixedSIMDVectorRun(t *testing.T, cm *encoder.CompiledModule, x uint32) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + int(x&15))
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 16 {
++		want[32+i] = mem[i] ^ ownedSIMDTempMask[i]
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(x))
++	err = eng.Call(entry+uintptr(cm.Entry[3]), in, jm.LinearMemory(), tr, out)
++	expected := x ^ binary.LittleEndian.Uint32(want[32:36])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("vector got=%x want=%x err=%v", got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		t.Fatal("incorrect full 16-byte vector transform or unrelated memory changed")
++	}
++}
++
++func TestOwnedForestMixedSIMDClassifierOrdinary(t *testing.T) {
++	m := ownedMixedSIMDClassifierModule(t)
++	for _, intr := range []bool{false, true} {
++		var native, metaOracle []byte
++		for _, candidate := range []bool{false, true} {
++			work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128PerFunction: true}
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				defer cm.CodeImage.Close()
++			}
++			if work.LegacyBodies < 3 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 || work.TemporaryV128ScalarSiblings != 3 {
++				t.Fatalf("inactive scalar/vector sibling lowering: %+v", work)
++			}
++			if c := work.TemporaryV128Classifier; c.Bodies != 4 || c.Bytes == 0 || c.Opcodes == 0 || c.TypeVisits != 14 || work.TemporaryV128PreflightBytes == 0 || work.TemporaryV128PreflightOpcodes == 0 {
++				t.Fatalf("inactive per-body classification: %+v", work)
++			}
++			// Only the forest arm runs the selected, type-free inline leaf
++			// through the pre-bind classifier; it has no referenced types.
++			c := work.TemporaryV128InlineClassifier
++			if candidate && (c.Bodies != 1 || c.Bytes == 0 || c.Opcodes == 0 || c.TypeVisits != 0) ||
++				!candidate && c != (fixtureVectorClassificationWork{}) {
++				t.Fatalf("unexpected selected-inline work: %+v", c)
++			}
++			st := stats.Funcs[0]
++			if st.Calls["inline"] != 1 || st.Calls["regabi"] != 1 || st.Calls["wrapper"] != 0 || st.Calls["mixed"] != 0 {
++				t.Fatalf("unexpected scalar caller strategies: %v", st.Calls)
++			}
++			ownedMixedSIMDClassifierRun(t, cm)
++			encoded := ownedMixedSIMDMetadata(t, cm)
++			if !candidate {
++				native = append([]byte(nil), cm.Code...)
++				metaOracle = encoded
++			} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++				t.Fatal("native or encoder metadata differs")
++			}
++			t.Logf("intr=%v forest=%v bytes=%d calls=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, work)
++		}
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index bb347a5c..b9627c8b 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -168,3 +168,120 @@ func (f *fn) checkFixtureSIMDMemory(r *wasm.Reader) error {
+ 	}
+ 	return nil
+ }
++
++// Classification work is separate from the closed SIMD-lane preflight and the
++// ordinary module hint scan. Byte counts include duplicate immediate probes.
++type fixtureVectorClassificationWork struct {
++	Bodies, Bytes, Opcodes, TypeVisits uint64
++}
++
++func (w *fixtureVectorClassificationWork) signatureHasVector(ft *wasm.CompType) bool {
++	vector := false
++	for _, t := range ft.Params {
++		w.TypeVisits++
++		vector = wasm.EqualValType(t, wasm.V128) || vector
++	}
++	for _, t := range ft.Results {
++		w.TypeVisits++
++		vector = wasm.EqualValType(t, wasm.V128) || vector
++	}
++	return vector
++}
++
++// The body has already passed Wasm validation. Decode instruction boundaries,
++// including unreachable instructions, rather than searching for raw bytes.
++// Metadata can expose vector state even when the body contains no FD opcode.
++func classifyFixtureVectorBody(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, body []byte, work *fixtureVectorClassificationWork) (bool, error) {
++	r := wasm.NewReader(body)
++	work.Bodies++
++	defer func() { work.Bytes += uint64(r.Offset()) }()
++	vector := false
++	depth := 1
++	for r.HasNext() {
++		op, err := r.Byte()
++		if err != nil {
++			return false, err
++		}
++		work.Opcodes++
++		start := r.Offset()
++		probe := *r
++		switch op {
++		case 0x02, 0x03, 0x04, 0x1f:
++			depth++
++			b, ok := probe.Peek()
++			if !ok {
++				return false, fmt.Errorf("fixture forest: missing SIMD classification block type")
++			}
++			work.Bytes++ // peek
++			switch {
++			case isValByte(b) || b == 0x63 || b == 0x64:
++				vector = b == 0x7b || vector
++				work.TypeVisits++
++			case b != 0x40:
++				idx, err := probe.S33()
++				work.Bytes += uint64(probe.Offset() - start)
++				if err != nil || idx < 0 {
++					return false, fmt.Errorf("fixture forest: unknown SIMD classification block type")
++				}
++				ft, ok := m.TypeFunc(uint32(idx))
++				if !ok {
++					return false, fmt.Errorf("fixture forest: unresolved SIMD classification block type")
++				}
++				vector = work.signatureHasVector(ft) || vector
++			}
++		case 0x1c:
++			n, err := probe.U32()
++			b, ok := probe.Peek()
++			work.Bytes += uint64(probe.Offset() - start)
++			if err != nil || n != 1 || !ok {
++				return false, fmt.Errorf("fixture forest: unknown SIMD classification select type")
++			}
++			work.Bytes++ // peek
++			work.TypeVisits++
++			vector = b == 0x7b || vector
++		case 0x23, 0x24:
++			idx, err := r.U32()
++			if err != nil {
++				return false, err
++			}
++			g, ok := m.GlobalTypeByIndex(idx)
++			if !ok {
++				return false, fmt.Errorf("fixture forest: unresolved SIMD classification global")
++			}
++			work.TypeVisits++
++			vector = wasm.EqualValType(wasm.GlobalValueType(g), wasm.V128) || vector
++			continue
++		case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
++			idx, err := probe.U32()
++			work.Bytes += uint64(probe.Offset() - start)
++			if err != nil {
++				return false, err
++			}
++			var ft *wasm.CompType
++			var ok bool
++			if op == 0x10 || op == 0x12 {
++				ft, ok = m.FuncSignature(idx)
++			} else {
++				ft, ok = m.TypeFunc(idx)
++			}
++			if !ok {
++				return false, fmt.Errorf("fixture forest: unresolved SIMD classification call type")
++			}
++			vector = work.signatureHasVector(ft) || vector
++		case 0xfd:
++			vector = true
++		case 0x0b:
++			depth--
++			if depth == 0 {
++				if r.HasNext() {
++					return false, fmt.Errorf("fixture forest: trailing SIMD classification bytes")
++				}
++				return vector, nil
++			}
++		}
++		if err := classifier.SkipImmediate(r, op); err != nil {
++			return false, err
++		}
++	}
++	return false, fmt.Errorf("fixture forest: missing SIMD classification body end")
++}

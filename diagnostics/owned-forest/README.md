@@ -982,3 +982,11 @@ failing inputs. Compiler defaults remain unchanged.
 
 Focused summary SHA-256:
 `0d763c61827c6ee1eae563c02a98b1f5e6a3a7304057595e1d18038fc7582d37`.
+
+### Mixed scalar/SIMD function classification
+
+Apply `mixed-simd-classifier-focused.patch` after the typed V128 BLOCK/IF checkpoint (`5eb6cbb9`). The alternative ends at `e826e30b0570f6baacdffaf31d09d335360cd29f` (tree `878204c097912e64bb1321b5a320b52ac10a6163`). It preserves the truthful module SIMD flag, classifies scalar sibling bodies independently, and still checks the supported vector body and selected inline source before lowering.
+
+The first build stopped on a Reader pointer/value mismatch; no tests ran. The corrected build passed four ordinary/interruptible images and 24 ordinary calls with two exact native and encoder-JSON pairs, including the full-memory oracle. Each image recorded a main scan of four bodies (592 bytes, 545 opcodes, 14 type visits), three scalar siblings, and a vector preflight (45 bytes, 12 opcodes), with one natural inline and one RegABI call. The forest arm additionally scanned one selected inline body (6 bytes, 4 opcodes, no type visits) before binding; that is additional compiler work, not a savings claim.
+
+Focused summary SHA-256: `1e25d1db7badfef4d1e7e91bc3966a0763ab5aa0b9308a8a444f9539c7142294`. This checkpoint does not rerun the corpus, validate public artifact serialization, repair historical reference mismatches, or establish a timing change. Defaults and active source are unchanged.
