@@ -1,0 +1,426 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+index 66380e9d..19da15b5 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+@@ -30,8 +30,16 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
+ 	if count == nil || !count.isValue() {
+ 		return false, nil
+ 	}
+-	src := count.prev
+-	dst := src.prev
++	var src, dst *elem
++	if f.s.forest != nil {
++		src, dst = f.s.forestLast(1), f.s.forestLast(2)
++		if src == nil || dst == nil {
++			panic("fixture forest: missing constant bulk copy operands")
++		}
++	} else {
++		src = count.prev
++		dst = src.prev
++	}
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst ||
+ 		src.st.typ != mtI32 || dst.st.typ != mtI32 {
+ 		return false, nil
+@@ -147,7 +155,7 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
+ 	var vectors [4]Reg
+ 	var avoid regMask
+ 	for i := 0; i < groups; i++ {
+-		vectors[i] = f.allocFReg(avoid)
++		vectors[i] = f.allocBulkFReg(avoid)
+ 		avoid = avoid.add(vectors[i])
+ 		f.mov128LoadIdx(vectors[i], RBX, RSP, int32(base)+int32(i*16))
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+index 4ad0beb7..67aa03ce 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+@@ -57,7 +57,7 @@ func (f *fn) emitBulkCopyChunks(n int, base, src, dst Reg, srcDisp, dstDisp int3
+ 	for i := 0; i < count; i++ {
+ 		c := &chunks[i]
+ 		if c.size == 16 {
+-			c.reg = f.allocFReg(fpAvoid)
++			c.reg = f.allocBulkFReg(fpAvoid)
+ 			fpAvoid = fpAvoid.add(c.reg)
+ 			f.mov128LoadIdx(c.reg, base, src, srcDisp+int32(c.off))
+ 		} else {
+@@ -90,8 +90,16 @@ func (f *fn) emitFixedBulkCopy(n int, dstMemory, srcMemory uint32) bool {
+ 	if count == nil || !count.isValue() {
+ 		return false
+ 	}
+-	src := count.prev
+-	dst := src.prev
++	var src, dst *elem
++	if f.s.forest != nil {
++		src, dst = f.s.forestLast(1), f.s.forestLast(2)
++		if src == nil || dst == nil {
++			panic("fixture forest: missing constant bulk copy operands")
++		}
++	} else {
++		src = count.prev
++		dst = src.prev
++	}
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst {
+ 		return false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+index 20d78047..e4c20ac4 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+@@ -41,8 +41,16 @@ func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
+ 		return
+ 	}
+ 	count := f.s.back()
+-	value := baseOfValentBlock(count).prev
+-	dst := baseOfValentBlock(value).prev
++	var value, dst *elem
++	if f.s.forest != nil {
++		value, dst = f.s.forestLast(1), f.s.forestLast(2)
++		if value == nil || dst == nil {
++			panic("fixture forest: missing bulk fill operands")
++		}
++	} else {
++		value = baseOfValentBlock(count).prev
++		dst = baseOfValentBlock(value).prev
++	}
+ 	countKey, countOK := bulkOperandKey(count)
+ 	dstKey, dstOK := bulkOperandKey(dst)
+ 	if !countOK || !dstOK || value == nil || !value.isValue() || value.st.kind != stConst {
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_fill_vector.go b/src/core/compiler/backend/railshot/amd64/bulk_fill_vector.go
+index eb5144f0..248de806 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_fill_vector.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_fill_vector.go
+@@ -19,7 +19,7 @@ func (f *fn) memoryFillVector(n int, memoryIndex uint32) {
+ 	f.materializePendingLoads()
+ 	f.erase(f.s.back())
+ 	v, owned := f.materializeRead(f.popValue())
+-	x := f.allocFReg(0)
++	x := f.allocBulkFReg(0)
+ 	f.a.MovGprToXmm(x, v, false)
+ 	opVPunpcklbw.emit(f, x, x, x)
+ 	opVPunpcklwd.emit(f, x, x, x)
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index cd3b36d8..ad646ea1 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -92,6 +92,17 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 			if err := f.checkFixtureScalarOpcode(op); err != nil {
+ 				return err
+ 			}
++			if op == 0xfc {
++				// Preflight before interval/control effects can touch operands.
++				probe := *r
++				sub, err := probe.U32()
++				if err != nil {
++					return err
++				}
++				if err := f.checkFixtureBulkMemory(sub, probe); err != nil {
++					return err
++				}
++			}
+ 		}
+ 		if regallocCheckEnabled {
+ 			checkNativeSourceBefore(f, r.Offset()-1, op)
+@@ -760,6 +771,33 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ 	return nil
+ }
+ 
++// checkFixtureBulkMemory validates the closed fixture subset without consuming
++// the emitter reader or changing stack, region, or memory-forwarding state.
++func (f *fn) checkFixtureBulkMemory(sub uint32, probe wasm.Reader) error {
++	count := 1
++	switch sub {
++	case 10:
++		count = 2
++	case 11:
++	default:
++		return fmt.Errorf("fixture forest: unsupported opcode 0xfc subopcode %d", sub)
++	}
++	for range count {
++		idx, err := probe.U32()
++		if err != nil {
++			return err
++		}
++		if idx != 0 {
++			return fmt.Errorf("fixture forest: unsupported bulk memory index %d", idx)
++		}
++	}
++	mt, ok := f.memoryType(0)
++	if !ok || mt.Limits.Addr64 || mt.Shared || f.guardMode || f.threadedMemory0 {
++		return fmt.Errorf("fixture forest: unsupported bulk memory state")
++	}
++	return nil
++}
++
+ // emitFC dispatches the 0xFC-prefixed opcodes: saturating truncation and bulk
+ // memory ops.
+ func (f *fn) emitFC(r *wasm.Reader) error {
+@@ -767,6 +805,11 @@ func (f *fn) emitFC(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil {
++		if err := f.checkFixtureBulkMemory(sub, *r); err != nil {
++			return err
++		}
++	}
+ 	switch sub {
+ 	case 0:
+ 		f.truncSat(false, false, true) // i32.trunc_sat_f32_s
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 19d13937..7e04e66b 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -85,6 +85,28 @@ func (f *fn) freeFReg(avoid regMask) Reg {
+ 	return regNone
+ }
+ 
++// allocBulkFReg leases transient XMM scratch for integer bulk copy and fill.
++// The forest slice does not admit guest XMM ownership or persistent FP local
++// pins, so only the ordinary free-register search is permitted. In particular,
++// it does not add a forest victim policy or enable guest FP allocation.
++func (f *fn) allocBulkFReg(avoid regMask) Reg {
++	if f.s.forest == nil {
++		return f.allocFReg(avoid)
++	}
++	if f.fpinnedLocalMask != 0 {
++		panic("fixture forest: bulk XMM scratch with FP local pins")
++	}
++	for _, owner := range f.fregUser {
++		if owner != nil {
++			panic("fixture forest: bulk XMM scratch with live guest XMM owner")
++		}
++	}
++	if r := f.freeFReg(avoid); r != regNone {
++		return r
++	}
++	panic("fixture forest: bulk XMM scratch exhausted")
++}
++
+ // allocFReg returns a free XMM register, spilling the deepest float-resident stack
+ // value if none is free.
+ func (f *fn) allocFReg(avoid regMask) Reg {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index f6676133..51dfd928 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1615,7 +1615,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
+ 	if filled {
+ 		// Preserve both range checks and the visibility of the preceding fill.
+ 		f.a.MovImm64(RAX, uint64(fillByte)*0x0101010101010101)
+-		vec := f.allocFReg(0)
++		vec := f.allocBulkFReg(0)
+ 		f.emitBulkFill(vec)
+ 		f.releaseF(vec)
+ 		f.setDepth(d - 3)
+@@ -1625,7 +1625,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
+ 	var copyVecs [4]Reg
+ 	var copyAvoid regMask
+ 	for i := range copyVecs {
+-		copyVecs[i] = f.allocFReg(copyAvoid)
++		copyVecs[i] = f.allocBulkFReg(copyAvoid)
+ 		copyAvoid = copyAvoid.add(copyVecs[i])
+ 	}
+ 	f.emitCheckedMemoryCopy(copyVecs)
+@@ -1667,7 +1667,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
+ 
+ 	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
+ 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
+-	fillVec := f.allocFReg(0)
++	fillVec := f.allocBulkFReg(0)
+ 
+ 	f.emitCheckedMemoryFill(fillVec)
+ 	f.releaseF(fillVec)
+@@ -2130,7 +2130,7 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
+ 			xregs := xregBuf[:len(chunks)]
+ 			var favoid regMask
+ 			for i, c := range chunks {
+-				x := f.allocFReg(favoid)
++				x := f.allocBulkFReg(favoid)
+ 				f.mov128LoadIdx(x, base, src, int32(c[0]))
+ 				xregs[i] = x
+ 				favoid = favoid.add(x)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_bulk_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_bulk_independent_test.go
+new file mode 100644
+index 00000000..8f223e83
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_bulk_independent_test.go
+@@ -0,0 +1,166 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedBulkRun(t *testing.T, cm *encoder.CompiledModule, args [4]int, want []byte) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	mem := jm.LinearMemory()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], uint64(v))
++	}
++	if err = eng.Call(entry+uintptr(cm.Entry[0]), a, mem, tr, r); err != nil {
++		t.Fatal(err)
++	}
++	if got := binary.LittleEndian.Uint64(r); got != uint64(args[0]+23) {
++		t.Fatalf("old local prefix: got %d want %d", got, args[0]+23)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range want {
++			if mem[i] != want[i] {
++				t.Fatalf("memory[%d]: got %d want %d", i, mem[i], want[i])
++			}
++		}
++		t.Fatal("memory length mismatch")
++	}
++}
++
++func TestOwnedForestBulkOrdinary(t *testing.T) {
++	for _, tc := range []struct {
++		name, op, peep string
++		fixed          int
++	}{
++		{"copy-dynamic", "copy", "", -1},
++		{"copy-constant-small", "copy", "memcopy-unroll", 9},
++		{"copy-constant-vector", "copy", "memcopy-unroll", 39},
++		{"fill-dynamic", "fill", "", -1},
++		{"fill-constant-small", "fill", "memfill-unroll", 9},
++		{"fill-constant-vector", "fill", "memfill-vector", 39},
++		{"fill-copy-forward", "forward", "bulk-fill-copy-forward", -1},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			// local0 = dst, 1 = src, 2 = length, 3 = fill pattern. Keep
++			// an older local0 snapshot live below arguments until after the effect.
++			body := []byte{0, 0x20, 0}
++			putLength := func(b []byte) []byte {
++				if tc.fixed < 0 {
++					return append(b, 0x20, 2)
++				}
++				return append(append(b, 0x41), wasmtest.SLEB32(int32(tc.fixed))...)
++			}
++			if tc.op == "forward" {
++				// Exact natural fill-copy pattern: same local sources/count.
++				body = append(body, 0x20, 1, 0x41, 7, 0x20, 2, 0xfc, 11, 0)
++			}
++			body = append(body, 0x20, 0)
++			if tc.op == "fill" {
++				body = append(body, 0x20, 3)
++			} else {
++				body = append(body, 0x20, 1)
++			}
++			body = putLength(body)
++			if tc.op == "fill" {
++				body = append(body, 0xfc, 11, 0)
++			} else {
++				body = append(body, 0xfc, 10, 0, 0)
++			}
++			body = append(body, 0x41, 23, 0x21, 0, 0x20, 0, 0x6a, 0x0b)
++			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++			for _, intr := range []bool{false, true} {
++				var baselineCode, baselineMeta []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive bulk legacy body: %+v", work)
++					}
++					st := stats.Funcs[0]
++					if tc.peep != "" && st.Peephole[tc.peep] != 1 {
++						t.Fatalf("missing %s: %v", tc.peep, st.Peephole)
++					}
++					for _, args := range [][4]int{{51, 48, 72, 0x1db}, {45, 48, 72, 0x123}, {131, 32, 72, 0xfe}} {
++						t.Run(fmt.Sprintf("intr=%v/forest=%v/dst=%d", intr, candidate, args[0]), func(t *testing.T) {
++							want := make([]byte, 65536)
++							for i := range want {
++								want[i] = byte(i*29 + 13)
++							}
++							dst, src, n, val := args[0], args[1], args[2], byte(args[3])
++							if tc.fixed >= 0 {
++								n = tc.fixed
++							}
++							if tc.op == "forward" {
++								for i := 0; i < n; i++ {
++									want[src+i] = 7
++								}
++							}
++							if tc.op == "fill" {
++								for i := 0; i < n; i++ {
++									want[dst+i] = val
++								}
++							} else {
++								copy(want[dst:dst+n], want[src:src+n])
++							}
++							ownedBulkRun(t, cm, args, want)
++						})
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						baselineCode = append([]byte(nil), cm.Code...)
++						baselineMeta = encoded
++					} else if !bytes.Equal(baselineCode, cm.Code) || !bytes.Equal(baselineMeta, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), st.Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 6d6e91bb..b678c9aa 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -370,7 +370,7 @@ func fixtureScalarOpcode(op byte) bool {
+ 	case op <= 0x05, op >= 0x0b && op <= 0x0e, op == 0x0f, op == 0x10, op == 0x1a, op == 0x1b,
+ 		op >= 0x20 && op <= 0x24, op == 0x28, op == 0x29, op >= 0x2c && op <= 0x37, op >= 0x3a && op <= 0x3e,
+ 		op == 0x41, op == 0x42, op >= 0x45 && op <= 0x5a, op >= 0x67 && op <= 0x8a,
+-		op == 0xa7, op == 0xac, op == 0xad, op >= 0xc0 && op <= 0xc4:
++		op == 0xa7, op == 0xac, op == 0xad, op >= 0xc0 && op <= 0xc4, op == 0xfc:
+ 		return true
+ 	default:
+ 		return false

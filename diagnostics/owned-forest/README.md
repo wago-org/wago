@@ -336,3 +336,17 @@ These are incomplete and different units, not a net work estimate.
 Candidate matched maxima: root capacity 64 pointers (512 bytes),
 34 live roots, and cursor depth 7; measured struct sizes were elem
 64, cursor 200, and forest 104 bytes.
+
+## Focused ordinary bulk memory
+
+Apply bulk-focused.patch on top of 3383092b. The gate at 81380949
+passed 28 images and 84 valid calls, with 14 exact native and
+encoder-exported JSON pairs and full-memory alias checks. Observed
+selectors were copy unroll, exact-chunk copy (39 bytes), fill unroll,
+vector fill, and fill-to-copy forwarding. Fixed-address copy and copy
+append did not activate.
+
+Scope was in-bounds memory.copy and memory.fill only (FC 10 and 11).
+General floating point remains fenced; the vector path uses scratch
+only. No other FC operations, exceptional input, held modules, full
+corpus, public artifact codec parity, or timing are claimed.
