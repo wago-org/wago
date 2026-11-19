@@ -1054,3 +1054,11 @@ Apply `v128-intarith-focused.patch` after `1bc0300f`. The alternative ends at `0
 The first executed gate passed 24 images and 48 ordinary calls with 12 exact native and encoder-JSON pairs. Each image recorded one intended operation. The 20 routine images each added one local pin, and the four FD186 pressure images each recorded one slot-floor raise and six full-width spills. This does not localize spills to the operation or verify an ISA fallback. Oracles covered widened unsigned pair sums, reversed wrapping subtraction, low/high unsigned byte products, and signed dot-product sums modulo 2^32.
 
 Focused summary SHA-256: `a18090a37f9224971c7579ccdc08c56f0d846ea8e50eccd40b8bf8f719464e85`. No default change, public serialization, corpus, timing, RSS or historical replay.
+
+### Compact operand representation: source-only checkpoint
+
+Apply `compact-operand-source.patch` after `0270663e`. This alternative ends at `402216f0a0d0d03ab845d19080031de90154b326` (tree `354394a0ff44d25913991d84bc8ef80ed9416533`). The shared backend tag removes the physical operand links without a sidecar; actual list operations fail closed in the compact fixture. The default list representation is unchanged. Compact admission is restricted to the serial owned fixture, with explicit incompatibility guards for checker, census, profiling, streamcheck and both TinyGo tag spellings.
+
+The independent static audit accounted for all 232 baseline link-like references: 142 production operand links, 10 unrelated production indices and 80 test references. All 142 operand links were converted or eliminated. Audit TSV SHA-256: `edbc58f6a0a1ebde79b0e2f073e7835f38145d20cc002869d308b72a5e861c74`. This is static evidence, not exhaustive dynamic coverage.
+
+No build or semantic test has run at this checkpoint. The expected 48-byte versus 64-byte element sizes are unmeasured. Optional capacity counters describe compiler state, not process RSS. No corpus, timing, portability, or promotion claim.

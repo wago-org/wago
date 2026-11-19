@@ -1,0 +1,1118 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/atomic.go b/src/core/compiler/backend/railshot/amd64/atomic.go
+index 57a55b80..fd5b0f80 100644
+--- a/src/core/compiler/backend/railshot/amd64/atomic.go
++++ b/src/core/compiler/backend/railshot/amd64/atomic.go
+@@ -101,7 +101,7 @@ func (f *fn) prepareAtomicOperands(count int) {
+ 	for i := count - 1; i >= 0; i-- {
+ 		roots[i] = root
+ 		if i > 0 {
+-			root = baseOfValentBlock(root).prev
++			root = baseOfValentBlock(root).prevLink()
+ 		}
+ 	}
+ 	for _, root := range roots[:count] {
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+index 19da15b5..07e022c8 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_append.go
+@@ -37,8 +37,8 @@ func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
+ 			panic("fixture forest: missing constant bulk copy operands")
+ 		}
+ 	} else {
+-		src = count.prev
+-		dst = src.prev
++		src = count.prevLink()
++		dst = src.prevLink()
+ 	}
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst ||
+ 		src.st.typ != mtI32 || dst.st.typ != mtI32 {
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+index 67aa03ce..6ccee4fd 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_copy_chunks.go
+@@ -97,8 +97,8 @@ func (f *fn) emitFixedBulkCopy(n int, dstMemory, srcMemory uint32) bool {
+ 			panic("fixture forest: missing constant bulk copy operands")
+ 		}
+ 	} else {
+-		src = count.prev
+-		dst = src.prev
++		src = count.prevLink()
++		dst = src.prevLink()
+ 	}
+ 	if !src.isValue() || !dst.isValue() || src.st.kind != stConst || dst.st.kind != stConst {
+ 		return false
+diff --git a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+index e4c20ac4..cd3f24a3 100644
+--- a/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
++++ b/src/core/compiler/backend/railshot/amd64/bulk_fill_forward.go
+@@ -48,8 +48,8 @@ func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
+ 			panic("fixture forest: missing bulk fill operands")
+ 		}
+ 	} else {
+-		value = baseOfValentBlock(count).prev
+-		dst = baseOfValentBlock(value).prev
++		value = baseOfValentBlock(count).prevLink()
++		dst = baseOfValentBlock(value).prevLink()
+ 	}
+ 	countKey, countOK := bulkOperandKey(count)
+ 	dstKey, dstOK := bulkOperandKey(dst)
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 7cf1e03e..4475a19e 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -1181,7 +1181,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
+ 	for i := p - 1; i >= 0; i-- {
+ 		roots[i] = cur
+ 		if i > 0 {
+-			cur = baseOfValentBlock(cur).prev
++			cur = baseOfValentBlock(cur).prevLink()
+ 		}
+ 	}
+ 
+@@ -1307,7 +1307,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
+ 	if p > 0 {
+ 		first := f.s.back()
+ 		for i := 1; i < p; i++ {
+-			first = first.prev
++			first = first.prevLink()
+ 		}
+ 		f.a.Load32(RAX, RSP, f.spillOff(first.st.slotIndex()))
+ 	} else {
+@@ -2481,7 +2481,7 @@ func (f *fn) emitRegisterCallViaWithLease(ft *wasm.CompType, resHint int, localI
+ 		for i := p - 1; i >= 0; i-- {
+ 			argRoots[i] = cur
+ 			if i > 0 {
+-				cur = baseOfValentBlock(cur).prev
++				cur = baseOfValentBlock(cur).prevLink()
+ 			}
+ 		}
+ 
+@@ -2721,7 +2721,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 		for i := p - 1; i >= 0; i-- {
+ 			argRoots[i] = cur
+ 			if i > 0 {
+-				cur = baseOfValentBlock(cur).prev
++				cur = baseOfValentBlock(cur).prevLink()
+ 			}
+ 		}
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 98fba7a3..45a5dbbc 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -985,14 +985,12 @@ func (sc *scratch) ensureTargetStack() {
+ 	if sc.mappedOperands {
+ 		sc.stack.arena = newOperandArena()
+ 	}
++	if sc.fixtureWork != nil && sc.fixtureWork.Forest {
++		sc.stack.forest = &sc.fixtureWork.Vector
++	}
+ 	sc.stack.initWithCap(sc.stackCap)
+-	if sc.fixtureWork != nil {
+-		if sc.fixtureWork.Forest {
+-			sc.stack.forest = &sc.fixtureWork.Vector
+-			sc.stack.head.prev, sc.stack.head.next = nil, nil
+-		} else {
+-			sc.stack.fixtureListWork = &sc.fixtureWork.List
+-		}
++	if sc.fixtureWork != nil && !sc.fixtureWork.Forest {
++		sc.stack.fixtureListWork = &sc.fixtureWork.List
+ 	}
+ 	_, reserved := sc.stack.nodeMemory()
+ 	sc.nodeScratchReserved = reserved
+@@ -1234,6 +1232,29 @@ func (sc *scratch) clearNodeReferences() {
+ 	clear(sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)])
+ }
+ 
++// Observe logical capacities before the existing over-budget trim. Reserved
++// bytes are slice capacity, not allocator size classes or physical residency.
++func (sc *scratch) observeFixtureOperandCapacity(funcIdx int) {
++	s, w := sc.stack, sc.fixtureWork
++	row := fixtureOperandCapacity{Function: funcIdx, NodeChunks: len(s.chunks), ColdSidecarCapacity: cap(s.cold)}
++	row.NodeUsedBytes, row.NodeReservedBytes = s.nodeMemory()
++	for i, c := range s.chunks {
++		row.NodeCapacity += cap(c)
++		if i <= int(s.cur) {
++			row.NodesAtSample += len(c)
++		}
++	}
++	if s.arena != nil {
++		row.ArenaMappedBytes, row.ArenaAppendedBytes = len(s.arena.Mapping()), len(s.arena.Bytes())
++	}
++	if v := s.forest; v != nil {
++		row.RootCapacity, row.RootPeak = cap(v.roots), v.peak
++		row.ColdTypeCapacity, row.CursorFramePeak = cap(v.coldControlTypes), v.peakCursor
++		row.RootGrows, row.RootGrowCopies, row.RootStores, row.CursorWrites = v.grows, v.growCopies, v.stores, v.cursorWrites
++	}
++	w.OperandCapacities = append(w.OperandCapacities, row)
++}
++
+ func (sc *scratch) finishStackFunction() {
+ 	_, reserved := sc.stack.nodeMemory()
+ 	if reserved > sc.nodeScratchPeak {
+@@ -1839,6 +1860,10 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
+ // inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
+ // handler (the caller must back memory with runtime guard pages).
+ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
++	if compactOperandNodes && (opts.fixtureWork == nil || !opts.fixtureWork.Forest ||
++		opts.Workers != 1 || opts.Profile || opts.Stats != nil || opts.CollectInlineReport) {
++		return nil, fmt.Errorf("compact operand nodes require a serial owned-forest fixture without diagnostics")
++	}
+ 	if !diagnosticsEnabled && (opts.Stats != nil || opts.CollectInlineReport) {
+ 		return nil, fmt.Errorf("compiler diagnostics require -tags=wago_codegenstats or wago_profile")
+ 	}
+@@ -1918,6 +1943,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		work := opts.fixtureWork
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
++			RecordOperandLayout:  work.RecordOperandLayout,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 			ImmutableIntegerIndirect:           work.ImmutableIntegerIndirect,
+@@ -1946,6 +1972,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128BooleanLeases:         work.TemporaryV128BooleanLeases,
+ 			TemporaryV128WideningArithmetic:    work.TemporaryV128WideningArithmetic,
+ 		}
++		if work.RecordOperandLayout {
++			work.OperandLayout = fixtureOperandLayout{
++				Compact: compactOperandNodes, NodeBytes: unsafe.Sizeof(elem{}), NodeAlign: unsafe.Alignof(elem{}),
++				NodePhysicalLinkBytes: unsafe.Sizeof(operandLinks{}), RootPointerBytes: unsafe.Sizeof((*elem)(nil)),
++				CursorBytes: unsafe.Sizeof(fixtureCursor{}), CursorFrameBytes: unsafe.Sizeof(fixtureCursorFrame{}),
++				ColdTypeBytes: unsafe.Sizeof(machineType(0)), CapacityRowBytes: unsafe.Sizeof(fixtureOperandCapacity{}),
++			}
++		}
+ 		defer work.releaseRoots()
+ 	}
+ 	relocs := make([][]callReloc, n)
+@@ -3657,6 +3691,9 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
+ 		modGlobals = nil
+ 	}
+ 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc, wrapperTargets)
++	if w := sc.fixtureWork; w != nil && w.RecordOperandLayout {
++		sc.observeFixtureOperandCapacity(funcIdx)
++	}
+ 	if len(sc.stack.chunks) > 1 {
+ 		sc.finishStackFunction()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index e9cbf0bd..190f747a 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -645,7 +645,7 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
+ 					panic("amd64: control base-type prefix ended before its height")
+ 				}
+ 				storage[start+i] = rootMachineType(top)
+-				top = baseOfValentBlock(top).prev
++				top = baseOfValentBlock(top).prevLink()
+ 			}
+ 		}
+ 		fr.setBaseTypeRange(start, height)
+@@ -695,7 +695,7 @@ func (f *fn) logicalStackRootAtDepth(height int) *elem {
+ 		if cur == nil || cur == f.s.head {
+ 			panic("amd64: logical stack ended before requested depth")
+ 		}
+-		cur = baseOfValentBlock(cur).prev
++		cur = baseOfValentBlock(cur).prevLink()
+ 	}
+ 	return cur
+ }
+@@ -723,7 +723,7 @@ func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
+ 				panic("amd64: cold control base prefix ended before its height")
+ 			}
+ 			out[i] = rootMachineType(top)
+-			top = baseOfValentBlock(top).prev
++			top = baseOfValentBlock(top).prevLink()
+ 		}
+ 		f.tmpTypes = out
+ 		return out
+@@ -889,7 +889,7 @@ func (f *fn) rootsBottomToTop() []*elem {
+ 		return roots[:len(roots):len(roots)]
+ 	}
+ 	rs := f.tmpRoots[:0]
+-	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
++	for cur := f.s.head.prevLink(); cur != f.s.head; cur = baseOfValentBlock(cur).prevLink() {
+ 		rs = append(rs, cur)
+ 	}
+ 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
+@@ -1268,7 +1268,7 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
+ 	if f.s.forest != nil {
+ 		f.s.forestResetRoots()
+ 	} else {
+-		f.s.head.prev, f.s.head.next = f.s.head, f.s.head
++		f.s.head.setLinks(f.s.head, f.s.head)
+ 	}
+ 	f.s.pendingPrefix = nil
+ 	// The old operands are detached; rebuild both live spill summaries from scratch.
+@@ -1786,7 +1786,7 @@ func (f *fn) keepBlockOperands() bool {
+ 		return true
+ 	}
+ 	n := 0
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for e := f.s.head.nextLink(); e != f.s.head; e = e.nextLink() {
+ 		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
+ 			return false
+ 		}
+@@ -2475,7 +2475,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+ 		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
+ 			e.st.setEHRoot(true)
+ 		}
+-		e = e.prev
++		e = e.prevLink()
+ 	}
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+index b5ff7ca8..cdfda172 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+@@ -81,7 +81,7 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
+ // can allocate, spill, or retire any child.
+ func (f *fn) findDivRemConstRemainder(node, local *elem, divisor uint32) *elem {
+ 	if f.s.forest == nil {
+-		return matchDivRemConstRemainder(f.s.head, local, divisor, node.next, nil)
++		return matchDivRemConstRemainder(f.s.head, local, divisor, node.nextLink(), nil)
+ 	}
+ 	return f.findForestDivRemConstRemainder(node, local, divisor)
+ }
+@@ -108,7 +108,7 @@ func divRemConstSuccessor(e *elem, cursor *fixtureCursor) *elem {
+ 	if cursor != nil {
+ 		return cursor.next()
+ 	}
+-	return e.next
++	return e.nextLink()
+ }
+ 
+ // Both representations present the same physical postorder to this matcher.
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index c69555be..05979e78 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -1122,7 +1122,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
+ 	} else {
+ 		left := right
+ 		if arity == 2 {
+-			left = baseOfValentBlock(right).prev
++			left = baseOfValentBlock(right).prevLink()
+ 		}
+ 		f.realizeLocalRefs(x, left)
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/drop.go b/src/core/compiler/backend/railshot/amd64/drop.go
+index eee0af8f..78fe09d4 100644
+--- a/src/core/compiler/backend/railshot/amd64/drop.go
++++ b/src/core/compiler/backend/railshot/amd64/drop.go
+@@ -78,7 +78,7 @@ func (f *fn) discardLinkedTree(e *elem) {
+ func (f *fn) discardForestTree(e *elem, root bool) {
+ 	s := f.s
+ 	if e == nil || !e.forestLive || e.st.hasLogicalRoot() != root ||
+-		e.forestPending || e.prev != nil || e.next != nil {
++		e.forestPending || e.hasPhysicalLinks() {
+ 		panic("fixture forest: invalid discarded operand ownership")
+ 	}
+ 	if e.isDeferred() {
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index e9e5679f..f101d8f8 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -1387,9 +1387,9 @@ func (f *fn) consumeBlockBelow(node *elem) {
+ 		return
+ 	}
+ 	base := baseOfValentBlock(node)
+-	e := node.prev
++	e := node.prevLink()
+ 	for {
+-		prev := e.prev
++		prev := e.prevLink()
+ 		isBase := e == base
+ 		f.erase(e)
+ 		if isBase {
+diff --git a/src/core/compiler/backend/railshot/amd64/fuse.go b/src/core/compiler/backend/railshot/amd64/fuse.go
+index 208ac4f3..85c8c44d 100644
+--- a/src/core/compiler/backend/railshot/amd64/fuse.go
++++ b/src/core/compiler/backend/railshot/amd64/fuse.go
+@@ -132,7 +132,7 @@ func (f *fn) flushBelow(node *elem) int {
+ 	base := baseOfValentBlock(node)
+ 	below := f.tmpBelow[:0]
+ 	belowSlots := 0
+-	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
++	for cur := base.prevLink(); cur != f.s.head; cur = baseOfValentBlock(cur).prevLink() {
+ 		below = append(below, cur)
+ 		belowSlots += rootMachineType(cur).stackSlots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array.go b/src/core/compiler/backend/railshot/amd64/gc_array.go
+index b2904c3f..37b86101 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array.go
+@@ -451,7 +451,7 @@ func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uin
+ 	}
+ 	value := f.s.back()
+ 	if value != nil {
+-		value = value.prev // trailing type-index constant was pushed before admission
++		value = value.prevLink() // trailing type-index constant was pushed before admission
+ 	}
+ 	if value == nil || !value.isValue() || value.st.kind != stConst || value.st.typ != mtI32 {
+ 		return 0, 0, false
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_fill.go b/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
+index 7a2dc587..67d7441c 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_fill.go
+@@ -29,9 +29,9 @@ func (f *fn) emitDirectGCArrayFill(typeIndex uint32) bool {
+ 	if !directGCArrayFillCount(count, scalar.size) {
+ 		return false
+ 	}
+-	valueRoot := baseOfValentBlock(countRoot).prev
+-	indexRoot := baseOfValentBlock(valueRoot).prev
+-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
++	valueRoot := baseOfValentBlock(countRoot).prevLink()
++	indexRoot := baseOfValentBlock(valueRoot).prevLink()
++	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prevLink())
+ 	f.flush()
+ 	oldFloor := f.spillFloor
+ 	f.spillFloor = f.curSpillSlot()
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_forward.go b/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
+index d9e146a8..0c12096a 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_forward.go
+@@ -30,7 +30,7 @@ func (f *fn) gcFreshArray16Candidate(typeIndex uint32, field wasm.FieldType) (st
+ 	if length == nil || !length.isValue() || length.st.kind != stConst || length.st.typ != mtI32 || uint32(length.st.cval) != 16 {
+ 		return storage{}, false
+ 	}
+-	value := baseOfValentBlock(length).prev
++	value := baseOfValentBlock(length).prevLink()
+ 	if value == nil || !value.isValue() {
+ 		return storage{}, false
+ 	}
+@@ -57,7 +57,7 @@ func (f *fn) tryForwardGCFreshArray16Get(typeIndex uint32) bool {
+ 		return false
+ 	}
+ 	index := f.s.back()
+-	object := baseOfValentBlock(index).prev
++	object := baseOfValentBlock(index).prevLink()
+ 	local, ok := gcLocalProvenance(object)
+ 	if !ok || local != fact.objectLocal || !gcI32Mask15(index) {
+ 		f.invalidateGCFreshStructFact()
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+index e6e3fcaf..2a0779fc 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+@@ -40,7 +40,7 @@ func (f *fn) matchGCArrayNewFill(r *wasm.Reader, typeIndex uint32, field wasm.Fi
+ 	if count == 0 || count > 16 {
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+-	valueRoot := baseOfValentBlock(countRoot).prev
++	valueRoot := baseOfValentBlock(countRoot).prevLink()
+ 	if valueRoot == nil || !valueRoot.isValue() || valueRoot.st.kind != stConst || valueRoot.st.typ != mtI32 || valueRoot.st.cval != 0 {
+ 		return gcArrayNewFillPlan{}, false
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+index 3f80530b..190c1db9 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+@@ -85,7 +85,7 @@ func (f *fn) tryForwardGCConstructorIf(reader *wasm.Reader, sourceType uint32, s
+ 			if !value.isValue() {
+ 				return fail()
+ 			}
+-			value = value.prev
++			value = value.prevLink()
+ 		}
+ 		if !value.isValue() {
+ 			return fail()
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct.go b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+index b757134e..0e16aefa 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+@@ -916,7 +916,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
+ 	}
+ 	f.flush()
+ 	value := f.s.back()
+-	object := value.prev
++	object := value.prevLink()
+ 	if value == f.s.head || object == f.s.head || !value.isValue() || !object.isValue() || value.st.kind != stSlot || object.st.kind != stSlot {
+ 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
+ 	}
+@@ -963,8 +963,8 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
+ 	}
+ 	f.flush()
+ 	value := f.s.back()
+-	index := value.prev
+-	object := index.prev
++	index := value.prevLink()
++	object := index.prevLink()
+ 	if value == f.s.head || index == f.s.head || object == f.s.head || !value.isValue() || !index.isValue() || !object.isValue() || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
+ 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
+ 	}
+@@ -3024,7 +3024,7 @@ func (f *fn) emitDirectGCStructSet(typeIndex, fieldIndex uint32) bool {
+ 		return false
+ 	}
+ 	valueRoot := f.s.back()
+-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(valueRoot).prev)
++	local, hasLocal := gcLocalProvenance(baseOfValentBlock(valueRoot).prevLink())
+ 	f.flush()
+ 	oldFloor := f.spillFloor
+ 	f.spillFloor = f.curSpillSlot()
+@@ -3082,7 +3082,7 @@ func (f *fn) emitDirectGCArrayGet(typeIndex uint32, helper uint32, knownIndex, k
+ 		return false
+ 	}
+ 	indexRoot := f.s.back()
+-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
++	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prevLink())
+ 	f.flush()
+ 	oldFloor := f.spillFloor
+ 	f.spillFloor = f.curSpillSlot()
+@@ -3192,8 +3192,8 @@ func (f *fn) emitDirectGCArraySet(typeIndex, knownIndex, knownLength uint32, log
+ 		return false
+ 	}
+ 	valueRoot := f.s.back()
+-	indexRoot := baseOfValentBlock(valueRoot).prev
+-	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prev)
++	indexRoot := baseOfValentBlock(valueRoot).prevLink()
++	local, hasLocal := gcLocalProvenance(baseOfValentBlock(indexRoot).prevLink())
+ 	f.flush()
+ 	oldFloor := f.spillFloor
+ 	f.spillFloor = f.curSpillSlot()
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index 8ec6bf5f..e53584d5 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -484,7 +484,7 @@ func (f *fn) tryForwardGCConstructorGet(r *wasm.Reader, sourceType uint32, sourc
+ 	}
+ 	value := f.s.back()
+ 	for i := fieldN - 1; i > int(fieldIndex); i-- {
+-		value = baseOfValentBlock(value).prev
++		value = baseOfValentBlock(value).prevLink()
+ 	}
+ 	if !value.isValue() {
+ 		return storage{}, wasm.Reader{}, false
+diff --git a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+index 855eca42..cff0de9a 100644
+--- a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
++++ b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+@@ -159,8 +159,11 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
+ 	// Rotate the reconstructed prefix below the existing result without moving
+ 	// the result's storage or changing its allocator ownership.
+ 	head := f.s.head
+-	head.next, first.prev = first, head
+-	root.next, result.prev = result, root
+-	result.next, head.prev = head, result
++	head.setNextLink(first)
++	first.setPrevLink(head)
++	root.setNextLink(result)
++	result.setPrevLink(root)
++	result.setNextLink(head)
++	head.setPrevLink(result)
+ 	f.s.pendingPrefix = nil
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index cab32311..650ca4df 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1201,7 +1201,7 @@ func (f *fn) forwardIntegerParams(t *inlineTarget) bool {
+ 		if f.s.forest != nil {
+ 			e = f.s.forestLast(params - i)
+ 		} else {
+-			e = e.prev
++			e = e.prevLink()
+ 		}
+ 	}
+ 	for range params {
+@@ -1652,8 +1652,8 @@ func (f *fn) realizeInlineRange(lo, hi int) {
+ 		}
+ 		return
+ 	}
+-	for e := f.s.head.next; e != f.s.head; {
+-		next := e.next
++	for e := f.s.head.nextLink(); e != f.s.head; {
++		next := e.nextLink()
+ 		f.realizeInlineRangeOperand(e, lo, hi)
+ 		e = next
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_compact.go b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+new file mode 100644
+index 00000000..8e09f9ef
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+@@ -0,0 +1,23 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && wago_owned_forest_compact
++
++package amd64
++
++const compactOperandNodes = true
++
++// Compact operand nodes contain no intrusive links and have no link sidecar.
++type operandLinks struct{}
++
++func (*elem) prevLink() *elem        { panic("compact operand nodes: list predecessor reached") }
++func (*elem) nextLink() *elem        { panic("compact operand nodes: list successor reached") }
++func (*elem) setPrevLink(*elem)      { panic("compact operand nodes: list predecessor write reached") }
++func (*elem) setNextLink(*elem)      { panic("compact operand nodes: list successor write reached") }
++func (*elem) setLinks(*elem, *elem)  { panic("compact operand nodes: list link write reached") }
++func (*elem) hasPhysicalLinks() bool { return false }
++func (*elem) listAttached() bool     { panic("compact operand nodes: list attachment reached") }
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_incompatible.go b/src/core/compiler/backend/railshot/amd64/operand_links_incompatible.go
+new file mode 100644
+index 00000000..6264b95e
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_incompatible.go
+@@ -0,0 +1,13 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && wago_owned_forest_compact && (wago_regalloccheck || wago_owned_forest_census || wago_profile || wago_streamcheck || tinygo || wago_target_tinygo)
++
++package amd64
++
++// Explicitly reject these diagnostics instead of silently dropping checks.
++const _ = compact_operand_nodes_cannot_be_combined_with_legacy_checker_census_profile_streamcheck_or_tinygo
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_list.go b/src/core/compiler/backend/railshot/amd64/operand_links_list.go
+new file mode 100644
+index 00000000..2d04ff24
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_list.go
+@@ -0,0 +1,24 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && !wago_owned_forest_compact
++
++package amd64
++
++const compactOperandNodes = false
++
++type operandLinks struct {
++	prev, next *elem
++}
++
++func (e *elem) prevLink() *elem           { return e.prev }
++func (e *elem) nextLink() *elem           { return e.next }
++func (e *elem) setPrevLink(prev *elem)    { e.prev = prev }
++func (e *elem) setNextLink(next *elem)    { e.next = next }
++func (e *elem) setLinks(prev, next *elem) { e.prev, e.next = prev, next }
++func (e *elem) hasPhysicalLinks() bool    { return e.prev != nil || e.next != nil }
++func (e *elem) listAttached() bool        { return e.prev != nil && e.next != nil }
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+index 1eb6521a..4a036e37 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_census.go
+@@ -71,7 +71,7 @@ func compareOwnedForest(head *elem, logicalDepth int) (out ownedForestImage) {
+ }
+ 
+ func compareOwnedForestWithPending(head *elem, logicalDepth int, f *fn) (out ownedForestImage) {
+-	if head == nil || head.next == nil || head.prev == nil {
++	if head == nil || head.nextLink() == nil || head.prevLink() == nil {
+ 		out.reason = "invalid-list-sentinel"
+ 		return
+ 	}
+@@ -80,8 +80,8 @@ func compareOwnedForestWithPending(head *elem, logicalDepth int, f *fn) (out own
+ 	roots := make([]*elem, 0, 8)
+ 	seen := make(map[*elem]uint8)
+ 	prev := head
+-	for e := head.next; e != head; e = e.next {
+-		if e == nil || e.prev != prev || len(list) == maxNodes {
++	for e := head.nextLink(); e != head; e = e.nextLink() {
++		if e == nil || e.prevLink() != prev || len(list) == maxNodes {
+ 			out.reason = "malformed-or-oversize-list"
+ 			return
+ 		}
+@@ -98,7 +98,7 @@ func compareOwnedForestWithPending(head *elem, logicalDepth int, f *fn) (out own
+ 		}
+ 		prev = e
+ 	}
+-	if prev != head.prev {
++	if prev != head.prevLink() {
+ 		out.reason = "inconsistent-list-tail"
+ 		return
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 7807cbaa..f9351506 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -19,13 +19,14 @@ type fixtureForest struct {
+ 	roots                                                           []*elem
+ 	stores, grows, retirements                                      uint64
+ 	peak                                                            int
++	growCopies                                                      uint64
+ }
+ 
+ func (s *stack) operandAttached(e *elem) bool {
+ 	if s.forest != nil {
+ 		return e.forestLive
+ 	}
+-	return e.prev != nil && e.next != nil
++	return e.listAttached()
+ }
+ 
+ func (s *stack) forestLast(n int) *elem {
+@@ -37,7 +38,7 @@ func (s *stack) forestLast(n int) *elem {
+ }
+ 
+ func (s *stack) forestAppend(e *elem) *elem {
+-	if e.prev != nil || e.next != nil || e.forestLive || !e.st.hasLogicalRoot() {
++	if e.hasPhysicalLinks() || e.forestLive || !e.st.hasLogicalRoot() {
+ 		panic("fixture forest: invalid root append")
+ 	}
+ 	e.forestLive = true
+@@ -45,6 +46,7 @@ func (s *stack) forestAppend(e *elem) *elem {
+ 	if len(v.roots) == cap(v.roots) {
+ 		v.grows++
+ 		v.stores += uint64(len(v.roots))
++		v.growCopies += uint64(len(v.roots))
+ 	}
+ 	v.roots = append(v.roots, e)
+ 	v.stores++
+@@ -58,7 +60,7 @@ func (s *stack) forestReplace(arity int, e *elem) *elem {
+ 	if i < 0 || v.roots[i] != e.arg0 || (arity == 2 && v.roots[i+1] != e.arg1) {
+ 		panic("fixture forest: wrong deferred suffix")
+ 	}
+-	if e.forestLive || e.prev != nil || e.next != nil {
++	if e.forestLive || e.hasPhysicalLinks() {
+ 		panic("fixture forest: attached replacement")
+ 	}
+ 	v.roots[i] = e
+@@ -74,7 +76,7 @@ func (s *stack) forestReplace(arity int, e *elem) *elem {
+ 
+ // Structural retirement only: existing lowering owns all register releases.
+ func (s *stack) forestRetire(e *elem) {
+-	if !e.forestLive || e.prev != nil || e.next != nil {
++	if !e.forestLive || e.hasPhysicalLinks() {
+ 		panic("fixture forest: retire invalid operand")
+ 	}
+ 	s.forgetSpill(e)
+@@ -152,7 +154,7 @@ func (s *stack) fixtureScan(skipSpillPrefix bool) fixtureCursor {
+ 	if s.forest != nil {
+ 		c.endRoot = len(s.forest.roots)
+ 	} else {
+-		c.legacy = s.head.next
++		c.legacy = s.head.nextLink()
+ 		if skipSpillPrefix {
+ 			c.legacy = s.firstUnspilled()
+ 		}
+@@ -161,7 +163,7 @@ func (s *stack) fixtureScan(skipSpillPrefix bool) fixtureCursor {
+ }
+ 
+ func (c *fixtureCursor) push(e *elem) {
+-	if c.n >= len(c.frames) || !e.forestLive || e.prev != nil || e.next != nil {
++	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
+ 		panic("fixture forest: invalid cursor child")
+ 	}
+ 	c.frames[c.n] = fixtureCursorFrame{node: e}
+@@ -177,7 +179,7 @@ func (c *fixtureCursor) next() *elem {
+ 		if e == c.s.head {
+ 			return nil
+ 		}
+-		c.legacy = e.next
++		c.legacy = e.nextLink()
+ 		if c.s.fixtureListWork != nil {
+ 			c.s.fixtureListWork.cursorVisits++
+ 		}
+@@ -275,6 +277,9 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	RecordOperandLayout                                                                                                                                       bool
++	OperandLayout                                                                                                                                             fixtureOperandLayout
++	OperandCapacities                                                                                                                                         []fixtureOperandCapacity
+ 	TemporaryV128WideningArithmetic                                                                                                                           bool
+ 	TemporaryV128PairwiseExtAdds, TemporaryV128WrappingSubs, TemporaryV128ExtMuls, TemporaryV128Dots                                                          uint64
+ 	TemporaryV128WideningSlotLeases, TemporaryV128WideningLocalLeases                                                                                         uint64
+@@ -356,6 +361,21 @@ type fixtureSpillTrace struct {
+ 	Type         machineType
+ }
+ 
++type fixtureOperandLayout struct {
++	Compact                                                                          bool
++	NodeBytes, NodeAlign, NodePhysicalLinkBytes                                      uintptr
++	RootPointerBytes, CursorBytes, CursorFrameBytes, ColdTypeBytes, CapacityRowBytes uintptr
++}
++
++type fixtureOperandCapacity struct {
++	Function                                                     int
++	NodeChunks, NodeCapacity, NodesAtSample, ColdSidecarCapacity int
++	RootCapacity, RootPeak, ColdTypeCapacity, CursorFramePeak    int
++	RootGrows, RootGrowCopies, RootStores, CursorWrites          uint64
++	NodeUsedBytes, NodeReservedBytes                             uint64
++	ArenaMappedBytes, ArenaAppendedBytes                         int
++}
++
+ func (w *fixtureModuleWork) releaseRoots() {
+ 	w.RootCapacity = cap(w.Vector.roots)
+ 	w.Vector.stores += uint64(len(w.Vector.roots))
+@@ -367,7 +387,7 @@ func (w *fixtureModuleWork) releaseRoots() {
+ 
+ func (s *stack) selectorPrevious(node *elem, depth int) *elem {
+ 	if s.forest == nil {
+-		return baseOfValentBlock(node).prev
++		return baseOfValentBlock(node).prevLink()
+ 	}
+ 	if s.forestLast(depth-1) != node {
+ 		panic("fixture forest: invalid selector root position")
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+index aac6899a..7bb05161 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_transition.go
+@@ -29,7 +29,7 @@ func (f *fn) captureOwnedForestPending(node *elem) ownedForestPending {
+ 		if e == nil || t.invalid {
+ 			return
+ 		}
+-		if seen[e] || e.prev == nil || e.next == nil || e.st.hasLogicalRoot() || len(seen) >= 256 {
++		if seen[e] || e.prevLink() == nil || e.nextLink() == nil || e.st.hasLogicalRoot() || len(seen) >= 256 {
+ 			t.invalid = true
+ 			return
+ 		}
+@@ -51,7 +51,7 @@ func (f *fn) captureOwnedForestPending(node *elem) ownedForestPending {
+ 
+ func (f *fn) checkOwnedForestPending(t *ownedForestPending) bool {
+ 	p := t.parent
+-	if !t.active || p == nil || p.prev == nil || p.next == nil || !p.isDeferred() ||
++	if !t.active || p == nil || p.prevLink() == nil || p.nextLink() == nil || !p.isDeferred() ||
+ 		p.st.hasLogicalRoot() != t.root || p.deferredOp() != t.op || p.arg0 != t.arg0 || p.arg1 != t.arg1 || len(t.retired) == 0 {
+ 		return false
+ 	}
+@@ -59,7 +59,7 @@ func (f *fn) checkOwnedForestPending(t *ownedForestPending) bool {
+ 		return false
+ 	}
+ 	for _, e := range t.retired {
+-		if e.prev != nil || e.next != nil || e.st.hasLogicalRoot() {
++		if e.prevLink() != nil || e.nextLink() != nil || e.st.hasLogicalRoot() {
+ 			return false
+ 		}
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/pure_integer_if.go b/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
+index efde767a..a311b138 100644
+--- a/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
++++ b/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
+@@ -146,10 +146,13 @@ func (s *stack) moveValentBlockToTop(root *elem) {
+ 		return
+ 	}
+ 	first := baseOfValentBlock(root)
+-	before, after, last := first.prev, root.next, s.head.prev
+-	before.next, after.prev = after, before
+-	first.prev, last.next = last, first
+-	root.next, s.head.prev = s.head, root
++	before, after, last := first.prevLink(), root.nextLink(), s.head.prevLink()
++	before.setNextLink(after)
++	after.setPrevLink(before)
++	first.setPrevLink(last)
++	last.setNextLink(first)
++	root.setNextLink(s.head)
++	s.head.setPrevLink(root)
+ 	s.canonicalSlots = false
+ 	s.pendingPrefix, s.pendingPrefixLoads = nil, false
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
+index b23e64a6..c3bd2b30 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
+@@ -528,14 +528,14 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+ 	}
+ 	// The physical stack is in postfix/bytecode order. Visit individual trapping
+ 	// nodes so pure ancestors stay deferred and nested traps cannot be reordered.
+-	start := f.s.head.next
++	start := f.s.head.nextLink()
+ 	// Only full barriers can skip a proved prefix. A partial limit may lie
+ 	// before the cursor, and a load barrier is stronger than a trap-only one.
+ 	if limit == f.s.head && f.s.pendingPrefix != nil && (!loads || f.s.pendingPrefixLoads) {
+-		start = f.s.pendingPrefix.next
++		start = f.s.pendingPrefix.nextLink()
+ 	}
+-	allLoadsClear := loads || start == f.s.head.next || f.s.pendingPrefixLoads
+-	for e := start; e != limit; e = e.next {
++	allLoadsClear := loads || start == f.s.head.nextLink() || f.s.pendingPrefixLoads
++	for e := start; e != limit; e = e.nextLink() {
+ 		if f.s.fixtureListWork != nil {
+ 			f.s.fixtureListWork.effectVisits++
+ 		}
+@@ -553,7 +553,7 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+ 	// A partial barrier can leave relevant effects above its limit.
+ 	if limit == f.s.head {
+ 		f.s.pendingEffects &^= mask
+-		f.s.pendingPrefix, f.s.pendingPrefixLoads = f.s.head.prev, allLoadsClear
++		f.s.pendingPrefix, f.s.pendingPrefixLoads = f.s.head.prevLink(), allLoadsClear
+ 	}
+ 
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go b/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
+index 402efdba..89aa32e4 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc_check_enabled.go
+@@ -125,7 +125,7 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
+ 		f.checkSeed(e)
+ 	}
+ 	// Values above a flushed prefix can be evicted while its roots materialize.
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for e := f.s.head.nextLink(); e != f.s.head; e = e.nextLink() {
+ 		f.checkSeed(e)
+ 	}
+ 	slot := 0
+@@ -135,11 +135,11 @@ func (f *fn) checkBeginFlush(roots []*elem) bool {
+ 	}
+ 	// A partial flush must also preserve the condition/argument suffix.
+ 	c.protected = make(map[*elem]bool)
+-	first := f.s.head.next
++	first := f.s.head.nextLink()
+ 	if len(roots) != 0 {
+-		first = roots[len(roots)-1].next
++		first = roots[len(roots)-1].nextLink()
+ 	}
+-	for e := first; e != f.s.head; e = e.next {
++	for e := first; e != f.s.head; e = e.nextLink() {
+ 		c.protected[e] = true
+ 	}
+ 	c.previous = f.a.ObserveRegalloc(c.observe)
+@@ -163,7 +163,7 @@ func (f *fn) checkEndFlush() {
+ 		c.state.Expect("canonical stack at join/call", goal.loc, goal.value)
+ 	}
+ 
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
++	for e := f.s.head.nextLink(); e != f.s.head; e = e.nextLink() {
+ 		if c.protected[e] {
+ 			if loc, ok := f.checkLocation(e); ok {
+ 				c.state.Expect("live suffix after partial flush", loc, c.values[e])
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index fb9114d8..9ce2d852 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -686,7 +686,7 @@ func (f *fn) clearV128LocalAliases(x int) {
+ 	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
+ 		return
+ 	}
+-	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
++	for e := f.s.back(); e != nil && e != f.s.head; e = e.prevLink() {
+ 		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
+ 			e.st.cval = 0
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go b/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
+index bff9e865..25f34539 100644
+--- a/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
++++ b/src/core/compiler/backend/railshot/amd64/source_plan_native_enabled.go
+@@ -109,12 +109,12 @@ func (st *nativeSourcePlanState) node(e *elem) (shared.SourceNodeRef, bool) {
+ // malformed links/cycles and output storage without relying on a left-spine walk.
+ func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shared.SourceNodeRef, tagged bool) (int, bool) {
+ 	s := f.s
+-	if s == nil || s.head == nil || s.head.prev == nil || s.head.next == nil {
++	if s == nil || s.head == nil || s.head.prevLink() == nil || s.head.nextLink() == nil {
+ 		return 0, st.fail(regalloccheck.InvalidGraph)
+ 	}
+ 	count, visited := 0, 0
+ 	previous := s.head
+-	for e := s.head.next; e != s.head; e = e.next {
++	for e := s.head.nextLink(); e != s.head; e = e.nextLink() {
+ 		if visited >= 8192 {
+ 			return 0, st.fail(regalloccheck.ResourceLimit)
+ 		}
+@@ -122,7 +122,7 @@ func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shar
+ 			return 0, false
+ 		}
+ 		visited++
+-		if e == nil || e.prev != previous || e.next == nil {
++		if e == nil || e.prevLink() != previous || e.nextLink() == nil {
+ 			return 0, st.fail(regalloccheck.InvalidGraph)
+ 		}
+ 		if e.st.hasLogicalRoot() {
+@@ -141,7 +141,7 @@ func (st *nativeSourcePlanState) walk(f *fn, roots *[128]*elem, nodes *[128]shar
+ 		}
+ 		previous = e
+ 	}
+-	if previous != s.head.prev || count != int(s.logicalDepth) {
++	if previous != s.head.prevLink() || count != int(s.logicalDepth) {
+ 		return 0, st.fail(regalloccheck.InvalidGraph)
+ 	}
+ 	return count, true
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 6e0a0f14..e8ced9d4 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -48,7 +48,7 @@ func (f *fn) hasNearbyDeferredRoot(node *elem) bool {
+ 		}
+ 		return false
+ 	}
+-	for e, n := baseOfValentBlock(node).prev, 0; e != f.s.head && n < 16; e, n = e.prev, n+1 {
++	for e, n := baseOfValentBlock(node).prevLink(), 0; e != f.s.head && n < 16; e, n = e.prevLink(), n+1 {
+ 		if e.st.hasLogicalRoot() && e.isDeferred() {
+ 			return true
+ 		}
+@@ -210,7 +210,7 @@ type elem struct {
+ 	st storage
+ 
+ 	// Intrusive doubly-linked list (physical stack order).
+-	prev, next *elem
++	operandLinks
+ 
+ 	// Deferred-action tree (valid when kind == ekDeferred): the two operand
+ 	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
+@@ -329,12 +329,16 @@ func newStackWithCap(capHint int) *stack {
+ // initWithCap initializes an empty stack without replacing its address. The
+ // function compiler may already hold an alias when fallback first needs it.
+ func (s *stack) initWithCap(capHint int) {
++	if compactOperandNodes && s.forest == nil {
++		panic("compact operand nodes: initialize with an owned forest")
++	}
+ 	if capHint < minStackArenaCap {
+ 		capHint = minStackArenaCap
+ 	}
+ 	next, geometric := stackArenaGrowthCaps(capHint)
+-	arena := s.arena
++	arena, forest := s.arena, s.forest
+ 	*s = stack{
++		forest:           forest,
+ 		arena:            arena,
+ 		chunks:           [][]elem{operandArenaChunk(arena, capHint)},
+ 		nextChunkCap:     uint16(next),
+@@ -360,10 +364,8 @@ func (s *stack) initSentinel() {
+ 	s.activeChunk = chunk
+ 	*chunk = append((*chunk)[:0], elem{})
+ 	s.head = &(*chunk)[0]
+-	if s.forest != nil {
+-		s.head.prev, s.head.next = nil, nil
+-	} else {
+-		s.head.prev, s.head.next = s.head, s.head
++	if s.forest == nil {
++		s.head.setLinks(s.head, s.head)
+ 	}
+ 	s.logicalDepth = 0
+ 	s.canonicalSlots = true
+@@ -520,9 +522,10 @@ func (s *stack) push(e *elem) *elem {
+ 	if s.forest != nil {
+ 		return s.forestAppend(e)
+ 	}
+-	last := s.head.prev
+-	e.prev, e.next = last, s.head
+-	last.next, s.head.prev = e, e
++	last := s.head.prevLink()
++	e.setLinks(last, s.head)
++	last.setNextLink(e)
++	s.head.setPrevLink(e)
+ 	if s.fixtureListWork != nil {
+ 		s.fixtureListWork.linkWrites += 4
+ 	}
+@@ -624,10 +627,10 @@ func (s *stack) back() *elem {
+ 	if s.forest != nil {
+ 		return s.forestLast(0)
+ 	}
+-	if s.head.prev == s.head {
++	if s.head.prevLink() == s.head {
+ 		return nil
+ 	}
+-	return s.head.prev
++	return s.head.prevLink()
+ }
+ 
+ // erase unlinks e from the physical list (used when a node is condensed away or
+@@ -648,7 +651,7 @@ func (s *stack) erase(e *elem) {
+ 		return
+ 	}
+ 	if s.pendingPrefix == e {
+-		s.pendingPrefix = e.prev
++		s.pendingPrefix = e.prevLink()
+ 	}
+ 	s.forgetSpill(e)
+ 	s.canonicalSlots = false
+@@ -659,15 +662,17 @@ func (s *stack) erase(e *elem) {
+ 		}
+ 		s.logicalDepth--
+ 	}
+-	e.prev.next, e.next.prev = e.next, e.prev
+-	e.prev, e.next = nil, nil
++	prev, next := e.prevLink(), e.nextLink()
++	prev.setNextLink(next)
++	next.setPrevLink(prev)
++	e.setLinks(nil, nil)
+ 	if s.fixtureListWork != nil {
+ 		s.fixtureListWork.linkWrites += 4
+ 	}
+ 	if ownedForestCensusEnabled {
+ 		observeOwnedForestLinks("erase", 4)
+ 	}
+-	if s.head.next == s.head {
++	if s.head.nextLink() == s.head {
+ 		s.pendingEffects &^= pendingLocalRef
+ 	}
+ }
+@@ -708,7 +713,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 	if f.s.forest != nil {
+ 		left = f.s.forestLast(1)
+ 	} else {
+-		left = baseOfValentBlock(right).prev
++		left = baseOfValentBlock(right).prevLink()
+ 	}
+ 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
+ 	if right.isValue() && right.st.kind == stConst &&
+@@ -1015,9 +1020,9 @@ func (s *stack) firstUnspilled() *elem {
+ 	if last == nil {
+ 		last = s.head
+ 	}
+-	e := last.next
++	e := last.nextLink()
+ 	for e != s.head && e.isValue() && e.st.kind == stSlot {
+-		last, e = e, e.next
++		last, e = e, e.nextLink()
+ 		if s.fixtureListWork != nil {
+ 			s.fixtureListWork.spillPrefixVisits++
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack_test.go b/src/core/compiler/backend/railshot/amd64/stack_test.go
+index 22839eec..e2581cb1 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack_test.go
++++ b/src/core/compiler/backend/railshot/amd64/stack_test.go
+@@ -328,8 +328,9 @@ func TestStackArenaClearsReusedNodesAcrossChunks(t *testing.T) {
+ 			}
+ 			*e = elem{
+ 				st:   storage{cval: -1, slot: 9, cold: 2, idx: 3, kind: deferredStorageKind, typ: mtCustom, reg: RAX, meta: 0xff},
+-				prev: s.head, next: s.head, arg0: s.head, arg1: s.head,
++				arg0: s.head, arg1: s.head,
+ 			}
++			e.setLinks(s.head, s.head)
+ 		}
+ 		s.reset()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go b/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
+index 5731f9e3..a2a1d168 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_inline_constants.go
+@@ -37,7 +37,7 @@ func (f *fn) captureInlineTailConstants(t *inlineTarget, base int) *inlineTailCo
+ 			values[i] = node.st.cval
+ 			known |= 1 << i
+ 		}
+-		node = baseOfValentBlock(node).prev
++		node = baseOfValentBlock(node).prevLink()
+ 	}
+ 	if known == 0 {
+ 		return nil
+diff --git a/src/core/compiler/backend/railshot/amd64/treeorder.go b/src/core/compiler/backend/railshot/amd64/treeorder.go
+index d5c2a460..ff966bf1 100644
+--- a/src/core/compiler/backend/railshot/amd64/treeorder.go
++++ b/src/core/compiler/backend/railshot/amd64/treeorder.go
+@@ -107,7 +107,7 @@ func (f *fn) materializeTrapsBefore(node *elem) {
+ 		return
+ 	}
+ 	base := baseOfValentBlock(node)
+-	for e := f.s.head.next; e != base; e = e.next {
++	for e := f.s.head.nextLink(); e != base; e = e.nextLink() {
+ 		if f.s.fixtureListWork != nil {
+ 			f.s.fixtureListWork.effectVisits++
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/vector_region.go b/src/core/compiler/backend/railshot/amd64/vector_region.go
+index 5e6683d6..046496c4 100644
+--- a/src/core/compiler/backend/railshot/amd64/vector_region.go
++++ b/src/core/compiler/backend/railshot/amd64/vector_region.go
+@@ -93,7 +93,7 @@ func (f *fn) homeVectorLocal(i int) {
+ 			}
+ 		}
+ 	} else {
+-		for e := f.s.head.next; e != f.s.head; e = e.next {
++		for e := f.s.head.nextLink(); e != f.s.head; e = e.nextLink() {
+ 			if f.rebaseVectorLocalAlias(e, x) && fixture {
+ 				f.sc.fixtureWork.TemporaryV128RegionAliasRebases++
+ 			}
