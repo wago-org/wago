@@ -1,0 +1,237 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+index a9e952de..b5ff7ca8 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+@@ -35,39 +35,8 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
+ 	if !strengthReducibleWithMagic(int64(d), false, false, f.opt(optMagicDiv)) {
+ 		return regNone, false
+ 	}
+-	if f.s.forest != nil {
+-		panic("fixture forest: unported adjacent div/rem selector")
+-	}
+-	otherLocal := node.next
+-	for skipped := 0; skipped < 8; skipped++ {
+-		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
+-			return regNone, false
+-		}
+-		if otherLocal.valueType() == mtI32 && otherLocal.st.kind == local.st.kind && otherLocal.st.idx == local.st.idx {
+-			break
+-		}
+-		if otherLocal.valueType() != mtI32 && otherLocal.valueType() != mtI64 {
+-			return regNone, false
+-		}
+-		switch otherLocal.st.kind {
+-		case stConst, stLocalRef, stLocalReg:
+-		default:
+-			return regNone, false
+-		}
+-		otherLocal = otherLocal.next
+-	}
+-	if otherLocal == nil || !otherLocal.isValue() || otherLocal.valueType() != mtI32 ||
+-		otherLocal.st.kind != local.st.kind || otherLocal.st.idx != local.st.idx {
+-		return regNone, false
+-	}
+-	otherConstant := otherLocal.next
+-	if otherConstant == nil || !otherConstant.isValue() || otherConstant.valueType() != mtI32 ||
+-		otherConstant.st.kind != stConst || uint32(otherConstant.st.cval) != d {
+-		return regNone, false
+-	}
+-	remainder := otherConstant.next
+-	if remainder == nil || !remainder.isDeferred() || remainder.valueType() != mtI32 ||
+-		remainder.deferredOp() != opRemU || remainder.arg0 != otherLocal || remainder.arg1 != otherConstant {
++	remainder := f.findDivRemConstRemainder(node, local, d)
++	if remainder == nil {
+ 		return regNone, false
+ 	}
+ 	if regallocCheckEnabled {
+@@ -107,3 +76,73 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
+ 	f.stats.peep("divrem-const-pair")
+ 	return result, true
+ }
++
++// findDivRemConstRemainder finishes all structural traversal before the emitter
++// can allocate, spill, or retire any child.
++func (f *fn) findDivRemConstRemainder(node, local *elem, divisor uint32) *elem {
++	if f.s.forest == nil {
++		return matchDivRemConstRemainder(f.s.head, local, divisor, node.next, nil)
++	}
++	return f.findForestDivRemConstRemainder(node, local, divisor)
++}
++
++func (f *fn) findForestDivRemConstRemainder(node, local *elem, divisor uint32) *elem {
++	cursor := f.s.fixtureScan(false)
++	var visits uint64
++	for e := cursor.next(); e != nil; e = cursor.next() {
++		visits++
++		if e == node {
++			if f.sc != nil && f.sc.fixtureWork != nil {
++				f.sc.fixtureWork.DivRemConstPairSeekVisits += visits
++			}
++			return matchDivRemConstRemainder(f.s.head, local, divisor, cursor.next(), &cursor)
++		}
++	}
++	if f.sc != nil && f.sc.fixtureWork != nil {
++		f.sc.fixtureWork.DivRemConstPairSeekVisits += visits
++	}
++	return nil
++}
++
++func divRemConstSuccessor(e *elem, cursor *fixtureCursor) *elem {
++	if cursor != nil {
++		return cursor.next()
++	}
++	return e.next
++}
++
++// Both representations present the same physical postorder to this matcher.
++func matchDivRemConstRemainder(head, local *elem, divisor uint32, otherLocal *elem, cursor *fixtureCursor) *elem {
++	for skipped := 0; skipped < 8; skipped++ {
++		if otherLocal == nil || otherLocal == head || !otherLocal.isValue() {
++			return nil
++		}
++		if otherLocal.valueType() == mtI32 && otherLocal.st.kind == local.st.kind && otherLocal.st.idx == local.st.idx {
++			break
++		}
++		if otherLocal.valueType() != mtI32 && otherLocal.valueType() != mtI64 {
++			return nil
++		}
++		switch otherLocal.st.kind {
++		case stConst, stLocalRef, stLocalReg:
++		default:
++			return nil
++		}
++		otherLocal = divRemConstSuccessor(otherLocal, cursor)
++	}
++	if otherLocal == nil || !otherLocal.isValue() || otherLocal.valueType() != mtI32 ||
++		otherLocal.st.kind != local.st.kind || otherLocal.st.idx != local.st.idx {
++		return nil
++	}
++	otherConstant := divRemConstSuccessor(otherLocal, cursor)
++	if otherConstant == nil || !otherConstant.isValue() || otherConstant.valueType() != mtI32 ||
++		otherConstant.st.kind != stConst || uint32(otherConstant.st.cval) != divisor {
++		return nil
++	}
++	remainder := divRemConstSuccessor(otherConstant, cursor)
++	if remainder == nil || !remainder.isDeferred() || remainder.valueType() != mtI32 ||
++		remainder.deferredOp() != opRemU || remainder.arg0 != otherLocal || remainder.arg1 != otherConstant {
++		return nil
++	}
++	return remainder
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_adjacent_divrem_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_adjacent_divrem_independent_test.go
+new file mode 100644
+index 00000000..49b345d0
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_adjacent_divrem_independent_test.go
+@@ -0,0 +1,99 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestAdjacentDivRemOrdinary(t *testing.T) {
++	for _, tc := range []struct {
++		name                         string
++		sep, barrier, differentLocal bool
++		remainderD                   byte
++		pairs                        int
++	}{
++		{"nested-add", false, false, false, 7, 1},
++		{"pure-separator", true, false, false, 7, 1},
++		{"root-flush", false, true, false, 7, 1},
++		{"different-divisor", false, false, false, 11, 0},
++		{"different-local", false, false, true, 7, 0},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			body := []byte{0, 0x20, 0, 0x41, 7, 0x6e}
++			if tc.sep {
++				body = append(body, 0x20, 1)
++			}
++			remLocal := byte(0)
++			if tc.differentLocal {
++				remLocal = 1
++			}
++			body = append(body, 0x20, remLocal, 0x41, tc.remainderD, 0x70)
++			store := []byte{0x41, 24, 0x41, 13, 0x36, 2, 0}
++			if tc.barrier {
++				body = append(body, store...)
++			}
++			if tc.sep {
++				body = append(body, 0x6a)
++			}
++			body = append(body, 0x6a)
++			if !tc.barrier {
++				body = append(body, store...)
++			}
++			body = append(body, 0x41, 24, 0x28, 2, 0, 0x6a, 0x0b)
++			m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive forest: %+v", work)
++					}
++					if candidate && (work.DivRemConstPairSeekVisits == 0 || work.DivRemConstPairSeekVisits > work.Vector.visits) || !candidate && work.DivRemConstPairSeekVisits != 0 {
++						t.Fatalf("invalid seek accounting: %+v", work)
++					}
++					peeps := stats.Funcs[0].Peephole
++					if got := peeps["divrem-const-pair"]; got != tc.pairs {
++						t.Fatalf("pair=%d want=%d peeps=%v", got, tc.pairs, peeps)
++					}
++					for _, args := range [][2]uint32{{0, 7}, {6, 4}, {51, 13}, {0x80000000, 89}, {0xffffffff, 0xdeadbeef}} {
++						rem := args[remLocal]
++						want := args[0]/7 + rem%uint32(tc.remainderD) + 13
++						if tc.sep {
++							want += args[1]
++						}
++						got, err := ownedRunModule(t, cm, []uint64{uint64(args[0]), uint64(args[1])})
++						if err != nil || got != uint64(want) {
++							t.Fatalf("intr=%v forest=%v args=%x got=%x want=%x err=%v", intr, candidate, args, got, want, err)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peeps, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 286fc6f1..bd3ff226 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	DivRemConstPairSeekVisits                                                                       uint64
+ 	IntegerControlInline                                                                            bool
+ 	IntegerControlInlineLeaves, IntegerControlInlineRecursive                                       uint64
+ 	ScalarFPSignedSaturation                                                                        bool

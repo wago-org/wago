@@ -551,3 +551,22 @@ unchanged; the 31 held inputs were untouched.
 
 Focused summary SHA-256:
 `6bac9a91cf25fa2213ceacf0121203c38d7e8dca90fe1a37f99e5bc99d54c2f4`.
+
+## Focused adjacent unsigned quotient/remainder pairing
+
+Apply adjacent-divrem-focused.patch on top of ab4c2085. At 39f93798 the
+ordinary gate passed 20 images and 100 valid calls with nonzero divisors,
+with 10 exact native and encoder-exported JSON pairs. Twelve positive
+images each emitted one pair; eight no-match images emitted none. Each
+of the 10 forest images recorded three seek visits (a subset of cursor
+visits), versus zero instrumented seek visits on the list path.
+
+The i32 constant-divisor fixtures covered nested add, one pure separator,
+root flush, unequal locals, and unequal divisors. The 8/9 separator
+boundary and a later match after a first mismatched packet were not tested.
+No public artifact codec, exceptional input, corpus, or timing claim.
+The prior 83-of-114 exit-1 census remains unchanged, the 31 held inputs
+were untouched, and defaults are unchanged.
+
+Focused summary SHA-256:
+`28f0d3dfcba854cf9652a9814782cc4d855cae3d80bf1289692c8aa39f559d85`.
