@@ -1,0 +1,257 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 7b47497b..99301b07 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1942,6 +1942,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128IntegerBinary:         work.TemporaryV128IntegerBinary,
+ 			TemporaryV128CompareMasks:          work.TemporaryV128CompareMasks,
+ 			TemporaryV128Select:                work.TemporaryV128Select,
++			TemporaryV128BitselectLeases:       work.TemporaryV128BitselectLeases,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 23f70d2a..0b87a14c 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128BitselectLeases                                                                                                                              bool
++	TemporaryV128Bitselects, TemporaryV128BitselectTernaries, TemporaryV128BitselectSlotLeases, TemporaryV128BitselectLocalLeases                             uint64
+ 	TemporaryV128Select                                                                                                                                       bool
+ 	TemporaryV128Selects, TemporaryV128SelectDeferredI64Predicates                                                                                            uint64
+ 	TemporaryV128CompareMasks                                                                                                                                 bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_bitselect_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_bitselect_independent_test.go
+new file mode 100644
+index 00000000..0f18ec2b
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_bitselect_independent_test.go
+@@ -0,0 +1,182 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128BitselectModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 3, 0x7b, 0x20, 0}
++	if lane == "pressure" {
++		b = []byte{0, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if lane == "pressure" {
++		pc(544)
++		ld(48)
++		pc(512)
++		ld(0)
++		ld(16)
++		for i := 4; i <= 23; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++		b = append(b, 0x1a)
++		ld(32)
++	} else {
++		// Preserve the old first local below the three independently pinned
++		// current operands; observe all homes again only after lowering.
++		pc(544)
++		ld(48)
++		b = append(b, 0x21, 1, 0x20, 1)
++		for j := range 3 {
++			ld(16 * j)
++			b = append(b, 0x21, byte(j+1))
++		}
++		pc(512)
++		b = append(b, 0x20, 1, 0x20, 2, 0x20, 3)
++	}
++	b = append(b, 0xfd, 82)
++	st()
++	st()
++	if lane != "pressure" {
++		for j := range 3 {
++			pc(560 + 16*j)
++			b = append(b, 0x20, byte(j+1))
++			st()
++		}
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128BitselectRun(t *testing.T, cm *encoder.CompiledModule, lane string, maskCase int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + maskCase*23)
++	}
++	for i := range 16 {
++		switch maskCase {
++		case 0:
++			mem[32+i] = 0
++		case 1:
++			mem[32+i] = 255
++		default:
++			mem[32+i] = byte(i*13 + 0x95)
++		}
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 16 {
++		a, b, m := mem[i], mem[16+i], mem[32+i]
++		want[512+i] = (a & m) | (b &^ m)
++	}
++	copy(want[544:], mem[48:64])
++	if lane != "pressure" {
++		for j := range 3 {
++			copy(want[560+16*j:], mem[16*j:16*j+16])
++		}
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + maskCase)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(want[512:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s maskCase=%d got=%x want=%x err=%v", lane, maskCase, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s byte[%d]=%x want=%x", lane, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128BitselectOrdinary(t *testing.T) {
++	for _, lane := range []string{"borrowed", "pressure"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedV128BitselectModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128BitselectLeases: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 || work.TemporaryV128Bitselects != 1 || work.TemporaryV128BitselectTernaries > 1 {
++						t.Fatalf("inactive bitselect or invalid strategy count: %+v", work)
++					}
++					if lane == "pressure" && (work.TemporaryV128Spills == 0 || work.TemporaryV128BitselectSlotLeases == 0) {
++						t.Fatalf("actual full-width spill or floor raise absent: %+v", work)
++					}
++					if lane == "borrowed" && work.TemporaryV128BitselectLocalLeases != 3 {
++						t.Fatalf("distinct local pins not protected: %+v", work)
++					}
++					for v := range 3 {
++						ownedV128BitselectRun(t, cm, lane, v)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index c24d69fe..ddb082ac 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -1003,6 +1003,29 @@ func (f *fn) v128Bitselect() {
+ 	maskElem := f.popValue()
+ 	bElem := f.popValue()
+ 	aElem := f.popValue()
++	fixtureLeases := f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BitselectLeases
++	if fixtureLeases {
++		work := f.sc.fixtureWork
++		floor, pins := f.spillFloor, f.fpinned
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		// The allocator cannot see detached homes. Reserve all three
++		// before materializing any source, in the emitter's read order.
++		for _, e := range [3]*elem{maskElem, bElem, aElem} {
++			switch e.st.kind {
++			case stSlot:
++				if end := e.st.slotIndex() + 2; end > f.spillFloor {
++					f.spillFloor = end
++					work.TemporaryV128BitselectSlotLeases++
++				}
++			case stLocalReg:
++				if !f.fpinned.has(e.st.reg) {
++					f.fpinned = f.fpinned.add(e.st.reg)
++					work.TemporaryV128BitselectLocalLeases++
++				}
++			}
++		}
++		work.TemporaryV128Bitselects++
++	}
+ 	if f.opt(optAVX512Ternary) && f.cpuHas(shared.AMD64AVX512) {
+ 		oldPinned := f.fpinned
+ 		mask := f.materializeV128(maskElem)
+@@ -1019,6 +1042,9 @@ func (f *fn) v128Bitselect() {
+ 		f.releaseF(xb)
+ 		f.pushVReg(xa)
+ 		f.stats.peep("simd-bitselect-ternary")
++		if fixtureLeases {
++			f.sc.fixtureWork.TemporaryV128BitselectTernaries++
++		}
+ 		return
+ 	}
+ 	mask := f.materializeV128(maskElem)

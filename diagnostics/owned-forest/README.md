@@ -1030,3 +1030,11 @@ Apply `v128-select-focused.patch` after `bf231ffb`. The alternative ends at `806
 The focused run passed 12 images and 48 ordinary calls with six exact native and encoder-JSON pairs. Each image recorded one select and one deferred i64 predicate. Four pressure images each recorded eight actual full-width spills; those spills are not attributed to the select itself. An independent whole-memory oracle covered old, live, selected, and post-select home values for both conditions.
 
 Focused summary SHA-256: `fd8d5f61e51062798674d4d9574d9c93e7c5dfcb19a5571df6147221640480d7`. No FD82, GP spill, held-input, corpus, public serialization, or timing claim. Active source and defaults are unchanged.
+
+### V128 bitselect
+
+Apply `v128-bitselect-focused.patch` after `8065d7f6`. The alternative ends at `f842877c4fd2e4a8815c594337575f042f4114b0` (tree `a375ce6f59491433fa1ba959653b040dc2355c16`). This is an opt-in FD82-only checkpoint with scoped operand leases.
+
+Eight images and 24 ordinary calls passed with four exact native and encoder-JSON pairs. Each image recorded one bitselect. Routine images each added three home pins; pressure images each recorded one slot-floor raise and eight full-width spills. The ternary path did not activate. This does not establish FD78/80/81 coverage, corpus parity, public serialization parity, or a timing gain.
+
+Focused summary SHA-256: `9878498997d2649d99d4d3e504d3907c9ff12f4f3c459a1b24984d189235992c`. Active source and defaults are unchanged.
