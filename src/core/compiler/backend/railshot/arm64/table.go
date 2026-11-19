@@ -91,6 +91,11 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	switch tt.Ref.Heap().Abs() {
 	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
+	case wasm.HeapNoExtern, wasm.HeapExn, wasm.HeapNoExn:
+		// The runtime allocates and initializes these tables with 8-byte
+		// entries (elemEntryBytes); a 32-byte descriptor stride would write
+		// past the table storage.
+		return true
 	default:
 		return false
 	}

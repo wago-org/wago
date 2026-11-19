@@ -2522,9 +2522,10 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	f.flush()
 	noHandler := f.zeroBranch(ehReg, true, true)
 	// The handler restores its owner context and rederives cached globals from
-	// cells. Publish deferred global.set values before that exceptional edge;
-	// unhandled throws take the ordinary trap path, which already does this.
-	f.storeDirtyGlobalPins(X16)
+	// cells, including module-pinned globals whose registers are authoritative
+	// while wasm runs. Publish both before that exceptional edge; unhandled
+	// throws take the ordinary trap path, which already does this.
+	f.storeGlobalPins(X16, true)
 	f.ld64(X16, linMemReg, -int32(offEHTagDirPtr))
 	f.ld64(X16, X16, int32(tag*8))
 	f.st64(ehReg, ehTagOff, X16)
@@ -2570,8 +2571,8 @@ func (f *fn) opThrowRef() error {
 	f.trapIfZero(X16, true, true, trapNullReference)
 	noHandler := f.zeroBranch(ehReg, true, true)
 	// X16 carries the exception object, so use the other fixed scratch while
-	// making dirty pinned globals coherent for the handler's register reload.
-	f.storeDirtyGlobalPins(X17)
+	// making module and dirty pinned globals coherent for the handler's reload.
+	f.storeGlobalPins(X17, true)
 	for off := int32(0); off < ehRootSlots*8; off += 8 {
 		f.ld64(X17, X16, off)
 		f.st64(ehReg, ehTagOff+off, X17)

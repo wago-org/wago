@@ -2572,6 +2572,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		f.pinned = f.pinned.add(pairRes[1])
 	}
 	var quadRes [8]Reg
+	var quadSlot [8]int
 	if registerQuadResultsSupported && rN == 8 {
 		// Eight return registers leave too few free GPRs to capture every value
 		// across pinned-local reloads. Reserve canonical operand slots instead.
@@ -2582,8 +2583,15 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	} else if registerQuadResultsSupported && rN > 2 {
+		// Module-pinned globals, cached constants and pinned locals can leave
+		// fewer free GPRs than results; capture the remainder in spill slots.
 		for i, src := range []Reg{RAX, RDX, RCX, R8, R9, R10, R11}[:rN] {
-			quadRes[i] = f.allocReg(maskOf(RAX, RDX, RCX, R8, R9, R10, R11))
+			quadRes[i] = f.allocRegOrNone(maskOf(RAX, RDX, RCX, R8, R9, R10, R11))
+			if quadRes[i] == regNone {
+				quadSlot[i] = f.allocSpillSlots(1)
+				f.a.Store64(RSP, f.spillOff(quadSlot[i]), src)
+				continue
+			}
 			f.a.MovReg64(quadRes[i], src)
 			f.pinned = f.pinned.add(quadRes[i])
 		}
@@ -2621,8 +2629,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 	if registerQuadResultsSupported && rN > 2 && rN < 8 {
 		for i, reg := range quadRes[:rN] {
-			f.pinned = f.pinned.remove(reg)
-			value := f.pushReg(reg, mtOf(ft.Results[i]))
+			var value *elem
+			if reg == regNone {
+				value = f.pushValue(storage{kind: stSlot, typ: mtOf(ft.Results[i]), slot: uint32(quadSlot[i])})
+			} else {
+				f.pinned = f.pinned.remove(reg)
+				value = f.pushReg(reg, mtOf(ft.Results[i]))
+			}
 			f.setStackGCRoot(value, gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}

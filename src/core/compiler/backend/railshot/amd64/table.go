@@ -77,6 +77,26 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	switch heap.Abs() {
 	case wasm.HeapExtern, wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
 		return true
+	case wasm.HeapNoExtern, wasm.HeapExn, wasm.HeapNoExn:
+		// The runtime allocates and initializes these tables with 8-byte
+		// entries (elemEntryBytes); a 32-byte descriptor stride would write
+		// past the table storage.
+		return true
+	default:
+		return false
+	}
+}
+
+// tableIsCompactNonGCRef reports the compact exception and nullexternref
+// tables, which never take the GC object helper paths.
+func (f *fn) tableIsCompactNonGCRef(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	if !ok || tt.Ref.Exact() || tt.Ref.Heap().Kind() != wasm.HeapAbs {
+		return false
+	}
+	switch tt.Ref.Heap().Abs() {
+	case wasm.HeapNoExtern, wasm.HeapExn, wasm.HeapNoExn:
+		return true
 	default:
 		return false
 	}
@@ -559,7 +579,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
 		return err
 	}
 	f.materializePendingTraps()
-	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx))) {
+	if f.gcStructHelpers && (f.tableIsGCObjectRef(tableIdx) || (f.m.TableCount() == 3 && tableIdx == 2 && f.tableIsExternref(tableIdx) && !f.tableIsCompactNonGCRef(tableIdx))) {
 		tt, ok := f.m.TableType(tableIdx)
 		if !ok {
 			return fmt.Errorf("amd64: GC table.set table %d type is unavailable", tableIdx)
