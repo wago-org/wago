@@ -19,7 +19,7 @@ import (
 // view is refreshed in place whenever growable backing can relocate, and callers
 // must still serialize access with collector mutation.
 // Version 8 also gates the dead-reservation/native-preparation helper dispatch.
-const NativeABIVersion uint32 = 9
+const NativeABIVersion uint32 = 10
 
 // Native allocation-stat offsets are relative to the AllocationCount pointer
 // in NativeCollectorView. Generated AMD64 dead charges use these counters to
@@ -126,7 +126,7 @@ type NativeInstanceView struct {
 	Collector      uintptr
 	LocalTypes     uintptr
 	LocalTypeCount uint32
-	_              uint32
+	IdentityTypes  uint32
 
 	// keepTypes is outside the native ABI prefix. It gives Go's collector a typed
 	// reference to the immutable backing array whose address LocalTypes publishes.
@@ -138,6 +138,7 @@ const (
 	NativeInstanceViewCollectorOffset      = 8
 	NativeInstanceViewLocalTypesOffset     = 16
 	NativeInstanceViewLocalTypeCountOffset = 24
+	NativeInstanceViewIdentityTypesOffset  = 28
 	NativeInstanceViewABISize              = 32
 )
 
@@ -238,7 +239,8 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(instance.Version) != NativeInstanceViewVersionOffset ||
 		unsafe.Offsetof(instance.Collector) != NativeInstanceViewCollectorOffset ||
 		unsafe.Offsetof(instance.LocalTypes) != NativeInstanceViewLocalTypesOffset ||
-		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset {
+		unsafe.Offsetof(instance.LocalTypeCount) != NativeInstanceViewLocalTypeCountOffset ||
+		unsafe.Offsetof(instance.IdentityTypes) != NativeInstanceViewIdentityTypesOffset {
 		return fmt.Errorf("gc: native instance ABI layout mismatch")
 	}
 	return nil
@@ -266,6 +268,10 @@ func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, 
 	}
 	if view.LocalTypes != sliceData(view.keepTypes) {
 		return fmt.Errorf("gc: native local type map pointer does not match immutable backing")
+	}
+	identity := nativeTypeMapIdentity(view.keepTypes)
+	if view.IdentityTypes != identity {
+		return fmt.Errorf("gc: native identity type-map marker %d does not match %d", view.IdentityTypes, identity)
 	}
 	collectorPointer := uintptr(unsafe.Pointer(collector.nativeView))
 	if view.Collector != collectorPointer {
@@ -376,6 +382,18 @@ func NewNativeInstanceView(c *Collector, localTypes []TypeID) *NativeInstanceVie
 	return view
 }
 
+// nativeTypeMapIdentity reports whether every module-local type ID is already
+// its canonical collector ID. The map can be an identity prefix of a collector
+// that later grows; appended collector types do not change this instance fact.
+func nativeTypeMapIdentity(localTypes []TypeID) uint32 {
+	for i, typ := range localTypes {
+		if typ != TypeID(i) {
+			return 0
+		}
+	}
+	return 1
+}
+
 // BuildNativeInstanceView constructs and validates the immutable instance view.
 // Callers that install the pointer into basedata should use this error-returning
 // form so malformed internal state is rejected before native execution.
@@ -383,11 +401,13 @@ func BuildNativeInstanceView(c *Collector, localTypes []TypeID) (*NativeInstance
 	if c == nil || c.nativeView == nil {
 		return nil, fmt.Errorf("gc: native collector view is unavailable")
 	}
+	identity := nativeTypeMapIdentity(localTypes)
 	view := &NativeInstanceView{
 		Version:        NativeABIVersion,
 		Collector:      uintptr(unsafe.Pointer(c.nativeView)),
 		LocalTypes:     sliceData(localTypes),
 		LocalTypeCount: uint32(len(localTypes)),
+		IdentityTypes:  identity,
 		keepTypes:      localTypes,
 	}
 	if err := ValidateNativeInstanceView(view, c, uint32(len(localTypes))); err != nil {

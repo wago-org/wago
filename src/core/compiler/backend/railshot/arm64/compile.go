@@ -789,6 +789,9 @@ type scratch struct {
 	finalizerMarkers        map[int]bool // validation-only inventory
 	brTableStubAt           []int        // duplicate-heavy jump-table target positions by control depth
 	finalFragments          []finalizerFragment
+	reuseData               []reuseDataRange
+	reuseTargets            []int
+	noIndexedReuse          bool
 	deadHoleSites           [maxFinalizerDeletions]int
 	branchNextSites         [maxFinalizerDeletions]int
 	singleBitTests          [maxFinalizerDeletions]singleBitTestSite
@@ -1132,6 +1135,8 @@ func (sc *scratch) reset() {
 	sc.asm.CompactMoveImmediates32 = 0
 	sc.asm.SingleNegativeMoves32 = 0
 	sc.asm.IndexedBaseReuses = 0
+	sc.asm.ResetIndexedReuse()
+	sc.reuseData = sc.reuseData[:0]
 	sc.asm.DominatedIndexedCandidates = 0
 	sc.directPrepared = false
 	sc.directPreparedLight = false
@@ -3295,6 +3300,25 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	}
 	sc.asm.ReserveBranch19 = false
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	if errors.Is(err, errIndexedReuseTarget) {
+		// An omitted X16 address computation turned out to be a branch target.
+		// Recompile once without indexed-base reuse; keep it off for any
+		// branch-range retry of this function as well.
+		sc.noIndexedReuse = true
+		defer func() { sc.noIndexedReuse = false }()
+		if stats != nil {
+			*stats = CodegenStats{FuncIdx: stats.FuncIdx, Name: stats.Name,
+				RecordSources: stats.RecordSources, FunctionAttempts: stats.FunctionAttempts + 1}
+		}
+		if gcFrameRoots != nil && gcFrameRoots.Candidate {
+			gcFrameRoots.Exact = true
+			gcFrameRoots.ResetSafepoints()
+			gcFrameRoots.ResetCallsites()
+			gcFrameRoots.FrameBytes = 0
+			gcFrameRoots.AdapterReturnOffset = 0
+		}
+		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleeHints, policy, sc)
+	}
 	if errors.Is(err, errNativeBranchRange) {
 		// Retry once with expansion slots. The ordinary pass keeps small
 		// functions byte-for-byte unchanged; only failing functions pay for
@@ -3332,6 +3356,10 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 				stats.FunctionAttempts++
 			}
 			fastCode, fastRelocs, fastInternal, fastErr := compileFuncAttempt(m, gcTypeLayouts, funcIdx, false, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, nil, customInstructions, variantStats, true, inlineTargets, calleeHints, policy, fastScratch)
+			if errors.Is(fastErr, errIndexedReuseTarget) {
+				fastScratch.noIndexedReuse = true
+				fastCode, fastRelocs, fastInternal, fastErr = compileFuncAttempt(m, gcTypeLayouts, funcIdx, false, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTable, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, nil, customInstructions, variantStats, true, inlineTargets, calleeHints, policy, fastScratch)
+			}
 			if fastErr == nil && len(fastRelocs) == 0 {
 				oldLen := len(code)
 				padding := alignmentPadding(oldLen, 4)
@@ -3418,7 +3446,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// The encoder accepts only a tiny straight-line window whose instructions
 	// preserve the base, index, and X16. Branches and unknown words terminate the
 	// proof, so check-elided code can use the same local reuse safely.
-	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse)
+	sc.asm.ReuseIndexedBase = policy.EnabledOption(optIndexedBaseReuse) && !sc.noIndexedReuse
 	// Repeated execution can repay the encoder's bitmask-matching work even
 	// when whole-function native compaction is disabled.
 	sc.asm.DisableLogicalMoveImmediate = !logicalMoveImmediateEnabled ||
@@ -4008,6 +4036,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 				f.gcFrameRoots.Exact = false
 			}
 		}
+		if err := f.validateIndexedReuse(internalOff); err != nil {
+			return nil, nil, 0, err
+		}
 		f.finalizePeepholes(internalOff)
 		f.finalizeNativeLoopConsts(internalOff)
 		f.finalizeAffineBoundsLoops(internalOff)
@@ -4053,6 +4084,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		if f.gcCallsiteIndex != f.gcFrameRoots.CallMaskCount() {
 			f.gcFrameRoots.Exact = false
 		}
+	}
+	if err := f.validateIndexedReuse(); err != nil {
+		return nil, nil, 0, err
 	}
 	f.finalizePeepholes()
 	f.finalizeNativeLoopConsts()

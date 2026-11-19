@@ -142,7 +142,7 @@ func BuildExceptionRootMapsOwned(m *wasm.Module, owned bool) ([]nativeabi.Functi
 				}
 				continue
 			}
-			if err := r.SkipBlockType(); err != nil {
+			if _, err := r.BlockType(); err != nil {
 				return nil, err
 			}
 			n, err := r.U32()

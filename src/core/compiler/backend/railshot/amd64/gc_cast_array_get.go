@@ -11,6 +11,7 @@ package amd64
 
 import (
 	"fmt"
+
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -38,6 +39,8 @@ func (f *fn) tryFuseFinalCastArrayGet(typeIndex uint32, nullable bool, r *wasm.R
 	if !supported {
 		return false, nil
 	}
+	object := f.s.back()
+	trusted := f.opt(optValueFacts) && object.isValue() && object.st.valueFacts().has(factGCStoredRef)
 	start := r.Offset()
 	matched := false
 	defer func() {
@@ -93,10 +96,13 @@ func (f *fn) tryFuseFinalCastArrayGet(typeIndex uint32, nullable bool, r *wasm.R
 	_ = r.JumpTo(end)
 	matched = true
 	f.stats.peep("final-cast-array-get-fuse")
-	return true, f.emitNativeFinalCastArrayGet(typeIndex, nullable, scalar, collectorRef, sub == 12)
+	if trusted {
+		f.stats.peep("gc-trusted-field-array-get")
+	}
+	return true, f.emitNativeFinalCastArrayGet(typeIndex, nullable, scalar, collectorRef, sub == 12, trusted)
 }
 
-func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar directGCScalar, collectorRef, signed bool) error {
+func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar directGCScalar, collectorRef, signed, trusted bool) error {
 	switch scalar.size {
 	case 1, 2, 4, 8, 16:
 	default:
@@ -130,7 +136,11 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
 	for width := scalar.size; width > 1; width >>= 1 {
 		widthIndex++
 	}
-	f.sc.gcCastArrayGetSites[widthIndex] = append(f.sc.gcCastArrayGetSites[widthIndex], site)
+	if trusted {
+		f.sc.gcTrustedCastGetSites[widthIndex] = append(f.sc.gcTrustedCastGetSites[widthIndex], site)
+	} else {
+		f.sc.gcCastArrayGetSites[widthIndex] = append(f.sc.gcCastArrayGetSites[widthIndex], site)
+	}
 	f.stats.call("gcnative")
 	// The returned element address is consumed immediately, before any safepoint.
 	if scalar.typ == mtV128 {
@@ -149,6 +159,94 @@ func (f *fn) emitNativeFinalCastArrayGet(typeIndex uint32, nullable bool, scalar
 		}
 	}
 	return nil
+}
+
+// EAX=collector-stored compact ref, EDX=final local type, ECX=i32 index,
+// ESI=nullable cast. Returns the element address in RAX. The field load and
+// this leaf are adjacent and cannot collect, so the stored handle's range,
+// space, and extent were already validated by the collector write barrier.
+func (f *fn) emitNativeTrustedFinalCastArrayGetStub(width int) {
+	a := f.a
+	var castFailures, nullFailures, boundsFailures []int
+	castFailure := func(cond Cond) { castFailures = append(castFailures, a.JccPlaceholder(cond)) }
+	var preserve [3]bool
+	for _, local := range f.pinnedLocals {
+		if reg := f.locals[local].reg; reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	for _, global := range f.globalPinIndices[:f.nGlobalPins] {
+		state := f.globalReg[global]
+		reg := globalRegValue(state)
+		if reg >= R9 && reg <= R11 {
+			preserve[reg-R9] = true
+		}
+	}
+	for i, yes := range preserve {
+		if yes {
+			a.Push(R9 + Reg(i))
+		}
+	}
+	a.TestSelf(RAX, false)
+	nonNull := a.JccPlaceholder(condNE)
+	a.TestSelf(RSI, false)
+	castFailure(condE)
+	nullFailures = append(nullFailures, a.JmpPlaceholder())
+	a.PatchRel32(nonNull, a.Len())
+	a.MovRegReg32(RSI, RCX)
+	a.MovRegReg32(R10, RAX)
+	a.AluRI(4, R10, 1, false)
+	a.TestSelf(R10, false)
+	castFailure(condNE)
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
+	a.ImulRI(RDX, 4, true)
+	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
+
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	// A non-i31 compact reference is handle<<1, so ref*8 selects its
+	// 16-byte handle directly. Zero-extend before the scaled address.
+	a.MovRegReg32(R10, RAX)
+	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
+	a.LeaScaled(R9, R9, R10, 3, 0)
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
+	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
+	if gc.NativeViewSpaceStride != 16 {
+		panic("amd64: native GC space descriptor stride is not 16")
+	}
+	a.ShiftImm(4, R10, 4, false)
+	a.LoadIdx(R11, R8, R10, gc.NativeViewSpacesOffset+gc.NativeSpaceBaseOffset, 8, false, true)
+	a.Add64(R11, RAX)
+	a.Load32(RCX, R11, 0)
+	a.Cmp32(RCX, RDX)
+	castFailure(condNE)
+	a.Load32(R10, R11, 8)
+	a.Cmp32(RSI, R10)
+	boundsFailures = append(boundsFailures, a.JccPlaceholder(condAE))
+	a.ImulRI(RSI, int32(width), true)
+	a.LeaDisp(RAX, R11, int32(gc.PayloadOffset))
+	a.Add64(RAX, RSI)
+	for i := len(preserve) - 1; i >= 0; i-- {
+		if preserve[i] {
+			a.Pop(R9 + Reg(i))
+		}
+	}
+	a.Ret()
+	for _, failure := range []struct {
+		sites []int
+		code  uint32
+	}{{castFailures, trapCastFailure}, {nullFailures, trapNullReference}, {boundsFailures, trapBuiltin}} {
+		for _, site := range failure.sites {
+			a.PatchRel32(site, a.Len())
+		}
+		for i := len(preserve) - 1; i >= 0; i-- {
+			if preserve[i] {
+				a.Pop(R9 + Reg(i))
+			}
+		}
+		f.trapAlwaysUnknownPC(failure.code)
+	}
 }
 
 // EAX=untrusted compact ref, EDX=final local type, ECX=i32 index,
@@ -201,6 +299,8 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 	a.Load64(R9, R8, gc.NativeViewHandlesOffset)
 	a.ShiftImm(4, RAX, 4, true)
 	a.Add64(R9, RAX)
+	// Start the independent offset read before selecting the backing space.
+	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 
 	a.LoadIdx(R10, R9, RSP, gc.NativeHandleSpaceOffset, 1, false, false)
 	a.TestSelf(R10, false)
@@ -212,7 +312,6 @@ func (f *fn) emitNativeFinalCastArrayGetStub(width int) {
 	a.Add64(R8, R10)
 	a.Load64(R11, R8, gc.NativeSpaceBaseOffset)
 	a.Load32(R8, R8, gc.NativeSpaceBytesOffset)
-	a.Load32(RAX, R9, gc.NativeHandleOffsetOffset)
 	a.Cmp32(RAX, R8)
 	castFailure(condA)
 	a.Sub32(R8, RAX)

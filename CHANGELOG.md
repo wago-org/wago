@@ -6,23 +6,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
-### Changed
-
-- Improve AMD64 execution of integer maps, branches, and register-resident
-  expressions while preserving checked scalar fallback for unsupported loops.
-
-- Improve ARM64 and AMD64 code generation for guarded loops, vector operations,
-  bounds checks, register use, local-state preservation, and integer arithmetic.
-
 ### Fixed
 
-- Release and reacquire the invocation's actual execution lease when a retained
-  host callback uses a foreign control frame, including under profiling.
-- Preserve required ARM64 memory-bounds traps after fused conditional local
-  assignments replace a previously boolean value.
-- Accept exception-handling functions whose blocks or `try_table`s produce typed
-  references such as `(ref null $t)`; they were rejected with spurious decode
-  errors or sized with the wrong number of handler records.
 - Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
   `exn` hierarchies (including `noextern`, `nofunc`, and `noexn`) instead of
   trapping or rejecting the module at compile time.
@@ -39,6 +24,45 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   remains. A call returning three to seven integers in a function with
   module-pinned and value-pinned globals failed to compile with "no GP register
   available after spilling optional pins".
+
+## [v0.1.0-beta.15] - 2026-11-18
+
+### Changed
+
+- Use guard-page (signals-based) memory bounds checks by default on Darwin
+  ARM64 (except TinyGo), without the `wago_guardpage` build tag.
+  `WAGO_BOUNDS=explicit` or `WithBoundsChecks(BoundsChecksExplicit)` restores
+  explicit checks. ([#1070](https://github.com/wago-org/wago/pull/1070))
+- Improve general ARM64 and AMD64 code generation and compilation, including
+  guarded loops, vector operations, bounds checks, register use, local-state
+  preservation, and integer arithmetic.
+  ([#1054](https://github.com/wago-org/wago/pull/1054))
+- Improve AMD64 integer maps, branches, and register-resident expressions while
+  preserving checked scalar fallback for unsupported loops.
+  ([#1058](https://github.com/wago-org/wago/pull/1058))
+
+- Improve AMD64 WasmGC casts and allocation-heavy execution, including stable
+  throughput heap backing on Linux, while retaining checked fallback paths.
+  ([#1059](https://github.com/wago-org/wago/pull/1059))
+
+### Fixed
+
+- Preserve GC roots for typed block results and reference tail calls, and
+  invalidate stale inlined and projected reference facts before they can
+  suppress required cast traps.
+  ([#1059](https://github.com/wago-org/wago/pull/1059))
+- Never reuse an ARM64 indexed X16 address across a branch target. A `br_table`
+  case or loop entry could previously reach the access with X16 holding the
+  jump-table address, crashing guarded builds with SIGBUS.
+  ([#1070](https://github.com/wago-org/wago/pull/1070))
+- Release and reacquire the invocation's actual execution lease when a retained
+  host callback uses a foreign control frame, including under profiling.
+  ([#1065](https://github.com/wago-org/wago/pull/1065))
+- Preserve required ARM64 memory-bounds traps after fused conditional local
+  assignments replace a previously boolean value.
+  ([#1064](https://github.com/wago-org/wago/pull/1064))
+- Match reference-typed global imports by their exact subtype.
+  ([#1038](https://github.com/wago-org/wago/pull/1038))
 
 ## [v0.1.0-beta.14] - 2026-11-11
 
@@ -975,7 +999,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   incomplete typed-select immediate decoding.
 - Fixed Beta discovery and retracted legacy tagged Canary module versions.
 
-[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...HEAD
+[Unreleased]: https://github.com/wago-org/wago/compare/v0.1.0-beta.15...HEAD
+[v0.1.0-beta.15]: https://github.com/wago-org/wago/compare/v0.1.0-beta.14...v0.1.0-beta.15
+[v0.1.0-beta.14]: https://github.com/wago-org/wago/compare/v0.1.0-beta.13...v0.1.0-beta.14
+[v0.1.0-beta.13]: https://github.com/wago-org/wago/compare/v0.1.0-beta.12...v0.1.0-beta.13
 [v0.1.0-beta.12]: https://github.com/wago-org/wago/compare/v0.1.0-beta.11...v0.1.0-beta.12
 [v0.1.0-beta.11]: https://github.com/wago-org/wago/compare/v0.1.0-beta.10...v0.1.0-beta.11
 [v0.1.0-beta.10]: https://github.com/wago-org/wago/compare/v0.1.0-beta.9...v0.1.0-beta.10

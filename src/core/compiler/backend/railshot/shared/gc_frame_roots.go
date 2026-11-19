@@ -142,10 +142,29 @@ type GCFrameLocal struct {
 // valid only during VisitCallsites; setters update the owning flat stream.
 type GCFrameCallsite struct{ data []uint32 }
 
+// Synthetic return frames have no roots and use a fixed size instead of the
+// enclosing function's size. The tag exists only in the compile-time stream.
+const gcSyntheticFrameFlag uint32 = 1 << 31
+
 func (c GCFrameCallsite) ReturnOffset() uint32     { return c.data[0] }
 func (c GCFrameCallsite) SetReturnOffset(v uint32) { c.data[0] = v }
-func (c GCFrameCallsite) StackAdjust() uint32      { return c.data[1] }
-func (c GCFrameCallsite) Offsets() []uint32        { return c.data[3:] }
+func (c GCFrameCallsite) StackAdjust() uint32 {
+	if c.data[1]&gcSyntheticFrameFlag != 0 {
+		return 0
+	}
+	return c.data[1]
+}
+func (c GCFrameCallsite) FrameBytes(functionFrameBytes uint32) uint32 {
+	if c.data[1]&gcSyntheticFrameFlag != 0 {
+		frameBytes := c.data[1] &^ gcSyntheticFrameFlag
+		if c.data[2] != 0 || frameBytes < 8 || frameBytes%8 != 0 || frameBytes > 1<<20 {
+			return 0
+		}
+		return frameBytes
+	}
+	return functionFrameBytes
+}
+func (c GCFrameCallsite) Offsets() []uint32 { return c.data[3:] }
 
 func (p *GCFrameRootPlan) ResetCallsites() {
 	p.CallsiteData = p.CallsiteData[:0]
@@ -156,13 +175,24 @@ func (p *GCFrameRootPlan) ResetCallsites() {
 // or offset backing. Return offsets remain mutable through VisitCallsites so
 // native finalization can remap them in place.
 func (p *GCFrameRootPlan) AppendCallsite(returnOffset, stackAdjust uint32, offsets []uint32) bool {
-	if p.callsiteCount == ^uint32(0) || uint64(len(offsets)) > uint64(^uint32(0)) {
+	if p.callsiteCount == ^uint32(0) || uint64(len(offsets)) > uint64(^uint32(0)) || stackAdjust&gcSyntheticFrameFlag != 0 {
 		return false
 	}
 	p.CallsiteData = append(p.CallsiteData, returnOffset, stackAdjust, uint32(len(offsets)))
 	p.CallsiteData = append(p.CallsiteData, offsets...)
 	p.callsiteCount++
 	return true
+}
+
+// RecordSyntheticFrameCallsite maps a rootless return bridge after its source
+// frame has been released. It does not consume a source call mask.
+func (p *GCFrameRootPlan) RecordSyntheticFrameCallsite(returnOffset, frameBytes uint32) {
+	if p.callsiteCount == ^uint32(0) || returnOffset == 0 || frameBytes < 8 || frameBytes%8 != 0 || frameBytes > 1<<20 {
+		p.Exact = false
+		return
+	}
+	p.CallsiteData = append(p.CallsiteData, returnOffset, gcSyntheticFrameFlag|frameBytes, 0)
+	p.callsiteCount++
 }
 
 // RecordCallsite is the fail-closed compiler form of AppendCallsite.

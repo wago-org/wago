@@ -333,7 +333,9 @@ type fn struct {
 	s             *stack     // the valent-block operand stack
 	m             *wasm.Module
 	ft            *wasm.CompType // this function's signature
+	localRuns     []wasm.LocalRun
 	gcTypeLayouts []codegen.GCTypeLayout
+	gcBodyViews   map[uint32]codegen.GCBodyView
 	transient
 	globalIdx           int
 	traceFuncIdx        uint32
@@ -358,7 +360,9 @@ type fn struct {
 	gcSubtypeProofs     [4]gcSubtypeProof
 	gcSubtypeProofN     uint8
 	gcGuardSites        uint8 // bounded prefix-match attempts; shares existing padding
-	nLocalSlots         int   // total local frame slots in 8-byte units
+	gcLocalTypeFacts    gcLocalTypeFacts
+	gcPendingReference  gcReferenceTypeFact
+	nLocalSlots         int // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -600,19 +604,20 @@ type fn struct {
 	// host call in the module uses the synchronous control frame (callHostSync)
 	// rather than the async log — the two share offCustomCtx and must not both be
 	// live. Computed once per module in compileFunc.
-	syncHostCalls          bool
-	dynamicHostFast        bool
-	syncHostSlots          int  // symmetric control-frame capacity; >64 selects the wide extension
-	gcTypeSubtypingRefTest bool // typed function tests/casts resolve exact declared type identity after dynamic loads
-	gcStructHelpers        bool // exact staged numeric struct ops use the same parked Go re-entry frame
-	gcArrayHelpers         bool // exact staged numeric array ops use the same parked Go re-entry frame
-	gcFrameRoots           *shared.GCFrameRootPlan
-	gcCallsiteIndex        int
-	compactFrameHeader     bool   // register ABI: no wrapper results-pointer header
-	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
-	nativeStructAllocDead  bool   // next native struct allocation may omit unreachable scalar payload stores
-	nativeStructDirectUsed bool   // preceding struct helper retained pinned registers
-	nativeArrayAlloc       gcArrayAllocStubSite
+	syncHostCalls            bool
+	dynamicHostFast          bool
+	syncHostSlots            int  // symmetric control-frame capacity; >64 selects the wide extension
+	gcTypeSubtypingRefTest   bool // typed function tests/casts resolve exact declared type identity after dynamic loads
+	gcStructHelpers          bool // exact staged numeric struct ops use the same parked Go re-entry frame
+	gcArrayHelpers           bool // exact staged numeric array ops use the same parked Go re-entry frame
+	gcFrameRoots             *shared.GCFrameRootPlan
+	gcCallsiteIndex          int
+	compactFrameHeader       bool   // register ABI: no wrapper results-pointer header
+	nativeStructAllocType    uint32 // type index + 1 for the next gcStructAllocOne call
+	nativeStructAllocVirtual bool
+	nativeStructAllocDead    bool // next native struct allocation may omit unreachable scalar payload stores
+	nativeStructDirectUsed   bool // preceding struct helper retained pinned registers
+	nativeArrayAlloc         gcArrayAllocStubSite
 
 	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
@@ -909,9 +914,11 @@ type scratch struct {
 	brFoldSites             []int
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
+	gcTrustedCastFailSites  []int
 	gcDefinedTestStubSites  []int
 	gcArrayRefGetSites      []int
 	gcCastArrayGetSites     [5][]int
+	gcTrustedCastGetSites   [5][]int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
 	gcArrayRefSetStubSites  []int
@@ -1181,10 +1188,12 @@ func (sc *scratch) reset() {
 	sc.fragmentOverflow = false
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+	sc.gcTrustedCastFailSites = sc.gcTrustedCastFailSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	for i := range sc.gcCastArrayGetSites {
 		sc.gcCastArrayGetSites[i] = sc.gcCastArrayGetSites[i][:0]
+		sc.gcTrustedCastGetSites[i] = sc.gcTrustedCastGetSites[i][:0]
 	}
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]
@@ -1848,6 +1857,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	if err := validateGCBodyViews(m, opts.Codegen.Module.GCBodyViews); err != nil {
+		return nil, err
+	}
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2
 	}
@@ -1952,7 +1964,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// without storing module-pinned globals. Give every return_call target the
 	// adapter that implements the wrapper entry.
 	for i := range hostAdapters {
-		if allHints[i].tailCallTarget() {
+		if allHints[i].tailWrapperRequired() {
 			hostAdapters[i] = true
 		}
 	}
@@ -2111,7 +2123,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.localRefs.Sites = nil
 			sc.localRefTailBound = false
 			hints := hintSidecar.viewAt(allHints[i], i)
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc, referenceWrapperTargets)
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc, referenceWrapperTargets, opts.Codegen.Module.GCBodyViews)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
@@ -2367,7 +2379,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 			}
 			hints := hintSidecar.viewAt(allHints[i], i)
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch, referenceWrapperTargets)
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch, referenceWrapperTargets, opts.Codegen.Module.GCBodyViews)
 			if err != nil {
 				work.failures.Record(i, err)
 				continue
@@ -2983,6 +2995,13 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		}
 	}
 	for i := range allHints {
+		// Preserve only source tails that could otherwise gain the reference ABI.
+		// Numeric and unsupported signatures retain their existing adapter policy.
+		if !moduleEH && policy.EnabledOption(optRegABI) && policy.EnabledOption(optDirectReferenceABI) && allHints[i].flags.has(hintHasTailCall) {
+			if ft, ok := m.LocalFuncType(i); ok && sigFitsDirectReferenceRegABI(ft) {
+				allHints[i].inlineCallSites |= 0x80
+			}
+		}
 		allHints[i].flags.assign(hintHasTailCall, moduleHasTailCall)
 		allHints[i].flags.assign(hintModuleEH, moduleEH)
 	}
@@ -3577,7 +3596,7 @@ const minPreallocatedCallRelocs = 8
 
 // compileFunc compiles one function exactly once. Optional local pins are
 // pressure-spillable inside the attempt, so emitted work is never discarded.
-func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool, bodyViews ...map[uint32]codegen.GCBodyView) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
 	if diagnosticsEnabled && stats != nil {
 		stats.FunctionAttempts++
@@ -3599,7 +3618,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		// generalized to pinned registers.
 		modGlobals = nil
 	}
-	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc, wrapperTargets)
+	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc, wrapperTargets, bodyViews...)
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
@@ -3627,7 +3646,7 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 	return railcore.NewInternalCompilerError("amd64", index, offset, recovered)
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool, bodyViews ...map[uint32]codegen.GCBodyView) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var state *fn
 	defer func() {
 		// Reuse the existing unwind scope: even a disabled conditional defer
@@ -3689,8 +3708,11 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// fields, even though the compiler state itself is already worker-owned.
 	gcLocalTypes := f.gcLocalTypes
 	*f = fn{}
-	f.a, f.s, f.sc, f.m, f.ft = sc.asm, sc.stack, sc, m, ft
+	f.a, f.s, f.sc, f.m, f.ft, f.localRuns = sc.asm, sc.stack, sc, m, ft, c.Locals.Runs
 	f.gcTypeLayouts, f.transient = gcTypeLayouts, sc.transient
+	if len(bodyViews) > 0 {
+		f.gcBodyViews = bodyViews[0]
+	}
 	f.globalIdx, f.traceFuncIdx, f.tracePCBase = globalIdx, uint32(globalIdx), c.LocalDeclBytes
 	f.customInstructions = custom
 	f.nParams, f.nLocals = len(ft.Params), nLocals
@@ -3904,7 +3926,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.stats.peep("all-calls-inlined")
 	}
 	directReferenceABI := f.opt(optRegABI) && f.directReferenceRegABI(funcIdx, ft)
-	regABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)) || directReferenceABI)
+	regABI := f.opt(optRegABI) && (directReferenceABI || sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m)))
 	if directReferenceABI && !hostAdapter {
 		return nil, nil, 0, fmt.Errorf("amd64: direct reference target %d has no wrapper adapter", funcIdx)
 	}

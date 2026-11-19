@@ -271,8 +271,18 @@ func preparedDirectMixedSig(ft *wasm.CompType) bool {
 // register ABI. It admits one funcref result in RAX with numeric parameters only.
 // The descriptor pointer remains owned by the instance's bounded descriptor arena;
 // no GC-managed reference or foreign wrapper result is admitted by this shape.
-func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) != 1 || ft.Results[0].Kind() != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+func sigFitsReferenceResultRegABI(ft *wasm.CompType, m *wasm.Module) bool {
+	if len(ft.Results) != 1 || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+		return false
+	}
+	// Match the runtime descriptor's function-reference result ABI. Other
+	// references require wrapper bodies so adapters cannot end a live GC chain.
+	result := ft.Results[0]
+	if result.Kind() != wasm.ValRef {
+		return false
+	}
+	heap := result.Ref().Heap()
+	if heap.Kind() == wasm.HeapAbs && heap.Abs() != wasm.HeapFunc && heap.Abs() != wasm.HeapNoFunc {
 		return false
 	}
 	gp, fp := 0, 0
@@ -286,13 +296,54 @@ func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
 			return false
 		}
 	}
-	return gp <= 7 && fp <= len(fpArgRegs)
+	if gp > 7 || fp > len(fpArgRegs) {
+		return false
+	}
+	if heap.Kind() == wasm.HeapTypeIndex {
+		if m == nil {
+			return false
+		}
+		index := heap.Type().Index
+		if heap.Type().Rec {
+			// Stored signatures retain group-local indexes. Locate their group
+			// without copying or resolving the whole signature.
+			base, found := uint32(0), false
+			for gi := range m.Types {
+				group := &m.Types[gi]
+				for si := range group.SubTypes {
+					if &group.SubTypes[si].Comp == ft {
+						if index >= uint32(len(group.SubTypes)) {
+							return false
+						}
+						index += base
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+				base += uint32(len(group.SubTypes))
+			}
+			if !found {
+				return false
+			}
+		}
+		st, ok := m.TypeSubType(index)
+		if !ok || st.Comp.Kind != wasm.CompFunc {
+			return false
+		}
+	} else if kind, ok := heap.DefCompKind(); heap.Kind() != wasm.HeapAbs && (!ok || kind != wasm.CompFunc) {
+		return false
+	}
+	return true
 }
 
-// sigFitsTypedReferenceRegABI extends the physical register classification used
-// by return_call_ref to one-slot reference parameters/results. Ownership and GC
-// domain checks remain separate from this purely mechanical ABI predicate.
-func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+// sigFitsGeneralRegABI classifies signatures that can stay entirely in the
+// physical register ABI. It accepts integer, floating-point and reference
+// values. Ownership and GC-domain checks remain separate from this mechanical
+// predicate.
+func sigFitsGeneralRegABI(ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
 	}
@@ -323,6 +374,12 @@ func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
 		}
 	}
 	return true
+}
+
+// sigFitsTypedReferenceRegABI retains the tail-call predicate name used by the
+// typed-reference ABI paths. Its register classification is general.
+func sigFitsTypedReferenceRegABI(ft *wasm.CompType) bool {
+	return sigFitsGeneralRegABI(ft)
 }
 
 func tailResultABICompatible(a, b []wasm.ValType) bool {
@@ -368,13 +425,14 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
+	declaredType := ft
 	imported := f.importedFunctionCount()
 	if int(idx) < imported && f.customInstructions != nil {
 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
 			// Native lowering replaces the source call without a return address.
 			// Consume its mask so later calls retain their source-site liveness.
 			f.consumeGCFrameCallsite()
-			return f.emitCustomInstruction(custom, ft)
+			return f.finishProvedGCCallResultCast(r, declaredType, f.emitCustomInstruction(custom, ft))
 		}
 	}
 	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
@@ -390,18 +448,28 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 		return f.inlineCall(t, r)
 	}
+	// A forwarding body replaces one source call with one real destination call.
+	// Its equal signature keeps the existing caller liveness mask applicable.
+	for hop := 0; hop < 4; hop++ {
+		target, targetType, ok := f.gcForwardCallTarget(idx, ft)
+		if !ok {
+			break
+		}
+		idx, ft = target, targetType
+		f.stats.peep("gc-forward-call")
+	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
-			return f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft)
+			return f.finishProvedGCCallResultCast(r, declaredType, f.emitDynamicHostOrCrossInstance(f.importBindings[idx], ft))
 		}
 		// A module with any returning host import uses the synchronous control
 		// frame for ALL its host calls, so the async log and the control frame
 		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
 		// async log-and-replay path.
 		if f.syncHostCalls || len(ft.Results) != 0 {
-			return f.callHostSync(int(idx), ft) // synchronous re-entry
+			return f.finishProvedGCCallResultCast(r, declaredType, f.callHostSync(int(idx), ft)) // synchronous re-entry
 		}
-		return f.callHost(int(idx), ft) // void: async log-and-replay
+		return f.finishProvedGCCallResultCast(r, declaredType, f.callHost(int(idx), ft)) // void: async log-and-replay
 	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
@@ -425,7 +493,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	// Resolve trapping roots before register staging visits the arguments.
 	f.materializeTrapsBefore(f.s.head)
-	return f.callInternal(int(idx)-imported, ft, hint)
+	return f.finishProvedGCCallResultCast(r, declaredType, f.callInternal(int(idx)-imported, ft, hint))
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
@@ -721,8 +789,8 @@ func (f *fn) returnCallIndex(idx uint32) error {
 		}
 		return f.opReturn()
 	}
-	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	callerRegisterABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft, f.m))
+	targetRegisterABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m))
 	if f.opt(optRegABI) && callerRegisterABI && targetRegisterABI {
 		f.stats.call("tail-direct")
 		if f.tryThreadLocalIntegerTail(ft, int(idx)-imported) {
@@ -1326,9 +1394,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	nativeStructType := f.nativeStructAllocType
 	nativeStructDead := f.nativeStructAllocDead
+	nativeStructVirtual := f.nativeStructAllocVirtual
 	nativeArray := f.nativeArrayAlloc
 	f.nativeStructAllocType = 0
 	f.nativeStructAllocDead = false
+	f.nativeStructAllocVirtual = false
 	f.nativeStructDirectUsed = false
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
@@ -1418,7 +1488,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
-	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled {
+	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
 			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
@@ -1494,7 +1564,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
-		if nativeGCStructInlineEnabled {
+		if nativeGCStructInlineEnabled && !nativeStructVirtual {
 			f.emitNativeStructAllocStub(typeIndex, nativeStructDead, true)
 		} else {
 			site := f.a.CallRel32()
@@ -1531,6 +1601,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	if regallocCheckEnabled {
 		f.checkCallClobber()
+	}
+	if internalGC {
+		f.storeModuleGlobals(RAX)
 	}
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
@@ -1697,6 +1770,7 @@ func (f *fn) callNativeStructDirectSlots(importIdx int, ft *wasm.CompType, typeI
 	if regallocCheckEnabled {
 		f.checkCallClobber()
 	}
+	f.storeModuleGlobals(RAX)
 	f.a.CallMem(R8, hcTrampoline)
 	f.a.Load64(R8, RBX, -offCustomCtx)
 	f.a.Load64(RAX, R8, hcResults)
@@ -2267,7 +2341,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
-	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)) || f.directReferenceRegABI(localIdx, ft)) {
+	if f.opt(optRegABI) && (sigFitsRegABI(ft) || f.directReferenceRegABI(localIdx, ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m))) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)
@@ -2937,7 +3011,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
-	targetRegABI := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
+	targetRegABI := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft, f.m)))
 	if targetRegABI {
 		// A tagged descriptor points at a same-instance internal entry. Untagged
 		// descriptors name wrapper entries and retain their real home linMem.
@@ -3037,7 +3111,7 @@ func (f *fn) returnCallRefType(typeIdx uint32, stat string) error {
 	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	callerRegABI := f.opt(optRegABI) && (sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(f.ft)))
+	callerRegABI := f.opt(optRegABI) && (sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft, f.m)))
 	targetRegABI := f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsTypedReferenceRegABI(ft)))
 	// Wrapper-kind targets always receive their arguments in the tail bank.
 	if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
@@ -3255,6 +3329,9 @@ func (f *fn) emitTailWrapperCallerDescriptorJump(ft *wasm.CompType) {
 	trampoline := f.a.Len()
 	f.a.PatchRel32(trampolineSite, trampoline)
 	// The foreign wrapper's RET popped the trampoline slot.
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.RecordSyntheticFrameCallsite(uint32(trampoline), 24)
+	}
 	f.a.Load64(RBX, RSP, 0)
 	f.a.Load64(R10, RSP, 8)
 	f.copyInstanceContext(RBX, R10)
@@ -3423,8 +3500,8 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 			return f.returnCallIndex(uint32(target))
 		}
 	}
-	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
-	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	callerRegisterTail := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft, f.m))
+	targetRegisterTail := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m))
 	registerTail := callerRegisterTail && targetRegisterTail
 	wrapperTail := !callerRegisterTail && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
 	// A register-ABI caller can enter a local wrapper target through the
@@ -3610,8 +3687,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// pointer, testing the internal-entry tag, and emitting the wrapper/cross-instance
 	// fork; the OOB/null/type checks above are still required and remain on the hot
 	// path. A monomorphic table (single target) collapses to a direct call.
-	directRegisterCall := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
-	descriptorRegisterCall := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft)))
+	directRegisterCall := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft, f.m))
+	descriptorRegisterCall := (sigFitsRegABI(ft) && sigIsIntOnly(ft)) || (f.stagedTailDescriptors && (sigFitsRegABI(ft) || sigFitsReferenceResultRegABI(ft, f.m)))
 	if immutableTable && f.opt(optRegABI) && tableHint.monomorphicTarget >= 0 && directRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)

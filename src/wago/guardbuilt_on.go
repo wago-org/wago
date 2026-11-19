@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build wago_guardpage && (((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo))
+//go:build (darwin && arm64 && !tinygo && !wago_target_tinygo) || (wago_guardpage && (((linux || darwin || windows) && (amd64 || arm64)) || (linux && riscv64 && !tinygo && !wago_target_tinygo)))
 
 package wago
 
-// guardPageBuilt is true when compiled with -tags wago_guardpage, enabling
-// signals-based (guard-page) bounds checks.
+// guardPageBuilt is true on Darwin ARM64 and in supported builds compiled with
+// -tags wago_guardpage, enabling signals-based (guard-page) bounds checks.
 const guardPageBuilt = true

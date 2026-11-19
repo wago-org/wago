@@ -592,6 +592,7 @@ func (a *Asm) PatchAdr(at, target int) bool {
 	}
 	imm := uint32(d) & 0x1FFFFF
 	a.patchWord(at, (imm&3)<<29|((imm>>2)&0x7FFFF)<<5)
+	a.NoteBranchTarget(target)
 	return true
 }
 
@@ -1063,6 +1064,9 @@ func (a *Asm) reuseIndexedBase(base, index Reg) bool {
 			return false
 		}
 	}
+	if !a.admitIndexedReuse(len(a.B) - 8) {
+		return false
+	}
 	a.IndexedBaseReuses++
 	return true
 }
@@ -1080,11 +1084,16 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
+			start := len(a.B) - words*4
 			if sawCanonical {
 				before := len(a.B) - (words+1)*4
 				if before < 0 || a.wordAt(before) != wantCanonical {
 					return false
 				}
+				start = before
+			}
+			if !a.admitIndexedReuse(start) {
+				return false
 			}
 			a.IndexedBaseReuses++
 			return true
@@ -1124,6 +1133,9 @@ func (a *Asm) reuseIndexedAddress(base, index Reg, disp int32) bool {
 	}
 	if !indexedAddressMemoryPreserves(a.wordAt(pos), base, index) || pos < 8 ||
 		a.wordAt(pos-4) != wantDisp || a.wordAt(pos-8) != wantAdd {
+		return false
+	}
+	if !a.admitIndexedReuse(pos - 8) {
 		return false
 	}
 	a.IndexedBaseReuses++
