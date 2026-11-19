@@ -99,7 +99,7 @@ func describeFlags(flags []Flag) []FlagSpec {
 			kind = "boolean"
 		}
 		result = append(result, FlagSpec{
-			Name: flag.Name, Short: flag.Short, Type: kind, Value: flag.Arg, Summary: flag.Help,
+			Name: flag.Name, Short: flag.Short, Type: kind, Value: flag.Arg, Summary: flag.HelpText(),
 		})
 	}
 	return result

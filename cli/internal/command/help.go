@@ -51,7 +51,7 @@ func wantsLeadingHelp(args []string, flags []Flag) bool {
 			return true
 		}
 		name, inline := splitFlag(arg)
-		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
+		if flag := lookup.get(name); flag != nil && !flag.Bool && !inline && index+1 < len(args) {
 			index++
 		}
 	}
@@ -71,7 +71,7 @@ func WantsOptimizationHelp(args []string, _ bool, flags []Flag) bool {
 			return true
 		}
 		name, inline := splitFlag(arg)
-		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
+		if flag := lookup.get(name); flag != nil && !flag.Bool && !inline && index+1 < len(args) {
 			index++
 		}
 	}
@@ -142,12 +142,12 @@ func writeFlags(text *strings.Builder, flags []Flag) {
 				label += ", -" + flag.Short
 			}
 			labels = append(labels, label)
-			descriptions = append(descriptions, flag.Help)
+			descriptions = append(descriptions, flag.HelpText())
 			index++
 			continue
 		}
 		labels = append(labels, flagLabel(flag))
-		descriptions = append(descriptions, flag.Help)
+		descriptions = append(descriptions, flag.HelpText())
 	}
 	width := 0
 	for _, label := range labels {

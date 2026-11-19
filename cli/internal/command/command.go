@@ -15,6 +15,18 @@ type Flag struct {
 	Bool  bool
 	Arg   string
 	Help  string
+	// HelpFunc, when set, renders Help on demand. Use it for help text that
+	// needs I/O (for example a default read from settings) so building the
+	// command registry stays free of it on the hot run path.
+	HelpFunc func() string
+}
+
+// HelpText returns the flag's help string, computing it if necessary.
+func (flag Flag) HelpText() string {
+	if flag.HelpFunc != nil {
+		return flag.HelpFunc()
+	}
+	return flag.Help
 }
 
 // Cmd describes either a leaf command with Run or a group with Children.
@@ -31,6 +43,9 @@ type Cmd struct {
 	Run         func(*Ctx)
 	Children    []*Cmd
 	Automation  Features
+
+	allFlags    []Flag
+	allFlagsFor [2]int
 }
 
 type Features uint8
