@@ -1,21 +1,194 @@
 diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
-index 8fa4acd4..27ea0768 100644
+index 8fa4acd4..042aa2d7 100644
 --- a/src/core/compiler/backend/railshot/amd64/call.go
 +++ b/src/core/compiler/backend/railshot/amd64/call.go
-@@ -369,6 +369,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
+@@ -369,6 +369,17 @@ func (f *fn) callOp(r *wasm.Reader) error {
  		return fmt.Errorf("call: unknown function %d", idx)
  	}
  	imported := f.importedFunctionCount()
-+	if f.s.forest != nil && (int(idx) < imported || f.selectedInlineTarget(idx) != nil ||
-+		!f.opt(optRegABI) || len(ft.Params) != 0 || len(ft.Results) != 1 ||
++	if f.s.forest != nil && f.selectedInlineTarget(idx) != nil {
++		if f.sc != nil && f.sc.fixtureWork != nil {
++			f.sc.fixtureWork.InlineCallGaps++
++		}
++		panic("fixture forest: selected inline call ownership is not ported")
++	}
++	if f.s.forest != nil && (int(idx) < imported ||
++		!f.opt(optRegABI) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Results) != 1 ||
 +		!wasm.EqualValType(ft.Results[0], wasm.I32) || f.gcFrameRoots != nil) {
-+		panic("fixture forest: only direct non-inlined zero-argument scalar i32 call is ported")
++		panic("fixture forest: only direct non-inlined scalar integer register calls with one i32 result are ported")
 +	}
  	if int(idx) < imported && f.customInstructions != nil {
  		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
  			// Native lowering replaces the source call without a return address.
+@@ -2377,21 +2388,28 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
+ 	f.materializeCallExpressions(allRoots)
+ 
+ 	// Identify the p argument roots (top of stack), deepest first.
+-	argRoots := f.tmpRoots[:0]
+-	if cap(argRoots) < p {
+-		argRoots = make([]*elem, 0, p)
+-	}
+-	argRoots = argRoots[:p]
+-	f.tmpRoots = argRoots
+-	f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
+-	cur := f.s.back()
+-	for i := p - 1; i >= 0; i-- {
+-		argRoots[i] = cur
+-		if i > 0 {
+-			cur = baseOfValentBlock(cur).prev
++	var argRoots []*elem
++	if f.s.forest != nil {
++		// Capturing arguments and flushing the prefix do not resize the root
++		// vector. This borrowed suffix expires at setDepthTypes.
++		argRoots = allRoots[d-p : d : d]
++	} else {
++		argRoots = f.tmpRoots[:0]
++		if cap(argRoots) < p {
++			argRoots = make([]*elem, 0, p)
++		}
++		argRoots = argRoots[:p]
++		f.tmpRoots = argRoots
++		f.tmpRootsWritten = max(f.tmpRootsWritten, len(argRoots))
++		cur := f.s.back()
++		for i := p - 1; i >= 0; i-- {
++			argRoots[i] = cur
++			if i > 0 {
++				cur = baseOfValentBlock(cur).prev
++			}
+ 		}
+-	}
+ 
++	}
+ 	// Register-resident args (deferred/reg/pinned-local) are materialized into
+ 	// owned, pinned registers now (protected from the flush below); const/memory
+ 	// args are loaded straight into their target register afterward.
+@@ -2411,7 +2429,11 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
+ 		}
+ 	}
+ 	if p > 0 {
+-		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
++		if f.s.forest != nil {
++			f.flushBelowRoot(d - p)
++		} else {
++			f.flushBelow(argRoots[0])
++		} // operands below the args → canonical slots
+ 	} else {
+ 		f.flush()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 1cd36d62..b19a424e 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -882,8 +882,9 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
+ }
+ 
+ type scratch struct {
+-	scalar shared.ScalarState
+-	stream streamState
++	fixtureWork *fixtureModuleWork
++	scalar      shared.ScalarState
++	stream      streamState
+ 
+ 	amd64Features         shared.AMD64Features
+ 	usedAMD64Features     shared.AMD64Features
+@@ -983,6 +984,14 @@ func (sc *scratch) ensureTargetStack() {
+ 		sc.stack.arena = newOperandArena()
+ 	}
+ 	sc.stack.initWithCap(sc.stackCap)
++	if sc.fixtureWork != nil {
++		if sc.fixtureWork.Forest {
++			sc.stack.forest = &sc.fixtureWork.Vector
++			sc.stack.head.prev, sc.stack.head.next = nil, nil
++		} else {
++			sc.stack.fixtureListWork = &sc.fixtureWork.List
++		}
++	}
+ 	_, reserved := sc.stack.nodeMemory()
+ 	sc.nodeScratchReserved = reserved
+ 	sc.nodeScratchPeak = reserved
+@@ -1654,8 +1663,9 @@ type ImportBinding = shared.ImportBinding
+ 
+ // CompileOptions configures direct wasm-to-amd64 compilation.
+ type CompileOptions struct {
+-	SourceMaps bool
+-	UnwindMaps bool
++	fixtureWork *fixtureModuleWork // isolated scalar compiler tests only
++	SourceMaps  bool
++	UnwindMaps  bool
+ 	// Profile records finalized code regions without changing emitted bytes. Requires Stats.
+ 	Profile bool
+ 	// AMD64Features selects optional instructions at compile time. An explicit
+@@ -1896,6 +1906,14 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 	boundsFacts := policy.EnabledOption(optBoundsFacts) && !opts.NoBoundsFacts
+ 	n := len(m.Code)
+ 	workers := shared.ResolveWorkers(opts.Workers, n, runtime.GOMAXPROCS(0))
++	if opts.fixtureWork != nil {
++		if opts.Workers != 1 || workers > 1 || opts.Profile || regallocCheckEnabled || ownedForestCensusEnabled {
++			return nil, fmt.Errorf("fixture forest: require serial ordinary compilation without legacy checker/census")
++		}
++		work := opts.fixtureWork
++		*work = fixtureModuleWork{Forest: work.Forest}
++		defer work.releaseRoots()
++	}
+ 	relocs := make([][]callReloc, n)
+ 	var literalWords []uint64
+ 	var literalOffsets []uint32
+@@ -2035,6 +2053,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
+ 		expandedLowering := expandedStackLowering(opts, policy)
+ 		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
++		sc.fixtureWork = opts.fixtureWork
+ 		defer func() { _ = sc.stack.arena.Close() }()
+ 		sc.mappedOperands = totalBody >= minParallelHintBodyBytes
+ 		sc.amd64Features = opts.AMD64Features
+@@ -3633,6 +3652,16 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
+ 
+ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+ 	var state *fn
++	if sc.fixtureWork != nil {
++		sc.fixtureWork.Attempts++
++		defer func() {
++			if err == nil {
++				sc.fixtureWork.Completed++
++			} else {
++				sc.fixtureWork.Rejected++
++			}
++		}()
++	}
+ 	defer func() {
+ 		// Reuse the existing unwind scope: even a disabled conditional defer
+ 		// changes TinyGo defer lowering in ordinary builds.
+@@ -3989,6 +4018,18 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 		}
+ 	}
+ 	if f.scalarSummary.Eligible || f.streamSummary.Eligible {
++		if sc.fixtureWork != nil {
++			if f.streamSummary.Eligible {
++				sc.fixtureWork.StreamingBodies++
++			} else {
++				sc.fixtureWork.SharedScalarBodies++
++			}
++		}
++		// The existing shared scalar engine keeps its ordinary priority.
++		// It never enters the legacy operand path and is not forest coverage.
++		if sc.fixtureWork != nil && sc.fixtureWork.Forest && f.streamSummary.Eligible {
++			return nil, nil, 0, fmt.Errorf("fixture forest: experimental stream backend selected")
++		}
+ 		pinLocals = false
+ 	} else {
+ 		sc.ensureTargetStack()
+@@ -4464,6 +4505,9 @@ func (f *fn) runBody(c *wasm.Func) error {
+ 	}
+ 
+ 	sc := f.scratchState()
++	if sc.fixtureWork != nil {
++		sc.fixtureWork.LegacyBodies++
++	}
+ 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
+ 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
+ 		f.controlBaseTypeN = uint8(len(resultTypes))
 diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
-index fc644bcd..7556a2ea 100644
+index fc644bcd..8f8492c0 100644
 --- a/src/core/compiler/backend/railshot/amd64/control.go
 +++ b/src/core/compiler/backend/railshot/amd64/control.go
 @@ -633,18 +633,28 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
@@ -102,7 +275,52 @@ index fc644bcd..7556a2ea 100644
  	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
  	f.s.logicalDepth = 0
  	f.s.canonicalSlots = false
-@@ -1688,6 +1713,16 @@ func (f *fn) keepBlockOperands() bool {
+@@ -1301,11 +1326,17 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
+ 		return nil, nil, nil, mtNone, nil
+ 	}
+ 	if isValByte(b) {
++		if f.s != nil && f.s.forest != nil && b != 0x7f && b != 0x7e {
++			panic("fixture forest: unported noninteger block result")
++		}
+ 		_, _ = r.Byte()
+ 		mt := valByteMT(b)
+ 		return nil, nil, nil, mt, nil
+ 	}
+ 	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
++		if f.s != nil && f.s.forest != nil {
++			panic("fixture forest: unported reference block result")
++		}
+ 		_, _ = r.Byte()
+ 		if next, ok := r.Peek(); ok && next == 0x62 { // exact indexed heap prefix
+ 			_, _ = r.Byte()
+@@ -1326,6 +1357,13 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
+ 	if !ok {
+ 		return nil, nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
+ 	}
++	if f.s != nil && f.s.forest != nil {
++		for _, typ := range ft.Results {
++			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) {
++				panic("fixture forest: unported noninteger block result")
++			}
++		}
++	}
+ 	r0 := mtNone
+ 	if len(ft.Results) > 0 {
+ 		r0 = mtOf(ft.Results[0])
+@@ -1375,7 +1413,11 @@ func (f *fn) placeSingleResult() {
+ // result directly in mergeReg (no slot store for the value itself).
+ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
+ 	top := f.s.back()
+-	f.flushBelow(top)
++	if f.s.forest != nil {
++		f.flushBelowRoot(f.depth() - 1)
++	} else {
++		f.flushBelow(top)
++	}
+ 	if fr.res0.isFloat() {
+ 		x := f.materializeF(top)
+ 		if x != mergeFReg {
+@@ -1688,6 +1730,16 @@ func (f *fn) keepBlockOperands() bool {
  	if f.depth() > limit {
  		return false
  	}
@@ -119,17 +337,7 @@ index fc644bcd..7556a2ea 100644
  	n := 0
  	for e := f.s.head.next; e != f.s.head; e = e.next {
  		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
-@@ -1699,6 +1734,9 @@ func (f *fn) keepBlockOperands() bool {
- }
- 
- func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-+	if f.s.forest != nil && op != 0x02 {
-+		panic("fixture forest: unported loop or if block")
-+	}
- 	if op == 0x04 {
- 		if done, err := f.tryInlineTailConstantIf(r); done || err != nil {
- 			return err
-@@ -1723,6 +1761,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+@@ -1723,6 +1775,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
  	if frameTypes == nil && res0 != mtNone {
  		rN = 1
  	}
@@ -141,17 +349,33 @@ index fc644bcd..7556a2ea 100644
  	kind := cfBlock
  	if op == 0x03 {
  		kind = cfLoop
-@@ -1763,6 +1806,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
- 	// Keep those results in stack slots while its local home is reserved.
- 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128 &&
- 		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
-+	if f.s.forest != nil && fr.has(ctrlRegMerge1) && !fr.isStraightLineBlock() && !f.unreachable {
-+		panic("fixture forest: unported register-merge block")
-+	}
- 	var loopPinnedWrites uint64
- 	loopRegState := false
- 	var loopFloatConst storage
-@@ -2349,6 +2395,9 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+@@ -1804,7 +1861,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 		f.deferIfPrefix(r, &fr)
+ 		cond := f.s.back()
+ 		if isFusableBranchPredicate(cond) {
+-			f.flushBelow(cond)
++			if f.s.forest != nil {
++				f.flushBelowRoot(f.depth() - 1)
++			} else {
++				f.flushBelow(cond)
++			}
+ 			f.convergeFrameEntryState(&fr)
+ 			cc := f.condenseToFlags(cond)
+ 			if f.pinRelinquished {
+@@ -1818,7 +1879,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 			f.pushCtrl(&fr)
+ 			return nil
+ 		}
+-		f.materializeTrapsBefore(cond)
++		if f.s.forest != nil {
++			f.materializeTrapsBeforeRoot(f.depth() - 1)
++		} else {
++			f.materializeTrapsBefore(cond)
++		}
+ 		if cond.isDeferred() {
+ 			f.condense(cond, regNone)
+ 		}
+@@ -2349,6 +2414,9 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
  	if eh == nil {
  		return
  	}
@@ -161,26 +385,41 @@ index fc644bcd..7556a2ea 100644
  	e := f.s.back()
  	for i := fr.resultN - 1; i >= 0; i-- {
  		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
-@@ -2665,6 +2714,9 @@ func (f *fn) branchToFrame(fi int) {
+@@ -2664,6 +2732,16 @@ func (f *fn) branchToFrame(fi int) {
+ 	f.branchJump(fr)
  }
  
- func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
-+	if f.s.forest != nil && conditional {
-+		panic("fixture forest: unported conditional branch")
++// The test-only driver supports scalar block/if/loop branches and explicit
++// control agreement. Function-return and exception destinations are out of scope.
++func (f *fn) checkForestControlTarget(fi int) {
++	switch f.ctrl[fi].kind {
++	case cfBlock, cfIf, cfLoop:
++	default:
++		panic("fixture forest: unported branch target")
 +	}
++}
++
+ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
  	if f.unreachable {
  		if conditional {
- 			// still need to consume nothing extra; label follows
-@@ -2701,6 +2753,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
- 		f.flushBranchPredicate(predicate, f.ctrl[fi].kind == cfLoop)
+@@ -2690,9 +2768,16 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
+ 	if fi < 0 {
+ 		return errBadLabel
  	}
- 	if !conditional {
-+		if f.s.forest != nil && f.ctrl[fi].kind != cfBlock {
-+			panic("fixture forest: unported non-block branch target")
++	if f.s.forest != nil {
++		f.checkForestControlTarget(fi)
++	}
+ 	if conditional {
+ 		predicate := f.s.back()
+-		f.materializeTrapsBefore(predicate)
++		if f.s.forest != nil {
++			f.materializeTrapsBeforeRoot(f.depth() - 1)
++		} else {
++			f.materializeTrapsBefore(predicate)
 +		}
- 		f.branchToFrame(fi)
- 		f.unreachable = true
- 		return nil
+ 		if predicate.isDeferred() {
+ 			f.condense(predicate, regNone)
+ 		}
 diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
 index 90e92cd5..a9e952de 100644
 --- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
@@ -196,10 +435,83 @@ index 90e92cd5..a9e952de 100644
  	for skipped := 0; skipped < 8; skipped++ {
  		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
 diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
-index 71b203e8..4eaa9b0b 100644
+index 71b203e8..94aa7cc5 100644
 --- a/src/core/compiler/backend/railshot/amd64/driver.go
 +++ b/src/core/compiler/backend/railshot/amd64/driver.go
-@@ -1228,6 +1228,13 @@ func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
+@@ -85,6 +85,18 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 		if err != nil {
+ 			return err
+ 		}
++		if f.sc != nil && f.sc.fixtureWork != nil {
++			f.sc.fixtureWork.Opcodes++
++		}
++		if f.s.forest != nil {
++			if !fixtureScalarOpcode(op) {
++				return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
++			}
++			if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
++				f.vectorRegion.enabled || len(f.intervalReg) != 0 || f.intervalControl {
++				return fmt.Errorf("fixture forest: unsupported specialized function state")
++			}
++		}
+ 		if regallocCheckEnabled {
+ 			checkNativeSourceBefore(f, r.Offset()-1, op)
+ 		}
+@@ -901,11 +913,11 @@ func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
+ 	if !isFusableCompare(cond) || cond.valueType().isFloat() {
+ 		return false, nil
+ 	}
+-	b := baseOfValentBlock(cond).prev
++	b := f.s.selectorPrevious(cond, 1)
+ 	if b == f.s.head {
+ 		return false, nil
+ 	}
+-	a := baseOfValentBlock(b).prev
++	a := f.s.selectorPrevious(b, 2)
+ 	if a == f.s.head || rootMachineType(a) != mtI32 || rootMachineType(b) != mtI32 || a.st.hasGCRoot() || b.st.hasGCRoot() {
+ 		return false, nil
+ 	}
+@@ -951,7 +963,13 @@ func (f *fn) trySelectLocalSink(r *wasm.Reader) (bool, error) {
+ 	// Select already has to resolve earlier traps before lowering its condition.
+ 	// Preserve any older borrowed references to x before overwriting its home.
+ 	f.materializeTrapsBefore(cond)
+-	f.realizeLocalRefs(x, baseOfValentBlock(a))
++	if f.s.forest != nil {
++		c := f.s.fixtureScan(false)
++		c.endRoot -= 3
++		f.realizeLocalRefsCursor(x, nil, c)
++	} else {
++		f.realizeLocalRefs(x, baseOfValentBlock(a))
++	}
+ 	savedReserved, savedPinned := f.reserved, f.pinned
+ 	f.reserved = f.reserved.add(pr)
+ 	f.pinned = f.pinned.add(pr)
+@@ -1003,8 +1021,8 @@ func (f *fn) emitSelect() {
+ 	// then stale. Linking also keeps that slot visible to curSpillSlot, so later
+ 	// spills cannot overwrite it before the operand is reloaded.
+ 	cond := f.s.back()
+-	b := baseOfValentBlock(cond).prev
+-	a := baseOfValentBlock(b).prev
++	b := f.s.selectorPrevious(cond, 1)
++	a := f.s.selectorPrevious(b, 2)
+ 	at, bt := rootMachineType(a), rootMachineType(b)
+ 	gcRoot := a.st.hasGCRoot() || b.st.hasGCRoot()
+ 	// A read-only condition in a stable local register can be tested directly.
+@@ -1137,11 +1155,11 @@ func mtI32OrWide(wide bool) machineType {
+ // branches are not both integer (floats/v128 have no CMOV) or the block shape is
+ // unexpected, so the caller falls back to the materialized-boolean path.
+ func (f *fn) trySelectOnFlags(cond *elem) bool {
+-	bRoot := baseOfValentBlock(cond).prev
++	bRoot := f.s.selectorPrevious(cond, 1)
+ 	if bRoot == f.s.head {
+ 		return false
+ 	}
+-	aRoot := baseOfValentBlock(bRoot).prev
++	aRoot := f.s.selectorPrevious(bRoot, 2)
+ 	if aRoot == f.s.head {
+ 		return false
+ 	}
+@@ -1228,6 +1246,13 @@ func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
  // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
  // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
  func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
@@ -213,7 +525,7 @@ index 71b203e8..4eaa9b0b 100644
  	if f.s.pendingEffects&pendingLocalRef == 0 {
  		return
  	}
-@@ -1236,11 +1243,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+@@ -1236,11 +1261,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
  	// inside that block are consumed directly into x's register by condenseInto, so
  	// realizing them here would force the wasteful copy-out + copy-back. Refs BELOW
  	// it still need x's pre-set value and are realized.
@@ -226,7 +538,7 @@ index 71b203e8..4eaa9b0b 100644
  		switch {
  		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
  			// Capturing an i32 local emits a 32-bit load or move. Its owned
-@@ -1266,7 +1269,6 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+@@ -1266,7 +1287,6 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
  		case e.isDeferred() && subtreeRefsLocal(e, x):
  			f.condense(e, regNone)
  		}
@@ -234,7 +546,7 @@ index 71b203e8..4eaa9b0b 100644
  	}
  }
  
-@@ -1372,14 +1374,27 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+@@ -1372,14 +1392,27 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
  	// read their source before writing dest, so an operand aliasing dest is safe.
  	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
  	var skipFrom *elem
@@ -249,18 +561,18 @@ index 71b203e8..4eaa9b0b 100644
 +			} else {
 +				skipFrom = baseOfValentBlock(e)
 +			}
- 		}
- 	}
--	f.realizeLocalRefs(x, skipFrom)
++		}
++	}
 +	if f.s.forest != nil {
 +		c := f.s.fixtureScan(false)
 +		if skipTopRoot {
 +			c.endRoot--
-+		}
+ 		}
 +		f.realizeLocalRefsCursor(x, nil, c)
 +	} else {
 +		f.realizeLocalRefs(x, skipFrom)
-+	}
+ 	}
+-	f.realizeLocalRefs(x, skipFrom)
  	f.invalidateBoundsCertFor(1, uint32(x))
  	if reader != nil && f.hasIntervalLocal(x) {
  		f.activateIntervalLocal(x, reader.Offset(), false)
@@ -317,6 +629,23 @@ index a7333ce2..e9e5679f 100644
  	base := baseOfValentBlock(node)
  	e := node.prev
  	for {
+diff --git a/src/core/compiler/backend/railshot/amd64/flush_spills.go b/src/core/compiler/backend/railshot/amd64/flush_spills.go
+index 69e05956..114341d7 100644
+--- a/src/core/compiler/backend/railshot/amd64/flush_spills.go
++++ b/src/core/compiler/backend/railshot/amd64/flush_spills.go
+@@ -23,7 +23,11 @@ func (f *fn) stageFlushSpills(belowSlots int, belowRoots []*elem) {
+ 	for pass := 0; pass < 2; pass++ {
+ 		rootIndex, canonicalSlot := 0, 0
+ 		overlaps := false
+-		for e := f.s.head.next; e != f.s.head; e = e.next {
++		for c := f.s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
+ 			canonical := false
+ 			destination := -1
+ 			if rootIndex < len(belowRoots) && e == belowRoots[rootIndex] {
 diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
 index d56bbd48..19d13937 100644
 --- a/src/core/compiler/backend/railshot/amd64/fp.go
@@ -332,19 +661,168 @@ index d56bbd48..19d13937 100644
  		f.observeOwnedForest("fp-allocation")
  	}
 diff --git a/src/core/compiler/backend/railshot/amd64/fuse.go b/src/core/compiler/backend/railshot/amd64/fuse.go
-index c017d85f..d5c09561 100644
+index c017d85f..208ac4f3 100644
 --- a/src/core/compiler/backend/railshot/amd64/fuse.go
 +++ b/src/core/compiler/backend/railshot/amd64/fuse.go
-@@ -126,6 +126,9 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+@@ -126,9 +126,9 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
  // fused compare so the subsequent branch's moveSlots reads canonical slots and no
  // flag-clobbering flush happens between the CMP and the Jcc.
  func (f *fn) flushBelow(node *elem) int {
+-	f.stats.addFlushBelow()
+-	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
+-	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 +	if f.s.forest != nil {
 +		panic("fixture forest: unported flushBelow")
 +	}
- 	f.stats.addFlushBelow()
- 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
- 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
+ 	base := baseOfValentBlock(node)
+ 	below := f.tmpBelow[:0]
+ 	belowSlots := 0
+@@ -141,7 +141,29 @@ func (f *fn) flushBelow(node *elem) int {
+ 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
+ 		below[i], below[j] = below[j], below[i]
+ 	}
++	return f.flushBelowRoots(below, belowSlots)
++}
++
++// flushBelowRoot uses a caller-owned root index; no lookup, flattening or
++// reconstruction. Materializing a root cannot resize the borrowed root view.
++func (f *fn) flushBelowRoot(index int) int {
++	roots := f.s.forest.roots
++	below := roots[:index:index]
++	slots := 0
++	for _, e := range below {
++		slots += rootMachineType(e).stackSlots()
++	}
++	return f.flushBelowRoots(below, slots)
++}
++
++func (f *fn) flushBelowRoots(below []*elem, belowSlots int) int {
++	f.stats.addFlushBelow()
++	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
++	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
+ 	if regallocCheckEnabled {
++		if f.s.forest != nil {
++			panic("fixture forest: unported linked-list flush checker")
++		}
+ 		f.checkBeginFlush(below)
+ 		defer f.checkEndFlush()
+ 	}
+@@ -218,8 +240,12 @@ func (f *fn) condenseToFlags(node *elem) Cond {
+ 	if f.opt(optSTFlags) {
+ 		for node.deferredOp() == opEqz && isFusableBranchPredicate(node.arg0) {
+ 			inner := node.arg0
+-			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
+-			f.s.exposeLogicalRoot(inner)
++			if f.s.forest != nil {
++				f.forestPeelTop(node, inner)
++			} else {
++				f.erase(node) // drop the eqz wrapper; inner becomes the top of the block
++				f.s.exposeLogicalRoot(inner)
++			}
+ 			f.stats.peep("eqz-fold")
+ 			node = inner
+ 			invert = !invert
+@@ -411,7 +437,13 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
+ 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
+ 			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+ 	}
+-	k := f.flushBelow(top)
++	var k int
++	if f.s.forest != nil {
++		f.checkForestControlTarget(fi)
++		k = f.flushBelowRoot(f.depth() - 1)
++	} else {
++		k = f.flushBelow(top)
++	}
+ 	coldExit := f.callFreeLoopExit(fi)
+ 	var saved localStateSnapshot
+ 	if coldExit && len(f.locals) > len(saved) {
+diff --git a/src/core/compiler/backend/railshot/amd64/globals.go b/src/core/compiler/backend/railshot/amd64/globals.go
+index 3d6deebd..d0cf5795 100644
+--- a/src/core/compiler/backend/railshot/amd64/globals.go
++++ b/src/core/compiler/backend/railshot/amd64/globals.go
+@@ -130,18 +130,21 @@ func (f *fn) globalGetIndex(x uint32) error {
+ // by condenseInto, so realizing them here would force a wasteful copy-out +
+ // copy-back. Refs BELOW it still need x's pre-set value and are realized.
+ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
+-	for e := f.s.head.next; e != f.s.head; {
+-		if e == skipFrom {
+-			break
++	c := f.s.fixtureScan(false)
++	if f.s.forest != nil && skipFrom != nil {
++		if f.s.back() != skipFrom {
++			panic("fixture forest: wrong global snapshot fence")
+ 		}
+-		next := e.next
++		c.endRoot--
++		skipFrom = nil
++	}
++	for e := c.next(); e != nil && e != skipFrom; e = c.next() {
+ 		switch {
+ 		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
+ 			f.materialize(e)
+ 		case e.isDeferred() && subtreeRefsGlobal(e, x):
+ 			f.condense(e, regNone)
+ 		}
+-		e = next
+ 	}
+ }
+ 
+@@ -205,7 +208,11 @@ func (f *fn) globalSetIndex(x uint32) error {
+ 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
+ 		var skipFrom *elem
+ 		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
+-			skipFrom = baseOfValentBlock(e)
++			if f.s.forest != nil {
++				skipFrom = e
++			} else {
++				skipFrom = baseOfValentBlock(e)
++			}
+ 		}
+ 		f.realizeGlobalRefs(x, skipFrom)
+ 		f.condenseInto(e, reg)
+diff --git a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+index 42b2f0e6..855eca42 100644
+--- a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
++++ b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+@@ -91,7 +91,7 @@ func (f *fn) deferIfPrefix(reader *wasm.Reader, fr *ctrlFrame) {
+ 		f.depth() != 2 || f.moduleEH || f.gcFrameRoots != nil || f.interruptible || len(f.customInstructions) != 0 {
+ 		return
+ 	}
+-	root := baseOfValentBlock(f.s.back()).prev
++	root := f.s.selectorPrevious(f.s.back(), 1)
+ 	if root == f.s.head {
+ 		return
+ 	}
+@@ -103,10 +103,14 @@ func (f *fn) deferIfPrefix(reader *wasm.Reader, fr *ctrlFrame) {
+ 	// pointer is unused and can retain this existing arena-owned recipe. Its
+ 	// original profiling identity and child links remain intact. AMD64 stack
+ 	// nodes are not recycled during the function.
+-	if root.isDeferred() {
+-		f.consumeBlockBelow(root)
++	if f.s.forest != nil {
++		f.forestDetachIfRecipe(f.depth()-2, root)
++	} else {
++		if root.isDeferred() {
++			f.consumeBlockBelow(root)
++		}
++		f.erase(root)
+ 	}
+-	f.erase(root)
+ 	f.ensureCtrlMerge(fr).baseTypeTop = root
+ 	fr.set(ctrlIfDeferredPrefix, true)
+ 	f.stats.peep("if-prefix-remat")
+@@ -137,6 +141,10 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
+ 	f.replaceStorage(local, st)
+ 	// The local was detached during replacement; restore its summary as well.
+ 	f.s.recordStorageEffects(st)
++	if f.s.forest != nil {
++		f.s.forestRestoreIfRecipe(root)
++		return
++	}
+ 	result := f.s.back()
+ 	first := root
+ 	if root.isDeferred() {
 diff --git a/src/core/compiler/backend/railshot/amd64/interval_region.go b/src/core/compiler/backend/railshot/amd64/interval_region.go
 index 83ed3590..23068a0d 100644
 --- a/src/core/compiler/backend/railshot/amd64/interval_region.go
@@ -359,6 +837,23 @@ index 83ed3590..23068a0d 100644
  	if len(f.intervalReg) == 0 {
  		return regNone
  	}
+diff --git a/src/core/compiler/backend/railshot/amd64/lone_predicate.go b/src/core/compiler/backend/railshot/amd64/lone_predicate.go
+index c06935c5..21f164a5 100644
+--- a/src/core/compiler/backend/railshot/amd64/lone_predicate.go
++++ b/src/core/compiler/backend/railshot/amd64/lone_predicate.go
+@@ -24,7 +24,11 @@ var borrowedPredicateEnabled = os.Getenv("WAGO_AMD64_BORROWED_PREDICATE") != "0"
+ // recur; forward branches retain the existing code layout and staging policy.
+ func (f *fn) flushBranchPredicate(predicate *elem, loopBackedge bool) {
+ 	if lonePredicateEnabled && f.depth() == 1 && predicate.isValue() && predicate.st.typ == mtI32 && !predicate.st.hasGCRoot() && f.lonePredicateRegisterSafe(predicate, loopBackedge) {
+-		f.flushBelow(predicate)
++		if f.s.forest != nil {
++			f.flushBelowRoot(f.depth() - 1)
++		} else {
++			f.flushBelow(predicate)
++		}
+ 		f.stats.peep("lone-predicate")
+ 		if predicate.st.kind == stLocalReg {
+ 			f.stats.peep("lone-predicate-borrowed")
 diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
 index 31b0874a..f6676133 100644
 --- a/src/core/compiler/backend/railshot/amd64/memory.go
@@ -561,7 +1056,7 @@ index 00000000..3c0dbe52
 +}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
 new file mode 100644
-index 00000000..e737cc53
+index 00000000..29fe140f
 --- /dev/null
 +++ b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
 @@ -0,0 +1,251 @@
@@ -781,12 +1276,12 @@ index 00000000..e737cc53
 +		name, want string
 +		run        func(*fn)
 +	}{
-+		{"if-block", "fixture forest: unported loop or if block", func(f *fn) { r := wasm.ReaderFrom([]byte{0x7f}); f.opBlock(&r, 0x04) }},
-+		{"conditional", "fixture forest: unported conditional branch", func(f *fn) { r := wasm.ReaderFrom([]byte{0}); f.opBr(&r, true) }},
-+		{"selected-regmerge", "fixture forest: unported register-merge block", func(f *fn) {
-+			f.regMerge = true
-+			r := wasm.ReaderFrom([]byte{0x7f, 0x41, 3, 0x0c, 0, 0x0b})
-+			f.opBlock(&r, 0x02)
++		{"fp-allocation", "fixture forest: unported FP allocation", func(f *fn) { f.allocFReg(0) }},
++		{"interval-eviction", "fixture forest: unported interval local eviction", func(f *fn) { f.intervalReg = []Reg{R12}; f.evictIntervalLocal(0) }},
++		{"generic-nontop-erase", "fixture forest: unported non-top erase", func(f *fn) {
++			e := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 2})
++			f.s.erase(e)
 +		}},
 +		{"flush-below", "fixture forest: unported flushBelow", func(f *fn) { f.flushBelow(nil) }},
 +		{"missing-effect-limit", "fixture forest: partial effect limit not found", func(f *fn) { f.fixturePendingEffects(true, new(elem)) }},
@@ -818,10 +1313,10 @@ index 00000000..e737cc53
 +}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
 new file mode 100644
-index 00000000..3f0b7869
+index 00000000..db838c62
 --- /dev/null
 +++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
-@@ -0,0 +1,271 @@
+@@ -0,0 +1,418 @@
 +//go:build amd64
 +
 +package amd64
@@ -1093,6 +1588,345 @@ index 00000000..3f0b7869
 +		s.pendingPrefix = s.back() // observation only; no physical cursor.
 +	}
 +}
++
++// Test-only per-module receipt. Never installed in public or parallel compile.
++type fixtureModuleWork struct {
++	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps uint64
++	Opcodes                                                           uint64
++	Forest                                                            bool
++	Attempts, Completed, Rejected                                     int
++	List                                                              fixtureListWork
++	Vector                                                            fixtureForest
++	RootCapacity                                                      int
++	Spills                                                            []fixtureSpillTrace
++}
++
++type fixtureSpillTrace struct {
++	Function, PC uint32
++	Reg          Reg
++	Kind         storageKind
++	Type         machineType
++}
++
++func (w *fixtureModuleWork) releaseRoots() {
++	w.RootCapacity = cap(w.Vector.roots)
++	w.Vector.stores += uint64(len(w.Vector.roots))
++	clear(w.Vector.roots)
++	w.Vector.roots = nil
++}
++
++func (s *stack) selectorPrevious(node *elem, depth int) *elem {
++	if s.forest == nil {
++		return baseOfValentBlock(node).prev
++	}
++	if s.forestLast(depth-1) != node {
++		panic("fixture forest: invalid selector root position")
++	}
++	if e := s.forestLast(depth); e != nil {
++		return e
++	}
++	return s.head
++}
++
++func (f *fn) forestEraseAt(i int, e *elem) {
++	s := f.s
++	v := s.forest
++	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending ||
++		e.isDeferred() && (e.arg0 != nil || e.arg1 != nil) {
++		panic("fixture forest: indexed erase of wrong or unresolved root")
++	}
++	if regallocCheckEnabled {
++		f.checkConsumeMemRef(e)
++	}
++	s.clearElemCold(e)
++	v.stores += uint64(copy(v.roots[i:], v.roots[i+1:]))
++	v.roots[len(v.roots)-1] = nil
++	v.stores++
++	v.roots = v.roots[:len(v.roots)-1]
++	s.forestRetire(e)
++}
++
++func (f *fn) forestPeelTop(parent, child *elem) {
++	s := f.s
++	if s.back() != parent || parent.forestPending || !parent.isDeferred() ||
++		parent.arg0 != child || parent.arg1 != nil || !child.forestLive || child.st.hasLogicalRoot() {
++		panic("fixture forest: invalid unary root transfer")
++	}
++	i := len(s.forest.roots) - 1
++	parent.arg0 = nil
++	// Replace the owning slot in place. Even for the sole root the remaining
++	// child is live, so retirement must not clear pendingLocalRef as if the
++	// stack became empty. The child keeps all existing register ownership.
++	s.forest.roots[i] = child
++	s.forest.stores++
++	if regallocCheckEnabled {
++		f.checkConsumeMemRef(parent)
++	}
++	s.clearElemCold(parent)
++	s.forestRetire(parent)
++	child.st.setLogicalRoot(true)
++	s.logicalDepth++
++}
++
++func (s *stack) forestRotateToTop(i int, e *elem) {
++	v := s.forest
++	if i < 0 || i >= len(v.roots) || v.roots[i] != e || e.forestPending {
++		panic("fixture forest: invalid root rotation")
++	}
++	if i == len(v.roots)-1 {
++		return
++	}
++	v.stores += uint64(copy(v.roots[i:], v.roots[i+1:]))
++	v.roots[len(v.roots)-1] = e
++	v.stores++
++	s.canonicalSlots = false
++	s.spilledPrefix = nil
++	s.pendingPrefix, s.pendingPrefixLoads = nil, false
++}
++
++func fixtureScalarOpcode(op byte) bool {
++	switch {
++	case op <= 0x05, op >= 0x0b && op <= 0x0d, op == 0x0f, op == 0x10, op == 0x1a, op == 0x1b,
++		op >= 0x20 && op <= 0x24, op == 0x28, op == 0x29, op >= 0x2c && op <= 0x37, op >= 0x3a && op <= 0x3e,
++		op == 0x41, op == 0x42, op >= 0x45 && op <= 0x5a, op >= 0x67 && op <= 0x8a,
++		op == 0xa7, op == 0xac, op == 0xad, op >= 0xc0 && op <= 0xc4:
++		return true
++	default:
++		return false
++	}
++}
++
++// The existing IF prefix rematerializer owns one detached recipe. Retire its
++// two proven pure leaves without discarding the recipe's child identity.
++func (f *fn) forestDetachIfRecipe(i int, root *elem) {
++	if ifPrefixLocal(root) == nil {
++		panic("fixture forest: invalid IF prefix recipe")
++	}
++	a, b := root.arg0, root.arg1
++	if root.isDeferred() {
++		f.forestRetireChildren(root)
++	}
++	f.forestEraseAt(i, root)
++	root.arg0, root.arg1 = a, b
++}
++
++func (s *stack) forestRestoreIfRecipe(root *elem) {
++	if len(s.forest.roots) != 1 || root.forestLive || root.st.hasLogicalRoot() {
++		panic("fixture forest: invalid IF prefix restore")
++	}
++	if root.isDeferred() {
++		if root.arg0 == nil || root.arg1 == nil {
++			panic("fixture forest: missing recipe leaves")
++		}
++		for _, e := range []*elem{root.arg0, root.arg1} {
++			if !e.isValue() || e.forestLive || e.st.hasLogicalRoot() {
++				panic("fixture forest: invalid recipe leaf")
++			}
++			e.forestLive = true
++		}
++	}
++	result := s.forest.roots[0]
++	root.st.setLogicalRoot(true)
++	s.logicalDepth++
++	s.forestAppend(root)
++	s.forest.roots[0], s.forest.roots[1] = root, result
++	s.forest.stores += 2
++	s.canonicalSlots = false
++	s.spilledPrefix = nil
++	s.pendingPrefix, s.pendingPrefixLoads = nil, false
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go
+new file mode 100644
+index 00000000..704e1771
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_module_independent_test.go
+@@ -0,0 +1,186 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"strings"
++	"testing"
++	"unsafe"
++)
++
++type ownedModuleCase struct {
++	name   string
++	module *wasm.Module
++	args   []uint64
++	want   uint64
++	trapPC uint32
++	trap   bool
++}
++
++func ownedModuleCases(t *testing.T) []ownedModuleCase {
++	scalar := func(p int, b []byte) *wasm.Module {
++		types := make([]wasm.ValType, p)
++		for i := range types {
++			types[i] = wasm.I32
++		}
++		return mod1(t, types, []wasm.ValType{wasm.I32}, b)
++	}
++	cases := []ownedModuleCase{
++		{name: "if-result-live-prefix", module: scalar(1, []byte{0, 0x41, 13, 0x20, 0, 0x04, 0x7f, 0x41, 17, 0x05, 0x41, 23, 0x0b, 0x6a, 0x0b}), args: []uint64{1}, want: 30},
++		{name: "if-result-live-prefix-false", module: scalar(1, []byte{0, 0x41, 13, 0x20, 0, 0x04, 0x7f, 0x41, 17, 0x05, 0x41, 23, 0x0b, 0x6a, 0x0b}), args: []uint64{0}, want: 36},
++		{name: "if-true-result", module: scalar(3, []byte{0, 0x20, 0, 0x04, 0x7f, 0x20, 1, 0x05, 0x20, 2, 0x0b, 0x41, 7, 0x6a, 0x0b}), args: []uint64{1, 11, 23}, want: 18},
++		{name: "if-false-result", module: scalar(3, []byte{0, 0x20, 0, 0x04, 0x7f, 0x20, 1, 0x05, 0x20, 2, 0x0b, 0x41, 7, 0x6a, 0x0b}), args: []uint64{0, 11, 23}, want: 30},
++		{name: "loop-local-accumulator", module: scalar(1, []byte{1, 1, 0x7f, 0x02, 0x40, 0x03, 0x40, 0x20, 0, 0x45, 0x0d, 1, 0x20, 1, 0x20, 0, 0x6a, 0x21, 1, 0x20, 0, 0x41, 1, 0x6b, 0x21, 0, 0x0c, 0, 0x0b, 0x0b, 0x20, 1, 0x0b}), args: []uint64{9}, want: 45},
++		{name: "retained-old-local-br-value", module: scalar(2, []byte{0, 0x02, 0x7f, 0x20, 0, 0x41, 9, 0x21, 0, 0x20, 1, 0x0d, 0, 0x41, 1, 0x6a, 0x0b, 0x20, 0, 0x6a, 0x0b}), args: []uint64{17, 1}, want: 26},
++		{name: "retained-old-local-fallthrough", module: scalar(2, []byte{0, 0x02, 0x7f, 0x20, 0, 0x41, 9, 0x21, 0, 0x20, 1, 0x0d, 0, 0x41, 1, 0x6a, 0x0b, 0x20, 0, 0x6a, 0x0b}), args: []uint64{17, 0}, want: 27},
++	}
++	call := modFuncs(t, funcDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x20, 1, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, funcDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 10, 0x6c, 0x20, 1, 0x6a, 0x0b}})
++	cases = append(cases, ownedModuleCase{name: "nonzero-call-reversed-args-live-prefix", module: call, args: []uint64{7, 4}, want: 57})
++	mem := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x28, 2, 0, 0x41, 0, 0x41, 29, 0x36, 2, 0, 0x41, 1, 0x6a, 0x0b})
++	cases = append(cases, ownedModuleCase{name: "memory-snapshot-before-store", module: mem, args: []uint64{0}, want: 18}, ownedModuleCase{name: "memory-oob-before-store", module: mem, args: []uint64{65535}, trap: true, trapPC: mem.Code[0].LocalDeclBytes + 2})
++	cases = append(cases, ownedModuleCase{name: "global-old-snapshot-set", module: streamGlobalFixture(t, false, false, false), args: []uint64{29}, want: 46})
++	effectIf := []byte{0, 0x41, 13, 0x20, 0, 0x04, 0x7f, 0x41, 0, 0x41, 17, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x05, 0x41, 0, 0x41, 23, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x0b, 0x6a, 0x0b}
++	effectModule := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, effectIf)
++	cases = append(cases, ownedModuleCase{name: "effectful-if-true", module: effectModule, args: []uint64{1}, want: 30}, ownedModuleCase{name: "effectful-if-false", module: effectModule, args: []uint64{0}, want: 36})
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x20, 0, 0x41, 10, 0x6c, 0x20, 1, 0x6a, 0x0b)
++	natural := modFuncs(t, funcDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x20, 1, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, funcDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, callee})
++	cases = append(cases, ownedModuleCase{name: "natural-noninline-call-live-prefix", module: natural, args: []uint64{7, 4}, want: 57})
++	return cases
++}
++
++// Runs an already compiled module so selection, allocator trace, native bytes,
++// and execution refer to the very same compile, not a second hidden compile.
++func ownedRunModule(t *testing.T, cm *encoder.CompiledModule, args []uint64) (uint64, error) {
++	t.Helper()
++	eng, e := wr.NewEngine()
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer eng.Close()
++	jm, e := wr.NewJobMemory(65536)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer jm.Close()
++	jm.LinearMemory()[0] = 17
++	ar, e := wr.NewArena(4096)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer ar.Close()
++	cell, table := ar.Alloc(8), ar.Alloc(8)
++	binary.LittleEndian.PutUint64(cell, 17)
++	binary.LittleEndian.PutUint64(table, uint64(uintptr(unsafe.Pointer(&cell[0]))))
++	jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&table[0])))
++	image, entry, e := wr.MapCode(cm.Code)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], v)
++	}
++	e = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, r)
++	return binary.LittleEndian.Uint64(r), e
++}
++
++func TestOwnedForestModuleScalarDriver(t *testing.T) {
++	for _, tc := range ownedModuleCases(t) {
++		for _, intr := range []bool{false, true} {
++			t.Run(fmt.Sprintf("%s/interruptible=%v", tc.name, intr), func(t *testing.T) {
++				var oracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					opts := CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: work}
++					cm, err := CompileModuleWith(tc.module, opts)
++					bypass := strings.HasPrefix(tc.name, "if-")
++					scopeControl := tc.name == "nonzero-call-reversed-args-live-prefix"
++					if err != nil {
++						if candidate && scopeControl && work.Rejected > 0 && work.InlineCallGaps > 0 {
++							t.Logf("COVERAGE_REJECTED_NOT_MIGRATED name=%s candidate=%v error=%v work=%+v", tc.name, candidate, err, work)
++							continue
++						}
++						t.Fatalf("candidate=%v explicit compile rejection: %v work=%+v", candidate, err, work)
++					}
++					if candidate && scopeControl {
++						t.Fatal("scope control unexpectedly migrated; inspect before changing denominator")
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.Attempts == 0 || work.Completed == 0 || work.Rejected != 0 || (!scopeControl && !bypass && (work.Opcodes == 0 || work.LegacyBodies == 0)) {
++						t.Fatalf("selector incomplete candidate=%v work=%+v", candidate, work)
++					}
++					if bypass {
++						if work.SharedScalarBodies == 0 || work.LegacyBodies != 0 || work.Opcodes != 0 || work.Vector.stores != 0 || work.RootCapacity != 0 {
++							t.Fatalf("invalid shared-scalar bypass: %+v", work)
++						}
++						t.Log("SHARED_SCALAR_BYPASS_NOT_FOREST_COVERAGE")
++					} else if candidate && work.Vector.stores == 0 {
++						t.Fatal("legacy candidate has no actual forest root work")
++					}
++					got, err := ownedRunModule(t, cm, tc.args)
++					if tc.trap {
++						var trap *wr.TrapError
++						if !errors.As(err, &trap) || trap.Code != wr.TrapLinMemOutOfBounds || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != 0 || !trap.Frames[0].HasProgramCounter || trap.Frames[0].ProgramCounter != tc.trapPC {
++							t.Fatalf("candidate=%v expected exact OOB PC%d got %v", candidate, tc.trapPC, err)
++						}
++					} else if err != nil || got != tc.want {
++						t.Fatalf("candidate=%v result=%d want=%d err=%v", candidate, got, tc.want, err)
++					}
++					exact := true
++					if !candidate {
++						oracle = append([]byte(nil), cm.Code...)
++					} else {
++						exact = bytes.Equal(oracle, cm.Code)
++						if bypass && !exact {
++							t.Fatal("shared-scalar bypass native differs")
++						}
++					}
++					t.Logf("candidate=%v nativeBytes=%d nativeSHA=%x exactList=%v entries=%v internal=%v sharedScalar=%d streaming=%d legacy=%d inlineGaps=%d opcodes=%d attempts=%d completed=%d rejected=%d list=%+v vector=%+v rootCapacity=%d orderedSpills=%+v", candidate, len(cm.Code), sha256.Sum256(cm.Code), exact, cm.Entry, cm.InternalEntry, work.SharedScalarBodies, work.StreamingBodies, work.LegacyBodies, work.InlineCallGaps, work.Opcodes, work.Attempts, work.Completed, work.Rejected, work.List, work.Vector, work.RootCapacity, work.Spills)
++				}
++			})
++		}
++	}
++}
++
++func TestOwnedForestModulePeelPreservesLazyLocal(t *testing.T) {
++	f := independentForestFn(true)
++	leaf := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++	constant := f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
++	child := testDeferredElem(opEq, mtI32, leaf, constant)
++	f.s.pushDeferred(child)
++	parent := testDeferredElem(opEqz, mtI32, child, nil)
++	f.s.pushDeferred(parent)
++	if f.s.logicalDepth != 1 || f.s.pendingEffects&pendingLocalRef == 0 {
++		t.Fatal("invalid precondition")
++	}
++	f.forestPeelTop(parent, child)
++	if f.s.pendingEffects&pendingLocalRef == 0 {
++		t.Fatal("sole-root peel lost lazy-local effect summary")
++	}
++	if f.s.logicalDepth != 1 || len(f.s.forest.roots) != 1 || f.s.forest.roots[0] != child || parent.forestLive || !child.forestLive || !leaf.forestLive || !constant.forestLive || !child.st.hasLogicalRoot() {
++		t.Fatal("ownership/depth changed")
++	}
++	c := f.s.fixtureScan(false)
++	for _, want := range []*elem{leaf, constant, child} {
++		if got := c.next(); got != want {
++			t.Fatal("postorder changed")
++		}
++	}
++	if c.next() != nil {
++		t.Fatal("extra node")
++	}
++	independentForestNilLinks(t, f, []*elem{parent, child, leaf, constant})
++}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_safety_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_safety_independent_test.go
 new file mode 100644
 index 00000000..e1e29486
@@ -1251,6 +2085,66 @@ index 00000000..e1e29486
 +		}
 +	}
 +}
+diff --git a/src/core/compiler/backend/railshot/amd64/pure_integer_if.go b/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
+index 6287cf64..efde767a 100644
+--- a/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
++++ b/src/core/compiler/backend/railshot/amd64/pure_integer_if.go
+@@ -111,6 +111,7 @@ func (f *fn) tryPureIntegerIfSelect(r *wasm.Reader, typ machineType) (bool, erro
+ 		return false, err
+ 	}
+ 	condition := f.s.back()
++	conditionIndex := f.depth() - 1
+ 	// Preserve the ordinary if boundary for earlier trapping operands. Both
+ 	// arms read unchanged locals and contain only bounded nontrapping arithmetic.
+ 	f.materializeTrapsBefore(condition)
+@@ -128,7 +129,11 @@ func (f *fn) tryPureIntegerIfSelect(r *wasm.Reader, typ machineType) (bool, erro
+ 			}
+ 		}
+ 	}
+-	f.s.moveValentBlockToTop(condition)
++	if f.s.forest != nil {
++		f.s.forestRotateToTop(conditionIndex, condition)
++	} else {
++		f.s.moveValentBlockToTop(condition)
++	}
+ 	f.emitSelect()
+ 	f.stats.peep("pure-integer-if-select")
+ 	return true, nil
+diff --git a/src/core/compiler/backend/railshot/amd64/pure_select.go b/src/core/compiler/backend/railshot/amd64/pure_select.go
+index 062fcef9..f56257d6 100644
+--- a/src/core/compiler/backend/railshot/amd64/pure_select.go
++++ b/src/core/compiler/backend/railshot/amd64/pure_select.go
+@@ -69,11 +69,11 @@ func (f *fn) tryPureExpensiveSelect() bool {
+ 	if cond == nil {
+ 		return false
+ 	}
+-	b := baseOfValentBlock(cond).prev
++	b := f.s.selectorPrevious(cond, 1)
+ 	if b == f.s.head {
+ 		return false
+ 	}
+-	a := baseOfValentBlock(b).prev
++	a := f.s.selectorPrevious(b, 2)
+ 	if a == f.s.head {
+ 		return false
+ 	}
+@@ -166,7 +166,15 @@ func (f *fn) tryPureExpensiveSelect() bool {
+ 	}
+ 	f.consumeBlockBelow(costly)
+ 	f.erase(cond)
+-	f.erase(cheap)
++	if f.s.forest != nil {
++		i := f.depth() - 1
++		if cheap == a {
++			i--
++		}
++		f.forestEraseAt(i, cheap)
++	} else {
++		f.erase(cheap)
++	}
+ 	f.occupy(costly, result)
+ 	f.stats.peep("pure-select-branch")
+ 	return true
 diff --git a/src/core/compiler/backend/railshot/amd64/references.go b/src/core/compiler/backend/railshot/amd64/references.go
 index 8b3b212e..1b78c4bf 100644
 --- a/src/core/compiler/backend/railshot/amd64/references.go
@@ -1265,7 +2159,7 @@ index 8b3b212e..1b78c4bf 100644
  			// A replacement can introduce a guard-backed load inside the
  			// previously checked prefix. Appended values need no reset.
 diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
-index ab54edb3..0dec7733 100644
+index ab54edb3..b23e64a6 100644
 --- a/src/core/compiler/backend/railshot/amd64/regalloc.go
 +++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
 @@ -144,7 +144,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
@@ -1316,17 +2210,21 @@ index ab54edb3..0dec7733 100644
  			if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
  				borrowed = true
  				break
-@@ -248,6 +260,9 @@ func (f *fn) spillIfUsed(r Reg) {
+@@ -248,6 +260,13 @@ func (f *fn) spillIfUsed(r Reg) {
  
  // spill evicts the register-resident value elem e to a fresh frame slot.
  func (f *fn) spill(e *elem) {
++	if f.sc != nil && f.sc.fixtureWork != nil {
++		v := f.sc.fixtureWork
++		v.Spills = append(v.Spills, fixtureSpillTrace{Function: f.traceFuncIdx, PC: f.wasmPC, Reg: e.st.reg, Kind: e.st.kind, Type: e.st.typ})
++	}
 +	if f.s.forest != nil {
 +		f.s.forest.spills++
 +	}
  	before := f.a.Len()
  	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
  	if e.st.kind == stMemRef {
-@@ -310,7 +325,11 @@ func (f *fn) curSpillSlot() int {
+@@ -310,7 +329,11 @@ func (f *fn) curSpillSlot() int {
  	s := f.s
  	if !s.spillExtentValid {
  		used := 0
@@ -1339,7 +2237,7 @@ index ab54edb3..0dec7733 100644
  			if e.isValue() && e.st.kind == stSlot {
  				end := e.st.slotIndex() + e.st.typ.stackSlots()
  				if end > used {
-@@ -489,6 +508,10 @@ func (f *fn) materializePendingEffects(loads bool) {
+@@ -489,6 +512,10 @@ func (f *fn) materializePendingEffects(loads bool) {
  }
  
  func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
@@ -1350,7 +2248,7 @@ index ab54edb3..0dec7733 100644
  	if ownedForestCensusEnabled {
  		f.observeOwnedForest("effect-barrier")
  	}
-@@ -509,6 +532,9 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+@@ -509,6 +536,9 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
  	}
  	allLoadsClear := loads || start == f.s.head.next || f.s.pendingPrefixLoads
  	for e := start; e != limit; e = e.next {
@@ -1378,7 +2276,7 @@ index cf999ecc..ec6703c9 100644
  	// Only vector assignments can invalidate a vector-local alias.
  	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
 diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
-index dc1e92b4..c478163b 100644
+index dc1e92b4..657c8fcf 100644
 --- a/src/core/compiler/backend/railshot/amd64/stack.go
 +++ b/src/core/compiler/backend/railshot/amd64/stack.go
 @@ -187,6 +187,8 @@ const (
@@ -1399,7 +2297,32 @@ index dc1e92b4..c478163b 100644
  	arena              *operandArena
  	chunks             [][]elem
  	activeChunk        *[]elem // points into chunks; refreshed after header-array growth
-@@ -490,9 +494,15 @@ func (s *stack) allocNextChunk() *elem {
+@@ -342,7 +346,11 @@ func (s *stack) initSentinel() {
+ 	s.activeChunk = chunk
+ 	*chunk = append((*chunk)[:0], elem{})
+ 	s.head = &(*chunk)[0]
+-	s.head.prev, s.head.next = s.head, s.head
++	if s.forest != nil {
++		s.head.prev, s.head.next = nil, nil
++	} else {
++		s.head.prev, s.head.next = s.head, s.head
++	}
+ 	s.logicalDepth = 0
+ 	s.canonicalSlots = true
+ 	s.hasGCRoots = false
+@@ -357,6 +365,11 @@ func (s *stack) initSentinel() {
+ // called (its code is already emitted). Clear each used chunk once on reuse;
+ // the remaining capacity is already zero, so alloc need not clear every node.
+ func (s *stack) reset() {
++	if v := s.forest; v != nil {
++		v.stores += uint64(len(v.roots))
++		clear(v.roots)
++		v.roots = v.roots[:0]
++	}
+ 	clear(s.chunks[0])
+ 	clear(s.cold[:cap(s.cold)])
+ 	s.cold = s.cold[:0]
+@@ -490,9 +503,15 @@ func (s *stack) allocNextChunk() *elem {
  
  // push appends e as the new top of the stack and returns it.
  func (s *stack) push(e *elem) *elem {
@@ -1415,7 +2338,7 @@ index dc1e92b4..c478163b 100644
  	if ownedForestCensusEnabled {
  		observeOwnedForestLinks("push", 4)
  	}
-@@ -580,11 +590,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
+@@ -580,11 +599,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
  	if arity == 2 {
  		s.logicalDepth--
  	}
@@ -1433,7 +2356,7 @@ index dc1e92b4..c478163b 100644
  	if s.head.prev == s.head {
  		return nil
  	}
-@@ -594,6 +610,20 @@ func (s *stack) back() *elem {
+@@ -594,6 +619,20 @@ func (s *stack) back() *elem {
  // erase unlinks e from the physical list (used when a node is condensed away or
  // consumed). It does not touch parent/sibling links.
  func (s *stack) erase(e *elem) {
@@ -1454,7 +2377,7 @@ index dc1e92b4..c478163b 100644
  	if s.pendingPrefix == e {
  		s.pendingPrefix = e.prev
  	}
-@@ -608,6 +638,9 @@ func (s *stack) erase(e *elem) {
+@@ -608,6 +647,9 @@ func (s *stack) erase(e *elem) {
  	}
  	e.prev.next, e.next.prev = e.next, e.prev
  	e.prev, e.next = nil, nil
@@ -1464,7 +2387,7 @@ index dc1e92b4..c478163b 100644
  	if ownedForestCensusEnabled {
  		observeOwnedForestLinks("erase", 4)
  	}
-@@ -619,6 +652,9 @@ func (s *stack) erase(e *elem) {
+@@ -619,6 +661,9 @@ func (s *stack) erase(e *elem) {
  // exposeLogicalRoot restores a deferred operand that an optimization peeled
  // from a wrapper without changing the logical stack depth.
  func (s *stack) exposeLogicalRoot(e *elem) {
@@ -1474,7 +2397,7 @@ index dc1e92b4..c478163b 100644
  	s.canonicalSlots = false
  	if e == nil || e.st.hasLogicalRoot() {
  		panic("amd64: invalid logical operand root exposure")
-@@ -645,7 +681,12 @@ func baseOfValentBlock(root *elem) *elem {
+@@ -645,7 +690,12 @@ func baseOfValentBlock(root *elem) *elem {
  // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
  func (f *fn) pushBinOp(op wOp, typ machineType) {
  	right := f.s.back()
@@ -1488,7 +2411,7 @@ index dc1e92b4..c478163b 100644
  	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
  	if right.isValue() && right.st.kind == stConst &&
  		left.isValue() && left.st.kind == stConst {
-@@ -923,7 +964,7 @@ func (s *stack) noteSpill(st storage) {
+@@ -923,7 +973,7 @@ func (s *stack) noteSpill(st storage) {
  }
  
  func (s *stack) forgetSpill(e *elem) {
@@ -1497,7 +2420,7 @@ index dc1e92b4..c478163b 100644
  		return
  	}
  	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
-@@ -942,6 +983,9 @@ func (s *stack) firstUnspilled() *elem {
+@@ -942,6 +992,9 @@ func (s *stack) firstUnspilled() *elem {
  	e := last.next
  	for e != s.head && e.isValue() && e.st.kind == stSlot {
  		last, e = e, e.next
@@ -1508,26 +2431,22 @@ index dc1e92b4..c478163b 100644
  	s.spilledPrefix = last
  	return e
 diff --git a/src/core/compiler/backend/railshot/amd64/treeorder.go b/src/core/compiler/backend/railshot/amd64/treeorder.go
-index 949f7db0..3628fe34 100644
+index 949f7db0..d5c2a460 100644
 --- a/src/core/compiler/backend/railshot/amd64/treeorder.go
 +++ b/src/core/compiler/backend/railshot/amd64/treeorder.go
-@@ -95,8 +95,26 @@ func treeReorderSafe(e *elem) bool {
+@@ -95,10 +95,38 @@ func treeReorderSafe(e *elem) bool {
  // existing nodes spillable; canonicalizing slots here could overwrite an
  // argument that still needs to be captured from a noncanonical spill slot.
  func (f *fn) materializeTrapsBefore(node *elem) {
 +	if f.s.forest != nil {
++		index := len(f.s.forest.roots)
 +		if node != f.s.head {
-+			panic("fixture forest: unported partial trapping-root fence")
-+		}
-+		c := f.s.fixtureScan(false)
-+		for e := c.next(); e != nil; e = c.next() {
-+			if e.forestPending {
-+				panic("fixture forest: pending flags at call barrier")
-+			}
-+			if e.st.hasLogicalRoot() && !treeReorderSafe(e) {
-+				f.materializeByType(e)
++			index--
++			if f.s.back() != node {
++				panic("fixture forest: unported non-top trapping-root fence")
 +			}
 +		}
++		f.materializeTrapsBeforeRoot(index)
 +		return
 +	}
  	base := baseOfValentBlock(node)
@@ -1538,3 +2457,19 @@ index 949f7db0..3628fe34 100644
  		if e.st.hasLogicalRoot() && !treeReorderSafe(e) {
  			f.materializeByType(e)
  		}
+ 	}
+ }
++
++// materializeTrapsBeforeRoot resolves earlier trapping roots only. Like the
++// legacy traversal, it does not force a pure root simply because it has leaves.
++func (f *fn) materializeTrapsBeforeRoot(index int) {
++	roots := f.s.forest.roots
++	for _, e := range roots[:index:index] {
++		if e.forestPending {
++			panic("fixture forest: pending flags at root barrier")
++		}
++		if !treeReorderSafe(e) {
++			f.materializeByType(e)
++		}
++	}
++}

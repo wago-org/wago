@@ -113,3 +113,29 @@ omitted the absent module-global lease sentinel; e887bc79 initializes it.
 This was a test fixture correction, not a production semantic fix.
 These cases extend the earlier focused coverage, not the full corpus.
 No timing, net-cost, node-shrinkage, or promotion claim.
+
+## Focused scalar-module batch
+
+The cumulative fixture now captures c9b12d78. Attempt two passed 14
+top-level tests and 36 subtests, with no skips, retaining the safety
+fixtures. Across 56 compile attempts there were 36 supported legacy
+executions, 16 existing shared-scalar bypass executions, two list-only
+inline control executions, and two rejected candidate inline attempts.
+All 26 native comparisons matched. Bypasses do not count as forest
+activation; the inline-selected ownership path remains unsupported.
+
+Natural non-inline argument-call compilation reached two legacy bodies
+and 529 opcode observations and returned 57, with exact native parity.
+There is no separate call activation counter. The effectful IF reached
+17 opcode observations and matched native code and both branch results.
+The retained safety checks cover reentrant borrowed-load spills and
+executed bounds-trap recovery.
+
+The first attempt remains a failure: pure IF cases did not reach the
+expected legacy dispatch, the inline call exceeded the supported scope,
+and the interval eviction test did not activate interval state. The
+sole-root transfer change (8870afb2) preserves pending local bookkeeping;
+fb04ae5e preserves existing shared-scalar engine priority and counts that
+path as a bypass rather than forcing forest activation. Prefix policies
+remain unported. This is focused correctness evidence, not full corpus
+coverage, timing, storage reduction, or a net work claim.
