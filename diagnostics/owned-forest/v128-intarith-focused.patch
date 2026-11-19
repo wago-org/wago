@@ -1,0 +1,379 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 8bdf20d1..98fba7a3 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1944,6 +1944,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128Select:                work.TemporaryV128Select,
+ 			TemporaryV128BitselectLeases:       work.TemporaryV128BitselectLeases,
+ 			TemporaryV128BooleanLeases:         work.TemporaryV128BooleanLeases,
++			TemporaryV128WideningArithmetic:    work.TemporaryV128WideningArithmetic,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 4ffac575..7807cbaa 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,9 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128WideningArithmetic                                                                                                                           bool
++	TemporaryV128PairwiseExtAdds, TemporaryV128WrappingSubs, TemporaryV128ExtMuls, TemporaryV128Dots                                                          uint64
++	TemporaryV128WideningSlotLeases, TemporaryV128WideningLocalLeases                                                                                         uint64
+ 	TemporaryV128BooleanLeases                                                                                                                                bool
+ 	TemporaryV128BooleanUnary, TemporaryV128BooleanBinary, TemporaryV128BooleanTernaries                                                                      uint64
+ 	TemporaryV128BooleanNotAnd, TemporaryV128BooleanAndAnyTrue                                                                                                uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 62c51b3f..6bf97f2d 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,23 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128WideningArithmeticEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128WideningArithmetic
++}
++
++func fixtureV128WideningSubopcode(sub uint32) bool {
++	switch sub {
++	case 127, 145, 158, 159, 186:
++		return true
++	}
++	return false
++}
++
++func (f *fn) protectFixtureV128Widening(a, b *elem) (int, regMask) {
++	work := f.sc.fixtureWork
++	return f.protectFixtureV128Pair(a, b, &work.TemporaryV128WideningSlotLeases, &work.TemporaryV128WideningLocalLeases)
++}
++
+ func (f *fn) fixtureV128BooleanLeasesEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BooleanLeases
+ }
+@@ -288,6 +305,10 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 				if !work.TemporaryV128CompareMasks {
+ 					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+ 				}
++			case 127, 145, 158, 159, 186:
++				if !work.TemporaryV128WideningArithmetic {
++					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
++				}
+ 			case 77, 78, 79, 80, 81, 82, 83: // bitwise and any_true
+ 			default:
+ 				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intarith_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intarith_independent_test.go
+new file mode 100644
+index 00000000..0f6569b0
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intarith_independent_test.go
+@@ -0,0 +1,254 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++type ownedIntArithCase struct {
++	op       uint32
++	pressure bool
++}
++
++var ownedIntArithCases = []ownedIntArithCase{
++	{op: 127}, {op: 145}, {op: 158}, {op: 159}, {op: 186}, {op: 186, pressure: true},
++}
++
++func ownedIntArithModule(t *testing.T, c ownedIntArithCase) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 1, 0x7b, 0x20, 0}
++	if c.pressure {
++		b = []byte{0, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if !c.pressure {
++		pc(544)
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1)
++		pc(512)
++		if c.op != 127 {
++			b = append(b, 0x20, 1)
++		} // binary left input
++		ld(16)
++		b = append(b, 0x21, 1, 0x20, 1) // current home supplies right or unary input
++	} else {
++		pc(512)
++		ld(0)
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++	}
++	b = append(b, 0xfd)
++	b = append(b, wasmtest.ULEB(c.op)...)
++	st()
++	if !c.pressure {
++		st() // independent old-value observation
++		pc(528)
++		b = append(b, 0x20, 1)
++		st()
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedIntArithRun(t *testing.T, cm *encoder.CompiledModule, c ownedIntArithCase, variant int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + variant*7)
++	}
++	for i := range 21 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + variant)
++		}
++	}
++	for j := range 16 {
++		// For byte operations, signs and low/high halves differ.
++		mem[j], mem[16+j] = byte(255-17*j+variant*19), byte(193+29*j-variant*17)
++	}
++	x, y := mem[:16], mem[16:32]
++	if c.op == 127 {
++		boundaries := [8]uint16{0xffff, 0xffff, 0x8000, 0x8001, 0x7fff, 1, 0, 0xf123}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(y[2*j:], boundaries[(j+2*variant)%8])
++		}
++	}
++	if c.op == 145 || c.op == 186 {
++		xp := []uint16{0x8000, 0x8000, 0, 0x7fff, 0xffff, 4, 0x7fff, 0x8000}
++		yp := []uint16{0x8000, 0x8000, 1, 0xffff, 0x8000, 0xfffe, 11, 7}
++		for j := range 8 {
++			v, w := xp[(j+2*variant)%8], yp[(j+2*variant)%8]
++			if variant == 1 {
++				v, w = w, v
++			}
++			binary.LittleEndian.PutUint16(x[2*j:], v)
++			binary.LittleEndian.PutUint16(y[2*j:], w)
++		}
++	}
++	if c.pressure {
++		var reduced [16]byte
++		for j := range reduced {
++			for i := 1; i <= 20; i++ {
++				reduced[j] ^= ^mem[16*i+j]
++			}
++		}
++		y = reduced[:]
++	}
++	var result [16]byte
++	u16 := func(v []byte, j int) uint16 { return binary.LittleEndian.Uint16(v[2*j:]) }
++	switch c.op {
++	case 127:
++		for j := range 4 {
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(u16(y, 2*j))+uint32(u16(y, 2*j+1)))
++		}
++	case 145:
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], u16(x, j)-u16(y, j))
++		}
++	case 158, 159:
++		start := 0
++		if c.op == 159 {
++			start = 8
++		}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], uint16(x[start+j])*uint16(y[start+j]))
++		}
++	case 186:
++		for j := range 4 {
++			var sum int64
++			for k := range 2 {
++				n := 2*j + k
++				sum += int64(int16(u16(x, n))) * int64(int16(u16(y, n)))
++			}
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(sum))
++		}
++	default:
++		t.Fatalf("unknown arithmetic opcode %d", c.op)
++	}
++
++	want := append([]byte(nil), mem...)
++	copy(want[512:], result[:])
++	if !c.pressure {
++		copy(want[528:], y)
++		copy(want[544:], x)
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + variant)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(result[:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("FD%d variant=%d got=%x want=%x err=%v", c.op, variant, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("FD%d variant=%d byte[%d]=%x want=%x", c.op, variant, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128IntegerArithmeticOrdinary(t *testing.T) {
++	for _, c := range ownedIntArithCases {
++		t.Run(fmt.Sprintf("FD%d/pressure=%v", c.op, c.pressure), func(t *testing.T) {
++			m := ownedIntArithModule(t, c)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128WideningArithmetic: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive lane: %+v", work)
++					}
++					counts := [4]uint64{work.TemporaryV128PairwiseExtAdds, work.TemporaryV128WrappingSubs, work.TemporaryV128ExtMuls, work.TemporaryV128Dots}
++					var want [4]uint64
++					switch c.op {
++					case 127:
++						want[0] = 1
++					case 145:
++						want[1] = 1
++					case 158, 159:
++						want[2] = 1
++					case 186:
++						want[3] = 1
++					}
++					if counts != want {
++						t.Fatalf("actual arithmetic counts=%v want=%v", counts, want)
++					}
++					if !c.pressure && work.TemporaryV128WideningLocalLeases == 0 {
++						t.Fatalf("actual added local pin absent: %+v", work)
++					}
++					if c.pressure && (work.TemporaryV128Spills == 0 || work.TemporaryV128WideningSlotLeases == 0) {
++						t.Fatalf("actual full-width spill or slot floor raise absent: %+v", work)
++					}
++
++					for variant := range 2 {
++						ownedIntArithRun(t, cm, c, variant)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index ade46843..fb9114d8 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -845,6 +845,15 @@ func (f *fn) operandRegV128(e *elem) (Reg, bool) {
+ func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128WideningArithmeticEnabled() && (op == opVPsubw || op == opVPmaddwd) {
++		floor, pins := f.protectFixtureV128Widening(a, b)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		if op == opVPsubw {
++			f.sc.fixtureWork.TemporaryV128WrappingSubs++
++		} else {
++			f.sc.fixtureWork.TemporaryV128Dots++
++		}
++	}
+ 	if f.fixtureV128BooleanLeasesEnabled() && (op == opVPand || op == opVPor || op == opVPxor) {
+ 		floor, pins := f.protectFixtureV128Boolean(a, b, nil)
+ 		defer f.restoreFixtureV128DetachedState(floor, pins)
+@@ -1686,6 +1695,11 @@ func (f *fn) i16x8ExtaddPairwiseI8x16(signed bool) {
+ func (f *fn) i16x8ExtmulI8x16(signed, high bool) {
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if !signed && f.fixtureV128WideningArithmeticEnabled() {
++		floor, pins := f.protectFixtureV128Widening(a, b)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128ExtMuls++
++	}
+ 	xa := f.materializeV128(a)
+ 	f.fpinned = f.fpinned.add(xa)
+ 	xb := f.materializeV128(b)
+@@ -1782,6 +1796,11 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
+ 
+ func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
+ 	v := f.popValue()
++	if !signed && f.fixtureV128WideningArithmeticEnabled() {
++		floor, pins := f.protectFixtureV128Widening(v, nil)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128PairwiseExtAdds++
++	}
+ 	x := f.materializeV128(v)
+ 	if signed {
+ 		// VPMADDWD with a vector of 1s is a signed pairwise 16->32 add.
+@@ -2906,6 +2925,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil && fixtureV128WideningSubopcode(sub) && !f.fixtureV128WideningArithmeticEnabled() {
++		return fmt.Errorf("fixture forest: unsupported SIMD widening arithmetic")
++	}
+ 	if f.s.forest != nil && fixtureV128CompareMaskSubopcode(sub) && !f.fixtureV128CompareMasksEnabled() {
+ 		return fmt.Errorf("fixture forest: unsupported SIMD compare or mask operation")
+ 	}

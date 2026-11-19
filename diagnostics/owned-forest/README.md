@@ -1046,3 +1046,11 @@ Apply `v128-boolean-focused.patch` after `f842877c`. The alternative ends at `1b
 In the first attempt, the routine fixture expected `(a & b) ^ c` rather than the emitted postfix expression `a ^ (b & c)`; the pressure lane passed. Correcting only the fixture oracle yielded eight passing images, 24 ordinary calls and four exact native and encoder-JSON pairs. NOT-AND and AND-anytrue each activated once per image and are subsets of the binary count. The routine images added 17 local pin bits each; the pressure images each recorded one floor raise and nine full-width spills, not localized to any individual operation. No ternary activation was observed.
 
 Focused summary and both attempt hashes are pinned by SHA-256 `97a446f674ffbe2373eab2e2a02f16cefd40342a5c525509b40a356648dc5ca4`. No default comparison, public codec, corpus, timing or RSS claim.
+
+### Five V128 integer arithmetic operations
+
+Apply `v128-intarith-focused.patch` after `1bc0300f`. The alternative ends at `0270663e0f4230c08ea4bb0a2426dcf714c9fbe9` (tree `8c68d5bd4506496ee6fac2781a25316a54821421`). The opt-in covers FD127/145/158/159/186 only. The staged fixture oracle width was corrected before launch; the earlier fixture never ran.
+
+The first executed gate passed 24 images and 48 ordinary calls with 12 exact native and encoder-JSON pairs. Each image recorded one intended operation. The 20 routine images each added one local pin, and the four FD186 pressure images each recorded one slot-floor raise and six full-width spills. This does not localize spills to the operation or verify an ISA fallback. Oracles covered widened unsigned pair sums, reversed wrapping subtraction, low/high unsigned byte products, and signed dot-product sums modulo 2^32.
+
+Focused summary SHA-256: `a18090a37f9224971c7579ccdc08c56f0d846ea8e50eccd40b8bf8f719464e85`. No default change, public serialization, corpus, timing, RSS or historical replay.
