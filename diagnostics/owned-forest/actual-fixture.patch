@@ -1,5 +1,21 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 8fa4acd4..27ea0768 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -369,6 +369,11 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		return fmt.Errorf("call: unknown function %d", idx)
+ 	}
+ 	imported := f.importedFunctionCount()
++	if f.s.forest != nil && (int(idx) < imported || f.selectedInlineTarget(idx) != nil ||
++		!f.opt(optRegABI) || len(ft.Params) != 0 || len(ft.Results) != 1 ||
++		!wasm.EqualValType(ft.Results[0], wasm.I32) || f.gcFrameRoots != nil) {
++		panic("fixture forest: only direct non-inlined zero-argument scalar i32 call is ported")
++	}
+ 	if int(idx) < imported && f.customInstructions != nil {
+ 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+ 			// Native lowering replaces the source call without a return address.
 diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
-index fc644bcd..bc0f8ff3 100644
+index fc644bcd..7556a2ea 100644
 --- a/src/core/compiler/backend/railshot/amd64/control.go
 +++ b/src/core/compiler/backend/railshot/amd64/control.go
 @@ -633,18 +633,28 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
@@ -86,26 +102,85 @@ index fc644bcd..bc0f8ff3 100644
  	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
  	f.s.logicalDepth = 0
  	f.s.canonicalSlots = false
-@@ -1684,6 +1709,9 @@ func (f *fn) popBranchCondition() (Reg, bool) {
- // keepBlockOperands admits only a small, flat operand prefix. Keeping deferred
- // trees here can multiply the work in later local-reference scans.
- func (f *fn) keepBlockOperands() bool {
-+	if f.s.forest != nil {
-+		panic("fixture forest: unported keepBlockOperands")
-+	}
- 	const limit = 32
+@@ -1688,6 +1713,16 @@ func (f *fn) keepBlockOperands() bool {
  	if f.depth() > limit {
  		return false
-@@ -2345,6 +2373,9 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
+ 	}
++	if f.s.forest != nil {
++		// A deferred root necessarily makes the old physical prefix nonflat.
++		// Otherwise the vector contains every physical operand exactly once.
++		for _, e := range f.s.forest.roots {
++			if e.isDeferred() || e.st.typ == mtCustom {
++				return false
++			}
++		}
++		return true
++	}
+ 	n := 0
+ 	for e := f.s.head.next; e != f.s.head; e = e.next {
+ 		if n == limit || e.isDeferred() || e.st.typ == mtCustom {
+@@ -1699,6 +1734,9 @@ func (f *fn) keepBlockOperands() bool {
  }
  
- func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
++	if f.s.forest != nil && op != 0x02 {
++		panic("fixture forest: unported loop or if block")
++	}
+ 	if op == 0x04 {
+ 		if done, err := f.tryInlineTailConstantIf(r); done || err != nil {
+ 			return err
+@@ -1723,6 +1761,11 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 	if frameTypes == nil && res0 != mtNone {
+ 		rN = 1
+ 	}
++	if f.s.forest != nil && (pN != 0 || rN > 1 ||
++		rN == 1 && res0 != mtI32 && res0 != mtI64 ||
++		f.moduleEH || f.gcFrameRoots != nil || f.s.hasGCRoots) {
++		panic("fixture forest: unported block signature or root state")
++	}
+ 	kind := cfBlock
+ 	if op == 0x03 {
+ 		kind = cfLoop
+@@ -1763,6 +1806,9 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
+ 	// Keep those results in stack slots while its local home is reserved.
+ 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128 &&
+ 		(!res0.isFloat() || !f.fpinnedLocalMask.has(mergeFReg)))
++	if f.s.forest != nil && fr.has(ctrlRegMerge1) && !fr.isStraightLineBlock() && !f.unreachable {
++		panic("fixture forest: unported register-merge block")
++	}
+ 	var loopPinnedWrites uint64
+ 	loopRegState := false
+ 	var loopFloatConst storage
+@@ -2349,6 +2395,9 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+ 	if eh == nil {
+ 		return
+ 	}
 +	if f.s.forest != nil {
 +		panic("fixture forest: unported markEHReferenceResults")
 +	}
- 	eh := f.frameEH(fr)
- 	if eh == nil {
- 		return
+ 	e := f.s.back()
+ 	for i := fr.resultN - 1; i >= 0; i-- {
+ 		if i < ehMaxPayloadWords+1 && eh.refResults&(1<<i) != 0 {
+@@ -2665,6 +2714,9 @@ func (f *fn) branchToFrame(fi int) {
+ }
+ 
+ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
++	if f.s.forest != nil && conditional {
++		panic("fixture forest: unported conditional branch")
++	}
+ 	if f.unreachable {
+ 		if conditional {
+ 			// still need to consume nothing extra; label follows
+@@ -2701,6 +2753,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
+ 		f.flushBranchPredicate(predicate, f.ctrl[fi].kind == cfLoop)
+ 	}
+ 	if !conditional {
++		if f.s.forest != nil && f.ctrl[fi].kind != cfBlock {
++			panic("fixture forest: unported non-block branch target")
++		}
+ 		f.branchToFrame(fi)
+ 		f.unreachable = true
+ 		return nil
 diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
 index 90e92cd5..a9e952de 100644
 --- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
@@ -121,19 +196,74 @@ index 90e92cd5..a9e952de 100644
  	for skipped := 0; skipped < 8; skipped++ {
  		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
 diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
-index 71b203e8..99ccaf88 100644
+index 71b203e8..4eaa9b0b 100644
 --- a/src/core/compiler/backend/railshot/amd64/driver.go
 +++ b/src/core/compiler/backend/railshot/amd64/driver.go
-@@ -1228,6 +1228,9 @@ func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
+@@ -1228,6 +1228,13 @@ func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
  // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
  // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
  func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 +	if f.s.forest != nil {
-+		panic("fixture forest: unported realizeLocalRefs")
++		panic("fixture forest: unported physical local snapshot fence")
 +	}
++	f.realizeLocalRefsCursor(x, skipFrom, f.s.fixtureScan(false))
++}
++
++func (f *fn) realizeLocalRefsCursor(x int, skipFrom *elem, c fixtureCursor) {
  	if f.s.pendingEffects&pendingLocalRef == 0 {
  		return
  	}
+@@ -1236,11 +1243,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+ 	// inside that block are consumed directly into x's register by condenseInto, so
+ 	// realizing them here would force the wasteful copy-out + copy-back. Refs BELOW
+ 	// it still need x's pre-set value and are realized.
+-	for e := f.s.head.next; e != f.s.head; {
+-		if e == skipFrom {
+-			break
+-		}
+-		next := e.next
++	for e := c.next(); e != nil && e != skipFrom; e = c.next() {
+ 		switch {
+ 		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+ 			// Capturing an i32 local emits a 32-bit load or move. Its owned
+@@ -1266,7 +1269,6 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+ 		case e.isDeferred() && subtreeRefsLocal(e, x):
+ 			f.condense(e, regNone)
+ 		}
+-		e = next
+ 	}
+ }
+ 
+@@ -1372,14 +1374,27 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 	// read their source before writing dest, so an operand aliasing dest is safe.
+ 	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
+ 	var skipFrom *elem
++	skipTopRoot := false
+ 	if e != nil && e.isDeferred() {
+ 		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
+ 		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
+ 		if binarySink || unarySink {
+-			skipFrom = baseOfValentBlock(e)
++			if f.s.forest != nil {
++				skipTopRoot = true
++			} else {
++				skipFrom = baseOfValentBlock(e)
++			}
+ 		}
+ 	}
+-	f.realizeLocalRefs(x, skipFrom)
++	if f.s.forest != nil {
++		c := f.s.fixtureScan(false)
++		if skipTopRoot {
++			c.endRoot--
++		}
++		f.realizeLocalRefsCursor(x, nil, c)
++	} else {
++		f.realizeLocalRefs(x, skipFrom)
++	}
+ 	f.invalidateBoundsCertFor(1, uint32(x))
+ 	if reader != nil && f.hasIntervalLocal(x) {
+ 		f.activateIntervalLocal(x, reader.Offset(), false)
 diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
 index a7333ce2..e9e5679f 100644
 --- a/src/core/compiler/backend/railshot/amd64/emit.go
@@ -268,12 +398,173 @@ index 31b0874a..f6676133 100644
  	}
  	if lastLoad != nil {
  		f.materializePendingLoadsBelow(lastLoad)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_closure_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_closure_independent_test.go
+new file mode 100644
+index 00000000..3c0dbe52
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_closure_independent_test.go
+@@ -0,0 +1,155 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	"testing"
++)
++
++func closureStart(candidate bool) *fn {
++	f := independentForestFn(candidate)
++	f.localType = []machineType{mtI32}
++	f.locals = []localDef{{state: lsMem, reg: regNone, typ: mtI32}}
++	if !candidate {
++		f.s.fixtureListWork = &fixtureListWork{}
++	}
++	f.a.Push(RBX)
++	f.a.Push(RCX)
++	f.a.SubRsp(1024)
++	return f
++}
++func closureFinish(t *testing.T, f *fn, want uint64) {
++	t.Helper()
++	r := f.materialize(f.s.back())
++	f.a.MovReg64(RAX, r)
++	f.a.AddRsp(1024)
++	f.a.Pop(RCX)
++	f.a.Pop(RBX)
++	f.a.Store64(RCX, 0, RAX)
++	f.a.Ret()
++}
++func closureRun(t *testing.T, f *fn, want uint64) {
++	t.Helper()
++	if got := runCompiledAmd64u(t, &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}); got != want {
++		t.Fatalf("got=%d want=%d", got, want)
++	}
++	if f.s.forest != nil {
++		t.Logf("forest: %+v rootCapacity=%d", *f.s.forest, cap(f.s.forest.roots))
++		independentForestNilLinks(t, f, f.rootsBottomToTop())
++	} else {
++		t.Logf("list reached operations: %+v", *f.s.fixtureListWork)
++	}
++}
++func TestOwnedForestClosureLocalSnapshot(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.a.MovImm32(RDI, 11)
++		f.a.Store32(RSP, f.localAddr(0), RDI)
++		old := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++		f.pushBinOp(opAnd, mtI32)
++		f.pushUnOp(opEqz, mtI32)
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 29})
++		r := wasm.ReaderFrom(nil)
++		f.setLocal(&r, 0, false)
++		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		f.pushBinOp(opAdd, mtI32)
++		independentForestNilLinks(t, f, []*elem{old, f.s.back()})
++		closureFinish(t, f, 29)
++		closureRun(t, f, 29)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("local snapshot native mismatch")
++		}
++	}
++}
++func TestOwnedForestClosureEffectNestedAllocation(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.a.MovImm32(RDI, 17)
++		f.a.Store32(RSP, f.localAddr(0), RDI)
++		f.a.MovReg64(RBX, RSP)
++		f.a.MovImm32(R12, 0)
++		load := f.pushValue(memRefStorage(R12, f.localAddr(0), 4, false, false, -1))
++		f.regUser[R12] = load
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++		f.pushBinOp(opAdd, mtI32)
++		f.materializePendingLoads()
++		scratch := f.allocReg(0)
++		f.a.MovImm32(scratch, 99)
++		f.a.Store32(RSP, f.localAddr(0), scratch)
++		f.release(scratch)
++		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		f.pushBinOp(opAdd, mtI32)
++		closureFinish(t, f, 119)
++		closureRun(t, f, 119)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("effect snapshot native mismatch")
++		}
++	}
++}
++func TestOwnedForestClosureActualCall(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.m = modFuncs(t, funcDef{nil, []wasm.ValType{wasm.I32}, []byte{0, 0x41, 23, 0x0b}})
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 19})
++		r := wasm.ReaderFrom([]byte{0})
++		if e := f.callOp(&r); e != nil {
++			t.Fatal(e)
++		}
++		if len(f.relocs) != 1 || !f.relocs[0].internal {
++			t.Fatal("actual internal call not emitted")
++		}
++		f.pushBinOp(opAdd, mtI32)
++		closureFinish(t, f, 42)
++		target := f.a.Len()
++		f.a.MovImm32(RAX, 23)
++		f.a.Ret()
++		at := f.relocs[0].at
++		binary.LittleEndian.PutUint32(f.a.B[at:], uint32(int32(target-int(at)-4)))
++		closureRun(t, f, 42)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("actual call native mismatch")
++		}
++	}
++}
++func TestOwnedForestClosureActualBlock(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := closureStart(candidate)
++		f.regMerge = false // same slot-agreement profile in BOTH arms
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 11})
++		r := wasm.ReaderFrom([]byte{0x7f, 0x41, 33, 0x0c, 0, 0x0b})
++		if e := f.opBlock(&r, 0x02); e != nil {
++			t.Fatal(e)
++		}
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 33})
++		br := wasm.ReaderFrom([]byte{0})
++		if e := f.opBr(&br, false); e != nil {
++			t.Fatal(e)
++		}
++		if e := f.opEnd(); e != nil {
++			t.Fatal(e)
++		}
++		f.pushBinOp(opAdd, mtI32)
++		closureFinish(t, f, 44)
++		closureRun(t, f, 44)
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("actual block native mismatch")
++		}
++	}
++}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
 new file mode 100644
-index 00000000..060f0a2d
+index 00000000..60d4093d
 --- /dev/null
 +++ b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,251 @@
 +//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
 +
 +package amd64
@@ -490,9 +781,13 @@ index 00000000..060f0a2d
 +		name, want string
 +		run        func(*fn)
 +	}{
-+		{"keep-block", "fixture forest: unported keepBlockOperands", func(f *fn) { f.keepBlockOperands() }},
-+		{"local-refs", "fixture forest: unported realizeLocalRefs", func(f *fn) { f.realizeLocalRefs(0, nil) }},
-+		{"eh", "fixture forest: unported markEHReferenceResults", func(f *fn) { f.markEHReferenceResults(&ctrlFrame{}) }},
++		{"if-block", "fixture forest: unported loop or if block", func(f *fn) { r := wasm.ReaderFrom([]byte{0x7f}); f.opBlock(&r, 0x04) }},
++		{"conditional", "fixture forest: unported conditional branch", func(f *fn) { r := wasm.ReaderFrom([]byte{0}); f.opBr(&r, true) }},
++		{"selected-regmerge", "fixture forest: unported register-merge block", func(f *fn) {
++			f.regMerge = true
++			r := wasm.ReaderFrom([]byte{0x7f, 0x41, 3, 0x0c, 0, 0x0b})
++			f.opBlock(&r, 0x02)
++		}},
 +		{"flush-below", "fixture forest: unported flushBelow", func(f *fn) { f.flushBelow(nil) }},
 +		{"missing-effect-limit", "fixture forest: partial effect limit not found", func(f *fn) { f.fixturePendingEffects(true, new(elem)) }},
 +		{"missing-effect-pending", "fixture forest: partial effect limit not found", func(f *fn) { f.s.pendingEffects = pendingLoad; f.fixturePendingEffects(true, new(elem)) }},
@@ -523,16 +818,21 @@ index 00000000..060f0a2d
 +}
 diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
 new file mode 100644
-index 00000000..513b7854
+index 00000000..3f0b7869
 --- /dev/null
 +++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,271 @@
 +//go:build amd64
 +
 +package amd64
 +
 +// fixtureForest is a direct-emitter experiment, not a publicly admitted path.
 +// Existing elem layout is retained for the independent legacy oracle.
++// Counts for the reached paired operations only; units are not interchangeable.
++type fixtureListWork struct {
++	linkWrites, cursorVisits, spillPrefixVisits, effectVisits uint64
++}
++
 +type fixtureForest struct {
 +	spills                                                          uint64
 +	cursorWrites, visits, lostPrefixOpportunities, flagsTransitions uint64
@@ -662,15 +962,17 @@ index 00000000..513b7854
 +// vector other than the logical roots. Ancestor frames are bounded separately
 +// from function size and roots, and returned nodes are already popped.
 +type fixtureCursor struct {
-+	s       *stack
-+	legacy  *elem
-+	root, n int
-+	frames  [maxDeferDepth + 4]fixtureCursorFrame
++	s                *stack
++	legacy           *elem
++	root, endRoot, n int
++	frames           [maxDeferDepth + 4]fixtureCursorFrame
 +}
 +
 +func (s *stack) fixtureScan(skipSpillPrefix bool) fixtureCursor {
 +	c := fixtureCursor{s: s}
-+	if s.forest == nil {
++	if s.forest != nil {
++		c.endRoot = len(s.forest.roots)
++	} else {
 +		c.legacy = s.head.next
 +		if skipSpillPrefix {
 +			c.legacy = s.firstUnspilled()
@@ -697,12 +999,15 @@ index 00000000..513b7854
 +			return nil
 +		}
 +		c.legacy = e.next
++		if c.s.fixtureListWork != nil {
++			c.s.fixtureListWork.cursorVisits++
++		}
 +		return e
 +	}
 +	v := c.s.forest
 +	for {
 +		if c.n == 0 {
-+			if c.root == len(v.roots) {
++			if c.root == c.endRoot {
 +				return nil
 +			}
 +			c.push(v.roots[c.root])
@@ -802,7 +1107,7 @@ index 8b3b212e..1b78c4bf 100644
  			// A replacement can introduce a guard-backed load inside the
  			// previously checked prefix. Appended values need no reset.
 diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
-index ab54edb3..2ff81bd2 100644
+index ab54edb3..0dec7733 100644
 --- a/src/core/compiler/backend/railshot/amd64/regalloc.go
 +++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
 @@ -144,7 +144,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
@@ -887,8 +1192,35 @@ index ab54edb3..2ff81bd2 100644
  	if ownedForestCensusEnabled {
  		f.observeOwnedForest("effect-barrier")
  	}
+@@ -509,6 +532,9 @@ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
+ 	}
+ 	allLoadsClear := loads || start == f.s.head.next || f.s.pendingPrefixLoads
+ 	for e := start; e != limit; e = e.next {
++		if f.s.fixtureListWork != nil {
++			f.s.fixtureListWork.effectVisits++
++		}
+ 		if e.isDeferred() && isDivRem(e.deferredOp()) {
+ 			f.materialize(e)
+ 		} else if e.elemKind() == ekValue && e.st.kind == stMemRef {
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index cf999ecc..ec6703c9 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -647,6 +647,12 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ var vectorAliasTypeFilterEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_VECTOR_ALIAS_TYPE_FILTER") != "0"
+ 
+ func (f *fn) clearV128LocalAliases(x int) {
++	if f.s.forest != nil {
++		if f.localType[x] == mtV128 {
++			panic("fixture forest: unported vector alias invalidation")
++		}
++		return // numeric-only fixture cannot hold a V128 alias of this fixed scalar local.
++	}
+ 	// Local types are fixed, including the rebased locals of an inline body.
+ 	// Only vector assignments can invalidate a vector-local alias.
+ 	if vectorAliasTypeFilterEnabled && f.localType[x] != mtV128 {
 diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
-index dc1e92b4..1df9dd9e 100644
+index dc1e92b4..c478163b 100644
 --- a/src/core/compiler/backend/railshot/amd64/stack.go
 +++ b/src/core/compiler/backend/railshot/amd64/stack.go
 @@ -187,6 +187,8 @@ const (
@@ -900,15 +1232,16 @@ index dc1e92b4..1df9dd9e 100644
  	// st is the variant payload. Concrete values use it as storage. Deferred
  	// nodes reuse slot for their opcode, depth, and register-need labels; those
  	// bits are otherwise dead for the variant. typ and metadata retain their
-@@ -274,6 +276,7 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
+@@ -274,6 +276,8 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
  // can be reused at proven-empty top-level reader checkpoints; other node
  // pointers remain stable until the function finishes.
  type stack struct {
-+	forest             *fixtureForest // Installed only by the direct emitter fixture.
++	fixtureListWork    *fixtureListWork // paired emitter fixtures only
++	forest             *fixtureForest   // Installed only by the direct emitter fixture.
  	arena              *operandArena
  	chunks             [][]elem
  	activeChunk        *[]elem // points into chunks; refreshed after header-array growth
-@@ -490,6 +493,9 @@ func (s *stack) allocNextChunk() *elem {
+@@ -490,9 +494,15 @@ func (s *stack) allocNextChunk() *elem {
  
  // push appends e as the new top of the stack and returns it.
  func (s *stack) push(e *elem) *elem {
@@ -918,7 +1251,13 @@ index dc1e92b4..1df9dd9e 100644
  	last := s.head.prev
  	e.prev, e.next = last, s.head
  	last.next, s.head.prev = e, e
-@@ -580,11 +586,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
++	if s.fixtureListWork != nil {
++		s.fixtureListWork.linkWrites += 4
++	}
+ 	if ownedForestCensusEnabled {
+ 		observeOwnedForestLinks("push", 4)
+ 	}
+@@ -580,11 +590,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
  	if arity == 2 {
  		s.logicalDepth--
  	}
@@ -936,7 +1275,7 @@ index dc1e92b4..1df9dd9e 100644
  	if s.head.prev == s.head {
  		return nil
  	}
-@@ -594,6 +606,20 @@ func (s *stack) back() *elem {
+@@ -594,6 +610,20 @@ func (s *stack) back() *elem {
  // erase unlinks e from the physical list (used when a node is condensed away or
  // consumed). It does not touch parent/sibling links.
  func (s *stack) erase(e *elem) {
@@ -957,7 +1296,17 @@ index dc1e92b4..1df9dd9e 100644
  	if s.pendingPrefix == e {
  		s.pendingPrefix = e.prev
  	}
-@@ -619,6 +645,9 @@ func (s *stack) erase(e *elem) {
+@@ -608,6 +638,9 @@ func (s *stack) erase(e *elem) {
+ 	}
+ 	e.prev.next, e.next.prev = e.next, e.prev
+ 	e.prev, e.next = nil, nil
++	if s.fixtureListWork != nil {
++		s.fixtureListWork.linkWrites += 4
++	}
+ 	if ownedForestCensusEnabled {
+ 		observeOwnedForestLinks("erase", 4)
+ 	}
+@@ -619,6 +652,9 @@ func (s *stack) erase(e *elem) {
  // exposeLogicalRoot restores a deferred operand that an optimization peeled
  // from a wrapper without changing the logical stack depth.
  func (s *stack) exposeLogicalRoot(e *elem) {
@@ -967,7 +1316,7 @@ index dc1e92b4..1df9dd9e 100644
  	s.canonicalSlots = false
  	if e == nil || e.st.hasLogicalRoot() {
  		panic("amd64: invalid logical operand root exposure")
-@@ -645,7 +674,12 @@ func baseOfValentBlock(root *elem) *elem {
+@@ -645,7 +681,12 @@ func baseOfValentBlock(root *elem) *elem {
  // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
  func (f *fn) pushBinOp(op wOp, typ machineType) {
  	right := f.s.back()
@@ -981,7 +1330,7 @@ index dc1e92b4..1df9dd9e 100644
  	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
  	if right.isValue() && right.st.kind == stConst &&
  		left.isValue() && left.st.kind == stConst {
-@@ -923,7 +957,7 @@ func (s *stack) noteSpill(st storage) {
+@@ -923,7 +964,7 @@ func (s *stack) noteSpill(st storage) {
  }
  
  func (s *stack) forgetSpill(e *elem) {
@@ -990,3 +1339,44 @@ index dc1e92b4..1df9dd9e 100644
  		return
  	}
  	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
+@@ -942,6 +983,9 @@ func (s *stack) firstUnspilled() *elem {
+ 	e := last.next
+ 	for e != s.head && e.isValue() && e.st.kind == stSlot {
+ 		last, e = e, e.next
++		if s.fixtureListWork != nil {
++			s.fixtureListWork.spillPrefixVisits++
++		}
+ 	}
+ 	s.spilledPrefix = last
+ 	return e
+diff --git a/src/core/compiler/backend/railshot/amd64/treeorder.go b/src/core/compiler/backend/railshot/amd64/treeorder.go
+index 949f7db0..3628fe34 100644
+--- a/src/core/compiler/backend/railshot/amd64/treeorder.go
++++ b/src/core/compiler/backend/railshot/amd64/treeorder.go
+@@ -95,8 +95,26 @@ func treeReorderSafe(e *elem) bool {
+ // existing nodes spillable; canonicalizing slots here could overwrite an
+ // argument that still needs to be captured from a noncanonical spill slot.
+ func (f *fn) materializeTrapsBefore(node *elem) {
++	if f.s.forest != nil {
++		if node != f.s.head {
++			panic("fixture forest: unported partial trapping-root fence")
++		}
++		c := f.s.fixtureScan(false)
++		for e := c.next(); e != nil; e = c.next() {
++			if e.forestPending {
++				panic("fixture forest: pending flags at call barrier")
++			}
++			if e.st.hasLogicalRoot() && !treeReorderSafe(e) {
++				f.materializeByType(e)
++			}
++		}
++		return
++	}
+ 	base := baseOfValentBlock(node)
+ 	for e := f.s.head.next; e != base; e = e.next {
++		if f.s.fixtureListWork != nil {
++			f.s.fixtureListWork.effectVisits++
++		}
+ 		if e.st.hasLogicalRoot() && !treeReorderSafe(e) {
+ 			f.materializeByType(e)
+ 		}

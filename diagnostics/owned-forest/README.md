@@ -63,3 +63,37 @@ Measured structure sizes on AMD64 were 64 bytes for elem, 120 for stack,
 192 for the cursor and 104 for the forest. These are fixture sizes, not
 evidence of node shrinkage, net cost reduction, or a speed gain. No
 corpus or timing run was performed for this fixture.
+
+## Focused closure extension
+
+The bundled actual-fixture patch now captures 05cfbad6; the preceding
+58430361 result refers to the earlier checkpoint. Attempt three passed
+10 top-level tests and 8 rejection subcases with zero skips. Exact native
+comparisons and runtime results matched for local snapshot (29), effect
+snapshot (119), actual zero-argument internal call (42) and actual
+slot-profile block/br/end (44). The latter deliberately uses
+`regMerge=false`; this is not general control coverage.
+
+The first two attempts remain failed: the first omitted local metadata;
+the second treated the default RAX as pinned and used a scratch register
+that clobbered a captured load. Both issues were exposed on the legacy
+side first and resolved by correcting fixtures, not expectations.
+
+The source-reviewed instrumentation and register-merge rejection changes
+were 58d5844e and 56871e26. The following are separate work units, not
+subtractions or estimates of savings:
+
+| Case | List link assignments | List visits | Forest root stores | Forest cursor writes | Forest visits |
+|---|---:|---:|---:|---:|---:|
+| Local snapshot | 52 | 5 | 11 | 14 | 5 |
+| Effect snapshot | 36 | 3 | 8 | 8 | 3 |
+| Actual call | 28 | 1 | 9 | 2 | 1 |
+| Actual block | 40 | — | 15 | 0 | 0 |
+
+List link counts are reached push/erase only; snapshot and copy accounting
+is incomplete. At this checkpoint the measured sizes were elem 64,
+stack 128, cursor 200 and forest 104 bytes. Memory checks cover trap site
+and native parity, not executing an out-of-bounds access. The effect
+fixture had zero spills; two spills in the separate pressure fixture do
+not prove reentrant effect traversal under allocation pressure. Prefix
+skips are still unported. No net cost, throughput, or migration claim.
