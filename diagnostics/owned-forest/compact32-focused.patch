@@ -1,0 +1,1409 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_links_compact.go b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+index 06266479..510c7526 100644
+--- a/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
++++ b/src/core/compiler/backend/railshot/amd64/operand_links_compact.go
+@@ -15,48 +15,6 @@ const compactOperandNodes = true
+ type operandLinks struct{}
+ type operandOwnership struct{}
+ 
+-const (
+-	compactForestLive          uint32 = 1 << 31
+-	compactForestPending       uint32 = 1 << 30
+-	compactForestOwnershipMask        = compactForestLive | compactForestPending
+-)
+-
+-func (e *elem) forestIsLive() bool    { return e.st.cold&compactForestLive != 0 }
+-func (e *elem) forestIsPending() bool { return e.st.cold&compactForestPending != 0 }
+-func (e *elem) setForestLive(v bool) {
+-	if v {
+-		e.st.cold |= compactForestLive
+-	} else {
+-		e.st.cold &^= compactForestLive
+-	}
+-}
+-func (e *elem) setForestPending(v bool) {
+-	if v {
+-		e.st.cold |= compactForestPending
+-	} else {
+-		e.st.cold &^= compactForestPending
+-	}
+-}
+-
+-func (st storage) coldIndex() uint32 { return st.cold &^ compactForestOwnershipMask }
+-func (st *storage) setColdIndex(index uint32) {
+-	if index != 0 {
+-		panic("compact operand nodes: custom cold index is unsupported")
+-	}
+-	st.cold &= compactForestOwnershipMask
+-}
+-
+-// Value storage snapshots may contain the donor's ownership bits. A fresh
+-// node starts detached; a replacement retains the destination's ownership.
+-func (e *elem) setFreshStorage(st storage) {
+-	st.cold &^= compactForestOwnershipMask
+-	e.st = st
+-}
+-func (e *elem) setStoragePreservingOwnership(st storage) {
+-	st.cold = st.coldIndex() | (e.st.cold & compactForestOwnershipMask)
+-	e.st = st
+-}
+-
+ func (*elem) prevLink() *elem        { panic("compact operand nodes: list predecessor reached") }
+ func (*elem) nextLink() *elem        { panic("compact operand nodes: list successor reached") }
+ func (*elem) setPrevLink(*elem)      { panic("compact operand nodes: list predecessor write reached") }
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_ownership_compact40.go b/src/core/compiler/backend/railshot/amd64/operand_ownership_compact40.go
+new file mode 100644
+index 00000000..c2ca2153
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_ownership_compact40.go
+@@ -0,0 +1,52 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && wago_owned_forest_compact && !wago_owned_forest_compact32
++
++package amd64
++
++const (
++	compactForestLive          uint32 = 1 << 31
++	compactForestPending       uint32 = 1 << 30
++	compactForestOwnershipMask        = compactForestLive | compactForestPending
++)
++
++func (e *elem) forestIsLive() bool    { return e.st.cold&compactForestLive != 0 }
++func (e *elem) forestIsPending() bool { return e.st.cold&compactForestPending != 0 }
++func (e *elem) setForestLive(v bool) {
++	if v {
++		e.st.cold |= compactForestLive
++	} else {
++		e.st.cold &^= compactForestLive
++	}
++}
++func (e *elem) setForestPending(v bool) {
++	if v {
++		e.st.cold |= compactForestPending
++	} else {
++		e.st.cold &^= compactForestPending
++	}
++}
++
++func (st storage) coldIndex() uint32 { return st.cold &^ compactForestOwnershipMask }
++func (st *storage) setColdIndex(index uint32) {
++	if index != 0 {
++		panic("compact operand nodes: custom cold index is unsupported")
++	}
++	st.cold &= compactForestOwnershipMask
++}
++
++// Value storage snapshots may contain the donor's ownership bits. A fresh
++// node starts detached; a replacement retains the destination's ownership.
++func (e *elem) setFreshStorage(st storage) {
++	st.cold &^= compactForestOwnershipMask
++	e.st = st
++}
++func (e *elem) setStoragePreservingOwnership(st storage) {
++	st.cold = st.coldIndex() | (e.st.cold & compactForestOwnershipMask)
++	e.st = st
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_storage_compact32.go b/src/core/compiler/backend/railshot/amd64/operand_storage_compact32.go
+new file mode 100644
+index 00000000..5755acd9
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_storage_compact32.go
+@@ -0,0 +1,195 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && wago_owned_forest_compact && wago_owned_forest_compact32
++
++package amd64
++
++import "unsafe"
++
++// Keep the complete slot/displacement/label word. payload is a type-checked
++// union of literal/owned bits, an index, or a deferred memory reference.
++type storage struct {
++	payload int64
++	slot    uint32
++	kind    storageKind
++	typ     machineType // low machine type; high two bits hold node ownership
++	reg     Reg
++	meta    uint8
++}
++
++var (
++	_ [16 - unsafe.Sizeof(storage{})]byte
++	_ [unsafe.Sizeof(storage{}) - 16]byte
++	_ [32 - unsafe.Sizeof(elem{})]byte
++	_ [unsafe.Sizeof(elem{}) - 32]byte
++)
++
++const (
++	compactForestLive          machineType = 1 << 7
++	compactForestPending       machineType = 1 << 6
++	compactForestOwnershipMask             = compactForestLive | compactForestPending
++	compactBorrowBits                      = 33
++	compactBorrowMask          uint64      = 1<<compactBorrowBits - 1
++	compactMemIndexMask        uint32      = (1 << 9) - 1
++)
++
++func (st storage) machineType() machineType { return st.typ &^ compactForestOwnershipMask }
++func (st *storage) setMachineType(typ machineType) {
++	if typ > mtCustom {
++		panic("compact32: invalid machine type")
++	}
++	st.typ = st.typ&compactForestOwnershipMask | typ
++}
++
++func (e *elem) forestIsLive() bool    { return e.st.typ&compactForestLive != 0 }
++func (e *elem) forestIsPending() bool { return e.st.typ&compactForestPending != 0 }
++func (e *elem) setForestLive(v bool) {
++	if v {
++		e.st.typ |= compactForestLive
++	} else {
++		e.st.typ &^= compactForestLive
++	}
++}
++func (e *elem) setForestPending(v bool) {
++	if v {
++		e.st.typ |= compactForestPending
++	} else {
++		e.st.typ &^= compactForestPending
++	}
++}
++
++func (storage) coldIndex() uint32 { return 0 }
++func (*storage) setColdIndex(index uint32) {
++	if index != 0 {
++		panic("compact operand nodes: custom cold index is unsupported")
++	}
++}
++
++func (e *elem) setFreshStorage(st storage) {
++	st.typ &^= compactForestOwnershipMask
++	e.st = st
++}
++func (e *elem) setStoragePreservingOwnership(st storage) {
++	st.typ = st.machineType() | (e.st.typ & compactForestOwnershipMask)
++	e.st = st
++}
++
++func constantStorage(typ machineType, bits int64) storage {
++	return storage{kind: stConst, typ: typ, payload: bits}
++}
++
++func floatLiteralPayload(typ machineType, bits int64) storage {
++	if !typ.isFloat() {
++		panic("compact32: invalid scratch float type")
++	}
++	return storage{typ: typ, payload: bits}
++}
++
++func compactIndexedKind(kind storageKind) bool {
++	switch kind {
++	case stLocalRef, stLocalReg, stGlobalRef, stGlobReg, stFuncRef:
++		return true
++	default:
++		return false
++	}
++}
++
++func indexedStorage(kind storageKind, typ machineType, reg Reg, index uint32, meta uint8) storage {
++	if !compactIndexedKind(kind) {
++		panic("compact32: invalid indexed storage kind")
++	}
++	return storage{kind: kind, typ: typ, reg: reg, payload: int64(index), meta: meta}
++}
++
++func memoryReferenceStorage(typ machineType, carrier Reg, disp, memIndexBits uint32, borrow int) storage {
++	if memIndexBits&^compactMemIndexMask != 0 || borrow < -1 || borrow > int(^uint32(0)) {
++		panic("compact32: invalid memory reference payload")
++	}
++	payload := uint64(borrow+1) | uint64(memIndexBits)<<compactBorrowBits
++	return storage{kind: stMemRef, typ: typ, reg: carrier, slot: disp, payload: int64(payload)}
++}
++
++func (st storage) constantBits() int64 {
++	if st.kind != stConst && !(st.kind == stInvalid && st.machineType().isFloat()) {
++		panic("compact32: literal payload read from incompatible kind")
++	}
++	return st.payload
++}
++func (st *storage) setConstantBits(bits int64) {
++	if st.kind != stConst {
++		panic("compact32: literal payload write to incompatible kind")
++	}
++	st.payload = bits
++}
++
++func (st storage) indexBits() uint32 {
++	if !compactIndexedKind(st.kind) {
++		panic("compact32: index payload read from incompatible kind")
++	}
++	return uint32(st.payload)
++}
++func (st *storage) setIndexBits(index uint32) {
++	if !compactIndexedKind(st.kind) {
++		panic("compact32: index payload write to incompatible kind")
++	}
++	st.payload = int64(index)
++}
++
++func (st storage) memPayload() uint64 {
++	if st.kind != stMemRef {
++		panic("compact32: memory reference payload read from incompatible kind")
++	}
++	return uint64(st.payload)
++}
++func (st storage) memDisp() int32 {
++	_ = st.memPayload()
++	return int32(st.slot)
++}
++func (st storage) memSize() int    { return int(st.memPayload() >> compactBorrowBits & 0xff) }
++func (st storage) memSigned() bool { return st.memPayload()>>compactBorrowBits&0x100 != 0 }
++func (st storage) memBorrow() int  { return int(st.memPayload()&compactBorrowMask) - 1 }
++func (st *storage) clearMemBorrow() {
++	st.payload = int64(st.memPayload() &^ compactBorrowMask)
++}
++
++func (st *storage) setOccupiedGP(reg Reg) {
++	st.kind, st.reg, st.payload = stReg, reg, 0
++	st.meta &^= uint8(storageCapturedBounds)
++	st.slot = 0
++}
++func (st *storage) setOccupiedFP(reg Reg) {
++	// The source index is no longer semantically available, but aux retains
++	// the old slot/proof bits exactly as in the other representations.
++	st.kind, st.reg, st.payload = stReg, reg, 0
++}
++
++func (st storage) capturedBoundsExtent() int64 {
++	if st.kind != stReg || st.machineType() != mtI32 || st.meta&uint8(storageCapturedBounds) == 0 {
++		panic("compact32: invalid captured bounds extent read")
++	}
++	return st.payload
++}
++func (st *storage) setCapturedBoundsExtent(extent int32) {
++	if st.kind != stReg || st.machineType() != mtI32 {
++		panic("compact32: invalid captured bounds extent write")
++	}
++	st.payload = int64(extent)
++	st.meta |= uint8(storageCapturedBounds)
++}
++func (st storage) vectorAliasCookie() int64 {
++	if st.kind != stReg || st.machineType() != mtV128 {
++		panic("compact32: invalid vector alias read")
++	}
++	return st.payload
++}
++func (st *storage) setVectorAliasCookie(cookie int64) {
++	if st.kind != stReg || st.machineType() != mtV128 {
++		panic("compact32: invalid vector alias write")
++	}
++	st.payload = cookie
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_storage_compact32_requires_compact.go b/src/core/compiler/backend/railshot/amd64/operand_storage_compact32_requires_compact.go
+new file mode 100644
+index 00000000..e4047406
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_storage_compact32_requires_compact.go
+@@ -0,0 +1,12 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && wago_owned_forest_compact32 && !wago_owned_forest_compact
++
++package amd64
++
++var _ = compact32RequiresWagoOwnedForestCompactTag
+diff --git a/src/core/compiler/backend/railshot/amd64/operand_storage_legacy.go b/src/core/compiler/backend/railshot/amd64/operand_storage_legacy.go
+new file mode 100644
+index 00000000..dbd1da14
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/operand_storage_legacy.go
+@@ -0,0 +1,85 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++//
++// SPDX-License-Identifier: MPL-2.0
++// Copyright (c) 2026 Wago authors and contributors
++
++//go:build amd64 && (!wago_owned_forest_compact32 || !wago_owned_forest_compact)
++
++package amd64
++
++// storage records where a value lives and its machine type.
++type storage struct {
++	cval int64  // constant value/bits for stConst
++	slot uint32 // spill-slot index, bounded GC array length for local refs, or int32 displacement bits for stMemRef
++	cold uint32 // index+1 into stack.cold for custom plugin values
++	idx  uint32 // local/global/function index, bounded GC array length, or packed stMemRef metadata
++	kind storageKind
++	typ  machineType
++	reg  Reg
++	meta uint8 // semantic value facts and root-state bits
++}
++
++// These constructors describe the semantic source of each occupied word.
++// Keep the wide raw representation and all zero/default field values.
++func constantStorage(typ machineType, bits int64) storage {
++	return storage{kind: stConst, typ: typ, cval: bits}
++}
++
++// Some FP scratch loads use a typed literal payload without a stack value.
++func floatLiteralPayload(typ machineType, bits int64) storage {
++	return storage{typ: typ, cval: bits}
++}
++
++func indexedStorage(kind storageKind, typ machineType, reg Reg, index uint32, meta uint8) storage {
++	return storage{kind: kind, typ: typ, reg: reg, idx: index, meta: meta}
++}
++
++func memoryReferenceStorage(typ machineType, carrier Reg, disp, memIndexBits uint32, borrow int) storage {
++	return storage{kind: stMemRef, typ: typ, reg: carrier, slot: disp, idx: memIndexBits, cval: int64(borrow + 1)}
++}
++
++func (st *storage) setOccupiedGP(reg Reg) {
++	st.kind, st.reg = stReg, reg
++	st.setConstantBits(0)
++	st.meta &^= uint8(storageCapturedBounds)
++	st.setIndexBits(0)
++	st.slot = 0
++}
++
++// FP occupation has never cleared the inactive index or slot words.
++func (st *storage) setOccupiedFP(reg Reg) {
++	st.kind, st.reg = stReg, reg
++	st.setConstantBits(0)
++}
++
++func (st storage) capturedBoundsExtent() int64 { return st.constantBits() }
++func (st *storage) setCapturedBoundsExtent(extent int32) {
++	st.setConstantBits(int64(extent))
++	st.meta |= uint8(storageCapturedBounds)
++}
++
++func (st storage) vectorAliasCookie() int64           { return st.constantBits() }
++func (st *storage) setVectorAliasCookie(cookie int64) { st.setConstantBits(cookie) }
++
++// Raw storage words remain independent in this layout. Accessors centralize
++// their use without restricting the payload combinations accepted by copies.
++func (st storage) machineType() machineType        { return st.typ }
++func (st *storage) setMachineType(typ machineType) { st.typ = typ }
++func (st storage) constantBits() int64             { return st.cval }
++func (st *storage) setConstantBits(bits int64)     { st.cval = bits }
++func (st storage) indexBits() uint32               { return st.idx }
++func (st *storage) setIndexBits(index uint32)      { st.idx = index }
++
++// clearMemBorrow makes a memory-reference carrier owned without changing the
++// memory width, sign, displacement, or semantic value facts.
++func (st *storage) clearMemBorrow() { st.setConstantBits(0) }
++
++func (st storage) memDisp() int32  { return int32(st.slot) }
++func (st storage) memSize() int    { return int(st.indexBits() & 0xff) }
++func (st storage) memSigned() bool { return st.indexBits()&0x100 != 0 }
++
++// memBorrow returns the local whose pinned register serves as this deferred
++// load's address, or -1 when the address register is owned.
++func (st storage) memBorrow() int { return int(st.constantBits()) - 1 }
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact32_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact32_independent_test.go
+new file mode 100644
+index 00000000..403c2c22
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact32_independent_test.go
+@@ -0,0 +1,886 @@
++//go:build linux && amd64 && wago_owned_forest_layout_probe && wago_owned_forest_compact && wago_owned_forest_compact32
++
++package amd64
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++	"unsafe"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func TestOwnedForestCompact32LayoutOrdinary(t *testing.T) {
++	arm := os.Getenv("WAGO_LAYOUT_PROBE_ARM")
++	const forest = true
++	if arm != "compact32-forest" || !compactOperandNodes {
++		t.Fatalf("unexpected compact32 arm/build: %q compact=%v", arm, compactOperandNodes)
++	}
++	conditional, caller := layout32ScalarModules(t)
++	cases := []struct {
++		name string
++		m    *wasm.Module
++	}{
++		{"effectful-if", conditional}, {"natural-noninline-call", caller},
++		{"cold-prefix", layout32ProbeOwnedColdPrefixModule(t)}, {"v128-control-overlap", layout32ProbeOwnedV128BlockModule(t, "overlap")},
++		{"v128-dot-pressure", layout32ProbeOwnedIntArithModule(t, layout32ProbeOwnedIntArithCase{op: 186, pressure: true})}, {"mixed-simd", layout32ProbeOwnedMixedSIMDClassifierModule(t)},
++	}
++	for _, tc := range cases {
++		if err := wasm.ValidateModule(tc.m); err != nil {
++			t.Fatal(err)
++		}
++		var bytesTotal int
++		bodyHashes := make([]string, len(tc.m.Code))
++		for i, c := range tc.m.Code {
++			bytesTotal += len(c.BodyBytes)
++			bodyHashes[i] = fmt.Sprintf("%x", sha256.Sum256(c.BodyBytes))
++		}
++		if bytesTotal >= minParallelHintBodyBytes {
++			t.Fatalf("ordinary heap scope exceeded: %d", bytesTotal)
++		}
++		for _, intr := range []bool{false, true} {
++			t.Run(fmt.Sprintf("%s/interruptible=%t", tc.name, intr), func(t *testing.T) {
++				w := &fixtureModuleWork{Forest: forest, RecordOperandLayout: true, RecordNoncanonicalFlushPlan: true, FuseNoncanonicalFlushPlan: compactOperandNodes}
++				switch tc.name {
++				case "v128-control-overlap":
++					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128RegionalLocals, w.TemporaryV128BlockResults = true, true, true, true
++				case "v128-dot-pressure":
++					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128WideningArithmetic = true, true, true
++				case "mixed-simd":
++					w.TemporaryV128SIMD, w.TemporaryV128PerFunction, w.TemporaryV128HintClassification = true, true, true
++				}
++				cm, err := CompileModuleWith(tc.m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
++				if err != nil {
++					t.Fatalf("compile: %v work: %+v", err, w)
++				}
++				if cm.CodeImage != nil {
++					defer cm.CodeImage.Close()
++				}
++				if w.Rejected != 0 || w.LegacyBodies == 0 || w.Opcodes == 0 || forest && w.Vector.stores == 0 || len(w.OperandCapacities) == 0 {
++					t.Fatalf("missing legacy/ownership/capacity activation: %+v", w)
++				}
++				l := w.OperandLayout
++				if !l.Compact || l.NodeBytes != 32 || l.NodePhysicalLinkBytes != 0 {
++					t.Fatalf("unexpected measured layout: %+v", l)
++				}
++				for _, r := range w.OperandCapacities {
++					if r.ArenaMappedBytes != 0 || r.ArenaAppendedBytes != 0 || r.NodeUsedBytes > r.NodeReservedBytes {
++						t.Fatalf("heap-only capacity contract: %+v", r)
++					}
++				}
++				meta := *cm
++				meta.Code, meta.CodeImage = nil, nil
++				enc, err := json.Marshal(meta)
++				if err != nil {
++					t.Fatal(err)
++				}
++				receipt := map[string]any{"arm": arm, "case": tc.name, "intr": intr, "nativeSHA": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoderSHA": fmt.Sprintf("%x", sha256.Sum256(enc)), "codeBytes": len(cm.Code), "bodyBytes": bytesTotal, "bodyHashes": bodyHashes, "layout": l, "caps": w.OperandCapacities, "forestHeaderBytes": unsafe.Sizeof(fixtureForest{}), "coldSidecarElemBytes": unsafe.Sizeof(elemCold{}), "attempts": w.Attempts, "legacy": w.LegacyBodies, "opcodes": w.Opcodes, "rootStores": w.Vector.stores, "rootRetirements": w.Vector.retirements, "cursorVisits": w.Vector.visits, "listLinkWrites": w.List.linkWrites, "listEffectVisits": w.List.effectVisits, "classifier": w.TemporaryV128Classifier, "inlineClassifier": w.TemporaryV128InlineClassifier, "vectorPreflightBytes": w.TemporaryV128PreflightBytes, "vectorPreflightOpcodes": w.TemporaryV128PreflightOpcodes}
++				receipt["flushPlan"] = w.NoncanonicalFlushPlan
++				receipt["hintClassifier"] = w.TemporaryV128HintClassifier
++				receipt["hintSharedBytes"] = w.TemporaryV128HintSharedBytes
++				receipt["hintFactsUsed"] = w.TemporaryV128HintFactsUsed
++				receipt["hintFallbacks"] = w.TemporaryV128HintFallbacks
++				receipt["hintBackingBytes"] = w.TemporaryV128HintFactBackingBytes
++				layout32SparseFactReceipt(receipt, w)
++				receipt["hintDensePriorFactElemBytes"] = unsafe.Sizeof(fixtureVectorHintFact{})
++				if tc.name != "mixed-simd" && (w.TemporaryV128HintClassifier != (fixtureVectorClassificationWork{}) || w.TemporaryV128HintSharedBytes != 0 || w.TemporaryV128HintFactsUsed != 0 || w.TemporaryV128HintFallbacks != 0 || w.TemporaryV128HintFactBackingBytes != 0) {
++					t.Fatalf("unrequested hint classification overhead: %+v", w)
++				}
++				layout32Emit(t, "COMPILE", receipt)
++				calls := 0
++				switch tc.name {
++				case "effectful-if":
++					for _, k := range [][2]uint64{{1, 30}, {0, 36}} {
++						got, e := layout32ProbeOwnedRunModule(t, cm, []uint64{k[0]})
++						if e != nil || got != k[1] {
++							t.Fatalf("IF input=%d got=%d want=%d err=%v", k[0], got, k[1], e)
++						}
++						calls++
++					}
++				case "natural-noninline-call":
++					got, e := layout32ProbeOwnedRunModule(t, cm, []uint64{7, 4})
++					if e != nil || got != 57 {
++						t.Fatalf("call got=%d err=%v", got, e)
++					}
++					calls++
++				case "cold-prefix":
++					if forest && (w.Vector.coldControlCaptures < 3 || w.Vector.coldControlPeak <= 64 || uint64(w.Vector.coldControlPeak) >= w.Vector.coldControlTypeCopies || w.Vector.coldControlCapacity < w.Vector.coldControlPeak) {
++						t.Fatalf("cold reuse not reached: %+v", w.Vector)
++					}
++					for _, a := range [][3]uint64{{17, 0, 0}, {0xfffffffffffffff0, 1, 0}, {23, 0, 1}, {0x123456789abcdef0, 1, 1}} {
++						want := a[0] + 70*71/2 + 23
++						if a[0] < 256 {
++							want++
++						}
++						for _, c := range a[1:] {
++							if c == 0 {
++								want += 29
++							} else {
++								want += 17
++							}
++						}
++						got, e := layout32ProbeOwnedColdPrefixRun(t, cm, a)
++						if e != nil || got != want {
++							t.Fatalf("cold args=%x got=%x want=%x err=%v", a, got, want, e)
++						}
++						calls++
++					}
++				case "v128-control-overlap":
++					if w.TemporaryV128BlockSlotMerges != 1 || w.TemporaryV128BlockOverlappingMoves != 1 || w.TemporaryV128BlockTwoSlotMoves == 0 {
++						t.Fatalf("vector overlap not reached: %+v", w)
++					}
++					for _, cond := range []uint32{0, 1} {
++						for _, salt := range []int{3, 29} {
++							layout32ProbeOwnedV128BlockRun(t, cm, "overlap", cond, salt)
++							calls++
++						}
++					}
++				case "v128-dot-pressure":
++					if w.TemporaryV128Dots != 1 || w.TemporaryV128WideningSlotLeases == 0 || w.TemporaryV128Spills == 0 {
++						t.Fatalf("dot pressure not reached: %+v", w)
++					}
++					for v := range 2 {
++						layout32ProbeOwnedIntArithRun(t, cm, layout32ProbeOwnedIntArithCase{op: 186, pressure: true}, v)
++						calls++
++					}
++				case "mixed-simd":
++					c, in := w.TemporaryV128Classifier, w.TemporaryV128InlineClassifier
++					if w.TemporaryV128Bodies != 1 || w.TemporaryV128ScalarSiblings != 3 || c != (fixtureVectorClassificationWork{TypeVisits: 8}) || w.TemporaryV128HintClassifier.Bodies != 4 || w.TemporaryV128HintClassifier.Opcodes == 0 || w.TemporaryV128HintClassifier.TypeVisits != 6 || w.TemporaryV128HintSharedBytes != uint64(bytesTotal) || w.TemporaryV128HintFactsUsed != 4 || w.TemporaryV128HintFallbacks != 0 || w.TemporaryV128HintFactBackingBytes != 4 || w.TemporaryV128HintStateBackingBytes != 4 || w.TemporaryV128HintErrorBackingBytes != 0 || w.TemporaryV128HintFactHeaderBytes != unsafe.Sizeof(fixtureVectorHintTable{}) || w.TemporaryV128PreflightBytes == 0 || forest && (in.Bodies != 1 || in.Opcodes == 0 || in.Bytes == 0 || in.TypeVisits != 0) || !forest && in != (fixtureVectorClassificationWork{}) {
++						t.Fatalf("classification not reached: %+v", w)
++					}
++					layout32ProbeOwnedMixedSIMDClassifierRun(t, cm)
++					calls += 6
++				}
++				layout32Emit(t, "EXEC", map[string]any{"arm": arm, "case": tc.name, "intr": intr, "calls": calls})
++			})
++		}
++	}
++}
++
++func layout32Emit(t *testing.T, kind string, rec any) {
++	t.Helper()
++	data, e := json.Marshal(rec)
++	if e != nil {
++		t.Fatal(e)
++	}
++	t.Logf("LAYOUT_%s %s", kind, data)
++}
++
++type layout32ProbeFuncDef struct {
++	params, results []wasm.ValType
++	body            []byte // local decls + instruction stream (incl. trailing 0x0b)
++}
++
++func layout32ProbeModFuncs(t testing.TB, fns ...layout32ProbeFuncDef) *wasm.Module {
++	t.Helper()
++	var types, funcs, codes [][]byte
++	for i, fn := range fns {
++		types = append(types, wasmtest.FuncType(fn.params, fn.results))
++		funcs = append(funcs, wasmtest.ULEB(uint32(i)))
++		codes = append(codes, append(wasmtest.ULEB(uint32(len(fn.body))), fn.body...))
++	}
++	b := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(types...)),
++		wasmtest.Section(3, wasmtest.Vec(funcs...)),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(codes...)),
++	)
++	m, err := wasm.DecodeModule(b)
++	if err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	return m
++}
++
++func layout32ProbeModMem(t testing.TB, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
++	t.Helper()
++	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
++	memType := append([]byte{0x00}, wasmtest.ULEB(pages)...) // flags=0 (min only)
++	b := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec(memType)),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(entry)),
++	)
++	m, err := wasm.DecodeModule(b)
++	if err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	return m
++}
++
++func layout32ProbeOwnedRunModule(t *testing.T, cm *encoder.CompiledModule, args []uint64) (uint64, error) {
++	t.Helper()
++	eng, e := wr.NewEngine()
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer eng.Close()
++	jm, e := wr.NewJobMemory(65536)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer jm.Close()
++	jm.LinearMemory()[0] = 17
++	ar, e := wr.NewArena(4096)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer ar.Close()
++	cell, table := ar.Alloc(8), ar.Alloc(8)
++	binary.LittleEndian.PutUint64(cell, 17)
++	binary.LittleEndian.PutUint64(table, uint64(uintptr(unsafe.Pointer(&cell[0]))))
++	jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&table[0])))
++	image, entry, e := wr.MapCode(cm.Code)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], v)
++	}
++	e = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, r)
++	return binary.LittleEndian.Uint64(r), e
++}
++
++func layout32ProbeOwnedColdPrefixModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	// Keep original local0 and 70 exact distinct i64 operands under two
++	// sequential nested scalar control frames. Each result then extends to i64.
++	b := []byte{0, 0x20, 0}
++	for i := int64(1); i <= 70; i++ {
++		b = append(b, 0x42)
++		b = append(b, wasmtest.SLEB64(i)...)
++	}
++	// Retain a semantic i32 result from a deferred i64 unsigned comparison.
++	b = append(b, 0x20, 0, 0x42)
++	b = append(b, wasmtest.SLEB64(256)...)
++	b = append(b, 0x54)
++	for _, condition := range []byte{1, 2} {
++		b = append(b, 0x02, 0x7f, 0x20, condition, 0x04, 0x7f,
++			0x41, 24, 0x41, 17, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x05,
++			0x41, 24, 0x41, 29, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x0b, 0x0c, 0, 0x0b)
++	}
++	b = append(b, 0x6a, 0x6a, 0xad)
++	for range 71 {
++		b = append(b, 0x7c)
++	}
++	b = append(b, 0x42, 23, 0x21, 0, 0x20, 0, 0x7c, 0x0b)
++	m := layout32ProbeModMem(t, 1, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layout32ProbeOwnedColdPrefixRun(t *testing.T, cm *encoder.CompiledModule, args [3]uint64) (uint64, error) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(in[8*i:], v)
++	}
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	want := append([]byte(nil), mem...)
++	want[24] = 29
++	if args[2] != 0 {
++		want[24] = 17
++	}
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if err == nil && !bytes.Equal(mem, want) {
++		t.Fatalf("unexpected full memory after second branch: marker=%d want=%d", mem[24], want[24])
++	}
++	return binary.LittleEndian.Uint64(out), err
++}
++
++func layout32ProbeOwnedV128BlockModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	b := []byte{0, 0x20, 0}
++	if lane == "regional-if" {
++		b = []byte{1, 16, 0x7b, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	pc(512)
++	ld(112) // Full-width immutable prefix beside the scalar old parameter.
++	if lane == "regional-if" {
++		// Source-reviewed scoring: eight pinned dummies score15, all
++		// target local set/get pairs score3 and occupy regional leases.
++		for i := byte(2); i < 10; i++ {
++			for range 3 {
++				b = append(b, 0x20, i, 0x22, i, 0x21, i)
++			}
++		}
++		for i := range 5 {
++			ld(16 * i)
++			b = append(b, 0x21, byte(10+i))
++			pc(256 + i*16)
++			b = append(b, 0x20, byte(10+i))
++		}
++	}
++	pc(528)
++	switch lane {
++	case "straight":
++		b = append(b, 0x02, 0x7b)
++		ld(0)
++		b = append(b, 0x0b)
++	case "regional-if":
++		b = append(b, 0x20, 1, 0x04, 0x7b)
++		ld(16)
++		b = append(b, 0x05)
++		ld(32)
++		b = append(b, 0x0b)
++	case "overlap":
++		b = append(b, 0x02, 0x7b)
++		pc(33) // one extra scalar slot: source = destination + 1 on taken edge
++		ld(48)
++		b = append(b, 0x20, 1, 0x0d, 0, 0x1a, 0x1a)
++		ld(64)
++		b = append(b, 0x0c, 0, 0x0b)
++	}
++	st()
++	if lane == "regional-if" {
++		for range 5 {
++			st()
++		}
++	}
++	st()
++	ld(528)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := layout32ProbeModMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layout32ProbeOwnedV128BlockRun(t *testing.T, cm *encoder.CompiledModule, lane string, cond uint32, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	want := append([]byte(nil), mem...)
++	copy(want[512:528], mem[112:128])
++	src := 0
++	if lane == "regional-if" {
++		for i := range 5 {
++			copy(want[256+i*16:], mem[i*16:i*16+16])
++		}
++		src = 32
++		if cond != 0 {
++			src = 16
++		}
++	}
++	if lane == "overlap" {
++		src = 64
++		if cond != 0 {
++			src = 48
++		}
++	}
++	copy(want[528:544], mem[src:src+16])
++	old := uint32(0xabc12300 + salt)
++	expected := old ^ binary.LittleEndian.Uint32(mem[src:src+4])
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(cond))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s condition=%d got=%x want=%x err=%v", lane, cond, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s condition=%d byte[%d]=%x want=%x", lane, cond, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++type layout32ProbeOwnedIntArithCase struct {
++	op       uint32
++	pressure bool
++}
++
++func layout32ProbeOwnedIntArithModule(t *testing.T, c layout32ProbeOwnedIntArithCase) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 1, 0x7b, 0x20, 0}
++	if c.pressure {
++		b = []byte{0, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if !c.pressure {
++		pc(544)
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1)
++		pc(512)
++		if c.op != 127 {
++			b = append(b, 0x20, 1)
++		} // binary left input
++		ld(16)
++		b = append(b, 0x21, 1, 0x20, 1) // current home supplies right or unary input
++	} else {
++		pc(512)
++		ld(0)
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++	}
++	b = append(b, 0xfd)
++	b = append(b, wasmtest.ULEB(c.op)...)
++	st()
++	if !c.pressure {
++		st() // independent old-value observation
++		pc(528)
++		b = append(b, 0x20, 1)
++		st()
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := layout32ProbeModMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layout32ProbeOwnedIntArithRun(t *testing.T, cm *encoder.CompiledModule, c layout32ProbeOwnedIntArithCase, variant int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + variant*7)
++	}
++	for i := range 21 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + variant)
++		}
++	}
++	for j := range 16 {
++		// For byte operations, signs and low/high halves differ.
++		mem[j], mem[16+j] = byte(255-17*j+variant*19), byte(193+29*j-variant*17)
++	}
++	x, y := mem[:16], mem[16:32]
++	if c.op == 127 {
++		boundaries := [8]uint16{0xffff, 0xffff, 0x8000, 0x8001, 0x7fff, 1, 0, 0xf123}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(y[2*j:], boundaries[(j+2*variant)%8])
++		}
++	}
++	if c.op == 145 || c.op == 186 {
++		xp := []uint16{0x8000, 0x8000, 0, 0x7fff, 0xffff, 4, 0x7fff, 0x8000}
++		yp := []uint16{0x8000, 0x8000, 1, 0xffff, 0x8000, 0xfffe, 11, 7}
++		for j := range 8 {
++			v, w := xp[(j+2*variant)%8], yp[(j+2*variant)%8]
++			if variant == 1 {
++				v, w = w, v
++			}
++			binary.LittleEndian.PutUint16(x[2*j:], v)
++			binary.LittleEndian.PutUint16(y[2*j:], w)
++		}
++	}
++	if c.pressure {
++		var reduced [16]byte
++		for j := range reduced {
++			for i := 1; i <= 20; i++ {
++				reduced[j] ^= ^mem[16*i+j]
++			}
++		}
++		y = reduced[:]
++	}
++	var result [16]byte
++	u16 := func(v []byte, j int) uint16 { return binary.LittleEndian.Uint16(v[2*j:]) }
++	switch c.op {
++	case 127:
++		for j := range 4 {
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(u16(y, 2*j))+uint32(u16(y, 2*j+1)))
++		}
++	case 145:
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], u16(x, j)-u16(y, j))
++		}
++	case 158, 159:
++		start := 0
++		if c.op == 159 {
++			start = 8
++		}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], uint16(x[start+j])*uint16(y[start+j]))
++		}
++	case 186:
++		for j := range 4 {
++			var sum int64
++			for k := range 2 {
++				n := 2*j + k
++				sum += int64(int16(u16(x, n))) * int64(int16(u16(y, n)))
++			}
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(sum))
++		}
++	default:
++		t.Fatalf("unknown arithmetic opcode %d", c.op)
++	}
++
++	want := append([]byte(nil), mem...)
++	copy(want[512:], result[:])
++	if !c.pressure {
++		copy(want[528:], y)
++		copy(want[544:], x)
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + variant)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(result[:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("FD%d variant=%d got=%x want=%x err=%v", c.op, variant, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("FD%d variant=%d byte[%d]=%x want=%x", c.op, variant, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func layout32ProbeOwnedMixedSIMDClassifierModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	i := wasm.I32
++	// Preserve the first x across direct and naturally selected inline calls.
++	// The typed mutable global is also read directly in ordinary scalar bodies.
++	caller := []byte{0, 0x20, 0, 0x20, 0, 0x10, 1, 0x6a, 0x20, 0, 0x10, 2, 0x6a, 0x23, 0, 0x6a, 0x0b}
++	direct := []byte{0, 0x03, 0x40, 1, 0x0b}
++	direct = append(direct, bytes.Repeat([]byte{1}, 512)...)
++	direct = append(direct, 0x20, 0, 0x23, 0, 0x6a, 0x0b)
++	leaf := []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x0b}
++	// Read full vector, xor constant, store to offset 32; independent scalar
++	// return reads lane 0 from the transformed destination.
++	vec := []byte{0, 0x20, 0, 0x41, 32, 0x41, 0, 0xfd, 0, 4, 0, 0xfd, 12}
++	vec = append(vec, layout32ProbeOwnedSIMDTempMask[:]...)
++	vec = append(vec, 0xfd, 81, 0xfd, 11, 4, 0, 0x41, 32, 0xfd, 0, 4, 0, 0xfd, 27, 0, 0x73, 0x0b)
++	code := func(b []byte) []byte { return append(wasmtest.ULEB(uint32(len(b))), b...) }
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(i, true, []byte{0x41, 17, 0x0b}))),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("scalar", 0, 0), wasmtest.ExportEntry("vector", 0, 3))),
++		wasmtest.Section(10, wasmtest.Vec(code(caller), code(direct), code(leaf), code(vec))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layout32ProbeOwnedMixedSIMDClassifierRun(t *testing.T, cm *encoder.CompiledModule) {
++	t.Helper()
++	if len(cm.Entry) != 4 || len(cm.InternalEntry) != 4 || cm.Entry[0] >= cm.InternalEntry[0] || cm.Entry[3] >= cm.InternalEntry[3] {
++		t.Fatal("missing genuine exported adapters")
++	}
++
++	for _, x := range []uint32{7, 0x80000001, 0xfffffff0} {
++		want := 3*x + 37
++		got, err := layout32ProbeOwnedRunModule(t, cm, []uint64{uint64(x)})
++		if err != nil || got != uint64(want) {
++			t.Fatalf("scalar x=%x got=%x want=%x err=%v", x, got, want, err)
++		}
++		layout32ProbeOwnedMixedSIMDVectorRun(t, cm, x)
++
++	}
++}
++
++func layout32ProbeOwnedMixedSIMDVectorRun(t *testing.T, cm *encoder.CompiledModule, x uint32) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + int(x&15))
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 16 {
++		want[32+i] = mem[i] ^ layout32ProbeOwnedSIMDTempMask[i]
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(x))
++	err = eng.Call(entry+uintptr(cm.Entry[3]), in, jm.LinearMemory(), tr, out)
++	expected := x ^ binary.LittleEndian.Uint32(want[32:36])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("vector got=%x want=%x err=%v", got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		t.Fatal("incorrect full 16-byte vector transform or unrelated memory changed")
++	}
++}
++
++var layout32ProbeOwnedSIMDTempMask = [16]byte{1, 33, 10, 17, 5, 93, 0xe0, 0x23, 4, 2, 97, 0x91, 7, 0x11, 55, 0xf1}
++
++func layout32ScalarModules(t *testing.T) (*wasm.Module, *wasm.Module) {
++	effectIf := []byte{0, 0x41, 13, 0x20, 0, 0x04, 0x7f, 0x41, 0, 0x41, 17, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x05, 0x41, 0, 0x41, 23, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x0b, 0x6a, 0x0b}
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x20, 0, 0x41, 10, 0x6c, 0x20, 1, 0x6a, 0x0b)
++	natural := layout32ProbeModFuncs(t, layout32ProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x20, 1, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, layout32ProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, callee})
++	return layout32ProbeModMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, effectIf), natural
++}
++
++// layoutPriorCursor is a test-only transcription of the pre-opt-in forest
++// traversal. All roots first get push/pop frames, including concrete or pending.
++func layout32SparseFactReceipt(r map[string]any, w *fixtureModuleWork) {
++	r["hintStateBytes"] = w.TemporaryV128HintStateBackingBytes
++	r["hintErrorBytes"] = w.TemporaryV128HintErrorBackingBytes
++	r["hintHeaderBytes"] = w.TemporaryV128HintFactHeaderBytes
++	r["hintErrorRows"] = w.TemporaryV128HintErrorRows
++	r["hintErrorGrows"] = w.TemporaryV128HintErrorGrows
++	r["hintErrorCopies"] = w.TemporaryV128HintErrorGrowthCopies
++	r["hintStateElemBytes"] = unsafe.Sizeof(fixtureVectorHintState(0))
++	r["hintErrorElemBytes"] = unsafe.Sizeof(fixtureVectorHintErrorRow{})
++}
++
++func TestOwnedForestCompact32LegalStorageOrdinary(t *testing.T) {
++	t.Run("full-payloads", func(t *testing.T) {
++		for _, tc := range []struct {
++			typ  machineType
++			bits int64
++		}{{mtI64, -1 << 63}, {mtI64, 1<<63 - 1}, {mtF32, 0x80000000}, {mtF64, -0x7ffffffffff1abcf}} {
++			st := constantStorage(tc.typ, tc.bits)
++			if st.kind != stConst || st.machineType() != tc.typ || st.constantBits() != tc.bits {
++				t.Fatal("constant lost legal type or bits")
++			}
++			st.setConstantBits(^tc.bits)
++			if st.constantBits() != ^tc.bits || st.machineType() != tc.typ {
++				t.Fatal("literal mutation changed another field")
++			}
++			if tc.typ.isFloat() {
++				raw := floatLiteralPayload(tc.typ, tc.bits)
++				if raw.kind != stInvalid || raw.machineType() != tc.typ || raw.constantBits() != tc.bits {
++					t.Fatal("stInvalid float scratch lost bits")
++				}
++			}
++		}
++		for _, kind := range []storageKind{stLocalRef, stLocalReg, stGlobalRef, stGlobReg, stFuncRef} {
++			st := indexedStorage(kind, mtI64, RCX, 0xffffffff, uint8(factUpper32Zero))
++			if st.kind != kind || st.reg != RCX || st.machineType() != mtI64 || st.indexBits() != 0xffffffff || !st.valueFacts().has(factUpper32Zero) {
++				t.Fatal("indexed payload lost type, fact or width")
++			}
++			st.setIndexBits(0xf0e0d0c0)
++			if st.indexBits() != 0xf0e0d0c0 || st.kind != kind || st.reg != RCX {
++				t.Fatal("index mutation changed kind/role")
++			}
++		}
++		for _, row := range []struct {
++			disp   int32
++			width  int
++			signed bool
++			borrow int
++		}{
++			{-1 << 31, 1, true, -1}, {1<<31 - 1, 2, true, 255}, {-3, 4, false, 510}, {-1, 2, true, 0xffffffff},
++		} {
++			st := memRefStorage(RAX, row.disp, row.width, row.signed, true, row.borrow)
++			if st.memDisp() != row.disp || st.memSize() != row.width || st.memSigned() != row.signed || st.memBorrow() != row.borrow || st.machineType() != mtI64 || st.reg != RAX {
++				t.Fatalf("memref record %+v lost bits", row)
++			}
++			st.clearMemBorrow()
++			if st.memBorrow() != -1 || st.memDisp() != row.disp || st.memSize() != row.width || st.memSigned() != row.signed || st.reg != RAX {
++				t.Fatalf("memref record %+v borrow-clear corrupted another field", row)
++			}
++		}
++		// Synthetic storage-width boundary only: no load is emitted or run.
++		full := memoryReferenceStorage(mtI64, RAX, 0xffffffff, 0x1ff, 0xffffffff)
++		if full.memDisp() != -1 || full.memSize() != 255 || !full.memSigned() || full.memBorrow() != 0xffffffff {
++			t.Fatal("full 33+9-bit memref payload did not coexist with signed displacement")
++		}
++		fl := fmemRefStorage(RCX, -123, true, 7)
++		if fl.memDisp() != -123 || fl.memBorrow() != 7 || fl.memSize() != 8 || fl.memSigned() || fl.machineType() != mtF64 {
++			t.Fatal("float memref lost a field")
++		}
++		layout32Emit(t, "COMPACT32_STORAGE", map[string]any{"case": "full-payloads", "constants": 4, "scratchFloats": 2, "indexed": 5, "memoryRows": 6, "maxBorrowCode": uint64(1) << 32})
++	})
++	t.Run("owners-retag-and-aux", func(t *testing.T) {
++		w := &fixtureModuleWork{Forest: true}
++		s := newCompileScratch(32)
++		s.fixtureWork = w
++		s.ensureTargetStack()
++		f := &fn{s: s.stack, sc: s}
++		donor := elem{st: constantStorage(mtI64, -7)}
++		donor.setForestLive(true)
++		donor.setForestPending(true)
++		e := f.pushValue(donor.st)
++		if e.st.machineType() != mtI64 || e.st.constantBits() != -7 || !e.forestIsLive() || e.forestIsPending() || !donor.forestIsPending() {
++			t.Fatal("push copied donor lease or lost literal")
++		}
++		e.setForestPending(true)
++		f.replaceStorage(e, floatLiteralPayload(mtF64, -1<<63))
++		if !e.forestIsLive() || !e.forestIsPending() || e.st.machineType() != mtF64 || e.st.constantBits() != -1<<63 {
++			t.Fatal("replacement did not preserve destination owner")
++		}
++		e.setElemKind(ekDeferred)
++		e.setDeferredOp(opAdd)
++		e.setDeferredDepth(maxDeferDepth)
++		e.setRegisterNeed(maxDeferDepth + 1)
++		e.setValueType(mtV128)
++		if !e.forestIsPending() || !e.forestIsLive() || e.valueType() != mtV128 || e.deferredOp() != opAdd || e.deferredDepth() != maxDeferDepth || e.registerNeed() != maxDeferDepth+1 {
++			t.Fatal("value type retag changed owner or deferred aux labels")
++		}
++		// Start from an actual legal frame-backed typed V128 slot. FP
++		// occupancy preserves aux, and the cookie then owns the union.
++		slot := storage{kind: stSlot, slot: 17, meta: uint8(factBytesBelow16)}
++		slot.setMachineType(mtV128)
++		f.replaceStorage(e, slot)
++		f.occupyF(e, RCX)
++		if e.st.kind != stReg || e.st.reg != RCX || e.st.slotIndex() != 17 || e.st.vectorAliasCookie() != 0 || !e.st.valueFacts().has(factBytesBelow16) || !e.forestIsPending() || f.fregUser[RCX] != e {
++			t.Fatal("FP occupancy changed aux/facts/lease")
++		}
++		e.st.setVectorAliasCookie(0x7fffffff)
++		var fresh elem
++		fresh.setFreshStorage(e.st)
++		if fresh.forestIsLive() || fresh.forestIsPending() || fresh.st.vectorAliasCookie() != 0x7fffffff || fresh.st.slotIndex() != 17 || fresh.st.machineType() != mtV128 {
++			t.Fatal("copy lost vector cookie/aux or inherited lease")
++		}
++		f.releaseF(RCX)
++		i32 := storage{kind: stReg, reg: RAX, slot: 19, meta: uint8(factUpper32Zero)}
++		i32.setMachineType(mtI32)
++		i32.setCapturedBoundsExtent(0x7fffffff)
++		f.replaceStorage(e, i32)
++		if e.st.capturedBoundsExtent() != 0x7fffffff || e.st.slotIndex() != 19 || !e.forestIsLive() || !e.forestIsPending() {
++			t.Fatal("captured extent and aux or destination lease were not independent")
++		}
++		f.occupy(e, RDX)
++		if e.st.slotIndex() != 0 || e.st.meta&uint8(storageCapturedBounds) != 0 || !e.st.valueFacts().has(factUpper32Zero) || f.regUser[RDX] != e || !e.forestIsLive() || !e.forestIsPending() {
++			t.Fatal("GP occupancy did not clear aux/capture or keep facts and lease")
++		}
++		e.setForestPending(false)
++		f.release(RDX)
++		f.s.erase(e)
++		if e.forestIsLive() || e.forestIsPending() || e.st.hasLogicalRoot() || !donor.forestIsLive() || !donor.forestIsPending() {
++			t.Fatal("retirement changed donor ownership or leaked destination owner")
++		}
++		layout32Emit(t, "COMPACT32_STORAGE", map[string]any{"case": "owners-retag-and-aux", "actualFP": 1, "actualGP": 1})
++	})
++	t.Run("strict-accessors", func(t *testing.T) {
++		requireContractRefusal := func(message string, fn func()) {
++			t.Helper()
++			defer func() {
++				if got := recover(); got != message {
++					t.Errorf("contract refusal=%v want %q", got, message)
++				}
++			}()
++			fn()
++		}
++		st := constantStorage(mtI32, 7)
++		requireContractRefusal("compact32: index payload read from incompatible kind", func() { _ = st.indexBits() })
++		requireContractRefusal("compact32: memory reference payload read from incompatible kind", func() { _ = st.memBorrow() })
++		idx := indexedStorage(stLocalReg, mtF32, RCX, 9, 0)
++		requireContractRefusal("compact32: literal payload read from incompatible kind", func() { _ = idx.constantBits() })
++		idx.setOccupiedFP(RDX)
++		requireContractRefusal("compact32: index payload read from incompatible kind", func() { _ = idx.indexBits() })
++		requireContractRefusal("compact32: invalid vector alias read", func() { _ = st.vectorAliasCookie() })
++		requireContractRefusal("compact32: invalid captured bounds extent read", func() { _ = idx.capturedBoundsExtent() })
++		requireContractRefusal("compact operand nodes: custom cold index is unsupported", func() { st.setColdIndex(1) })
++		st.setColdIndex(0)
++		if st.coldIndex() != 0 || st.constantBits() != 7 {
++			t.Fatal("refused accessor or zero cold reset changed legal literal")
++		}
++		layout32Emit(t, "COMPACT32_STORAGE", map[string]any{"case": "strict-accessors", "refusals": 7})
++	})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index 785118eb..b9d9a263 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -154,15 +154,8 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+ 	return memoryReferenceStorage(typ, ea, uint32(disp), uint32(size), borrow)
+ }
+ 
+-func (st storage) memDisp() int32  { return int32(st.slot) }
+-func (st storage) slotIndex() int  { return int(st.slot) }
+-func (st storage) index() int      { return int(st.indexBits()) }
+-func (st storage) memSize() int    { return int(st.indexBits() & 0xff) }
+-func (st storage) memSigned() bool { return st.indexBits()&0x100 != 0 }
+-
+-// memBorrow returns the local whose pinned register serves as this deferred
+-// load's address, or -1 when the address register is owned.
+-func (st storage) memBorrow() int { return int(st.constantBits()) - 1 }
++func (st storage) slotIndex() int { return int(st.slot) }
++func (st storage) index() int     { return int(st.indexBits()) }
+ 
+ // memRefFoldable reports whether a deferred load can be folded directly as an
+ // ALU/CMP r/m operand of the given width — only full-width loads (no sub-width
+@@ -171,73 +164,6 @@ func memRefFoldable(st storage, w bool) bool {
+ 	return (w && st.memSize() == 8) || (!w && st.memSize() == 4)
+ }
+ 
+-// storage records where a value lives and its machine type.
+-type storage struct {
+-	cval int64  // constant value/bits for stConst
+-	slot uint32 // spill-slot index, bounded GC array length for local refs, or int32 displacement bits for stMemRef
+-	cold uint32 // index+1 into stack.cold for custom plugin values
+-	idx  uint32 // local/global/function index, bounded GC array length, or packed stMemRef metadata
+-	kind storageKind
+-	typ  machineType
+-	reg  Reg
+-	meta uint8 // semantic value facts and root-state bits
+-}
+-
+-// These constructors describe the semantic source of each occupied word.
+-// Keep the wide raw representation and all zero/default field values.
+-func constantStorage(typ machineType, bits int64) storage {
+-	return storage{kind: stConst, typ: typ, cval: bits}
+-}
+-
+-// Some FP scratch loads use a typed literal payload without a stack value.
+-func floatLiteralPayload(typ machineType, bits int64) storage {
+-	return storage{typ: typ, cval: bits}
+-}
+-
+-func indexedStorage(kind storageKind, typ machineType, reg Reg, index uint32, meta uint8) storage {
+-	return storage{kind: kind, typ: typ, reg: reg, idx: index, meta: meta}
+-}
+-
+-func memoryReferenceStorage(typ machineType, carrier Reg, disp, memIndexBits uint32, borrow int) storage {
+-	return storage{kind: stMemRef, typ: typ, reg: carrier, slot: disp, idx: memIndexBits, cval: int64(borrow + 1)}
+-}
+-
+-func (st *storage) setOccupiedGP(reg Reg) {
+-	st.kind, st.reg = stReg, reg
+-	st.setConstantBits(0)
+-	st.meta &^= uint8(storageCapturedBounds)
+-	st.setIndexBits(0)
+-	st.slot = 0
+-}
+-
+-// FP occupation has never cleared the inactive index or slot words.
+-func (st *storage) setOccupiedFP(reg Reg) {
+-	st.kind, st.reg = stReg, reg
+-	st.setConstantBits(0)
+-}
+-
+-func (st storage) capturedBoundsExtent() int64 { return st.constantBits() }
+-func (st *storage) setCapturedBoundsExtent(extent int32) {
+-	st.setConstantBits(int64(extent))
+-	st.meta |= uint8(storageCapturedBounds)
+-}
+-
+-func (st storage) vectorAliasCookie() int64           { return st.constantBits() }
+-func (st *storage) setVectorAliasCookie(cookie int64) { st.setConstantBits(cookie) }
+-
+-// Raw storage words remain independent in this layout. Accessors centralize
+-// their use without restricting the payload combinations accepted by copies.
+-func (st storage) machineType() machineType        { return st.typ }
+-func (st *storage) setMachineType(typ machineType) { st.typ = typ }
+-func (st storage) constantBits() int64             { return st.cval }
+-func (st *storage) setConstantBits(bits int64)     { st.cval = bits }
+-func (st storage) indexBits() uint32               { return st.idx }
+-func (st *storage) setIndexBits(index uint32)      { st.idx = index }
+-
+-// clearMemBorrow makes a memory-reference carrier owned without changing the
+-// memory width, sign, displacement, or semantic value facts.
+-func (st *storage) clearMemBorrow() { st.setConstantBits(0) }
+-
+ // elemCold contains state used only by custom plugin values. Keeping it out of
+ // storage removes a pointer and slice header from every ordinary operand node.
+ type elemCold struct {

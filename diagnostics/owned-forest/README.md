@@ -1186,3 +1186,11 @@ Summary SHA-256: `50ead4082cc3db929c1eb6463663161121e7884ea7e905cfc1120df47cd9a7
 Apply `storage-read-guards-source.patch` after `82dd5078` to reach `94b5d4617502390f74665d1d60c788bf2c3c7776` (tree `ee74c2e8b8a294ac636b7a5c38258cdf2f4e6493`). Three kind guards now precede pure eager payload reads in `callHostSync`. Independent source review found that short-circuit outcomes, fast-path flags and emitter behavior are preserved. Read-matrix SHA-256: `88f689338fc8aa0c775055e2316701bf56f0e111a4fadc9ece6d0ff5d3dc79f5`.
 
 No build or test ran at this checkpoint. Earlier test results are historical, not qualification of this change. No atomic execution or admission, layout switch, blanket compact 32-byte proof, or default change.
+
+### Compact 32-byte operand layout
+
+Apply `compact32-focused.patch` after `94b5d461` to reach `1bf36bc4` (production `df0bb53e`). The opt-in compact32 representation supports legal payloads for each storage kind, not arbitrary simultaneous values in the overlaid fields. New direct checks exercise that contract; the existing wide and compact40 raw-storage checks remain unchanged.
+
+The first four-arm gate passed 48 images, 152 ordinary calls, 36 exact body/native/encoder-JSON comparisons and 80 capacity rows. Measured element widths were 64/64/40/32 bytes. At matched capacities, requested used and reserved node bytes were 80% of compact40; the largest observed reserve fell from 40,960 to 32,768 bytes.
+
+Summary SHA-256: `f32f4822c27447c43659feb2aca09ed1e293ce1800232241c7560f946b8fb65c`. No peak or process heap, RSS, timing, mapping, trim, or public serializer result. Active source and defaults are unchanged.
