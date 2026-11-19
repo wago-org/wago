@@ -1,0 +1,596 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index c1b6da47..8d74d32b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1938,6 +1938,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128BlockResults:          work.TemporaryV128BlockResults,
+ 			TemporaryV128PerFunction:           work.TemporaryV128PerFunction,
+ 			TemporaryV128BytePermutes:          work.TemporaryV128BytePermutes,
++			TemporaryV128UnsignedShifts:        work.TemporaryV128UnsignedShifts,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 51702369..1a93fff2 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,58 +275,61 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
+-	TemporaryV128BytePermutes                                                                                                                bool
+-	TemporaryV128Shuffles, TemporaryV128Swizzles                                                                                             uint64
+-	TemporaryV128PermuteSlotLeases, TemporaryV128PermuteLocalLeases, TemporaryV128ShuffleDiscardedOwners                                     uint64
+-	TemporaryV128PerFunction                                                                                                                 bool
+-	TemporaryV128ScalarSiblings                                                                                                              uint64
+-	TemporaryV128Classifier, TemporaryV128InlineClassifier                                                                                   fixtureVectorClassificationWork
+-	TemporaryV128BlockResults                                                                                                                bool
+-	TemporaryV128BlockSlotMerges, TemporaryV128BlockStraightFallthroughs, TemporaryV128BlockTwoSlotMoves, TemporaryV128BlockOverlappingMoves uint64
+-	TemporaryV128Loops                                                                                                                       bool
+-	TemporaryV128LoopHeaders, TemporaryV128LoopBackedges                                                                                     uint64
+-	TemporaryV128PreflightBytes, TemporaryV128PreflightOpcodes                                                                               uint64
+-	TemporaryV128PreflightLoopStackPeak                                                                                                      int
+-	TemporaryV128RegionalLocals                                                                                                              bool
+-	TemporaryV128RegionAdmissions, TemporaryV128RegionWritebacks                                                                             uint64
+-	TemporaryV128RegionAliasRebases, TemporaryV128RegionRebaseVisits                                                                         uint64
+-	TemporaryV128RegionEvictions, TemporaryV128RegionBoundaryWritebacks                                                                      uint64
+-	TemporaryV128Locals                                                                                                                      bool
+-	TemporaryV128ForwardCopies, TemporaryV128AliasInvalidations                                                                              uint64
+-	ScalarFPUnsignedF32ToI32Saturation                                                                                                       bool
+-	FPUnsignedF32ToI32SaturationEmissions, FPUnsignedF32ToI32SaturationBoundPressure                                                         uint64
+-	IntegerControlInlineMemoryGrow                                                                                                           bool
+-	TemporaryV128SIMD                                                                                                                        bool
+-	TemporaryV128Bodies, TemporaryV128Spills                                                                                                 uint64
+-	ScalarFPSixArgABI                                                                                                                        bool
+-	FPEntryForwardOverlaps, FPEntryStagedFunctions, FPEntryExtraStores                                                                       uint64
+-	PrivateMemory32Grow                                                                                                                      bool
+-	MemoryGrowEmissions, MemoryGrowPrebranchSpills                                                                                           uint64
+-	IntegerControlInlineComposition                                                                                                          bool
+-	ScalarFPUnsignedF64ToI32Saturation                                                                                                       bool
+-	FPUnsignedF64ToI32SaturationEmissions, FPUnsignedF64ToI32SaturationBoundPressure                                                         uint64
+-	ScalarFPInternalDirectCalls                                                                                                              bool
+-	FPInternalDirectCalls, FPInternalDeferredConstants                                                                                       uint64
+-	MemorySizeEmissions                                                                                                                      uint64
+-	DivRemConstPairSeekVisits                                                                                                                uint64
+-	IntegerControlInline                                                                                                                     bool
+-	IntegerControlInlineLeaves, IntegerControlInlineRecursive                                                                                uint64
+-	ScalarFPSignedSaturation                                                                                                                 bool
+-	FPSignedSaturationEmissions                                                                                                              [8]uint64
+-	ScalarFPMixedDirectCalls                                                                                                                 bool
+-	FPMixedDirectCalls, FPMixedDeferredConstants                                                                                             uint64
+-	ImmutableIntegerIndirect                                                                                                                 bool
+-	FPSelectEmissions                                                                                                                        uint64
+-	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                                                                         uint64
+-	FPBlockRegMerges, FPBlockPinConflictSlots                                                                                                uint64
+-	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps                                                                        uint64
+-	Opcodes                                                                                                                                  uint64
+-	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI, ScalarFPBulkMemory, ScalarFPSelect                                          bool
+-	Attempts, Completed, Rejected                                                                                                            int
+-	List                                                                                                                                     fixtureListWork
+-	Vector                                                                                                                                   fixtureForest
+-	RootCapacity                                                                                                                             int
+-	Spills                                                                                                                                   []fixtureSpillTrace
++	TemporaryV128UnsignedShifts                                                                                                                bool
++	TemporaryV128ShiftImmediate, TemporaryV128ShiftDynamic, TemporaryV128ShiftRotates, TemporaryV128ShiftRotateMisses                          uint64
++	TemporaryV128ShiftCountSlotLeases, TemporaryV128ShiftCountRegLeases, TemporaryV128ShiftVectorSlotLeases, TemporaryV128ShiftVectorRegLeases uint64
++	TemporaryV128BytePermutes                                                                                                                  bool
++	TemporaryV128Shuffles, TemporaryV128Swizzles                                                                                               uint64
++	TemporaryV128PermuteSlotLeases, TemporaryV128PermuteLocalLeases, TemporaryV128ShuffleDiscardedOwners                                       uint64
++	TemporaryV128PerFunction                                                                                                                   bool
++	TemporaryV128ScalarSiblings                                                                                                                uint64
++	TemporaryV128Classifier, TemporaryV128InlineClassifier                                                                                     fixtureVectorClassificationWork
++	TemporaryV128BlockResults                                                                                                                  bool
++	TemporaryV128BlockSlotMerges, TemporaryV128BlockStraightFallthroughs, TemporaryV128BlockTwoSlotMoves, TemporaryV128BlockOverlappingMoves   uint64
++	TemporaryV128Loops                                                                                                                         bool
++	TemporaryV128LoopHeaders, TemporaryV128LoopBackedges                                                                                       uint64
++	TemporaryV128PreflightBytes, TemporaryV128PreflightOpcodes                                                                                 uint64
++	TemporaryV128PreflightLoopStackPeak                                                                                                        int
++	TemporaryV128RegionalLocals                                                                                                                bool
++	TemporaryV128RegionAdmissions, TemporaryV128RegionWritebacks                                                                               uint64
++	TemporaryV128RegionAliasRebases, TemporaryV128RegionRebaseVisits                                                                           uint64
++	TemporaryV128RegionEvictions, TemporaryV128RegionBoundaryWritebacks                                                                        uint64
++	TemporaryV128Locals                                                                                                                        bool
++	TemporaryV128ForwardCopies, TemporaryV128AliasInvalidations                                                                                uint64
++	ScalarFPUnsignedF32ToI32Saturation                                                                                                         bool
++	FPUnsignedF32ToI32SaturationEmissions, FPUnsignedF32ToI32SaturationBoundPressure                                                           uint64
++	IntegerControlInlineMemoryGrow                                                                                                             bool
++	TemporaryV128SIMD                                                                                                                          bool
++	TemporaryV128Bodies, TemporaryV128Spills                                                                                                   uint64
++	ScalarFPSixArgABI                                                                                                                          bool
++	FPEntryForwardOverlaps, FPEntryStagedFunctions, FPEntryExtraStores                                                                         uint64
++	PrivateMemory32Grow                                                                                                                        bool
++	MemoryGrowEmissions, MemoryGrowPrebranchSpills                                                                                             uint64
++	IntegerControlInlineComposition                                                                                                            bool
++	ScalarFPUnsignedF64ToI32Saturation                                                                                                         bool
++	FPUnsignedF64ToI32SaturationEmissions, FPUnsignedF64ToI32SaturationBoundPressure                                                           uint64
++	ScalarFPInternalDirectCalls                                                                                                                bool
++	FPInternalDirectCalls, FPInternalDeferredConstants                                                                                         uint64
++	MemorySizeEmissions                                                                                                                        uint64
++	DivRemConstPairSeekVisits                                                                                                                  uint64
++	IntegerControlInline                                                                                                                       bool
++	IntegerControlInlineLeaves, IntegerControlInlineRecursive                                                                                  uint64
++	ScalarFPSignedSaturation                                                                                                                   bool
++	FPSignedSaturationEmissions                                                                                                                [8]uint64
++	ScalarFPMixedDirectCalls                                                                                                                   bool
++	FPMixedDirectCalls, FPMixedDeferredConstants                                                                                               uint64
++	ImmutableIntegerIndirect                                                                                                                   bool
++	FPSelectEmissions                                                                                                                          uint64
++	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                                                                           uint64
++	FPBlockRegMerges, FPBlockPinConflictSlots                                                                                                  uint64
++	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps                                                                          uint64
++	Opcodes                                                                                                                                    uint64
++	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI, ScalarFPBulkMemory, ScalarFPSelect                                            bool
++	Attempts, Completed, Rejected                                                                                                              int
++	List                                                                                                                                       fixtureListWork
++	Vector                                                                                                                                     fixtureForest
++	RootCapacity                                                                                                                               int
++	Spills                                                                                                                                     []fixtureSpillTrace
+ }
+ 
+ type fixtureSpillTrace struct {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 7d1fe532..0538c57d 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,48 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128UnsignedShiftsEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128UnsignedShifts
++}
++
++func (f *fn) fixtureMaterializeV128ShiftCount(e *elem) Reg {
++	floor, pins := f.spillFloor, f.pinned
++	defer func() { f.spillFloor, f.pinned = floor, pins }()
++	work := f.sc.fixtureWork
++	switch e.st.kind {
++	case stSlot:
++		if end := e.st.slotIndex() + 1; end > f.spillFloor {
++			f.spillFloor = end
++			work.TemporaryV128ShiftCountSlotLeases++
++		}
++	case stLocalReg, stGlobReg, stMemRef:
++		// Owned memref indexes are already allocator-tracked and reused.
++		if (e.st.kind != stMemRef || e.st.memBorrow() >= 0) && !f.pinned.has(e.st.reg) {
++			f.pinned = f.pinned.add(e.st.reg)
++			work.TemporaryV128ShiftCountRegLeases++
++		}
++	}
++	return f.materialize(e)
++}
++
++func (f *fn) protectFixtureV128ShiftVector(e *elem) (int, regMask) {
++	floor, pins := f.spillFloor, f.fpinned
++	work := f.sc.fixtureWork
++	switch e.st.kind {
++	case stSlot:
++		if end := e.st.slotIndex() + 2; end > f.spillFloor {
++			f.spillFloor = end
++			work.TemporaryV128ShiftVectorSlotLeases++
++		}
++	case stLocalReg:
++		if !f.fpinned.has(e.st.reg) {
++			f.fpinned = f.fpinned.add(e.st.reg)
++			work.TemporaryV128ShiftVectorRegLeases++
++		}
++	}
++	return floor, pins
++}
++
+ func (f *fn) fixtureV128BytePermutesEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BytePermutes
+ }
+@@ -64,7 +106,7 @@ func (f *fn) protectFixtureV128Permute(a, b *elem) (int, regMask) {
+ 	return floor, pins
+ }
+ 
+-func (f *fn) restoreFixtureV128Permute(floor int, pins regMask) {
++func (f *fn) restoreFixtureV128DetachedState(floor int, pins regMask) {
+ 	f.spillFloor, f.fpinned = floor, pins
+ }
+ 
+@@ -141,6 +183,10 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 				if _, err := r.Byte(); err != nil {
+ 					return false, err
+ 				}
++			case 139, 141, 171, 173: // unsigned/right or left shifts of 16-/32-bit lanes
++				if !work.TemporaryV128UnsignedShifts {
++					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
++				}
+ 			case 77, 78, 79, 80, 81, 82, 83: // bitwise and any_true
+ 			default:
+ 				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_shift_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_shift_independent_test.go
+new file mode 100644
+index 00000000..17f9338d
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_shift_independent_test.go
+@@ -0,0 +1,271 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++type ownedShiftLane struct {
++	name    string
++	width   int
++	dynamic bool
++}
++
++var ownedShiftLanes = []ownedShiftLane{{"i16-imm", 16, false}, {"i16-dyn", 16, true}, {"i32-imm", 32, false}, {"i32-dyn", 32, true}, {"rotate", 32, false}, {"near-miss", 32, false}, {"pressure", 32, true}}
++
++func ownedShiftModule(t *testing.T, l ownedShiftLane) *wasm.Module {
++	t.Helper()
++	b := []byte{0, 0x20, 0}
++	rot := l.name == "rotate" || l.name == "near-miss"
++	if rot {
++		b = []byte{1, 2, 0x7b, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	fd := func(i uint32) { b = append(b, 0xfd); b = append(b, wasmtest.ULEB(i)...) }
++	count := func() { ld(352); b = append(b, 0xfd, 27, 0) }
++	if rot {
++		ld(16)
++		b = append(b, 0x21, 2)
++		pc(512)
++		ld(0)
++		b = append(b, 0x22, 1)
++		pc(39)
++		fd(173)
++		local := byte(1)
++		if l.name == "near-miss" {
++			local = 2
++		}
++		b = append(b, 0x20, local)
++		pc(57)
++		fd(171)
++		fd(80)
++		st()
++		// Keep an old local1 read alive across a real write, then observe
++		// the retired old and current values independently in full width.
++		pc(544)
++		b = append(b, 0x20, 1)
++		ld(16)
++		b = append(b, 0x21, 1)
++		st()
++		pc(560)
++		b = append(b, 0x20, 1)
++		st()
++	} else if l.name == "pressure" {
++		pc(512)
++		ld(0)
++		count()
++		// Retain value and count through separately bounded XMM/GP pressure.
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			fd(77)
++		}
++		for range 19 {
++			fd(81)
++		}
++		b = append(b, 0x1a)
++		for i := 1; i <= 24; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 27, 0)
++		}
++		for range 23 {
++			b = append(b, 0x6a)
++		}
++		b = append(b, 0x1a)
++		fd(173)
++		st()
++	} else {
++		for i := range 2 {
++			pc(512 + 16*i)
++			ld(16 * i)
++			if l.dynamic {
++				b = append(b, 0x20, 1) // true pinned local borrow
++			} else {
++				pc(l.width + 7 + i)
++			}
++			sub := uint32(171 + 2*i)
++			if l.width == 16 {
++				sub = uint32(139 + 2*i)
++			}
++			fd(sub)
++			st()
++		}
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	params := []wasm.ValType{wasm.I32}
++	if l.dynamic && l.name != "pressure" {
++		params = append(params, wasm.I32)
++	}
++	m := modMem(t, 1, params, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedShiftRun(t *testing.T, cm *encoder.CompiledModule, l ownedShiftLane, count uint32, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	binary.LittleEndian.PutUint32(mem[352:], count)
++	want := append([]byte(nil), mem...)
++	apply := func(dst, src int, k uint32, right bool) {
++		k &= uint32(l.width - 1)
++		modulus := l.width / 8
++		for off := 0; off < 16; off += modulus {
++			if modulus == 2 {
++				v := binary.LittleEndian.Uint16(mem[src+off:])
++				if right {
++					v >>= k
++				} else {
++					v <<= k
++				}
++				binary.LittleEndian.PutUint16(want[dst+off:], v)
++			} else {
++				v := binary.LittleEndian.Uint32(mem[src+off:])
++				if right {
++					v >>= k
++				} else {
++					v <<= k
++				}
++				binary.LittleEndian.PutUint32(want[dst+off:], v)
++			}
++		}
++	}
++	switch l.name {
++	case "rotate", "near-miss":
++		src := 0
++		if l.name == "near-miss" {
++			src = 16
++		}
++		for off := 0; off < 16; off += 4 {
++			a, b := binary.LittleEndian.Uint32(mem[off:]), binary.LittleEndian.Uint32(mem[src+off:])
++			binary.LittleEndian.PutUint32(want[512+off:], a>>7|b<<25)
++		}
++		copy(want[544:], mem[:16])
++		copy(want[560:], mem[16:32])
++	case "pressure":
++		apply(512, 0, count, true)
++	default:
++		for i := range 2 {
++			k := count
++			if !l.dynamic {
++				k = uint32(l.width + 7 + i)
++			}
++			apply(512+i*16, 16*i, k, i == 1)
++		}
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + salt)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(count))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(want[512:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s count=%x got=%x want=%x err=%v", l.name, count, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s count=%x byte[%d]=%x want=%x", l.name, count, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128ShiftsOrdinary(t *testing.T) {
++	for _, l := range ownedShiftLanes {
++		t.Run(l.name, func(t *testing.T) {
++			m := ownedShiftModule(t, l)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128UnsignedShifts: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive lane: %+v", work)
++					}
++					peep := stats.Funcs[0].Peephole
++					switch l.name {
++					case "rotate":
++						if work.TemporaryV128ShiftRotates != 1 || peep["simd-rotr-imm"]+peep["simd-rotr-avx512"] != 1 {
++							t.Fatalf("natural same-local rotate inactive: %v %+v", peep, work)
++						}
++					case "near-miss":
++						if work.TemporaryV128ShiftRotates != 0 || work.TemporaryV128ShiftRotateMisses != 1 || work.TemporaryV128ShiftImmediate != 2 {
++							t.Fatalf("reader near-miss did not preserve both shifts: %+v", work)
++						}
++					case "pressure":
++						if work.TemporaryV128ShiftDynamic != 1 || work.TemporaryV128Spills == 0 || work.TemporaryV128ShiftCountSlotLeases == 0 || work.TemporaryV128ShiftVectorSlotLeases == 0 {
++							t.Fatalf("actual shift/GP/XMM lease pressure absent: %+v", work)
++						}
++					default:
++						if l.dynamic && (work.TemporaryV128ShiftDynamic != 2 || work.TemporaryV128ShiftCountRegLeases == 0) || !l.dynamic && (work.TemporaryV128ShiftImmediate != 2 || peep["simd-shift-imm"] != 2) {
++							t.Fatalf("ordinary shift path inactive: %+v", work)
++						}
++					}
++					counts := []uint32{17, 0xffffffff}
++					if l.dynamic {
++						counts = []uint32{0, uint32(l.width - 1), uint32(l.width), uint32(l.width + 1), 0xffffffff}
++					}
++					for i, k := range counts {
++						ownedShiftRun(t, cm, l, k, 3+17*i)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peep, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index a04ac372..e976e962 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -694,7 +694,7 @@ func (f *fn) i8x16Swizzle() {
+ 	srcElem := f.popValue()
+ 	if f.fixtureV128BytePermutesEnabled() {
+ 		floor, pins := f.protectFixtureV128Permute(srcElem, idxElem)
+-		defer f.restoreFixtureV128Permute(floor, pins)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
+ 		f.sc.fixtureWork.TemporaryV128Swizzles++
+ 	}
+ 	idx := f.materializeV128(idxElem)
+@@ -727,7 +727,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
+ 	fixturePermute := f.fixtureV128BytePermutesEnabled()
+ 	if fixturePermute {
+ 		floor, pins := f.protectFixtureV128Permute(aElem, bElem)
+-		defer f.restoreFixtureV128Permute(floor, pins)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
+ 		f.sc.fixtureWork.TemporaryV128Shuffles++
+ 	}
+ 	if f.tryV128AlignShuffle(aElem, bElem, lanes) {
+@@ -1271,17 +1271,35 @@ func (f *fn) v128Shift(op simdBinaryOp, opImm simdShiftImmediate, countMask int3
+ }
+ 
+ func (f *fn) v128ShiftCount(countElem *elem, op simdBinaryOp, opImm simdShiftImmediate, countMask int32) {
++	fixtureShift := f.fixtureV128UnsignedShiftsEnabled() &&
++		(op == opVPsllw || op == opVPsrlw || op == opVPslld || op == opVPsrld)
+ 	if countElem.isValue() && countElem.st.kind == stConst {
+-		x, src := f.v128OutputOperand(f.popValue())
++		value := f.popValue()
++		if fixtureShift {
++			floor, pins := f.protectFixtureV128ShiftVector(value)
++			defer f.restoreFixtureV128DetachedState(floor, pins)
++			f.sc.fixtureWork.TemporaryV128ShiftImmediate++
++		}
++		x, src := f.v128OutputOperand(value)
+ 		opImm.emit(f, x, src, byte(countElem.st.cval&int64(countMask)))
+ 		f.stats.peep("simd-shift-imm")
+ 		f.pushVReg(x)
+ 		return
+ 	}
+-	count := f.materialize(countElem)
++	var count Reg
++	if fixtureShift {
++		count = f.fixtureMaterializeV128ShiftCount(countElem)
++	} else {
++		count = f.materialize(countElem)
++	}
+ 	f.a.AluRI(4, count, countMask, false) // Wasm shifts use count modulo lane width.
+ 
+ 	value := f.popValue()
++	if fixtureShift {
++		floor, pins := f.protectFixtureV128ShiftVector(value)
++		defer f.restoreFixtureV128DetachedState(floor, pins)
++		f.sc.fixtureWork.TemporaryV128ShiftDynamic++
++	}
+ 	x, src := f.v128OutputOperand(value)
+ 	countX := f.allocFReg(maskOf(x, src))
+ 	f.a.MovGprToXmm(countX, count, false)
+@@ -1321,6 +1339,11 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
+ 			prefix1 == 0xfd && shiftOp == 171 &&
+ 			prefix2 == 0xfd && orOp == 80 {
+ 			srcElem := f.popValue()
++			if f.fixtureV128UnsignedShiftsEnabled() {
++				floor, pins := f.protectFixtureV128ShiftVector(srcElem)
++				defer f.restoreFixtureV128DetachedState(floor, pins)
++				f.sc.fixtureWork.TemporaryV128ShiftRotates++
++			}
+ 			src, owned := f.operandRegV128(srcElem)
+ 			if f.opt(optAVX512VRotate) && f.cpuHas(shared.AMD64AVX512) {
+ 				out := src
+@@ -1351,6 +1374,9 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
+ 			return
+ 		}
+ 		_ = r.JumpTo(save)
++		if f.fixtureV128UnsignedShiftsEnabled() {
++			f.sc.fixtureWork.TemporaryV128ShiftRotateMisses++
++		}
+ 	}
+ 	f.v128ShiftCount(countElem, opVPsrld, opVPsrldImm, 31)
+ }
+@@ -3016,10 +3042,16 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 	case 138: // i16x8.extend_high_i8x16_u
+ 		f.i16x8ExtendI8x16(false, true)
+ 	case 139: // i16x8.shl
++		if f.s.forest != nil && !f.fixtureV128UnsignedShiftsEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD shift")
++		}
+ 		f.i16x8Shift(opVPsllw, opVPsllwImm)
+ 	case 140: // i16x8.shr_s
+ 		f.i16x8Shift(opVPsraw, opVPsrawImm)
+ 	case 141: // i16x8.shr_u
++		if f.s.forest != nil && !f.fixtureV128UnsignedShiftsEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD shift")
++		}
+ 		f.i16x8Shift(opVPsrlw, opVPsrlwImm)
+ 	case 142: // i16x8.add
+ 		f.v128Bin(r, opVPaddw)
+@@ -3064,10 +3096,16 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 	case 170: // i32x4.extend_high_i16x8_u
+ 		f.i32x4ExtendI16x8(false, true)
+ 	case 171: // i32x4.shl
++		if f.s.forest != nil && !f.fixtureV128UnsignedShiftsEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD shift")
++		}
+ 		f.i32x4Shift(opVPslld, opVPslldImm)
+ 	case 172: // i32x4.shr_s
+ 		f.i32x4Shift(opVPsrad, opVPsradImm)
+ 	case 173: // i32x4.shr_u
++		if f.s.forest != nil && !f.fixtureV128UnsignedShiftsEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD shift")
++		}
+ 		f.i32x4ShrU(r)
+ 	case 199: // i64x2.extend_low_i32x4_s
+ 		f.i64x2ExtendI32x4(true, false)

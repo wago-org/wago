@@ -998,3 +998,11 @@ Apply `v128-permute-focused.patch` after `e826e30b`. The alternative ends at `99
 Seven ordinary fixture lanes passed: 28 images, 56 calls and 14 exact native and encoder-JSON pairs. Natural align, unpack, same-local and bounded-swizzle selectors activated. Each pressure image recorded six full-width spills and one stack-floor raise. Unpack needed two new local pin bits, while general-alias and same-local each needed one. Full-width and whole-memory checks included zero-filling dynamic indices at or above 16. The defensive discarded-owner path did not activate.
 
 Focused summary SHA-256: `aef78eaabd883165b8b01889bf7fe4c44f488ff2767c104643b1cadc41a2c2c8`. No comparison with the default helper, corpus run, public artifact serialization check, or timing claim.
+
+### V128 unsigned shifts and rotate fusion
+
+Apply `v128-shift-focused.patch` after `992a5317`. The alternative ends at `d7033a22ec8711406e3b4f4eb1d3abe29afe5466` (tree `a8b5f5f49b769b39f06d34bc283fc39b00bf977d`). The opt-in covers FD139/141/171/173 and preserves the existing OR-based rotate match; signed shifts and i8/i64 lanes are out of scope. Temporary operand leases, deferred cleanup and counters add compiler work.
+
+The corrected prelaunch fixture passed 28 images, 92 ordinary calls and 14 exact native and encoder-JSON pairs on its first run. Eight immediate and eight dynamic images each emitted two shifts; the dynamic images added two count pins each. Four pressure images each emitted one dynamic shift, six full-width spills and one count-slot and one vector-slot floor raise. Four rotate images each fused once with one vector pin; four near misses each rewound once and emitted two immediate shifts with two vector pins. Whole memory, lane bytes, modulo-16/32 counts and old/current aliases passed. The earlier staged fixture was never run.
+
+Focused summary SHA-256: `ff750120d4cdb294db783f160adada2029c1e909f5d216301fb1c2439e67b142`. No default-helper comparison, historical-reference repair, corpus, public serialization or timing claim. Active source and defaults are unchanged.
