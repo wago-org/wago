@@ -1,0 +1,338 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 34462ea3..bdaefe50 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -2385,8 +2385,20 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
+ // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
+ // or an indirect register call. Explicit operands avoid a closure per wasm call.
+ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
++	return f.emitRegisterCallViaWithLease(ft, resHint, localIdx, indirect, false)
++}
++
++// With consumeTarget, ownership of the detached original target is transferred
++// to this emitter. No caller cleanup may run after result publication.
++func (f *fn) emitRegisterCallViaWithLease(ft *wasm.CompType, resHint int, localIdx int, indirect Reg, consumeTarget bool) uint32 {
+ 	p, rN := len(ft.Params), len(ft.Results)
+-	callTarget, callTargetSpilled := f.preserveIndirectCallTarget(indirect, p)
++	var avoid regMask
++	if consumeTarget {
++		// Deferred argument expressions can claim fixed roles even while
++		// pinned; a detached target cannot be found by spillIfUsed.
++		avoid = maskOf(RAX, RDX, RCX, R8)
++	}
++	callTarget, callTargetSpilled := f.preserveIndirectCallTargetAvoid(indirect, p, avoid)
+ 	allRoots := f.rootsBottomToTop()
+ 	d := len(allRoots)
+ 	allTypes := f.logicalTypes(allRoots)
+@@ -2508,6 +2520,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
+ 			f.pinned = f.pinned.remove(callTarget)
+ 			f.release(callTarget)
+ 		}
++		if consumeTarget {
++			f.pinned = f.pinned.remove(indirect)
++			f.release(indirect)
++		}
+ 		returnOffset = uint32(len(f.a.B))
+ 	}
+ 
+@@ -2592,10 +2608,14 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
+ // so even a target outside the fixed argument registers must be re-pinned here.
+ // A target inside an argument register is first moved to a safe register.
+ func (f *fn) preserveIndirectCallTarget(indirect Reg, paramCount int) (Reg, bool) {
++	return f.preserveIndirectCallTargetAvoid(indirect, paramCount, 0)
++}
++
++func (f *fn) preserveIndirectCallTargetAvoid(indirect Reg, paramCount int, avoid regMask) (Reg, bool) {
+ 	if indirect == regNone {
+ 		return indirect, false
+ 	}
+-	argRegs := maskOf(intArgRegs[:paramCount]...)
++	argRegs := maskOf(intArgRegs[:paramCount]...).union(avoid)
+ 	if !argRegs.has(indirect) {
+ 		f.pinned = f.pinned.add(indirect)
+ 		return indirect, false
+@@ -3552,6 +3572,24 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+ 	return nil
+ }
+ 
++func (f *fn) fixtureImmutableIndirectEnabled() bool {
++	return f.s != nil && f.s.forest != nil && f.sc != nil && f.sc.fixtureWork != nil &&
++		f.sc.fixtureWork.ImmutableIntegerIndirect
++}
++
++func (f *fn) checkFixtureImmutableIndirect(typeIdx, tableIdx uint32) error {
++	ft, sigOK := f.m.TypeFunc(typeIdx)
++	tt, tableOK := f.m.TableType(tableIdx)
++	_, immutable := f.immutableTable(tableIdx)
++	if !f.fixtureImmutableIndirectEnabled() || !sigOK || !tableOK || !immutable || tt.Limits.Addr64 ||
++		!f.opt(optRegABI) || !sigIsIntOnly(ft) || len(ft.Params) > len(intArgRegs) || len(ft.Results) > 1 ||
++		f.importedFunctionCount() != 0 || len(f.customInstructions) != 0 ||
++		f.moduleEH || f.gcFrameRoots != nil || f.s.hasGCRoots || f.gcTypeSubtypingRefTest {
++		return fmt.Errorf("fixture forest: unsupported immutable integer call_indirect shape")
++	}
++	return nil
++}
++
+ // callIndirect lowers call_indirect: bounds-check the table index, verify the
+ // entry's canonical type key, reject a null entry, then call the entry's code
+ // pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
+@@ -3566,6 +3604,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil {
++		if err := f.checkFixtureImmutableIndirect(typeIdx, tableIdx); err != nil {
++			return err
++		}
++	}
+ 	ft, ok := f.m.TypeFunc(typeIdx)
+ 	if !ok {
+ 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
+@@ -3660,12 +3703,15 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
+ 		f.release(idxReg)
+ 		f.pinned = f.pinned.add(code)
+ 		f.stats.peep("immutable-local-call-indirect")
+-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
++		consumeTarget := f.fixtureImmutableIndirectEnabled()
++		returnOffset := f.emitRegisterCallViaWithLease(ft, -1, -1, code, consumeTarget)
+ 		if recordRoots {
+ 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
+ 		}
+-		f.pinned = f.pinned.remove(code)
+-		f.release(code)
++		if !consumeTarget {
++			f.pinned = f.pinned.remove(code)
++			f.release(code)
++		}
+ 		return nil
+ 	}
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 3b6fb8ed..978115a9 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1915,6 +1915,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
++			ImmutableIntegerIndirect: work.ImmutableIntegerIndirect,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index aa06ee6d..36236042 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -97,6 +97,20 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 					return err
+ 				}
+ 			}
++			if op == 0x11 {
++				probe := *r
++				t, err := probe.U32()
++				if err != nil {
++					return err
++				}
++				table, err := probe.U32()
++				if err != nil {
++					return err
++				}
++				if err := f.checkFixtureImmutableIndirect(t, table); err != nil {
++					return err
++				}
++			}
+ 			if op == 0xfc {
+ 				// Preflight before interval/control effects can touch operands.
+ 				probe := *r
+@@ -277,7 +291,8 @@ func fixtureScalarFPOpcode(op byte) bool {
+ 
+ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
+-		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) {
++		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) &&
++		!(op == 0x11 && f.fixtureImmutableIndirectEnabled()) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 6e674ce0..8637589c 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	ImmutableIntegerIndirect                                                                        bool
+ 	FPSelectEmissions                                                                               uint64
+ 	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                                uint64
+ 	FPBlockRegMerges, FPBlockPinConflictSlots                                                       uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_indirect_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_indirect_independent_test.go
+new file mode 100644
+index 00000000..5db8a481
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_indirect_independent_test.go
+@@ -0,0 +1,164 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++	"unsafe"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedImmutableIndirectModule(t *testing.T, poly, oneArg bool) (*wasm.Module, [2]int) {
++	t.Helper()
++	slots := [2]int{1, 1}
++	if poly {
++		slots[1] = 2
++	}
++	i32 := wasm.I32
++	params := []wasm.ValType{i32, i32}
++	reduce := []byte{}
++	second := []byte{0x20, 0, 0x20, 1}
++	firstTarget := []byte{0x20, 0, 0x41, 3, 0x6c, 0x20, 1, 0x6a, 0x0b}
++	secondTarget := []byte{0x20, 0, 0x41, 5, 0x6c, 0x20, 1, 0x6b, 0x0b}
++	if oneArg {
++		params = params[:1]
++		reduce = []byte{0x6a}
++		second = append(second, 0x6a)
++		firstTarget = []byte{0x20, 0, 0x41, 3, 0x6c, 0x41, 7, 0x6a, 0x0b}
++		secondTarget = []byte{0x20, 0, 0x41, 5, 0x6c, 0x41, 11, 0x6b, 0x0b}
++	}
++	body := []byte{0x20, 0, 0x20, 0, 0x20, 3, 0x74, 0x20, 1, 0x20, 3, 0x41, 1, 0x6a, 0x6e}
++	body = append(body, reduce...)
++	body = append(body, 0x20, 2, 0x11, 1, 0, 0x41, 23, 0x21, 0)
++	body = append(body, second...)
++	body = append(body, 0x20, 2, 0x11, 1, 0, 0x6a, 0x6a, 0x0b)
++	mod := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i32, i32, i32, i32}, []wasm.ValType{i32}), wasmtest.FuncType(params, []wasm.ValType{i32}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
++		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 2})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(9, wasmtest.Vec([]byte{0, 0x41, 0, 0x0b, 2, byte(slots[0]), byte(slots[1])})),
++		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(firstTarget), wasmtest.Code(secondTarget))),
++	)
++	m, err := wasm.DecodeModule(mod)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m, slots
++}
++
++func ownedImmutableIndirectRun(t *testing.T, m *wasm.Module, cm *encoder.CompiledModule, slots [2]int, args [4]uint32, want uint32) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	// Conventional local descriptors from the same compiled image and module.
++	table := ar.Alloc(8 + len(slots)*wr.TableEntryBytes)
++	binary.LittleEndian.PutUint32(table, uint32(len(slots)))
++	binary.LittleEndian.PutUint32(table[4:], uint32(len(slots)))
++	for i, fidx := range slots {
++		off := 8 + i*wr.TableEntryBytes
++		binary.LittleEndian.PutUint64(table[off+wr.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.InternalEntry[fidx]))
++		binary.LittleEndian.PutUint64(table[off+wr.TableEntrySigKeyOffset:], m.StructuralTypeKey(m.FuncTypes[fidx].Index))
++		binary.LittleEndian.PutUint64(table[off+wr.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase())|uint64(1)<<63)
++	}
++	jm.SetTablePtr(uintptr(unsafe.Pointer(&table[0])))
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[8*i:], uint64(v))
++	}
++	if err = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, r); err != nil {
++		t.Fatal(err)
++	}
++	if got := binary.LittleEndian.Uint32(r); got != want {
++		t.Fatalf("args=%v got=%d want=%d", args, got, want)
++	}
++}
++
++func TestOwnedForestImmutableIndirectOrdinary(t *testing.T) {
++	for _, tc := range []struct {
++		name, peep   string
++		poly, oneArg bool
++	}{{"mono", "monomorphic-call-indirect", false, false}, {"poly", "immutable-local-call-indirect", true, false}, {"poly-one-arg", "immutable-local-call-indirect", true, true}} {
++		t.Run(tc.name, func(t *testing.T) {
++			m, slots := ownedImmutableIndirectModule(t, tc.poly, tc.oneArg)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, ImmutableIntegerIndirect: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive legacy forest: %+v", work)
++					}
++					peeps := stats.Funcs[0].Peephole
++					if peeps[tc.peep] != 2 || peeps["immutable-table-type-check-elide"] != 2 {
++						t.Fatalf("immutable call strategy inactive: %v", peeps)
++					}
++					for _, args := range [][4]uint32{{7, 48, 0, 2}, {13, 63, 1, 3}, {0x80000001, 99, 1, 0}, {11, 14, 0, 1}} {
++						calc := func(x, y uint32) uint32 {
++							if tc.oneArg {
++								if slots[args[2]] == 2 {
++									return (x+y)*5 - 11
++								}
++								return (x+y)*3 + 7
++							}
++							if slots[args[2]] == 2 {
++								return x*5 - y
++							}
++							return x*3 + y
++						}
++						want := args[0] + calc(args[0]<<args[3], args[1]/(args[3]+1)) + calc(23, args[1])
++						ownedImmutableIndirectRun(t, m, cm, slots, args, want)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else {
++						t.Logf("intr=%v nativeExact=%v encoderJSONExact=%v", intr, bytes.Equal(native, cm.Code), bytes.Equal(metaOracle, encoded))
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peeps, work)
++				}
++			}
++		})
++	}
++}

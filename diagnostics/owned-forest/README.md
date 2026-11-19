@@ -472,3 +472,24 @@ with its unexpected error unchanged. The 31 held inputs were untouched.
 
 Focused summary SHA-256:
 `873b3822f6dd503e3d8eee816fcf2a799357a30d1a36f84328ab0fc4c2e3454c`.
+
+## Focused private immutable integer table32 calls
+
+Apply indirect-focused.patch on top of 214c190d. The focused gate
+at 3be9b35c passed 12 images and 48 valid calls, with six exact native
+and encoder-exported JSON pairs. Every image selected its natural
+mono or poly path twice and elided two immutable type checks.
+Both targets ran in the polymorphic cases. Ordinary/interruptible
+native sizes were 473/619 bytes (mono), 599/744 (two-argument poly),
+and 558/719 (one-argument poly).
+
+The detached-target path excludes fixed roles RAX/RDX/RCX/R8 and
+argument registers, and retires scoped ownership before result
+allocation. Generic and callRef paths and defaults are unchanged.
+The fixtures do not establish target relocation, scratch fallback
+or spilling. No exceptional, held-input, corpus, timing, or public
+artifact codec verification was performed. The prior 83-of-114
+census still exited 1; the 31 held inputs were untouched.
+
+Focused summary SHA-256:
+`54083b69a8b8c06315918282f1e003e8f8bf006194fd2a0a4869a8e6ef949c58`.
