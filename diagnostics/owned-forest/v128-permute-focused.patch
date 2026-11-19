@@ -1,0 +1,410 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index a2239f8d..c1b6da47 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1937,6 +1937,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128Loops:                 work.TemporaryV128Loops,
+ 			TemporaryV128BlockResults:          work.TemporaryV128BlockResults,
+ 			TemporaryV128PerFunction:           work.TemporaryV128PerFunction,
++			TemporaryV128BytePermutes:          work.TemporaryV128BytePermutes,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 90688391..51702369 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,9 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128BytePermutes                                                                                                                bool
++	TemporaryV128Shuffles, TemporaryV128Swizzles                                                                                             uint64
++	TemporaryV128PermuteSlotLeases, TemporaryV128PermuteLocalLeases, TemporaryV128ShuffleDiscardedOwners                                     uint64
+ 	TemporaryV128PerFunction                                                                                                                 bool
+ 	TemporaryV128ScalarSiblings                                                                                                              uint64
+ 	TemporaryV128Classifier, TemporaryV128InlineClassifier                                                                                   fixtureVectorClassificationWork
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index b9627c8b..7d1fe532 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,37 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128BytePermutesEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BytePermutes
++}
++
++// Neither detached spill slots nor detached local aliases are visible to the
++// allocator's operand walk. Keep them live through all permutation scratch.
++func (f *fn) protectFixtureV128Permute(a, b *elem) (int, regMask) {
++	floor, pins := f.spillFloor, f.fpinned
++	work := f.sc.fixtureWork
++	for _, e := range [2]*elem{a, b} {
++		switch e.st.kind {
++		case stSlot:
++			end := e.st.slotIndex() + 2
++			if end > f.spillFloor {
++				f.spillFloor = end
++				work.TemporaryV128PermuteSlotLeases++
++			}
++		case stLocalReg:
++			if !f.fpinned.has(e.st.reg) {
++				f.fpinned = f.fpinned.add(e.st.reg)
++				work.TemporaryV128PermuteLocalLeases++
++			}
++		}
++	}
++	return floor, pins
++}
++
++func (f *fn) restoreFixtureV128Permute(floor int, pins regMask) {
++	f.spillFloor, f.fpinned = floor, pins
++}
++
+ func (f *fn) fixtureV128BlockResultsEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128BlockResults
+ }
+@@ -91,6 +122,21 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 				if _, err := r.Bytes(16); err != nil {
+ 					return false, err
+ 				}
++			case 13, 14: // i8x16.shuffle, i8x16.swizzle
++				if !work.TemporaryV128BytePermutes {
++					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
++				}
++				if sub == 13 {
++					lanes, err := r.Bytes(16)
++					if err != nil {
++						return false, err
++					}
++					for _, lane := range lanes {
++						if lane >= 32 {
++							return false, fmt.Errorf("fixture forest: invalid shuffle lane")
++						}
++					}
++				}
+ 			case 21, 22, 24, 25, 27, 29: // integer lane extraction
+ 				if _, err := r.Byte(); err != nil {
+ 					return false, err
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_permute_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_permute_independent_test.go
+new file mode 100644
+index 00000000..e015fd54
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_permute_independent_test.go
+@@ -0,0 +1,249 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++type ownedPermuteLane struct {
++	name string
++	mask [16]byte
++}
++
++var ownedPermuteLanes = []ownedPermuteLane{
++	{"general-alias", [16]byte{31, 0, 16, 7, 22, 8, 10, 19, 2, 21, 4, 18, 29, 11, 12, 30}},
++	{"align", [16]byte{7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}},
++	{"unpack", [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}},
++	{"same-local", [16]byte{31, 0, 16, 7, 22, 8, 10, 19, 2, 21, 4, 18, 29, 11, 12, 30}},
++	{"pressure", [16]byte{31, 0, 16, 7, 22, 8, 10, 19, 2, 21, 4, 18, 29, 11, 12, 30}},
++	{"swizzle", [16]byte{}},
++	{"bounded-swizzle", [16]byte{}},
++}
++
++func ownedPermuteModule(t *testing.T, l ownedPermuteLane) *wasm.Module {
++	t.Helper()
++	locals := l.name == "general-alias" || l.name == "unpack" || l.name == "same-local"
++	b := []byte{0, 0x20, 0}
++	if locals {
++		b = []byte{1, 2, 0x7b, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	pc(512)
++	switch l.name {
++	case "general-alias":
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1)
++		ld(16)
++		b = append(b, 0x21, 1, 0x20, 1)
++	case "unpack":
++		ld(0)
++		b = append(b, 0x21, 1)
++		ld(16)
++		b = append(b, 0x21, 2)
++		b = append(b, 0x20, 1, 0x20, 2)
++	case "same-local":
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1, 0x20, 1)
++	case "pressure":
++		ld(0)
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++	default:
++		ld(0)
++		ld(16)
++	}
++	switch l.name {
++	case "bounded-swizzle":
++		b = append(b, 0xfd, 12)
++		b = append(b, bytes.Repeat([]byte{15}, 16)...)
++		b = append(b, 0xfd, 78, 0xfd, 14)
++	case "swizzle":
++		b = append(b, 0xfd, 14)
++	default:
++		b = append(b, 0xfd, 13)
++		b = append(b, l.mask[:]...)
++	}
++	st()
++	if l.name == "general-alias" {
++		pc(528)
++		b = append(b, 0x20, 1)
++		st()
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedPermuteRun(t *testing.T, cm *encoder.CompiledModule, l ownedPermuteLane, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	for i := range 21 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + salt)
++		}
++	}
++	if l.name == "swizzle" || l.name == "bounded-swizzle" {
++		indexes := [16]byte{0, 15, 16, 127, 128, 255, 7, 23, 9, 14, 19, 32, 1, 6, 31, 240}
++		for i := range indexes {
++			mem[16+i] = indexes[(i+salt)%16]
++		}
++	}
++	x, y := mem[:16], mem[16:32]
++	var reduced [16]byte
++	if l.name == "same-local" {
++		y = x
++	}
++	if l.name == "pressure" {
++		for j := range reduced {
++			for i := 1; i <= 20; i++ {
++				reduced[j] ^= ^mem[16*i+j]
++			}
++		}
++		y = reduced[:]
++	}
++	var outData [16]byte
++	for i := range outData {
++		if l.name == "swizzle" || l.name == "bounded-swizzle" {
++			k := y[i]
++			if l.name == "bounded-swizzle" {
++				k &= 15
++			}
++			if k < 16 {
++				outData[i] = x[k]
++			}
++		} else if k := l.mask[i]; k < 16 {
++			outData[i] = x[k]
++		} else {
++			outData[i] = y[k-16]
++		}
++	}
++	if bytes.Equal(outData[:8], outData[8:]) {
++		t.Fatal("fixture lost distinct output halves")
++	}
++	want := append([]byte(nil), mem...)
++	copy(want[512:], outData[:])
++	if l.name == "general-alias" {
++		copy(want[528:], mem[16:32])
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + salt)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(outData[:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s got=%x want=%x err=%v", l.name, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s byte[%d]=%x want=%x", l.name, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128PermuteOrdinary(t *testing.T) {
++	for _, lane := range ownedPermuteLanes {
++		t.Run(lane.name, func(t *testing.T) {
++			m := ownedPermuteModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128BytePermutes: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive lane: %+v", work)
++					}
++					peep := stats.Funcs[0].Peephole
++					key := map[string]string{"align": "simd-shuffle-align", "unpack": "simd-shuffle-native", "same-local": "simd-shuffle-same", "bounded-swizzle": "simd-swizzle-in-range"}[lane.name]
++					if key != "" && peep[key] != 1 {
++						t.Fatalf("missing natural selector %s: %v", key, peep)
++					}
++					if lane.name == "swizzle" && peep["simd-swizzle-in-range"] != 0 {
++						t.Fatal("unbounded dynamic index marked bounded")
++					}
++					isSwizzle := lane.name == "swizzle" || lane.name == "bounded-swizzle"
++					sh, sw := uint64(1), uint64(0)
++					if isSwizzle {
++						sh, sw = 0, 1
++					}
++					if work.TemporaryV128Shuffles != sh || work.TemporaryV128Swizzles != sw {
++						t.Fatalf("wrong emission receipt: %+v", work)
++					}
++					if lane.name == "pressure" && (work.TemporaryV128Spills == 0 || work.TemporaryV128PermuteSlotLeases == 0) {
++						t.Fatalf("actual spill/slot lease absent: %+v", work)
++					}
++					if lane.name == "unpack" && work.TemporaryV128PermuteLocalLeases == 0 {
++						t.Fatalf("actual local lease absent: %+v", work)
++					}
++					for _, salt := range []int{3, 29} {
++						ownedPermuteRun(t, cm, lane, salt)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peep, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index a07af862..a04ac372 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -692,6 +692,11 @@ func (f *fn) i8x16Swizzle() {
+ 	idxElem := f.popValue()
+ 	bounded := f.opt(optValueFacts) && idxElem.st.valueFacts().has(factBytesBelow16)
+ 	srcElem := f.popValue()
++	if f.fixtureV128BytePermutesEnabled() {
++		floor, pins := f.protectFixtureV128Permute(srcElem, idxElem)
++		defer f.restoreFixtureV128Permute(floor, pins)
++		f.sc.fixtureWork.TemporaryV128Swizzles++
++	}
+ 	idx := f.materializeV128(idxElem)
+ 	f.fpinned = f.fpinned.add(idx)
+ 	src := f.materializeV128(srcElem)
+@@ -719,6 +724,12 @@ func (f *fn) i8x16Swizzle() {
+ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
+ 	bElem := f.popValue()
+ 	aElem := f.popValue()
++	fixturePermute := f.fixtureV128BytePermutesEnabled()
++	if fixturePermute {
++		floor, pins := f.protectFixtureV128Permute(aElem, bElem)
++		defer f.restoreFixtureV128Permute(floor, pins)
++		f.sc.fixtureWork.TemporaryV128Shuffles++
++	}
+ 	if f.tryV128AlignShuffle(aElem, bElem, lanes) {
+ 		return
+ 	}
+@@ -769,6 +780,15 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
+ 		if owned && src != dst {
+ 			f.releaseF(src)
+ 		}
++		// A skipped borrowed input has no claim to retire. The private
++		// lane may instead have an owned forwarded copy of this alias.
++		if fixturePermute && bElem != aElem && bElem.st.kind == stReg {
++			reg := bElem.st.reg
++			if reg != src && reg != dst && f.fregUser[reg] == bElem {
++				f.releaseF(reg)
++				f.sc.fixtureWork.TemporaryV128ShuffleDiscardedOwners++
++			}
++		}
+ 		f.stats.peep("simd-shuffle-same")
+ 		f.pushVReg(dst)
+ 		return
+@@ -2775,6 +2795,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 		}
+ 		f.v128Const(binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16]))
+ 	case 13: // i8x16.shuffle
++		if f.s.forest != nil && !f.fixtureV128BytePermutesEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD shuffle")
++		}
+ 		var lanes [16]byte
+ 		for i := range lanes {
+ 			lane, err := r.Byte()
+@@ -2788,6 +2811,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 		}
+ 		f.i8x16Shuffle(r, lanes)
+ 	case 14: // i8x16.swizzle
++		if f.s.forest != nil && !f.fixtureV128BytePermutesEnabled() {
++			return fmt.Errorf("fixture forest: unsupported SIMD swizzle")
++		}
+ 		f.i8x16Swizzle()
+ 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
+ 		f.v128Bin(r, opVPshufb)

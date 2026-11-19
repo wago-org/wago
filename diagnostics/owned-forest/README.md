@@ -990,3 +990,11 @@ Apply `mixed-simd-classifier-focused.patch` after the typed V128 BLOCK/IF checkp
 The first build stopped on a Reader pointer/value mismatch; no tests ran. The corrected build passed four ordinary/interruptible images and 24 ordinary calls with two exact native and encoder-JSON pairs, including the full-memory oracle. Each image recorded a main scan of four bodies (592 bytes, 545 opcodes, 14 type visits), three scalar siblings, and a vector preflight (45 bytes, 12 opcodes), with one natural inline and one RegABI call. The forest arm additionally scanned one selected inline body (6 bytes, 4 opcodes, no type visits) before binding; that is additional compiler work, not a savings claim.
 
 Focused summary SHA-256: `1e25d1db7badfef4d1e7e91bc3966a0763ab5aa0b9308a8a444f9539c7142294`. This checkpoint does not rerun the corpus, validate public artifact serialization, repair historical reference mismatches, or establish a timing change. Defaults and active source are unchanged.
+
+### V128 shuffle and swizzle
+
+Apply `v128-permute-focused.patch` after `e826e30b`. The alternative ends at `992a53176e9c0842423c82c4f2e2e6d33dba94e9` (tree `6c0d65818de7c852fb4cdeb1e9af16ac5782233a`). Both test arms opt into the new FD13/14 handling. It reserves detached operand slots and local pins across lowering and restores those reservations on return. Default and relaxed-SIMD handling are unchanged.
+
+Seven ordinary fixture lanes passed: 28 images, 56 calls and 14 exact native and encoder-JSON pairs. Natural align, unpack, same-local and bounded-swizzle selectors activated. Each pressure image recorded six full-width spills and one stack-floor raise. Unpack needed two new local pin bits, while general-alias and same-local each needed one. Full-width and whole-memory checks included zero-filling dynamic indices at or above 16. The defensive discarded-owner path did not activate.
+
+Focused summary SHA-256: `aef78eaabd883165b8b01889bf7fe4c44f488ff2767c104643b1cadc41a2c2c8`. No comparison with the default helper, corpus run, public artifact serialization check, or timing claim.
