@@ -1,0 +1,181 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go
+new file mode 100644
+index 00000000..ea519cbf
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_identity_independent_test.go
+@@ -0,0 +1,96 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"fmt"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"testing"
++)
++
++func TestOwnedForestIdentityRetirement(t *testing.T) {
++	for _, typ := range []machineType{mtI32, mtI64} {
++		for _, tc := range []struct {
++			op       wOp
++			constant int64
++		}{{opAnd, 0}, {opMul, 0}, {opRemU, 1}} {
++			for _, candidate := range []bool{false, true} {
++				f := independentForestFn(candidate)
++				prefix := f.pushValue(storage{kind: stLocalRef, typ: typ, idx: 0})
++				left := f.pushValue(storage{kind: stLocalRef, typ: typ, idx: 0})
++				f.pushValue(storage{kind: stConst, typ: typ, cval: tc.constant})
++				f.pushBinOp(tc.op, typ)
++				top := f.s.back()
++				if !top.isValue() || top.st.kind != stConst || top.st.cval != 0 || top.st.typ != typ || f.s.logicalDepth != 2 {
++					t.Fatalf("identity did not fold op=%v candidate=%v", tc.op, candidate)
++				}
++				roots := f.rootsBottomToTop()
++				if len(roots) != 2 || roots[0] != prefix || prefix.st.kind != stLocalRef {
++					t.Fatal("prefix alias changed")
++				}
++				if candidate {
++					if left.forestLive {
++						t.Fatal("discarded operand still attached")
++					}
++					independentForestNilLinks(t, f, []*elem{prefix, left, top})
++				}
++			}
++		}
++	}
++}
++
++func TestOwnedForestIdentityOrdinaryModules(t *testing.T) {
++	for _, wide := range []bool{false, true} {
++		typ, con, add := wasm.I32, byte(0x41), byte(0x6a)
++		ops := []byte{0x71, 0x6c, 0x70}
++		if wide {
++			typ, con, add = wasm.I64, 0x42, 0x7c
++			ops = []byte{0x83, 0x7e, 0x82}
++		}
++		for i, op := range ops {
++			rhs := byte(0)
++			if i == 2 {
++				rhs = 1
++			}
++			t.Run(fmt.Sprintf("wide=%v/op=%x", wide, op), func(t *testing.T) {
++				// Keep the original local beneath the folded identity, overwrite the
++				// local afterwards, and observe both its old snapshot and new value.
++				body := []byte{0, 0x03, 0x40, 0x01, 0x0b, 0x20, 0, 0x20, 0, con, rhs, op, con, 23, 0x21, 0, 0x20, 0, add, add, 0x0b}
++				m := mod1(t, []wasm.ValType{typ}, []wasm.ValType{typ}, body)
++				for _, intr := range []bool{false, true} {
++					var oracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate}
++						cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: work})
++						if e != nil {
++							t.Fatal(e)
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || (candidate && work.Vector.stores == 0) {
++							t.Fatalf("inactive forest/legacy: %+v", work)
++						}
++						for _, arg := range []uint64{7, 0xffffffff, 0x80000000} {
++							want := arg + 23
++							if !wide {
++								want = uint64(uint32(want))
++							}
++							got, e := ownedRunModule(t, cm, []uint64{arg})
++							if e != nil || got != want {
++								t.Fatalf("wide=%v op=%x candidate=%v got=%d want=%d err=%v", wide, op, candidate, got, want, e)
++							}
++						}
++						if !candidate {
++							oracle = append([]byte(nil), cm.Code...)
++						} else if !bytes.Equal(oracle, cm.Code) {
++							t.Fatal("native differs")
++						}
++						t.Logf("wide=%v op=%x intr=%v candidate=%v bytes=%d work=%+v", wide, op, intr, candidate, len(cm.Code), work)
++						if cm.CodeImage != nil {
++							cm.CodeImage.Close()
++						}
++					}
++				}
++			})
++		}
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index fcbff27d..6e0a0f14 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -833,7 +833,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 		if cu == ones {
+ 			return dropRight() // x & ~0 → x
+ 		}
+-		if cu == 0 && f.discardSimple(left) {
++		if cu == 0 && f.discardSimple(left, right) {
+ 			f.erase(right)
+ 			f.pushValue(storage{kind: stConst, typ: typ})
+ 			return op, true // x & 0 → 0
+@@ -842,7 +842,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 		switch {
+ 		case cu == 1:
+ 			return dropRight() // x*1 → x
+-		case cu == 0 && f.discardSimple(left):
++		case cu == 0 && f.discardSimple(left, right):
+ 			f.erase(right)
+ 			f.pushValue(storage{kind: stConst, typ: typ})
+ 			return op, true // x*0 → 0
+@@ -860,7 +860,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp,
+ 		}
+ 	case opRemU:
+ 		switch {
+-		case cu == 1 && f.discardSimple(left): // x %ᵤ 1 → 0
++		case cu == 1 && f.discardSimple(left, right): // x %ᵤ 1 → 0
+ 			f.erase(right)
+ 			f.pushValue(storage{kind: stConst, typ: typ})
+ 			return op, true
+@@ -908,24 +908,36 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
+ 	return false
+ }
+ 
+-// discardSimple erases a left operand whose value is no longer needed (x*0,
+-// x&0) — only for simple, resource-light elems: a deferred tree or a pending
+-// memRef keeps its node (the simplification is skipped) rather than growing a
+-// full recursive release path for a rare case.
+-func (f *fn) discardSimple(left *elem) bool {
++// discardSimple erases the left operand of an annihilating fold while
++// its constant RHS is still live. Deferred trees and pending memory refs
++// remain ineligible; this path never releases their effects.
++func (f *fn) discardSimple(left, right *elem) bool {
+ 	if !left.isValue() {
+ 		return false
+ 	}
+ 	switch left.st.kind {
+-	case stConst, stLocalRef, stLocalReg, stGlobReg, stSlot:
+-		f.erase(left)
++	case stConst, stLocalRef, stLocalReg, stGlobReg, stSlot, stReg:
++	default:
++		return false
++	}
++	if v := f.s.forest; v != nil {
++		i := len(v.roots) - 2
++		if i < 0 || v.roots[i] != left || v.roots[i+1] != right ||
++			!left.forestLive || !right.forestLive || left.forestPending || right.forestPending ||
++			!left.st.hasLogicalRoot() || !right.st.hasLogicalRoot() {
++			panic("fixture forest: discard requires the owned binary suffix")
++		}
++		if left.st.kind == stReg {
++			f.release(left.st.reg)
++		}
++		f.forestEraseAt(i, left)
+ 		return true
+-	case stReg:
++	}
++	if left.st.kind == stReg {
+ 		f.release(left.st.reg)
+-		f.erase(left)
+-		return true
+ 	}
+-	return false
++	f.erase(left)
++	return true
+ }
+ 
+ func log2u(v uint64) int {

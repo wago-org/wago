@@ -205,3 +205,19 @@ TestDivRemConstPairValues suites passed two top-level tests and 66
 subtests without skips. This was not an owned-forest selector or DROP
 runtime gate. The 31 original corpus panics remain unresolved by
 dynamic evidence. No new corpus or performance result is claimed.
+
+## Focused constant-identity retirement
+
+Apply identity-focused.patch on top of f878b8f0. Source ea6719f4
+handles the three identity-fold paths where discardSimple retires
+the second root; 5e1316ca adds independent ordinary-input tests.
+At clean 5e1316ca, six direct folds passed in both arms. The decoded
+gate covered 24 valid execution images and 72 runtime calls, with
+12 exact native pairs. The 12 candidate images each used an actual
+legacy forest body and dispatched 150 opcodes in total.
+
+The direct invariant tests cover local-reference storage. Other
+storage-form cleanup was source-reviewed but not individually
+exercised by those tests. No exceptional-input, crash, or corpus gate
+ran; the 31 original corpus panics remain unverified. This is focused
+correctness evidence, not a coverage expansion or speed claim.
