@@ -139,3 +139,38 @@ fb04ae5e preserves existing shared-scalar engine priority and counts that
 path as a bypass rather than forcing forest activation. Prefix policies
 remain unported. This is focused correctness evidence, not full corpus
 coverage, timing, storage reduction, or a net work claim.
+
+## One-pass public Compile corpus census
+
+One serial untimed run at c9b12d78 retained 290 public Compile calls with
+one worker and all experimental flags off. The baseline passed all 145
+native and serialized-metadata comparisons. The candidate completed
+48 of 145 modules, with exact native and serialized parity for all 48.
+The gate failed; no retry or Wasm runtime execution was performed.
+
+Of 97 candidate failures, the frozen raw classification was 33 scope
+rejections and 64 unexpected errors. A separate read-only audit attributed
+33 of the unexpected errors to an explicit specialized-state guard omitted
+from the allowlist. The remaining 31 were unresolved recovered nil-pointer
+backend panics. The audit does not revise the raw classification or turn
+the failed run into a pass.
+
+The 48 completed modules contained 49 legacy/forest bodies, out of 519 on
+the baseline corpus, and one shared-scalar bypass. They dispatched 15,254
+of the 357,073 observed baseline opcodes (4.27%). Results from partially
+compiled failed modules are excluded from completed-module coverage.
+
+Separate observations on the 48 completed matched modules:
+
+- List: 85,780 reached link assignments; 3,540 shared-cursor visits;
+  3 spill-prefix visits; 1,075 effect visits.
+- Forest: 18,156 instrumented root stores; 7,389 cursor-frame writes;
+  2,892 cursor visits; 172 growth events; 10,754 retirements; 13 spills;
+  5 pending-flags transitions.
+
+These units are heterogeneous and incomplete, and cannot be subtracted
+into a savings estimate. Existing prefix policies and snapshot/copy
+coverage remain incomplete. The observed cursor depth peaked at 7 and
+retained root capacity at 32 pointers; elem measured 64 bytes. These
+are not allocation, RSS, speed, or node-shrink measurements. Later
+fixes and focused tests are not part of this census.
