@@ -1,0 +1,426 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 8d74d32b..616d97dd 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1939,6 +1939,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			TemporaryV128PerFunction:           work.TemporaryV128PerFunction,
+ 			TemporaryV128BytePermutes:          work.TemporaryV128BytePermutes,
+ 			TemporaryV128UnsignedShifts:        work.TemporaryV128UnsignedShifts,
++			TemporaryV128IntegerBinary:         work.TemporaryV128IntegerBinary,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 1a93fff2..47dac370 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,9 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128IntegerBinary                                                                                                                 bool
++	TemporaryV128BinaryEquality, TemporaryV128BinaryNarrow, TemporaryV128BinarySaturating                                                      uint64
++	TemporaryV128BinarySlotLeases, TemporaryV128BinaryLocalLeases                                                                              uint64
+ 	TemporaryV128UnsignedShifts                                                                                                                bool
+ 	TemporaryV128ShiftImmediate, TemporaryV128ShiftDynamic, TemporaryV128ShiftRotates, TemporaryV128ShiftRotateMisses                          uint64
+ 	TemporaryV128ShiftCountSlotLeases, TemporaryV128ShiftCountRegLeases, TemporaryV128ShiftVectorSlotLeases, TemporaryV128ShiftVectorRegLeases uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 0538c57d..d939a6c5 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -37,6 +37,18 @@ func (f *fn) fixtureV128RegionEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
+ }
+ 
++func (f *fn) fixtureV128IntegerBinaryEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128IntegerBinary
++}
++
++func fixtureV128IntegerBinarySubopcode(sub uint32) bool {
++	switch sub {
++	case 35, 45, 55, 101, 102, 133, 134, 111, 112, 114, 115, 143, 144, 146, 147:
++		return true
++	}
++	return false
++}
++
+ func (f *fn) fixtureV128UnsignedShiftsEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128UnsignedShifts
+ }
+@@ -86,20 +98,24 @@ func (f *fn) fixtureV128BytePermutesEnabled() bool {
+ // Neither detached spill slots nor detached local aliases are visible to the
+ // allocator's operand walk. Keep them live through all permutation scratch.
+ func (f *fn) protectFixtureV128Permute(a, b *elem) (int, regMask) {
+-	floor, pins := f.spillFloor, f.fpinned
+ 	work := f.sc.fixtureWork
++	return f.protectFixtureV128Pair(a, b, &work.TemporaryV128PermuteSlotLeases, &work.TemporaryV128PermuteLocalLeases)
++}
++
++func (f *fn) protectFixtureV128Pair(a, b *elem, slotLeases, localLeases *uint64) (int, regMask) {
++	floor, pins := f.spillFloor, f.fpinned
+ 	for _, e := range [2]*elem{a, b} {
+ 		switch e.st.kind {
+ 		case stSlot:
+ 			end := e.st.slotIndex() + 2
+ 			if end > f.spillFloor {
+ 				f.spillFloor = end
+-				work.TemporaryV128PermuteSlotLeases++
++				(*slotLeases)++
+ 			}
+ 		case stLocalReg:
+ 			if !f.fpinned.has(e.st.reg) {
+ 				f.fpinned = f.fpinned.add(e.st.reg)
+-				work.TemporaryV128PermuteLocalLeases++
++				(*localLeases)++
+ 			}
+ 		}
+ 	}
+@@ -187,6 +203,10 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 				if !work.TemporaryV128UnsignedShifts {
+ 					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+ 				}
++			case 35, 45, 55, 101, 102, 133, 134, 111, 112, 114, 115, 143, 144, 146, 147:
++				if !work.TemporaryV128IntegerBinary {
++					return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
++				}
+ 			case 77, 78, 79, 80, 81, 82, 83: // bitwise and any_true
+ 			default:
+ 				return false, fmt.Errorf("fixture forest: unsupported temporary SIMD subopcode %d", sub)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intbin_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intbin_independent_test.go
+new file mode 100644
+index 00000000..f7b8f272
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_intbin_independent_test.go
+@@ -0,0 +1,294 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++type ownedIntBinCase struct {
++	op                      uint32
++	width                   int
++	kind                    string
++	unsigned, sub, pressure bool
++}
++
++var ownedIntBinCases = []ownedIntBinCase{
++	{op: 35, width: 8, kind: "eq"}, {op: 45, width: 16, kind: "eq"}, {op: 55, width: 32, kind: "eq"},
++	{op: 101, width: 16, kind: "narrow"}, {op: 102, width: 16, kind: "narrow", unsigned: true},
++	{op: 133, width: 32, kind: "narrow"}, {op: 134, width: 32, kind: "narrow", unsigned: true},
++	{op: 111, width: 8, kind: "sat"}, {op: 112, width: 8, kind: "sat", unsigned: true},
++	{op: 114, width: 8, kind: "sat", sub: true}, {op: 115, width: 8, kind: "sat", unsigned: true, sub: true},
++	{op: 143, width: 16, kind: "sat"}, {op: 144, width: 16, kind: "sat", unsigned: true},
++	{op: 146, width: 16, kind: "sat", sub: true}, {op: 147, width: 16, kind: "sat", unsigned: true, sub: true},
++	{op: 35, width: 8, kind: "eq", pressure: true},
++}
++
++func ownedIntBinModule(t *testing.T, c ownedIntBinCase) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 1, 0x7b, 0x20, 0}
++	if c.pressure {
++		b = []byte{0, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if !c.pressure {
++		pc(544)
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1)
++		pc(512)
++		b = append(b, 0x20, 1) // second old read supplies the operation
++		ld(16)
++		b = append(b, 0x21, 1, 0x20, 1)
++	} else {
++		pc(512)
++		ld(0)
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++	}
++	b = append(b, 0xfd)
++	b = append(b, wasmtest.ULEB(c.op)...)
++	st()
++	if !c.pressure {
++		st() // independent old-value observation
++		pc(528)
++		b = append(b, 0x20, 1)
++		st()
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedIntBinRead(src []byte, width int) uint32 {
++	switch width {
++	case 8:
++		return uint32(src[0])
++	case 16:
++		return uint32(binary.LittleEndian.Uint16(src))
++	default:
++		return binary.LittleEndian.Uint32(src)
++	}
++}
++func ownedIntBinWrite(dst []byte, width int, v uint32) {
++	switch width {
++	case 8:
++		dst[0] = byte(v)
++	case 16:
++		binary.LittleEndian.PutUint16(dst, uint16(v))
++	default:
++		binary.LittleEndian.PutUint32(dst, v)
++	}
++}
++func ownedIntBinSigned(v uint32, width int) int64 {
++	return int64(int32(v<<uint(32-width)) >> uint(32-width))
++}
++
++func ownedIntBinRun(t *testing.T, cm *encoder.CompiledModule, c ownedIntBinCase, variant int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + variant*7)
++	}
++	for i := range 21 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + variant)
++		}
++	}
++	bank := c.width / 8
++	n := 16 / bank
++	maxu := uint32((uint64(1) << uint(c.width)) - 1)
++	sign := uint32(1) << uint(c.width-1)
++	narrowsign := uint32(1) << uint(c.width/2-1)
++	var xp, yp []uint32
++	switch c.kind {
++	case "narrow":
++		// Input bit patterns are decoded as signed for both narrowing variants.
++		xp = []uint32{sign, maxu, narrowsign - 1, narrowsign, narrowsign * 2, narrowsign*2 - 1, maxu - narrowsign + 1, 1}
++		yp = []uint32{narrowsign*2 + 1, 0, maxu - narrowsign, narrowsign - 2, sign - 1, 2, narrowsign*2 - 1, sign}
++	case "sat":
++		xp = []uint32{0, sign - 1, sign, sign + 1, maxu, 1, maxu - 1, sign - 2}
++		yp = []uint32{1, 1, maxu, maxu - 2, 2, maxu - 2, maxu, sign + 1}
++	default:
++		xp = []uint32{0, sign, maxu, sign - 1, 3, 7, 11, 17}
++		yp = []uint32{0, sign ^ 1, maxu, sign - 2, 3, 9, 11, 23}
++	}
++	for i := range n {
++		// At width 32 the second invocation reaches the latter boundary group.
++		x, y := xp[(i+4*variant)%len(xp)], yp[(i+4*variant)%len(yp)]
++		if variant != 0 && c.kind == "sat" {
++			x, y = y, x
++		}
++		ownedIntBinWrite(mem[i*bank:], c.width, x)
++		if !c.pressure {
++			ownedIntBinWrite(mem[16+i*bank:], c.width, y)
++		}
++	}
++	x, y := mem[:16], mem[16:32]
++	if c.pressure {
++		var reduced [16]byte
++		for j := range reduced {
++			for i := 1; i <= 20; i++ {
++				reduced[j] ^= ^mem[16*i+j]
++			}
++		}
++		for j := range reduced {
++			if j%3 == variant {
++				x[j] = reduced[j]
++			} else {
++				x[j] = reduced[j] ^ 0xff
++			}
++		}
++		y = reduced[:]
++	}
++	var result [16]byte
++	clamp := func(v int64, width int) uint32 {
++		lo, hi := int64(0), int64(1)<<uint(width)-1
++		if !c.unsigned {
++			hi = int64(1)<<uint(width-1) - 1
++			lo = -hi - 1
++		}
++		return uint32(min(max(v, lo), hi))
++	}
++	for i := range n {
++		a, b := ownedIntBinRead(x[i*bank:], c.width), ownedIntBinRead(y[i*bank:], c.width)
++		switch c.kind {
++		case "eq":
++			if a == b {
++				ownedIntBinWrite(result[i*bank:], c.width, maxu)
++			}
++		case "narrow":
++			half := bank / 2
++			ownedIntBinWrite(result[i*half:], c.width/2, clamp(ownedIntBinSigned(a, c.width), c.width/2))
++			ownedIntBinWrite(result[(i+n)*half:], c.width/2, clamp(ownedIntBinSigned(b, c.width), c.width/2))
++		case "sat":
++			aa, bb := int64(a), int64(b)
++			if !c.unsigned {
++				aa, bb = ownedIntBinSigned(a, c.width), ownedIntBinSigned(b, c.width)
++			}
++			if c.sub {
++				bb = -bb
++			}
++			ownedIntBinWrite(result[i*bank:], c.width, clamp(aa+bb, c.width))
++		}
++	}
++	want := append([]byte(nil), mem...)
++	copy(want[512:], result[:])
++	if !c.pressure {
++		copy(want[528:], y)
++		copy(want[544:], x)
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + variant)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(result[:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("FD%d variant=%d got=%x want=%x err=%v", c.op, variant, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("FD%d variant=%d byte[%d]=%x want=%x", c.op, variant, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128IntegerBinaryOrdinary(t *testing.T) {
++	for _, c := range ownedIntBinCases {
++		t.Run(fmt.Sprintf("FD%d/pressure=%v", c.op, c.pressure), func(t *testing.T) {
++			m := ownedIntBinModule(t, c)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128IntegerBinary: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive lane: %+v", work)
++					}
++					var eq, na, sa uint64
++					switch c.kind {
++					case "eq":
++						eq = 1
++					case "narrow":
++						na = 1
++					case "sat":
++						sa = 1
++					}
++					if work.TemporaryV128BinaryEquality != eq || work.TemporaryV128BinaryNarrow != na || work.TemporaryV128BinarySaturating != sa {
++						t.Fatalf("wrong binary emission counters: %+v", work)
++					}
++					if c.pressure && (work.TemporaryV128BinarySlotLeases == 0 || work.TemporaryV128Spills == 0) {
++						t.Fatalf("actual floor lease or full-width spill absent: %+v", work)
++					}
++					if !c.pressure && work.TemporaryV128BinaryLocalLeases == 0 {
++						t.Fatalf("new local pin absent: %+v", work)
++					}
++					for variant := range 2 {
++						ownedIntBinRun(t, cm, c, variant)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Peephole, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index e976e962..421310fb 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -840,6 +840,23 @@ func (f *fn) operandRegV128(e *elem) (Reg, bool) {
+ func (f *fn) v128Bin(r *wasm.Reader, op simdBinaryOp) {
+ 	b := f.popValue()
+ 	a := f.popValue()
++	if f.fixtureV128IntegerBinaryEnabled() {
++		work := f.sc.fixtureWork
++		var emitted *uint64
++		switch op {
++		case opVPcmpeqb, opVPcmpeqw, opVPcmpeqd:
++			emitted = &work.TemporaryV128BinaryEquality
++		case opVPpacksswb, opVPpackuswb, opVPpackssdw, opVPpackusdw:
++			emitted = &work.TemporaryV128BinaryNarrow
++		case opVPaddsb, opVPaddusb, opVPsubsb, opVPsubusb, opVPaddsw, opVPaddusw, opVPsubsw, opVPsubusw:
++			emitted = &work.TemporaryV128BinarySaturating
++		}
++		if emitted != nil {
++			floor, pins := f.protectFixtureV128Pair(a, b, &work.TemporaryV128BinarySlotLeases, &work.TemporaryV128BinaryLocalLeases)
++			defer f.restoreFixtureV128DetachedState(floor, pins)
++			(*emitted)++
++		}
++	}
+ 	var facts valueFacts
+ 	if f.opt(optValueFacts) {
+ 		facts = vectorBinaryFacts(op, a.st.valueFacts(), b.st.valueFacts())
+@@ -2795,6 +2812,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil && fixtureV128IntegerBinarySubopcode(sub) && !f.fixtureV128IntegerBinaryEnabled() {
++		return fmt.Errorf("fixture forest: unsupported SIMD integer binary operation")
++	}
+ 	switch sub {
+ 	case 0: // v128.load
+ 		return f.v128Load(r)

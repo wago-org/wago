@@ -1006,3 +1006,11 @@ Apply `v128-shift-focused.patch` after `992a5317`. The alternative ends at `d703
 The corrected prelaunch fixture passed 28 images, 92 ordinary calls and 14 exact native and encoder-JSON pairs on its first run. Eight immediate and eight dynamic images each emitted two shifts; the dynamic images added two count pins each. Four pressure images each emitted one dynamic shift, six full-width spills and one count-slot and one vector-slot floor raise. Four rotate images each fused once with one vector pin; four near misses each rewound once and emitted two immediate shifts with two vector pins. Whole memory, lane bytes, modulo-16/32 counts and old/current aliases passed. The earlier staged fixture was never run.
 
 Focused summary SHA-256: `ff750120d4cdb294db783f160adada2029c1e909f5d216301fb1c2439e67b142`. No default-helper comparison, historical-reference repair, corpus, public serialization or timing claim. Active source and defaults are unchanged.
+
+### V128 integer binary operations
+
+Apply `v128-binary-focused.patch` after `d7033a22`. The alternative ends at `7ab5e01a7aa8ad561eeda566f96f13cf6cd0b2b1` (tree `2222d7355567853c0779a32bf715573cbdcc30e0`). Both arms use the opt-in ownership helper for exactly 15 FD opcodes: integer equality, signed-source narrowing, and signed or unsigned saturating add/subtract. Temporary leases and their cleanup are additional compiler work.
+
+The focused run passed 64 images and 128 ordinary calls with 32 exact native and encoder-JSON pairs. The 60 routine images (12 equality, 16 narrowing, 32 saturation) each emitted the intended operation and added one local pin. Each of the four pressure images emitted equality, recorded one slot-floor raise, and spilled six full-width vectors. Independent expectations covered signed-source unsigned narrowing, concatenation and subtraction order, and old/current/output values across whole memory.
+
+Focused summary SHA-256: `10763dcb12010c9060b1dc7d37fdc8c2dc7f80bbe2976ebd47731bb7003c95d3`. No extra FD admission, default change, historical repair, corpus, public serialization, or timing claim.
