@@ -601,3 +601,22 @@ The previous 83-of-114 exit-1 result at 054dc7f8 is unchanged.
 
 Summary SHA-256: `b78e563cbff78d35dbd4060983c7999d824d267e1403db76abf737d5a97f0852`.
 Rows SHA-256: `e6b534724d996801d1790b9098ab7d77757efbd0a7a7d7d1be4b420ce8b9de05`.
+
+## Focused memory.size for defined memory32
+
+Apply memory-size-focused.patch on top of 39f93798. The focused gate at
+9d47a31e passed 12 images and 72 valid calls, with six exact native and
+encoder-exported JSON pairs. It covered defined unshared memory32 at
+index zero, with one, three, and seven attached pages. Four prefix
+images emitted memory.size once; eight IF or call images emitted it
+twice. Each of the four call images used one actual register-ABI call.
+
+The initial attempt at 5bc0caf2 failed to compile because of a missing
+fmt import and executed no test images. The import-only correction at
+9d47a31e passed. Inline preflight moves ahead of binding; no inline
+activation is established. Memory.grow remains excluded. No imported,
+shared, or memory64 coverage; no public codec, held-input, corpus, or
+timing result. The 90-of-114 census at 39f93798 and defaults are unchanged.
+
+Focused summary SHA-256:
+`f852f4943a219c3b29300050ddf98eb4e46100a20765f3044a4242a6ebfac40e`.

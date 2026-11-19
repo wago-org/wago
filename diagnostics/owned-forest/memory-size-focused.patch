@@ -1,0 +1,324 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 6c19bfdc..784df2f3 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -409,7 +409,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 				supportedBody = f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.IntegerControlInline &&
+ 					len(ft.Results) <= 1 && f.fixtureInlineIntegerControlBody(target)
+ 			} else {
+-				supportedBody = !target.recursive() && (!f.fixtureScalarFPEnabled() || f.fixtureInlineIntegerBody(target))
++				supportedBody = !target.recursive() && f.fixtureInlineStraightBody(target, f.fixtureScalarFPEnabled())
+ 			}
+ 			if !sigIsIntOnly(ft) || !supportedBody || target.tupleSelect() || target.tupleLoop() ||
+ 				target.tailLoop() || !f.fixtureInlineIntegerLocals(target) {
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 4052ae96..90ce40cf 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -111,6 +111,16 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 					return err
+ 				}
+ 			}
++			if op == 0x3f {
++				probe := *r
++				index, err := probe.U32()
++				if err != nil {
++					return err
++				}
++				if err := f.checkFixtureMemorySize(index); err != nil {
++					return err
++				}
++			}
+ 			if op == 0xfc {
+ 				// Preflight before interval/control effects can touch operands.
+ 				probe := *r
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index a232820d..01822611 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1260,30 +1260,37 @@ func (f *fn) fixtureInlineIntegerLocals(t *inlineTarget) bool {
+ 	return true
+ }
+ 
+-// fixtureInlineIntegerBody checks a naturally selected straight-line target
+-// before inlineCall binds its arguments. Integer signatures and locals alone
+-// do not exclude floating intermediates or accesses to floating globals.
+-func (f *fn) fixtureInlineIntegerBody(t *inlineTarget) bool {
++// Preflight new memory.size sites before binding a naturally selected
++// straight-line target. In the scalar-FP lane also fence FP intermediates:
++// integer parameters and local declarations alone do not rule them out.
++func (f *fn) fixtureInlineStraightBody(t *inlineTarget, integerOnly bool) bool {
+ 	if t.isI32AddConst() {
+ 		return true // The selected shortcut emits only the recognized i32 add.
+ 	}
+ 	r := wasm.NewReader(t.body)
+ 	for r.HasNext() {
+ 		op, err := r.Byte()
+-		if err != nil || !fixtureScalarOpcode(op) || op == 0xfc {
++		if err != nil || (integerOnly && (!fixtureScalarOpcode(op) || op == 0xfc)) {
+ 			return false
+ 		}
+ 		switch op {
+ 		case 0x0b:
+ 			return !r.HasNext()
++		case 0x3f:
++			x, err := r.U32()
++			if err != nil || f.checkFixtureMemorySize(x) != nil {
++				return false
++			}
+ 		case 0x23, 0x24:
+ 			x, err := r.U32()
+ 			if err != nil {
+ 				return false
+ 			}
+-			gt, ok := f.globalType(x)
+-			if !ok || !isIntValType(wasm.GlobalValueType(gt)) {
+-				return false
++			if integerOnly {
++				gt, ok := f.globalType(x)
++				if !ok || !isIntValType(wasm.GlobalValueType(gt)) {
++					return false
++				}
+ 			}
+ 		default:
+ 			if f.classifier.SkipImmediate(r, op) != nil {
+@@ -1322,6 +1329,12 @@ func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
+ 			if depth == 0 {
+ 				return !r.HasNext()
+ 			}
++		case 0x3f:
++			x, err := r.U32()
++			if err != nil || f.checkFixtureMemorySize(x) != nil {
++				return false
++			}
++			continue
+ 		case 0x10:
+ 			callee, err := r.U32()
+ 			if err != nil || !t.recursive() || callee != uint32(t.globalIdx) {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 51dfd928..96ca6985 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -10,6 +10,7 @@
+ package amd64
+ 
+ import (
++	"fmt"
+ 	"os"
+ 
+ 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+@@ -1783,11 +1784,29 @@ func (f *fn) emitSharedMemoryGrowZeroFastPath(slot int, memoryIndex uint32) int
+ 	return done
+ }
+ 
++// A fixture memory.size is an eager snapshot of unshared memory32 pages.
++// Do not admit indexed, shared, memory64, or grow paths through this check.
++func (f *fn) checkFixtureMemorySize(index uint32) error {
++	if index != 0 || f.m == nil || f.m.ImportedMemCount() != 0 || f.threadedMemory0 || f.guardMode {
++		return fmt.Errorf("fixture forest: unsupported memory.size state")
++	}
++	mt, ok := f.memoryType(index)
++	if !ok || mt.Limits.Addr64 || mt.Shared {
++		return fmt.Errorf("fixture forest: unsupported memory.size state")
++	}
++	return nil
++}
++
+ func (f *fn) memorySize(r *wasm.Reader) error {
+ 	memoryIndex, err := r.U32()
+ 	if err != nil {
+ 		return err
+ 	}
++	if f.s.forest != nil {
++		if err := f.checkFixtureMemorySize(memoryIndex); err != nil {
++			return err
++		}
++	}
+ 	if f.memoryShared(memoryIndex) {
+ 		f.sharedMemorySize(memoryIndex)
+ 		return nil
+@@ -1807,6 +1826,9 @@ func (f *fn) memorySize(r *wasm.Reader) error {
+ 	} else {
+ 		f.pushReg(out, mtI32)
+ 	}
++	if f.sc != nil && f.sc.fixtureWork != nil && (f.s.forest != nil || f.checkFixtureMemorySize(memoryIndex) == nil) {
++		f.sc.fixtureWork.MemorySizeEmissions++
++	}
+ 	return nil
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index bd3ff226..b4f20d21 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,7 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	MemorySizeEmissions                                                                             uint64
+ 	DivRemConstPairSeekVisits                                                                       uint64
+ 	IntegerControlInline                                                                            bool
+ 	IntegerControlInlineLeaves, IntegerControlInlineRecursive                                       uint64
+@@ -379,7 +380,7 @@ func (s *stack) forestRotateToTop(i int, e *elem) {
+ func fixtureScalarOpcode(op byte) bool {
+ 	switch {
+ 	case op <= 0x05, op >= 0x0b && op <= 0x0e, op == 0x0f, op == 0x10, op == 0x1a, op == 0x1b,
+-		op >= 0x20 && op <= 0x24, op == 0x28, op == 0x29, op >= 0x2c && op <= 0x37, op >= 0x3a && op <= 0x3e,
++		op >= 0x20 && op <= 0x24, op == 0x28, op == 0x29, op >= 0x2c && op <= 0x37, op >= 0x3a && op <= 0x3f,
+ 		op == 0x41, op == 0x42, op >= 0x45 && op <= 0x5a, op >= 0x67 && op <= 0x8a,
+ 		op == 0xa7, op == 0xac, op == 0xad, op >= 0xc0 && op <= 0xc4, op == 0xfc:
+ 		return true
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_memory_size_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_memory_size_independent_test.go
+new file mode 100644
+index 00000000..53a40d27
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_memory_size_independent_test.go
+@@ -0,0 +1,148 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedMemorySizeModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	body := []byte{0, 0x20, 0}
++	switch lane {
++	case "prefix":
++		body = append(body, 0x3f, 0)
++	case "if":
++		body = append(body, 0x20, 1, 0x04, 0x7f, 0x3f, 0, 0x05, 0x3f, 0, 0x41, 1, 0x6a, 0x0b)
++	case "call":
++		body = append(body, 0x3f, 0, 0x20, 0, 0x10, 1, 0x3f, 0, 0x6a, 0x6a)
++	}
++	body = append(body, 0x41, 23, 0x21, 0, 0x6a, 0x20, 0, 0x6a, 0x0b)
++	if lane != "call" {
++		return modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
++	}
++	caller := append(wasmtest.ULEB(uint32(len(body))), body...)
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{1}, 512)...)
++	callee = append(callee, 0x20, 0, 0x41, 7, 0x6a, 0x0b)
++	callee = append(wasmtest.ULEB(uint32(len(callee))), callee...)
++	i := wasm.I32
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i, i}, []wasm.ValType{i}), wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(caller, callee)),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedMemorySizeRun(t *testing.T, cm *encoder.CompiledModule, pages int, x, cond, want uint32) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(pages * 65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	ar, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ar.Close()
++	image, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(a, uint64(x))
++	binary.LittleEndian.PutUint64(a[8:], uint64(cond))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, r)
++	got := binary.LittleEndian.Uint32(r)
++	if err != nil || got != want {
++		t.Fatalf("pages=%d x=%x cond=%d got=%x want=%x err=%v", pages, x, cond, got, want, err)
++	}
++}
++
++func TestOwnedForestMemorySizeOrdinary(t *testing.T) {
++	for _, lane := range []string{"prefix", "if", "call"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedMemorySizeModule(t, lane)
++			if err := wasm.ValidateModule(m); err != nil {
++				t.Fatal(err)
++			}
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive forest: %+v", work)
++					}
++					wantEmissions := uint64(2)
++					if lane == "prefix" {
++						wantEmissions = 1
++					}
++					if work.MemorySizeEmissions != wantEmissions {
++						t.Fatalf("actual size emissions=%d want %d", work.MemorySizeEmissions, wantEmissions)
++					}
++					if lane == "call" && stats.Funcs[0].Calls["regabi"] != 1 {
++						t.Fatalf("native call inactive: %v", stats.Funcs[0].Calls)
++					}
++					for _, pages := range []int{1, 3, 7} {
++						for _, cond := range []uint32{0, 1} {
++							x := uint32(19)
++							if cond == 1 {
++								x = 0xfffffff0
++							}
++							want := x + 23 + uint32(pages)
++							if lane == "if" && cond == 0 {
++								want++
++							}
++							if lane == "call" {
++								want += x + 7 + uint32(pages)
++							}
++							ownedMemorySizeRun(t, cm, pages, x, cond, want)
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d calls=%v work=%+v", intr, candidate, len(cm.Code), stats.Funcs[0].Calls, work)
++				}
++			}
++		})
++	}
++}
