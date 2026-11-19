@@ -1,0 +1,344 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 5e0d77f0..3cc87d4b 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1928,6 +1928,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			PrivateMemory32Grow:                work.PrivateMemory32Grow,
+ 			ScalarFPSixArgABI:                  work.ScalarFPSixArgABI,
+ 			TemporaryV128SIMD:                  work.TemporaryV128SIMD,
++			TemporaryV128Locals:                work.TemporaryV128Locals,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+@@ -3721,7 +3722,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 			return nil, nil, 0, fmt.Errorf("fixture forest: unsupported noninteger function ABI")
+ 		}
+ 		for _, run := range c.Locals.Runs {
+-			if !isIntValType(run.Type) && !(work.ScalarFP && isFloatValType(run.Type)) {
++			vectorLocal := work.TemporaryV128SIMD && work.TemporaryV128Locals && wasm.EqualValType(run.Type, wasm.V128)
++			if !isIntValType(run.Type) && !(work.ScalarFP && isFloatValType(run.Type)) && !vectorLocal {
+ 				return nil, nil, 0, fmt.Errorf("fixture forest: unsupported local declaration")
+ 			}
+ 		}
+@@ -4208,7 +4210,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
+ 	if f.vectorRegion.enabled && fpPinLimit > 8 {
+ 		fpPinLimit = 8
+ 	}
+-	if work := sc.fixtureWork; work != nil && work.TemporaryV128SIMD && f.moduleHasSIMD {
++	if work := sc.fixtureWork; work != nil && work.TemporaryV128SIMD &&
++		(f.moduleHasSIMD || work.TemporaryV128Locals && f.fixtureHasVectorLocal()) {
+ 		sawSIMD, err := f.preflightFixtureTemporarySIMD(c.BodyBytes)
+ 		if err != nil {
+ 			if work.Forest {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index 1b8fadeb..4dc76f02 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128Locals                                                                             bool
++	TemporaryV128ForwardCopies, TemporaryV128AliasInvalidations                                     uint64
+ 	ScalarFPUnsignedF32ToI32Saturation                                                              bool
+ 	FPUnsignedF32ToI32SaturationEmissions, FPUnsignedF32ToI32SaturationBoundPressure                uint64
+ 	IntegerControlInlineMemoryGrow                                                                  bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 5e459f29..20a3f31e 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -15,6 +15,19 @@ import (
+ 	"github.com/wago-org/wago/src/core/compiler/wasm"
+ )
+ 
++func (f *fn) fixtureHasVectorLocal() bool {
++	for _, typ := range f.localType {
++		if typ == mtV128 {
++			return true
++		}
++	}
++	return false
++}
++
++func (f *fn) fixtureV128LocalsEnabled() bool {
++	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128Locals
++}
++
+ // Preflight the entire validated body, not just the instructions visited by
+ // bodyLoop. Existing SIMD selectors can consume adjacent operations, including
+ // a load/extract packet and store/repeated-address/load packet.
+@@ -24,7 +37,7 @@ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 		return false, fmt.Errorf("fixture forest: unsupported temporary SIMD function state")
+ 	}
+ 	for _, typ := range f.localType {
+-		if typ != mtI32 && typ != mtI64 {
++		if typ != mtI32 && typ != mtI64 && !(typ == mtV128 && f.sc.fixtureWork.TemporaryV128Locals) {
+ 			return false, fmt.Errorf("fixture forest: unsupported temporary SIMD local type")
+ 		}
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_locals_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_locals_independent_test.go
+new file mode 100644
+index 00000000..296a1295
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_locals_independent_test.go
+@@ -0,0 +1,191 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128LocalsModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	n, x := byte(13), byte(13)
++	if lane == "pressure" {
++		n, x = 1, 1
++	}
++	b := []byte{1, n, 0x7b, 0x20, 0}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if lane != "pressure" {
++		for i := byte(1); i < 13; i++ {
++			// Give earlier valid vector locals priority without changing pin policy.
++			// get(1)+tee(2)+set(2) ties or exceeds target with lower index.
++			b = append(b, 0x20, i, 0x22, i, 0x21, i)
++		}
++		pc(32)
++		ld(0)
++		b = append(b, 0x22, x)
++		if lane == "forward" {
++			b = append(b, 0x20, x, 0xfd, 80)
++			st()
++		} else {
++			ld(16)
++			b = append(b, 0x21, x)
++			st()
++			pc(48)
++			b = append(b, 0x20, x)
++			st()
++		}
++		if len(b) >= 120 {
++			t.Fatal("scratch fixture drifted out of bounded body")
++		}
++		b = append(b, 0x41, 23, 0x73, 0x0b)
++	} else {
++		pc(480)
++		b = append(b, 0x20, x)
++		st() // Wasm zero initialization, observed full 16 bytes.
++		pc(512)
++		for i := range 20 {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++		b = append(b, 0x22, x)
++		st()
++		b = append(b, 0x20, x, 0xfd, 83, 0x04, 0x7f)
++		b = append(b, 0x20, x, 0xfd, 27, 0, 0x05, 0x41, 23, 0x0b, 0x73, 0x0b)
++	}
++	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128LocalsRun(t *testing.T, cm *encoder.CompiledModule, lane string, zero bool) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	mem := jm.LinearMemory()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	for i := range 20 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + 13)
++		}
++	}
++	if zero {
++		clear(mem[:320])
++	}
++	want := append([]byte(nil), mem...)
++	v := uint32(23)
++	switch lane {
++	case "forward":
++		copy(want[32:48], mem[:16])
++	case "aliases":
++		copy(want[32:48], mem[:16])
++		copy(want[48:64], mem[16:32])
++	case "pressure":
++		clear(want[480:496])
++		var out [16]byte
++		for j := range out {
++			for i := range 20 {
++				out[j] ^= ^mem[16*i+j]
++			}
++		}
++		if out != [16]byte{} {
++			v = binary.LittleEndian.Uint32(out[:])
++		}
++		copy(want[512:528], out[:])
++	}
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xabcde112)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, mem, tr, out)
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != old^v {
++		t.Fatalf("lane=%s zero=%v got=%x want=%x err=%v", lane, zero, got, old^v, err)
++	}
++	if !bytes.Equal(mem, want) {
++		t.Fatalf("lane=%s wrong full memory", lane)
++	}
++}
++
++func TestOwnedForestV128LocalsOrdinary(t *testing.T) {
++	for _, lane := range []string{"forward", "aliases", "pressure"} {
++		t.Run(lane, func(t *testing.T) {
++			m := ownedV128LocalsModule(t, lane)
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++						t.Fatalf("inactive SIMD locals: %+v", work)
++					}
++					peeps := stats.Funcs[0].Peephole
++					if lane == "forward" && (work.TemporaryV128ForwardCopies != 1 || peeps["simd-local-forward"] != 1) {
++						t.Fatalf("no owned scratch forward: %v %+v", peeps, work)
++					}
++					if lane == "aliases" && (work.TemporaryV128AliasInvalidations == 0 || work.TemporaryV128ForwardCopies != 0) {
++						t.Fatalf("no stale alias retirement or wrong forward: %+v", work)
++					}
++					if lane == "pressure" && work.TemporaryV128Spills == 0 {
++						t.Fatalf("no fullwidth spills: %+v", work)
++					}
++					for _, zero := range []bool{false, true} {
++						ownedV128LocalsRun(t, cm, lane, zero)
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peeps, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index fe8f927c..a07af862 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -615,14 +615,15 @@ func v128LocalAlias(e *elem) (int, bool) {
+ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ 	for _, e := range f.fregUser {
+ 		// Only linked register owners can supply a still-live stack alias.
+-		if e == nil || e.prev == nil || e.next == nil {
++		if e == nil || !f.s.operandAttached(e) {
+ 			continue
+ 		}
+ 		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
+ 			continue
+ 		}
+ 		facts := e.st.valueFacts()
+-		if immediateSIMD {
++		fixtureCopy := f.fixtureV128LocalsEnabled()
++		if immediateSIMD && !fixtureCopy {
+ 			// The following SIMD opcode consumes this top-of-stack read before
+ 			// the older tee value can be released. Model it as a borrowed local
+ 			// register so three-operand instructions read it in place.
+@@ -630,9 +631,15 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ 			f.stats.peep("simd-local-forward")
+ 			return true
+ 		}
++		// A scratch tee owner can be spilled by a following SIMD selector
++		// before it acquires a read-only alias. Copy while the source is
++		// still known and protected instead of borrowing that lifetime.
+ 		dst := f.allocFReg(maskOf(e.st.reg))
+ 		f.mov128(dst, e.st.reg)
+ 		f.pushVReg(dst).st.setValueFacts(facts)
++		if fixtureCopy {
++			f.sc.fixtureWork.TemporaryV128ForwardCopies++
++		}
+ 		f.stats.peep("simd-local-forward")
+ 		return true
+ 	}
+@@ -647,11 +654,27 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ var vectorAliasTypeFilterEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD64_VECTOR_ALIAS_TYPE_FILTER") != "0"
+ 
+ func (f *fn) clearV128LocalAliases(x int) {
+-	if f.s.forest != nil {
+-		if f.localType[x] == mtV128 {
++	fixtureLocals := f.fixtureV128LocalsEnabled()
++	if f.s.forest != nil || fixtureLocals {
++		if f.localType[x] != mtV128 {
++			return // Fixed numeric types cannot own a vector alias.
++		}
++		if !fixtureLocals {
+ 			panic("fixture forest: unported vector alias invalidation")
+ 		}
+-		return // numeric-only fixture cannot hold a V128 alias of this fixed scalar local.
++		// Clearing matching annotations is order-independent; the vector
++		// value, owner, and register are not changed.
++		for c := f.s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
++			if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
++				e.st.cval = 0
++				f.sc.fixtureWork.TemporaryV128AliasInvalidations++
++			}
++		}
++		return
+ 	}
+ 	// Local types are fixed, including the rebased locals of an inline body.
+ 	// Only vector assignments can invalidate a vector-local alias.

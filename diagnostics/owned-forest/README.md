@@ -831,3 +831,23 @@ result. FC3, FC5/7, compiler defaults and prior evidence are unchanged.
 
 Focused summary SHA-256:
 `50dcd86146da26482b9403cf21671b1e5e6162ac7c8e5960b252e4669b18a61d`.
+
+## Focused V128 locals
+
+Apply v128-locals-focused.patch on top of 894039d0. At 8061dbbb the
+focused gate passed 12 images and 24 ordinary calls with six exact
+native and encoder-metadata pairs. Four forward images each selected
+one scratch local.tee forward and one owned copy. Four alias images
+each invalidated one old annotation and recorded no forward copy.
+Each of four pressure images recorded six full-width spills. The
+oracles checked full 16-byte zero initialization, old and current
+local values, a live scalar IF prefix, and whole memory.
+
+Both arms used the new capability, including explicit owned copies at
+scratch-tee forwarding sites. The copy adds a move, not evidence of a
+performance gain. Default lowering and pin policy are unchanged.
+No vector ABI, region, typed vector control, public artifact codec,
+corpus, or timing result.
+
+Focused summary SHA-256:
+`c33ca46ea64afbbc11df0103cea0a1538dd5b6051b4a79996864143f3b5469ad`.
