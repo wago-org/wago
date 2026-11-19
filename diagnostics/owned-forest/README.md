@@ -959,3 +959,26 @@ metadata, corpus coverage, timing, or historical repair. Defaults unchanged.
 
 Focused summary SHA-256:
 `4520af0b00c1ded70fbc72431d150ce8d928c2ebb5d13e5185c7796b09cb9b49`.
+
+## Focused direct V128 BLOCK and IF results
+
+Apply v128-block-focused.patch on top of 22c9b92b. This covers direct
+0x7b BLOCK and IF result types, with unchanged straight-line selection
+and canonical 16-byte, two-slot merge. At 5eb6cbb9, 12 images and 48
+ordinary calls passed, with six exact native and encoder-metadata
+pairs. Four straight images each recorded one fallthrough; eight
+branchful images each recorded one slot merge. Four overlapping
+images each recorded one two-slot move from source = destination + 1.
+
+Each of the four regional IF images recorded five admissions, five
+writebacks, five alias rebases, one eviction and four boundary writes.
+Each forest regional IF image recorded 72 rebase cursor visits. The
+oracles checked the scalar neighbor, the full 16-byte prefix and result,
+and both outcomes with fresh in-bounds inputs. Session 80322 completed
+before an environment outage and was not rerun.
+
+No corpus, timing, vector ABI, public serialized metadata, or replay of
+failing inputs. Compiler defaults remain unchanged.
+
+Focused summary SHA-256:
+`0d763c61827c6ee1eae563c02a98b1f5e6a3a7304057595e1d18038fc7582d37`.
