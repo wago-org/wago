@@ -1,0 +1,326 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 494a5bb1..c0cab80e 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1932,6 +1932,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ScalarFPSixArgABI:                  work.ScalarFPSixArgABI,
+ 			TemporaryV128SIMD:                  work.TemporaryV128SIMD,
+ 			TemporaryV128Locals:                work.TemporaryV128Locals,
++			TemporaryV128RegionalLocals:        work.TemporaryV128RegionalLocals,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index f5b56514..9de0d0be 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -328,7 +328,7 @@ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || (f.moduleHasSIMD && !f.fixtureTemporarySIMD) || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+-		f.vectorRegion.enabled {
++		(f.vectorRegion.enabled && !f.fixtureV128RegionEnabled()) {
+ 		return fmt.Errorf("fixture forest: unsupported specialized function state")
+ 	}
+ 	return nil
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index a75bb977..9dfcc947 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -275,6 +275,10 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	TemporaryV128RegionalLocals                                                                     bool
++	TemporaryV128RegionAdmissions, TemporaryV128RegionWritebacks                                    uint64
++	TemporaryV128RegionAliasRebases, TemporaryV128RegionRebaseVisits                                uint64
++	TemporaryV128RegionEvictions, TemporaryV128RegionBoundaryWritebacks                             uint64
+ 	TemporaryV128Locals                                                                             bool
+ 	TemporaryV128ForwardCopies, TemporaryV128AliasInvalidations                                     uint64
+ 	ScalarFPUnsignedF32ToI32Saturation                                                              bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+index 20a3f31e..32faea0f 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_simd.go
+@@ -28,12 +28,21 @@ func (f *fn) fixtureV128LocalsEnabled() bool {
+ 	return f.fixtureTemporarySIMD && f.sc.fixtureWork.TemporaryV128Locals
+ }
+ 
++func (f *fn) fixtureV128RegionRequested() bool {
++	return f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.TemporaryV128SIMD &&
++		f.sc.fixtureWork.TemporaryV128Locals && f.sc.fixtureWork.TemporaryV128RegionalLocals
++}
++
++func (f *fn) fixtureV128RegionEnabled() bool {
++	return f.fixtureTemporarySIMD && f.fixtureV128RegionRequested()
++}
++
+ // Preflight the entire validated body, not just the instructions visited by
+ // bodyLoop. Existing SIMD selectors can consume adjacent operations, including
+ // a load/extract packet and store/repeated-address/load packet.
+ func (f *fn) preflightFixtureTemporarySIMD(body []byte) (bool, error) {
+ 	if f.moduleEH || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+-		f.vectorRegion.enabled || len(f.customInstructions) != 0 || !sigIsIntOnly(f.ft) {
++		(f.vectorRegion.enabled && !f.fixtureV128RegionRequested()) || len(f.customInstructions) != 0 || !sigIsIntOnly(f.ft) {
+ 		return false, fmt.Errorf("fixture forest: unsupported temporary SIMD function state")
+ 	}
+ 	for _, typ := range f.localType {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_v128_region_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_region_independent_test.go
+new file mode 100644
+index 00000000..87bafddf
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_v128_region_independent_test.go
+@@ -0,0 +1,163 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedV128RegionModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	// Param0 is an old scalar prefix, param1 controls the ordinary IF branch.
++	b := []byte{1, 16, 0x7b, 0x20, 0}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	for i := byte(2); i < 10; i++ {
++		for range 3 {
++			b = append(b, 0x20, i, 0x22, i, 0x21, i)
++		}
++	}
++	// At least five unpinned local writes before any control boundary. Every
++	// immediately-following read stays live; the fifth lease evicts the first.
++	for i := range 5 {
++		ld(i * 16)
++		b = append(b, 0x21, byte(10+i))
++		pc(256 + i*16)
++		b = append(b, 0x20, byte(10+i))
++	}
++	b = append(b, 0x20, 1, 0x04, 0x40)
++	pc(448)
++	pc(17)
++	b = append(b, 0x3a, 0, 0, 0x05)
++	pc(448)
++	pc(29)
++	b = append(b, 0x3a, 0, 0, 0x0b)
++	// Overwrite the oldest home while the old read is still live on the stack.
++	// Store the five old aliases in reverse operand order, then reread new home.
++	ld(80)
++	b = append(b, 0x21, 10)
++	for range 5 {
++		st()
++	}
++	pc(352)
++	b = append(b, 0x20, 10)
++	st()
++	pc(368)
++	b = append(b, 0x20, 17)
++	st() // untouched local's full-width zero value
++	pc(448)
++	b = append(b, 0x2d, 0, 0, 0x73, 0x0b)
++	m := modMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func ownedV128RegionRun(t *testing.T, cm *encoder.CompiledModule, condition uint32, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 5 {
++		copy(want[256+i*16:], mem[i*16:i*16+16])
++	}
++	copy(want[352:], mem[80:96])
++	clear(want[368:384])
++	want[448] = 29
++	if condition != 0 {
++		want[448] = 17
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0x1234beef + salt)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(condition))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != old^uint32(want[448]) {
++		t.Fatalf("cond=%d got=%x want=%x err=%v", condition, got, old^uint32(want[448]), err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("condition=%d byte[%d]=%x want=%x", condition, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func TestOwnedForestV128RegionOrdinary(t *testing.T) {
++	m := ownedV128RegionModule(t)
++	for _, intr := range []bool{false, true} {
++		var native, metaOracle []byte
++		for _, candidate := range []bool{false, true} {
++			work := &fixtureModuleWork{Forest: candidate, TemporaryV128SIMD: true, TemporaryV128Locals: true, TemporaryV128RegionalLocals: true}
++			var stats ModuleStats
++			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if cm.CodeImage != nil {
++				defer cm.CodeImage.Close()
++			}
++			if work.LegacyBodies != 1 || work.Rejected != 0 || work.Opcodes == 0 || candidate && work.Vector.stores == 0 || work.TemporaryV128Bodies != 1 {
++				t.Fatalf("inactive lane: %+v", work)
++			}
++			peep := stats.Funcs[0].Peephole
++			if peep["vector-region-admit"] < 5 || peep["vector-region-writeback"] < 5 {
++				t.Fatalf("actual regional selector inactive: %v", peep)
++			}
++			if work.TemporaryV128RegionAdmissions < 5 || work.TemporaryV128RegionWritebacks < 5 || work.TemporaryV128RegionEvictions == 0 || work.TemporaryV128RegionBoundaryWritebacks < 4 || work.TemporaryV128RegionAliasRebases < 5 || candidate && work.TemporaryV128RegionRebaseVisits == 0 {
++				t.Fatalf("inactive eviction/boundary/live alias rebase: %+v", work)
++			}
++			for _, cond := range []uint32{0, 1} {
++				for _, salt := range []int{3, 29} {
++					ownedV128RegionRun(t, cm, cond, salt)
++				}
++			}
++			meta := *cm
++			meta.Code, meta.CodeImage = nil, nil
++			encoded, err := json.Marshal(meta)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if !candidate {
++				native = append([]byte(nil), cm.Code...)
++				metaOracle = encoded
++			} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++				t.Fatal("native or encoder metadata differs")
++			}
++			t.Logf("intr=%v forest=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peep, work)
++		}
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/vector_region.go b/src/core/compiler/backend/railshot/amd64/vector_region.go
+index cb7f8f0f..5e6683d6 100644
+--- a/src/core/compiler/backend/railshot/amd64/vector_region.go
++++ b/src/core/compiler/backend/railshot/amd64/vector_region.go
+@@ -28,8 +28,11 @@ type vectorRegionState struct {
+ func (f *fn) vectorRegionBoundary(op byte) {
+ 	switch op {
+ 	case 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x1f, 0x40, 0xfb, 0xfc, 0xfe:
+-		for i := range f.vectorRegion.locals {
++		for i, packed := range f.vectorRegion.locals {
+ 			f.homeVectorLocal(i)
++			if packed != 0 && f.fixtureV128RegionEnabled() {
++				f.sc.fixtureWork.TemporaryV128RegionBoundaryWritebacks++
++			}
+ 		}
+ 	}
+ }
+@@ -71,12 +74,29 @@ func (f *fn) homeVectorLocal(i int) {
+ 	}
+ 	x := int(packed) - 1
+ 	reg := f.locals[x].reg
++	fixture := f.fixtureV128RegionEnabled()
++	if f.s.forest != nil && !fixture {
++		panic("fixture forest: unported regional vector writeback")
++	}
+ 	f.storeFrameVector(f.localAddr(x), reg)
+ 	// All vector operations are eager. Pending reads can become lazy frame reads
+ 	// after writeback, since this boundary does not change the local's value.
+-	for e := f.s.head.next; e != f.s.head; e = e.next {
+-		if e.isValue() && e.st.kind == stLocalReg && e.st.typ == mtV128 && e.st.index() == x {
+-			f.replaceStorage(e, storage{kind: stLocalRef, typ: mtV128, idx: uint32(x)})
++	if f.s.forest != nil {
++		for c := f.s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
++			f.sc.fixtureWork.TemporaryV128RegionRebaseVisits++
++			if f.rebaseVectorLocalAlias(e, x) {
++				f.sc.fixtureWork.TemporaryV128RegionAliasRebases++
++			}
++		}
++	} else {
++		for e := f.s.head.next; e != f.s.head; e = e.next {
++			if f.rebaseVectorLocalAlias(e, x) && fixture {
++				f.sc.fixtureWork.TemporaryV128RegionAliasRebases++
++			}
+ 		}
+ 	}
+ 	f.fpinnedLocalMask = f.fpinnedLocalMask.remove(reg)
+@@ -84,8 +104,19 @@ func (f *fn) homeVectorLocal(i int) {
+ 	f.locals[x].isFloat = false
+ 	f.locals[x].state = lsMem
+ 	f.vectorRegion.locals[i] = 0
++	if fixture {
++		f.sc.fixtureWork.TemporaryV128RegionWritebacks++
++	}
+ 	f.stats.peep("vector-region-writeback")
+ }
++
++func (f *fn) rebaseVectorLocalAlias(e *elem, x int) bool {
++	if e.isValue() && e.st.kind == stLocalReg && e.st.typ == mtV128 && e.st.index() == x {
++		f.replaceStorage(e, storage{kind: stLocalRef, typ: mtV128, idx: uint32(x)})
++		return true
++	}
++	return false
++}
+ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
+ 	facts := e.st.valueFacts()
+ 	i := -1
+@@ -98,6 +129,9 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
+ 	if i < 0 {
+ 		i = int(f.vectorRegion.next)
+ 		f.homeVectorLocal(i)
++		if f.fixtureV128RegionEnabled() {
++			f.sc.fixtureWork.TemporaryV128RegionEvictions++
++		}
+ 	}
+ 	reg := f.materializeV128(e)
+ 	// A materialization may use a relinquished whole-function pin. Its original
+@@ -117,6 +151,9 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
+ 	} else {
+ 		f.erase(e)
+ 	}
++	if f.fixtureV128RegionEnabled() {
++		f.sc.fixtureWork.TemporaryV128RegionAdmissions++
++	}
+ 	f.stats.peep("vector-region-admit")
+ 	return true
+ }

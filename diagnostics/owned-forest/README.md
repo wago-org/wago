@@ -912,3 +912,22 @@ codec, corpus, timing or promotion claim. Compiler defaults are unchanged.
 
 Focused summary SHA-256:
 `56c8ea602a3a328335ec2b5046aa4fb28b656f538468a586dc17f352fa2aa8f0`.
+
+## Focused regional V128 ownership
+
+Apply v128-region-focused.patch on top of e2c1a2d7. At 8f281704 the
+focused gate passed four images and 16 ordinary calls with two exact
+native and encoder-metadata pairs. Every image recorded six admissions,
+six writebacks, five live-alias rebases, one rotor eviction, and five
+boundary writebacks. Each forest image recorded 61 rebase-scan visits,
+a subset of cursor visits; the list-specific comparison counter was
+zero. These counters do not establish a net cost.
+
+The regional policy is unchanged. The fixture checked all memory,
+including old and current aliases, zero values, and the scalar IF.
+It did not exercise the fifth input itself as the aliased eviction
+victim. No loops, vector ABI, corpus or timing coverage. Compiler
+defaults and prior census results are unchanged.
+
+Focused summary SHA-256:
+`f265ef10fefdcd62ff9e90ca6198a62c937ad3b49a2d10a6498bf190c684de72`.
