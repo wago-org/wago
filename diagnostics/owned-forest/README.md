@@ -752,3 +752,29 @@ unchanged.
 
 Focused summary SHA-256:
 `45d232ac2100bd16855255ed2a2e6e7e80bd21ded14356cd62778ca795454a49`.
+
+## Fourteen-capability censored compile census
+
+At a1a6f488 one compile-only run retained and validated all 228 ordered
+records, with 31 held modules excluded before reads in both arms.
+All 106 candidate completions matched same-configuration native code
+and public serialized metadata. Eight modules hit explicit scope
+fences: selected inline ownership (5), specialized state (2), and
+FC1 (1). There were no unexpected errors.
+
+The original pristine reference matched 113 of 114 outputs. Raytrace
+again differed in native bytes only; the earlier source-consistent
+FC3 explanation remains unproven at instruction level. The gate
+exited 1. Compared with the prior 92 completions, this set added 14
+PolyBench workloads and lost none. The runs are not pooled.
+
+Completed candidate work included 186 legacy bodies, 309 shared
+bodies, and 114,678 opcodes. Abandoned work: 168 attempts, 160
+completed functions, eight rejections and 82,120 opcodes. Both
+matched arms emitted 37 grows; abandoned candidate work emitted
+five. Neither grow prebranch spills nor six-FP overlap/staging
+activated in this census. The focused receipts remain separate.
+
+No guest execution, timing, held-input qualification, or promotion.
+Summary SHA-256: `2797b7aa978dff77f46d123509b1d3f2d7b78e8d1249239e2074df1a634b32b4`.
+Rows SHA-256: `2f897250ff87bff9d39498c290ac4703f7360393fe42a9d1fa9830cfd2aa5038`.
