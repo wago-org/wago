@@ -419,3 +419,36 @@ The gate does not establish dynamic scratch use with live XMM
 values, dirty FP home rereads, spilling under pressure, public
 artifact codec parity, or corpus or timing results. The prior
 censored coverage remains 77 of 114, and defaults did not change.
+
+## Composed FP censored compile census
+
+One compile-only run at 054dc7f8 made 228 public Compile calls. Both arms
+excluded the same 31 held modules before reading workload blobs; both
+enabled the experimental FP lanes, with forest ownership alone varied.
+All 114 baseline modules matched. The candidate completed 83 modules
+with actual forest dispatch; all 83 matched native code and public
+serialized metadata exactly. There were 30 explicit scope rejections
+and one unexpected backend error, so the gate exited 1 and did not
+qualify. The unexpected libtommath adjacent-div/rem result is retained
+as classified in the original run.
+
+The 83 completions included 115 legacy bodies, 303 shared-scalar bodies,
+and 52,409 opcodes. The 31 abandoned modules had 70 attempts, 39
+completed functions, 31 rejections, and 24,555 opcodes; these are not
+completed-module coverage.
+
+On the matched modules the list recorded 316,004 link writes and 55,053
+cursor visits. The forest recorded 66,620 root stores, 136,974 cursor
+writes, 52,823 cursor visits, 39,880 retirements, 323 grows, and 195
+spills. These are distinct, incomplete units and do not establish
+net savings. Completed forest root capacity peaked at 64 pointers
+(512 bytes), live roots at 34, and cursor depth at 7.
+
+No guest execution, timing, held-input repairs, or default promotion.
+This is a separate censored result, not a replacement for the earlier
+77-of-114 result or a full 145-module qualification.
+
+Summary SHA-256:
+`a339f1d13798f96cd1699e49ee26bba50159809c659b22336bb9a0666af48edd`.
+Retained rows SHA-256:
+`b86fe1026753b159ae95f1fe250ef05fcba5fa0760581193e2e3ec104f590fd1`.
