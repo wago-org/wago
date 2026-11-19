@@ -1,6 +1,6 @@
 {
   "generated": "2026-11-19",
-  "sourceCommit": "525b9b469a5455c7eba7ce6648a450c9596e6ef2",
+  "sourceCommit": "a0929e221d48e4bbe73375bf035d453cd8bb2c1e",
   "machine": "Apple M4 Max, darwin/arm64",
   "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
   "unit": "ms",
@@ -49,63 +49,78 @@
   },
   "workloads": [
     {
-      "id": "nbody",
-      "label": "nbody",
-      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
+      "id": "pcre2",
+      "label": "pcre2",
+      "desc": "PCRE2: compile regular expressions and match them over text (303 KB module)",
       "results": {
-        "wago": 3.075,
-        "wazy": 2.904,
-        "wazero": 2.654,
-        "wasmtime": 5.107,
-        "v8": 12.705,
-        "wasm3": 3.14,
-        "wasmi": 4.456,
-        "wavm": 17.977
+        "wago": 13.217,
+        "wazy": 137.928,
+        "wazero": 111.019,
+        "wasmtime": 106.263,
+        "v8": 110.158,
+        "wasm3": 12.291,
+        "wasmi": 4.378,
+        "wavm": 3564.862
       }
     },
     {
-      "id": "fib",
-      "label": "fib",
-      "desc": "recursive Fibonacci (call/return)",
+      "id": "yyjson",
+      "label": "yyjson",
+      "desc": "yyjson: parse, edit and re-serialize JSON documents",
       "results": {
-        "wago": 3.697,
-        "wazy": 2.971,
-        "wazero": 3.895,
-        "wasmtime": 5.504,
-        "v8": 12.517,
-        "wasm3": 11.246,
-        "wasmi": 14.46,
-        "wavm": 9.269
+        "wago": 9.418,
+        "wazy": 49.409,
+        "wazero": 38.957,
+        "wasmtime": 50.442,
+        "v8": 13.811,
+        "wasm3": 4.294,
+        "wasmi": 3.277,
+        "wavm": 1060.896
       }
     },
     {
-      "id": "sha256",
-      "label": "sha256",
-      "desc": "SHA-256 of an 8 KiB buffer (i32 rotate/xor)",
+      "id": "utf8proc",
+      "label": "utf8proc",
+      "desc": "utf8proc: Unicode normalization and case folding (324 KB module)",
       "results": {
-        "wago": 2.862,
-        "wazy": 2.975,
-        "wazero": 2.671,
-        "wasmtime": 5.243,
-        "v8": 11.677,
-        "wasm3": 2.295,
-        "wasmi": 2.658,
-        "wavm": 19.143
+        "wago": 3.738,
+        "wazy": 7.397,
+        "wazero": 7.109,
+        "wasmtime": 7.555,
+        "v8": 11.58,
+        "wasm3": 2.388,
+        "wasmi": 2.454,
+        "wavm": 97.232
       }
     },
     {
-      "id": "raytrace",
-      "label": "raytrace",
-      "desc": "recursive Whitted ray tracer, 48×48 frame (f64)",
+      "id": "nanosvg",
+      "label": "nanosvg",
+      "desc": "NanoSVG: parse SVG documents into shapes and paths",
       "results": {
-        "wago": 3.193,
-        "wazy": 3.829,
-        "wazero": 3.429,
-        "wasmtime": 5.993,
-        "v8": 12.789,
-        "wasm3": 3.287,
-        "wasmi": 4.617,
-        "wavm": 25.283
+        "wago": 6.305,
+        "wazy": 20.3,
+        "wazero": 16.159,
+        "wasmtime": 10.39,
+        "v8": 12.407,
+        "wasm3": 2.678,
+        "wasmi": 2.79,
+        "wavm": 425.025
+      }
+    },
+    {
+      "id": "libtommath",
+      "label": "libtommath",
+      "desc": "LibTomMath: big-integer modular arithmetic",
+      "results": {
+        "wago": 5.252,
+        "wazy": 14.389,
+        "wazero": 11.645,
+        "wasmtime": 8.746,
+        "v8": 12.278,
+        "wasm3": 2.599,
+        "wasmi": 2.735,
+        "wavm": 383.006
       }
     },
     {
@@ -113,29 +128,14 @@
       "label": "coremark",
       "desc": "CoreMark 2K performance run",
       "results": {
-        "wago": 23.326,
-        "wazy": 31.486,
-        "wazero": 43.814,
-        "wasmtime": 25.872,
-        "v8": 32.536,
-        "wasm3": 193.059,
-        "wasmi": 243.766,
-        "wavm": 102.493
-      }
-    },
-    {
-      "id": "fannkuch",
-      "label": "fannkuch",
-      "desc": "Benchmarks-Game fannkuch-redux (permute + flip)",
-      "results": {
-        "wago": 3.842,
-        "wazy": 4.438,
-        "wazero": 3.89,
-        "wasmtime": 6.214,
-        "v8": 13.985,
-        "wasm3": 5.791,
-        "wasmi": 7.047,
-        "wavm": 25.786
+        "wago": 23.091,
+        "wazy": 31.213,
+        "wazero": 43.235,
+        "wasmtime": 25.548,
+        "v8": 32.229,
+        "wasm3": 192.957,
+        "wasmi": 244.507,
+        "wavm": 103.363
       }
     }
   ]
