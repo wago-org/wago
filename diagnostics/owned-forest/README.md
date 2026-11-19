@@ -1062,3 +1062,11 @@ Apply `compact-operand-source.patch` after `0270663e`. This alternative ends at 
 The independent static audit accounted for all 232 baseline link-like references: 142 production operand links, 10 unrelated production indices and 80 test references. All 142 operand links were converted or eliminated. Audit TSV SHA-256: `edbc58f6a0a1ebde79b0e2f073e7835f38145d20cc002869d308b72a5e861c74`. This is static evidence, not exhaustive dynamic coverage.
 
 No build or semantic test has run at this checkpoint. The expected 48-byte versus 64-byte element sizes are unmeasured. Optional capacity counters describe compiler state, not process RSS. No corpus, timing, portability, or promotion claim.
+
+### Compact operand representation: focused layout proof
+
+Apply `compact-operand-layout-proof.patch` after `402216f0` to reach the tested fixture `d192d3cddb36ebde0fde98bbd471b343d966fa3d` (tree `e27383cc62d572841cea5b7324cf2ac47781f5f7`). The bounded proof passed 36 images, 114 ordinary calls and 24 strict body/native/encoder-JSON pairs. No fail-closed list stub was reached in that scope.
+
+Measured element widths were 64 bytes for the experimental list and wide forest and 48 bytes for the compact forest. At matching capacities, requested node bytes fell 25%; that is not a total-memory result. The pristine 56-byte comparison is accounting only. The forest structure (168 bytes), cursor (200 bytes), root buffer and cold backing are separate costs. Natural compile samples used the heap, and neither allocator rounding nor RSS was measured. Both mapping-only probes reserved the same 1 MiB; append consumption fell from 3,200 to 2,400 bytes without explicit payload writes.
+
+Summary SHA-256: `65f34ca0fb63f2c8fb8f052ec76e7b0e8e29b46437fa2a97c8a519bbd3b01006`. No corpus, timing, public serializer, or default change.

@@ -1,0 +1,750 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+new file mode 100644
+index 00000000..9d936830
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -0,0 +1,744 @@
++//go:build linux && amd64 && wago_owned_forest_layout_probe
++
++package amd64
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"os"
++	"testing"
++	"unsafe"
++
++	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	wr "github.com/wago-org/wago/src/core/runtime"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func TestOwnedForestCompactLayoutOrdinary(t *testing.T) {
++	arm := os.Getenv("WAGO_LAYOUT_PROBE_ARM")
++	forest := arm != "wide-list"
++	if (arm != "wide-list" && arm != "wide-forest" && arm != "compact-forest") || compactOperandNodes != (arm == "compact-forest") {
++		t.Fatalf("unexpected arm/build: %q compact=%v", arm, compactOperandNodes)
++	}
++	conditional, caller := layoutScalarModules(t)
++	cases := []struct {
++		name string
++		m    *wasm.Module
++	}{
++		{"effectful-if", conditional}, {"natural-noninline-call", caller},
++		{"cold-prefix", layoutProbeOwnedColdPrefixModule(t)}, {"v128-control-overlap", layoutProbeOwnedV128BlockModule(t, "overlap")},
++		{"v128-dot-pressure", layoutProbeOwnedIntArithModule(t, layoutProbeOwnedIntArithCase{op: 186, pressure: true})}, {"mixed-simd", layoutProbeOwnedMixedSIMDClassifierModule(t)},
++	}
++	for _, tc := range cases {
++		if err := wasm.ValidateModule(tc.m); err != nil {
++			t.Fatal(err)
++		}
++		var bytesTotal int
++		bodyHashes := make([]string, len(tc.m.Code))
++		for i, c := range tc.m.Code {
++			bytesTotal += len(c.BodyBytes)
++			bodyHashes[i] = fmt.Sprintf("%x", sha256.Sum256(c.BodyBytes))
++		}
++		if bytesTotal >= minParallelHintBodyBytes {
++			t.Fatalf("ordinary heap scope exceeded: %d", bytesTotal)
++		}
++		for _, intr := range []bool{false, true} {
++			t.Run(fmt.Sprintf("%s/interruptible=%t", tc.name, intr), func(t *testing.T) {
++				w := &fixtureModuleWork{Forest: forest, RecordOperandLayout: true}
++				switch tc.name {
++				case "v128-control-overlap":
++					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128RegionalLocals, w.TemporaryV128BlockResults = true, true, true, true
++				case "v128-dot-pressure":
++					w.TemporaryV128SIMD, w.TemporaryV128Locals, w.TemporaryV128WideningArithmetic = true, true, true
++				case "mixed-simd":
++					w.TemporaryV128SIMD, w.TemporaryV128PerFunction = true, true
++				}
++				cm, err := CompileModuleWith(tc.m, CompileOptions{Workers: 1, Interruptible: intr, fixtureWork: w})
++				if err != nil {
++					t.Fatalf("compile: %v work: %+v", err, w)
++				}
++				if cm.CodeImage != nil {
++					defer cm.CodeImage.Close()
++				}
++				if w.Rejected != 0 || w.LegacyBodies == 0 || w.Opcodes == 0 || forest && w.Vector.stores == 0 || len(w.OperandCapacities) == 0 {
++					t.Fatalf("missing legacy/ownership/capacity activation: %+v", w)
++				}
++				l := w.OperandLayout
++				if l.Compact != compactOperandNodes || (l.Compact && (l.NodeBytes != 48 || l.NodePhysicalLinkBytes != 0)) || (!l.Compact && (l.NodeBytes != 64 || l.NodePhysicalLinkBytes != 16)) {
++					t.Fatalf("unexpected measured layout: %+v", l)
++				}
++				for _, r := range w.OperandCapacities {
++					if r.ArenaMappedBytes != 0 || r.ArenaAppendedBytes != 0 || r.NodeUsedBytes > r.NodeReservedBytes {
++						t.Fatalf("heap-only capacity contract: %+v", r)
++					}
++				}
++				meta := *cm
++				meta.Code, meta.CodeImage = nil, nil
++				enc, err := json.Marshal(meta)
++				if err != nil {
++					t.Fatal(err)
++				}
++				receipt := map[string]any{"arm": arm, "case": tc.name, "intr": intr, "nativeSHA": fmt.Sprintf("%x", sha256.Sum256(cm.Code)), "encoderSHA": fmt.Sprintf("%x", sha256.Sum256(enc)), "codeBytes": len(cm.Code), "bodyBytes": bytesTotal, "bodyHashes": bodyHashes, "layout": l, "caps": w.OperandCapacities, "forestHeaderBytes": unsafe.Sizeof(fixtureForest{}), "coldSidecarElemBytes": unsafe.Sizeof(elemCold{}), "attempts": w.Attempts, "legacy": w.LegacyBodies, "opcodes": w.Opcodes, "rootStores": w.Vector.stores, "rootRetirements": w.Vector.retirements, "cursorVisits": w.Vector.visits, "listLinkWrites": w.List.linkWrites, "listEffectVisits": w.List.effectVisits, "classifier": w.TemporaryV128Classifier, "inlineClassifier": w.TemporaryV128InlineClassifier, "vectorPreflightBytes": w.TemporaryV128PreflightBytes, "vectorPreflightOpcodes": w.TemporaryV128PreflightOpcodes}
++				layoutEmit(t, "COMPILE", receipt)
++				calls := 0
++				switch tc.name {
++				case "effectful-if":
++					for _, k := range [][2]uint64{{1, 30}, {0, 36}} {
++						got, e := layoutProbeOwnedRunModule(t, cm, []uint64{k[0]})
++						if e != nil || got != k[1] {
++							t.Fatalf("IF input=%d got=%d want=%d err=%v", k[0], got, k[1], e)
++						}
++						calls++
++					}
++				case "natural-noninline-call":
++					got, e := layoutProbeOwnedRunModule(t, cm, []uint64{7, 4})
++					if e != nil || got != 57 {
++						t.Fatalf("call got=%d err=%v", got, e)
++					}
++					calls++
++				case "cold-prefix":
++					if forest && (w.Vector.coldControlCaptures < 3 || w.Vector.coldControlPeak <= 64 || uint64(w.Vector.coldControlPeak) >= w.Vector.coldControlTypeCopies || w.Vector.coldControlCapacity < w.Vector.coldControlPeak) {
++						t.Fatalf("cold reuse not reached: %+v", w.Vector)
++					}
++					for _, a := range [][3]uint64{{17, 0, 0}, {0xfffffffffffffff0, 1, 0}, {23, 0, 1}, {0x123456789abcdef0, 1, 1}} {
++						want := a[0] + 70*71/2 + 23
++						if a[0] < 256 {
++							want++
++						}
++						for _, c := range a[1:] {
++							if c == 0 {
++								want += 29
++							} else {
++								want += 17
++							}
++						}
++						got, e := layoutProbeOwnedColdPrefixRun(t, cm, a)
++						if e != nil || got != want {
++							t.Fatalf("cold args=%x got=%x want=%x err=%v", a, got, want, e)
++						}
++						calls++
++					}
++				case "v128-control-overlap":
++					if w.TemporaryV128BlockSlotMerges != 1 || w.TemporaryV128BlockOverlappingMoves != 1 || w.TemporaryV128BlockTwoSlotMoves == 0 {
++						t.Fatalf("vector overlap not reached: %+v", w)
++					}
++					for _, cond := range []uint32{0, 1} {
++						for _, salt := range []int{3, 29} {
++							layoutProbeOwnedV128BlockRun(t, cm, "overlap", cond, salt)
++							calls++
++						}
++					}
++				case "v128-dot-pressure":
++					if w.TemporaryV128Dots != 1 || w.TemporaryV128WideningSlotLeases == 0 || w.TemporaryV128Spills == 0 {
++						t.Fatalf("dot pressure not reached: %+v", w)
++					}
++					for v := range 2 {
++						layoutProbeOwnedIntArithRun(t, cm, layoutProbeOwnedIntArithCase{op: 186, pressure: true}, v)
++						calls++
++					}
++				case "mixed-simd":
++					c, in := w.TemporaryV128Classifier, w.TemporaryV128InlineClassifier
++					if w.TemporaryV128Bodies != 1 || w.TemporaryV128ScalarSiblings != 3 || c.Bodies != 4 || c.TypeVisits != 14 || c.Bytes == 0 || c.Opcodes == 0 || w.TemporaryV128PreflightBytes == 0 || forest && (in.Bodies != 1 || in.Opcodes == 0 || in.Bytes == 0 || in.TypeVisits != 0) || !forest && in != (fixtureVectorClassificationWork{}) {
++						t.Fatalf("classification not reached: %+v", w)
++					}
++					layoutProbeOwnedMixedSIMDClassifierRun(t, cm)
++					calls += 6
++				}
++				layoutEmit(t, "EXEC", map[string]any{"arm": arm, "case": tc.name, "intr": intr, "calls": calls})
++			})
++		}
++	}
++}
++
++func layoutEmit(t *testing.T, kind string, rec any) {
++	t.Helper()
++	data, e := json.Marshal(rec)
++	if e != nil {
++		t.Fatal(e)
++	}
++	t.Logf("LAYOUT_%s %s", kind, data)
++}
++
++func TestOwnedForestOperandMappingAllocation(t *testing.T) {
++	a := newOperandArena()
++	if a == nil {
++		t.Fatal("ordinary mapped operand arena not available")
++	}
++	defer a.Close()
++	pages := os.Getpagesize()
++	start := len(a.Mapping())
++	req := shared.MaxRetainedStackArenaBytes
++	if start != (req+pages-1)/pages*pages || len(a.Bytes()) != 0 {
++		t.Fatalf("mapping=%d requested=%d page=%d used=%d", start, req, pages, len(a.Bytes()))
++	}
++	caps := []int{17, 33}
++	appended := make([]int, 0, len(caps))
++	for _, n := range caps {
++		before := len(a.Bytes())
++		c := operandArenaChunk(a, n)
++		delta := len(a.Bytes()) - before
++		if cap(c) != n || len(c) != 0 || delta != n*int(unsafe.Sizeof(elem{})) || len(a.Mapping()) != start {
++			t.Fatalf("chunk=%d cap=%d len=%d delta=%d", n, cap(c), len(c), delta)
++		}
++		appended = append(appended, delta)
++	}
++	if err := a.Close(); err != nil {
++		t.Fatal(err)
++	}
++	layoutEmit(t, "MAPPING", map[string]any{"arm": os.Getenv("WAGO_LAYOUT_PROBE_ARM"), "nodeBytes": unsafe.Sizeof(elem{}), "pageBytes": pages, "requestedReservation": req, "actualMappingBytes": start, "requestedNodes": caps, "appendedBytes": appended, "explicitPayloadWrites": 0})
++}
++
++type layoutProbeFuncDef struct {
++	params, results []wasm.ValType
++	body            []byte // local decls + instruction stream (incl. trailing 0x0b)
++}
++
++func layoutProbeModFuncs(t testing.TB, fns ...layoutProbeFuncDef) *wasm.Module {
++	t.Helper()
++	var types, funcs, codes [][]byte
++	for i, fn := range fns {
++		types = append(types, wasmtest.FuncType(fn.params, fn.results))
++		funcs = append(funcs, wasmtest.ULEB(uint32(i)))
++		codes = append(codes, append(wasmtest.ULEB(uint32(len(fn.body))), fn.body...))
++	}
++	b := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(types...)),
++		wasmtest.Section(3, wasmtest.Vec(funcs...)),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(codes...)),
++	)
++	m, err := wasm.DecodeModule(b)
++	if err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	return m
++}
++
++func layoutProbeModMem(t testing.TB, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
++	t.Helper()
++	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
++	memType := append([]byte{0x00}, wasmtest.ULEB(pages)...) // flags=0 (min only)
++	b := wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec(memType)),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(entry)),
++	)
++	m, err := wasm.DecodeModule(b)
++	if err != nil {
++		t.Fatalf("decode: %v", err)
++	}
++	return m
++}
++
++func layoutProbeOwnedRunModule(t *testing.T, cm *encoder.CompiledModule, args []uint64) (uint64, error) {
++	t.Helper()
++	eng, e := wr.NewEngine()
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer eng.Close()
++	jm, e := wr.NewJobMemory(65536)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer jm.Close()
++	jm.LinearMemory()[0] = 17
++	ar, e := wr.NewArena(4096)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer ar.Close()
++	cell, table := ar.Alloc(8), ar.Alloc(8)
++	binary.LittleEndian.PutUint64(cell, 17)
++	binary.LittleEndian.PutUint64(table, uint64(uintptr(unsafe.Pointer(&cell[0]))))
++	jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&table[0])))
++	image, entry, e := wr.MapCode(cm.Code)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer wr.Unmap(image)
++	a, r, tr := ar.Alloc(256), ar.Alloc(256), ar.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(a[i*8:], v)
++	}
++	e = eng.Call(entry+uintptr(cm.Entry[0]), a, jm.LinearMemory(), tr, r)
++	return binary.LittleEndian.Uint64(r), e
++}
++
++func layoutProbeOwnedColdPrefixModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	// Keep original local0 and 70 exact distinct i64 operands under two
++	// sequential nested scalar control frames. Each result then extends to i64.
++	b := []byte{0, 0x20, 0}
++	for i := int64(1); i <= 70; i++ {
++		b = append(b, 0x42)
++		b = append(b, wasmtest.SLEB64(i)...)
++	}
++	// Retain a semantic i32 result from a deferred i64 unsigned comparison.
++	b = append(b, 0x20, 0, 0x42)
++	b = append(b, wasmtest.SLEB64(256)...)
++	b = append(b, 0x54)
++	for _, condition := range []byte{1, 2} {
++		b = append(b, 0x02, 0x7f, 0x20, condition, 0x04, 0x7f,
++			0x41, 24, 0x41, 17, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x05,
++			0x41, 24, 0x41, 29, 0x3a, 0, 0, 0x41, 24, 0x2d, 0, 0, 0x0b, 0x0c, 0, 0x0b)
++	}
++	b = append(b, 0x6a, 0x6a, 0xad)
++	for range 71 {
++		b = append(b, 0x7c)
++	}
++	b = append(b, 0x42, 23, 0x21, 0, 0x20, 0, 0x7c, 0x0b)
++	m := layoutProbeModMem(t, 1, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layoutProbeOwnedColdPrefixRun(t *testing.T, cm *encoder.CompiledModule, args [3]uint64) (uint64, error) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	for i, v := range args {
++		binary.LittleEndian.PutUint64(in[8*i:], v)
++	}
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*29 + 13)
++	}
++	want := append([]byte(nil), mem...)
++	want[24] = 29
++	if args[2] != 0 {
++		want[24] = 17
++	}
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if err == nil && !bytes.Equal(mem, want) {
++		t.Fatalf("unexpected full memory after second branch: marker=%d want=%d", mem[24], want[24])
++	}
++	return binary.LittleEndian.Uint64(out), err
++}
++
++func layoutProbeOwnedV128BlockModule(t *testing.T, lane string) *wasm.Module {
++	t.Helper()
++	b := []byte{0, 0x20, 0}
++	if lane == "regional-if" {
++		b = []byte{1, 16, 0x7b, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	pc(512)
++	ld(112) // Full-width immutable prefix beside the scalar old parameter.
++	if lane == "regional-if" {
++		// Source-reviewed scoring: eight pinned dummies score15, all
++		// target local set/get pairs score3 and occupy regional leases.
++		for i := byte(2); i < 10; i++ {
++			for range 3 {
++				b = append(b, 0x20, i, 0x22, i, 0x21, i)
++			}
++		}
++		for i := range 5 {
++			ld(16 * i)
++			b = append(b, 0x21, byte(10+i))
++			pc(256 + i*16)
++			b = append(b, 0x20, byte(10+i))
++		}
++	}
++	pc(528)
++	switch lane {
++	case "straight":
++		b = append(b, 0x02, 0x7b)
++		ld(0)
++		b = append(b, 0x0b)
++	case "regional-if":
++		b = append(b, 0x20, 1, 0x04, 0x7b)
++		ld(16)
++		b = append(b, 0x05)
++		ld(32)
++		b = append(b, 0x0b)
++	case "overlap":
++		b = append(b, 0x02, 0x7b)
++		pc(33) // one extra scalar slot: source = destination + 1 on taken edge
++		ld(48)
++		b = append(b, 0x20, 1, 0x0d, 0, 0x1a, 0x1a)
++		ld(64)
++		b = append(b, 0x0c, 0, 0x0b)
++	}
++	st()
++	if lane == "regional-if" {
++		for range 5 {
++			st()
++		}
++	}
++	st()
++	ld(528)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := layoutProbeModMem(t, 1, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layoutProbeOwnedV128BlockRun(t *testing.T, cm *encoder.CompiledModule, lane string, cond uint32, salt int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + salt*7)
++	}
++	want := append([]byte(nil), mem...)
++	copy(want[512:528], mem[112:128])
++	src := 0
++	if lane == "regional-if" {
++		for i := range 5 {
++			copy(want[256+i*16:], mem[i*16:i*16+16])
++		}
++		src = 32
++		if cond != 0 {
++			src = 16
++		}
++	}
++	if lane == "overlap" {
++		src = 64
++		if cond != 0 {
++			src = 48
++		}
++	}
++	copy(want[528:544], mem[src:src+16])
++	old := uint32(0xabc12300 + salt)
++	expected := old ^ binary.LittleEndian.Uint32(mem[src:src+4])
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	binary.LittleEndian.PutUint64(in[8:], uint64(cond))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("lane=%s condition=%d got=%x want=%x err=%v", lane, cond, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("lane=%s condition=%d byte[%d]=%x want=%x", lane, cond, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++type layoutProbeOwnedIntArithCase struct {
++	op       uint32
++	pressure bool
++}
++
++func layoutProbeOwnedIntArithModule(t *testing.T, c layoutProbeOwnedIntArithCase) *wasm.Module {
++	t.Helper()
++	b := []byte{1, 1, 0x7b, 0x20, 0}
++	if c.pressure {
++		b = []byte{0, 0x20, 0}
++	}
++	pc := func(i int) { b = append(b, 0x41); b = append(b, wasmtest.SLEB32(int32(i))...) }
++	ld := func(i int) { pc(i); b = append(b, 0xfd, 0, 4, 0) }
++	st := func() { b = append(b, 0xfd, 11, 4, 0) }
++	if !c.pressure {
++		pc(544)
++		ld(0)
++		b = append(b, 0x21, 1, 0x20, 1)
++		pc(512)
++		if c.op != 127 {
++			b = append(b, 0x20, 1)
++		} // binary left input
++		ld(16)
++		b = append(b, 0x21, 1, 0x20, 1) // current home supplies right or unary input
++	} else {
++		pc(512)
++		ld(0)
++		for i := 1; i <= 20; i++ {
++			ld(16 * i)
++			b = append(b, 0xfd, 77)
++		}
++		for range 19 {
++			b = append(b, 0xfd, 81)
++		}
++	}
++	b = append(b, 0xfd)
++	b = append(b, wasmtest.ULEB(c.op)...)
++	st()
++	if !c.pressure {
++		st() // independent old-value observation
++		pc(528)
++		b = append(b, 0x20, 1)
++		st()
++	}
++	ld(512)
++	b = append(b, 0xfd, 27, 0, 0x73, 0x0b)
++	m := layoutProbeModMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, b)
++	if err := wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layoutProbeOwnedIntArithRun(t *testing.T, cm *encoder.CompiledModule, c layoutProbeOwnedIntArithCase, variant int) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + variant*7)
++	}
++	for i := range 21 {
++		for j := range 16 {
++			mem[16*i+j] = byte(i*i*3 + j*17 + i*j*7 + variant)
++		}
++	}
++	for j := range 16 {
++		// For byte operations, signs and low/high halves differ.
++		mem[j], mem[16+j] = byte(255-17*j+variant*19), byte(193+29*j-variant*17)
++	}
++	x, y := mem[:16], mem[16:32]
++	if c.op == 127 {
++		boundaries := [8]uint16{0xffff, 0xffff, 0x8000, 0x8001, 0x7fff, 1, 0, 0xf123}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(y[2*j:], boundaries[(j+2*variant)%8])
++		}
++	}
++	if c.op == 145 || c.op == 186 {
++		xp := []uint16{0x8000, 0x8000, 0, 0x7fff, 0xffff, 4, 0x7fff, 0x8000}
++		yp := []uint16{0x8000, 0x8000, 1, 0xffff, 0x8000, 0xfffe, 11, 7}
++		for j := range 8 {
++			v, w := xp[(j+2*variant)%8], yp[(j+2*variant)%8]
++			if variant == 1 {
++				v, w = w, v
++			}
++			binary.LittleEndian.PutUint16(x[2*j:], v)
++			binary.LittleEndian.PutUint16(y[2*j:], w)
++		}
++	}
++	if c.pressure {
++		var reduced [16]byte
++		for j := range reduced {
++			for i := 1; i <= 20; i++ {
++				reduced[j] ^= ^mem[16*i+j]
++			}
++		}
++		y = reduced[:]
++	}
++	var result [16]byte
++	u16 := func(v []byte, j int) uint16 { return binary.LittleEndian.Uint16(v[2*j:]) }
++	switch c.op {
++	case 127:
++		for j := range 4 {
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(u16(y, 2*j))+uint32(u16(y, 2*j+1)))
++		}
++	case 145:
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], u16(x, j)-u16(y, j))
++		}
++	case 158, 159:
++		start := 0
++		if c.op == 159 {
++			start = 8
++		}
++		for j := range 8 {
++			binary.LittleEndian.PutUint16(result[2*j:], uint16(x[start+j])*uint16(y[start+j]))
++		}
++	case 186:
++		for j := range 4 {
++			var sum int64
++			for k := range 2 {
++				n := 2*j + k
++				sum += int64(int16(u16(x, n))) * int64(int16(u16(y, n)))
++			}
++			binary.LittleEndian.PutUint32(result[4*j:], uint32(sum))
++		}
++	default:
++		t.Fatalf("unknown arithmetic opcode %d", c.op)
++	}
++
++	want := append([]byte(nil), mem...)
++	copy(want[512:], result[:])
++	if !c.pressure {
++		copy(want[528:], y)
++		copy(want[544:], x)
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	old := uint32(0xe3c51200 + variant)
++	binary.LittleEndian.PutUint64(in, uint64(old))
++	err = eng.Call(entry+uintptr(cm.Entry[0]), in, jm.LinearMemory(), tr, out)
++	expected := old ^ binary.LittleEndian.Uint32(result[:])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("FD%d variant=%d got=%x want=%x err=%v", c.op, variant, got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		for i := range mem {
++			if mem[i] != want[i] {
++				t.Fatalf("FD%d variant=%d byte[%d]=%x want=%x", c.op, variant, i, mem[i], want[i])
++			}
++		}
++	}
++}
++
++func layoutProbeOwnedMixedSIMDClassifierModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	i := wasm.I32
++	// Preserve the first x across direct and naturally selected inline calls.
++	// The typed mutable global is also read directly in ordinary scalar bodies.
++	caller := []byte{0, 0x20, 0, 0x20, 0, 0x10, 1, 0x6a, 0x20, 0, 0x10, 2, 0x6a, 0x23, 0, 0x6a, 0x0b}
++	direct := []byte{0, 0x03, 0x40, 1, 0x0b}
++	direct = append(direct, bytes.Repeat([]byte{1}, 512)...)
++	direct = append(direct, 0x20, 0, 0x23, 0, 0x6a, 0x0b)
++	leaf := []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x0b}
++	// Read full vector, xor constant, store to offset 32; independent scalar
++	// return reads lane 0 from the transformed destination.
++	vec := []byte{0, 0x20, 0, 0x41, 32, 0x41, 0, 0xfd, 0, 4, 0, 0xfd, 12}
++	vec = append(vec, layoutProbeOwnedSIMDTempMask[:]...)
++	vec = append(vec, 0xfd, 81, 0xfd, 11, 4, 0, 0x41, 32, 0xfd, 0, 4, 0, 0xfd, 27, 0, 0x73, 0x0b)
++	code := func(b []byte) []byte { return append(wasmtest.ULEB(uint32(len(b))), b...) }
++	m, err := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{i}, []wasm.ValType{i}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(i, true, []byte{0x41, 17, 0x0b}))),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("scalar", 0, 0), wasmtest.ExportEntry("vector", 0, 3))),
++		wasmtest.Section(10, wasmtest.Vec(code(caller), code(direct), code(leaf), code(vec))),
++	))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func layoutProbeOwnedMixedSIMDClassifierRun(t *testing.T, cm *encoder.CompiledModule) {
++	t.Helper()
++	if len(cm.Entry) != 4 || len(cm.InternalEntry) != 4 || cm.Entry[0] >= cm.InternalEntry[0] || cm.Entry[3] >= cm.InternalEntry[3] {
++		t.Fatal("missing genuine exported adapters")
++	}
++
++	for _, x := range []uint32{7, 0x80000001, 0xfffffff0} {
++		want := 3*x + 37
++		got, err := layoutProbeOwnedRunModule(t, cm, []uint64{uint64(x)})
++		if err != nil || got != uint64(want) {
++			t.Fatalf("scalar x=%x got=%x want=%x err=%v", x, got, want, err)
++		}
++		layoutProbeOwnedMixedSIMDVectorRun(t, cm, x)
++
++	}
++}
++
++func layoutProbeOwnedMixedSIMDVectorRun(t *testing.T, cm *encoder.CompiledModule, x uint32) {
++	t.Helper()
++	eng, err := wr.NewEngine()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer eng.Close()
++	jm, err := wr.NewJobMemory(65536)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer jm.Close()
++	a, err := wr.NewArena(4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer a.Close()
++	mapped, entry, err := wr.MapCode(cm.Code)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer wr.Unmap(mapped)
++	mem := jm.CurrentBytes()
++	for i := range mem {
++		mem[i] = byte(i*31 + int(x&15))
++	}
++	want := append([]byte(nil), mem...)
++	for i := range 16 {
++		want[32+i] = mem[i] ^ layoutProbeOwnedSIMDTempMask[i]
++	}
++	in, out, tr := a.Alloc(256), a.Alloc(256), a.Alloc(wr.TrapBufferBytes)
++	binary.LittleEndian.PutUint64(in, uint64(x))
++	err = eng.Call(entry+uintptr(cm.Entry[3]), in, jm.LinearMemory(), tr, out)
++	expected := x ^ binary.LittleEndian.Uint32(want[32:36])
++	if got := binary.LittleEndian.Uint32(out); err != nil || got != expected {
++		t.Fatalf("vector got=%x want=%x err=%v", got, expected, err)
++	}
++	if !bytes.Equal(mem, want) {
++		t.Fatal("incorrect full 16-byte vector transform or unrelated memory changed")
++	}
++}
++
++var layoutProbeOwnedSIMDTempMask = [16]byte{1, 33, 10, 17, 5, 93, 0xe0, 0x23, 4, 2, 97, 0x91, 7, 0x11, 55, 0xf1}
++
++func layoutScalarModules(t *testing.T) (*wasm.Module, *wasm.Module) {
++	effectIf := []byte{0, 0x41, 13, 0x20, 0, 0x04, 0x7f, 0x41, 0, 0x41, 17, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x05, 0x41, 0, 0x41, 23, 0x36, 2, 0, 0x41, 0, 0x28, 2, 0, 0x0b, 0x6a, 0x0b}
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x20, 0, 0x41, 10, 0x6c, 0x20, 1, 0x6a, 0x0b)
++	natural := layoutProbeModFuncs(t, layoutProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x20, 1, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, layoutProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, callee})
++	return layoutProbeModMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, effectIf), natural
++}
