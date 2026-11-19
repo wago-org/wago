@@ -680,3 +680,32 @@ codec, corpus, or timing result. Defaults remain unchanged.
 
 Focused summary SHA-256:
 `bfba819a04051e187d677d667375107e184042b38787f4007ad97f91cb265732`.
+
+## Twelve-capability censored compile census
+
+At 89d31452 one compile-only run retained all 228 ordered records from
+114 workloads in both arms. The 31 held inputs were excluded before
+reads. The process exited 1: 113 of 114 baseline outputs matched the
+original pristine reference, with a native-only mismatch on raytrace.
+Historical metadata matched. Both new raytrace arms matched each
+other and each recorded three staged FC3 emissions and zero measured
+bound-pressure events. Source-level bound motion is a plausible
+explanation, not instruction-level attribution. The original reference
+gate remains failed.
+
+The candidate completed 92 workloads whose native code and public
+serialized metadata all matched their same-configuration baseline.
+The other 22 were explicit scope fences: memory.grow (19), specialized
+state (2), and integer call shape (1); no unexpected errors occurred.
+The matched completions had 158 legacy bodies, 309 shared bodies and
+102,319 opcodes, with root capacity at most 64. Abandoned work was
+182 attempts, 160 completed functions, 22 rejections, 182 legacy
+bodies and 75,402 opcodes, with root capacity at most 16. Historical
+set comparison records raytrace and zstd as additions and no losses;
+the runs are not pooled or qualified by that comparison.
+
+No guest execution, timing, promotion, or verification of the 31 held
+inputs. Earlier censuses and compiler defaults are unchanged.
+
+Summary SHA-256: `107b5852026824efa8682d19d8d41baa6e0ee0cbf09ab6c426d83000f44cbcb3`.
+Rows SHA-256: `c3661febf69bca6419b9feea470cc3e84e3cda6075a37afc513cd4f5f0e5d31e`.
