@@ -42,3 +42,24 @@ performance improvement. Provenance of the virtual postorder before
 reset remains unknown; the checkpoint makes no claim about it.
 
 No timing, promotion, or changes to the active compiler defaults.
+
+## Bounded actual-emitter fixture
+
+Apply actual-fixture.patch to af939c02 (Stage 0 plus the transition patch,
+without the miss overlay). Final fixture source 58430361 passed six
+top-level tests and eight rejection subcases with the
+wago_owned_forest_fixture test tag and experimental flags off. The first
+test build failed because of a signed-immediate cast in the fixture; the
+focused retry passed after that test-only fix.
+
+The checks cover masked native lowering and execution, GP pressure with
+actual call-wrapper preparation and a synthetic clobber, and scalar
+agreement helpers. The memory case checks native code and trap PC but
+does not execute an out-of-bounds access. Tests did not execute a real
+call or opBlock path and do not establish full compiler coverage.
+Unsupported paths reject explicitly. Prefix skips remain unported.
+
+Measured structure sizes on AMD64 were 64 bytes for elem, 120 for stack,
+192 for the cursor and 104 for the forest. These are fixture sizes, not
+evidence of node shrinkage, net cost reduction, or a speed gain. No
+corpus or timing run was performed for this fixture.

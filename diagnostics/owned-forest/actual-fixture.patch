@@ -1,0 +1,992 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index fc644bcd..bc0f8ff3 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -633,18 +633,28 @@ func (f *fn) setFrameBaseTypePrefix(fr *ctrlFrame, height int) {
+ 	start := int(f.controlBaseTypeN)
+ 	storage := f.scratchState().functionResultTypeArena[:]
+ 	if start+height <= len(storage) {
+-		top := f.logicalStackRootAtDepth(height)
+-		for i := height - 1; i >= 0; i-- {
+-			if top == f.s.head {
+-				panic("amd64: control base-type prefix ended before its height")
++		if f.s.forest != nil {
++			// Capture types before any canonical stores or operand retirement.
++			for i, root := range f.rootsBottomToTop()[:height] {
++				storage[start+i] = rootMachineType(root)
++			}
++		} else {
++			top := f.logicalStackRootAtDepth(height)
++			for i := height - 1; i >= 0; i-- {
++				if top == f.s.head {
++					panic("amd64: control base-type prefix ended before its height")
++				}
++				storage[start+i] = rootMachineType(top)
++				top = baseOfValentBlock(top).prev
+ 			}
+-			storage[start+i] = rootMachineType(top)
+-			top = baseOfValentBlock(top).prev
+ 		}
+ 		fr.setBaseTypeRange(start, height)
+ 		f.controlBaseTypeN += uint8(height)
+ 		return
+ 	}
++	if f.s.forest != nil {
++		panic("amd64: forest fixture does not support cold control prefixes")
++	}
+ 	// Large prefixes are immutable below their control frame. Retain the existing
+ 	// operand-root handle instead of hashing and copying the whole type prefix for
+ 	// each nested frame.
+@@ -671,6 +681,9 @@ func (f *fn) logicalStackRootAtDepth(height int) *elem {
+ 
+ func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
+ 	if fr.has(ctrlColdBaseTypes) {
++		if f.s.forest != nil {
++			panic("amd64: forest fixture does not support cold control prefixes")
++		}
+ 		out := f.tmpTypes[:0]
+ 		if cap(out) < fr.height {
+ 			out = make([]machineType, fr.height)
+@@ -839,7 +852,12 @@ func (f *fn) depth() int {
+ 
+ // rootsBottomToTop returns the logical operands in bottom-to-top order.
+ // The returned scratch slice is valid only until the next helper using f.tmpRoots.
++// The fixture's forest view is read-only and valid until the next root mutation.
+ func (f *fn) rootsBottomToTop() []*elem {
++	if f.s.forest != nil {
++		roots := f.s.forest.roots
++		return roots[:len(roots):len(roots)]
++	}
+ 	rs := f.tmpRoots[:0]
+ 	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+ 		rs = append(rs, cur)
+@@ -996,6 +1014,9 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
+ 	}
+ 	roots := f.rootsBottomToTop()
+ 	if regallocCheckEnabled {
++		if f.s.forest != nil {
++			panic("amd64: forest fixture does not support linked-list flush checking")
++		}
+ 		f.checkBeginFlush(roots)
+ 		defer f.checkEndFlush()
+ 	}
+@@ -1207,9 +1228,13 @@ func (f *fn) setDepthTypes(types []machineType) {
+ }
+ 
+ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
+-	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
++	if f.s.forest != nil {
++		f.s.forestResetRoots()
++	} else {
++		f.s.head.prev, f.s.head.next = f.s.head, f.s.head
++	}
+ 	f.s.pendingPrefix = nil
+-	// The old list is detached; rebuild both live spill summaries from scratch.
++	// The old operands are detached; rebuild both live spill summaries from scratch.
+ 	f.s.spillExtent, f.s.spillExtentValid, f.s.spilledPrefix = 0, true, nil
+ 	f.s.logicalDepth = 0
+ 	f.s.canonicalSlots = false
+@@ -1684,6 +1709,9 @@ func (f *fn) popBranchCondition() (Reg, bool) {
+ // keepBlockOperands admits only a small, flat operand prefix. Keeping deferred
+ // trees here can multiply the work in later local-reference scans.
+ func (f *fn) keepBlockOperands() bool {
++	if f.s.forest != nil {
++		panic("fixture forest: unported keepBlockOperands")
++	}
+ 	const limit = 32
+ 	if f.depth() > limit {
+ 		return false
+@@ -2345,6 +2373,9 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
+ }
+ 
+ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
++	if f.s.forest != nil {
++		panic("fixture forest: unported markEHReferenceResults")
++	}
+ 	eh := f.frameEH(fr)
+ 	if eh == nil {
+ 		return
+diff --git a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+index 90e92cd5..a9e952de 100644
+--- a/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
++++ b/src/core/compiler/backend/railshot/amd64/divrem_const_pair.go
+@@ -35,6 +35,9 @@ func (f *fn) tryDivRemConstPair(node *elem, dest Reg) (Reg, bool) {
+ 	if !strengthReducibleWithMagic(int64(d), false, false, f.opt(optMagicDiv)) {
+ 		return regNone, false
+ 	}
++	if f.s.forest != nil {
++		panic("fixture forest: unported adjacent div/rem selector")
++	}
+ 	otherLocal := node.next
+ 	for skipped := 0; skipped < 8; skipped++ {
+ 		if otherLocal == nil || otherLocal == f.s.head || !otherLocal.isValue() {
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 71b203e8..99ccaf88 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -1228,6 +1228,9 @@ func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
+ // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
+ // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
+ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
++	if f.s.forest != nil {
++		panic("fixture forest: unported realizeLocalRefs")
++	}
+ 	if f.s.pendingEffects&pendingLocalRef == 0 {
+ 		return
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/emit.go b/src/core/compiler/backend/railshot/amd64/emit.go
+index a7333ce2..e9e5679f 100644
+--- a/src/core/compiler/backend/railshot/amd64/emit.go
++++ b/src/core/compiler/backend/railshot/amd64/emit.go
+@@ -772,7 +772,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
+ // optimization; Phase 1 materializes the boolean.)
+ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 	var pending ownedForestPending
+-	if ownedForestCensusEnabled {
++	if ownedForestCensusEnabled && f.s.forest == nil {
+ 		pending = f.captureOwnedForestPending(node)
+ 	}
+ 	foldedCC, folded := f.tryMemoryCompareToFlags(node)
+@@ -780,7 +780,13 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		foldedCC, folded = f.tryMaskedPredicateToFlags(node)
+ 	}
+ 	if folded {
+-		if ownedForestCensusEnabled {
++		if f.s.forest != nil {
++			if !node.forestLive || !node.isDeferred() || node.arg0 != nil || node.arg1 != nil || node.forestPending {
++				panic("fixture forest: invalid flags transition")
++			}
++			node.forestPending = true
++			f.s.forest.flagsTransitions++
++		} else if ownedForestCensusEnabled {
+ 			f.beginOwnedForestPending(&pending, node, foldedCC)
+ 		}
+ 		result := dest
+@@ -792,7 +798,12 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+ 		f.occupy(node, result)
+ 		node.st.typ = mtI32
+ 		node.setDeferredOp(opNone)
+-		if ownedForestCensusEnabled {
++		if f.s.forest != nil {
++			if !node.forestPending || f.regUser[result] != node || node.isDeferred() {
++				panic("fixture forest: invalid flags result")
++			}
++			node.forestPending = false
++		} else if ownedForestCensusEnabled {
+ 			f.endOwnedForestPending(&pending, node, result)
+ 		}
+ 		return result
+@@ -1371,6 +1382,10 @@ func (f *fn) cmpRR(x, y Reg, w bool) {
+ // consumeBlockBelow unlinks every physical stack element of node's valent block
+ // that sits below node (its operand sub-trees), leaving node as the top.
+ func (f *fn) consumeBlockBelow(node *elem) {
++	if f.s.forest != nil {
++		f.forestRetireChildren(node)
++		return
++	}
+ 	base := baseOfValentBlock(node)
+ 	e := node.prev
+ 	for {
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index d56bbd48..19d13937 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -88,6 +88,9 @@ func (f *fn) freeFReg(avoid regMask) Reg {
+ // allocFReg returns a free XMM register, spilling the deepest float-resident stack
+ // value if none is free.
+ func (f *fn) allocFReg(avoid regMask) Reg {
++	if f.s.forest != nil {
++		panic("fixture forest: unported FP allocation")
++	}
+ 	if ownedForestCensusEnabled {
+ 		f.observeOwnedForest("fp-allocation")
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/fuse.go b/src/core/compiler/backend/railshot/amd64/fuse.go
+index c017d85f..d5c09561 100644
+--- a/src/core/compiler/backend/railshot/amd64/fuse.go
++++ b/src/core/compiler/backend/railshot/amd64/fuse.go
+@@ -126,6 +126,9 @@ func (f *fn) tryMaskedPredicateToFlags(node *elem) (Cond, bool) {
+ // fused compare so the subsequent branch's moveSlots reads canonical slots and no
+ // flag-clobbering flush happens between the CMP and the Jcc.
+ func (f *fn) flushBelow(node *elem) int {
++	if f.s.forest != nil {
++		panic("fixture forest: unported flushBelow")
++	}
+ 	f.stats.addFlushBelow()
+ 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
+ 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
+diff --git a/src/core/compiler/backend/railshot/amd64/interval_region.go b/src/core/compiler/backend/railshot/amd64/interval_region.go
+index 83ed3590..23068a0d 100644
+--- a/src/core/compiler/backend/railshot/amd64/interval_region.go
++++ b/src/core/compiler/backend/railshot/amd64/interval_region.go
+@@ -432,6 +432,9 @@ func (f *fn) evictIntervalLocal(avoid regMask) Reg {
+ }
+ 
+ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
++	if f.s.forest != nil && len(f.intervalReg) != 0 {
++		panic("fixture forest: unported interval local eviction")
++	}
+ 	if len(f.intervalReg) == 0 {
+ 		return regNone
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 31b0874a..f6676133 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -27,13 +27,22 @@ var fallthroughBoundsEnabled = os.Getenv("WAGO_AMD64_NO_FALLTHROUGH_BOUNDS") !=
+ // storeValueLastFoldableLoad returns the last deferred load in a pure integer
+ // value tree. Earlier loads are forced in source order before condensation, so
+ // only the final load may move among nontrapping operations.
+-func storeValueLastFoldableLoad(top *elem) *elem {
++func (f *fn) storeValueLastFoldableLoad(top *elem) *elem {
+ 	if top == nil || !top.isDeferred() {
+ 		return nil
+ 	}
+-	base := baseOfValentBlock(top)
++	var c fixtureCursor
++	if f.s.forest != nil {
++		if f.s.back() != top {
++			panic("fixture forest: store lookahead not top root")
++		}
++		c = f.s.fixtureScan(false)
++		c.root = len(f.s.forest.roots) - 1
++	} else {
++		c = fixtureCursor{s: f.s, legacy: baseOfValentBlock(top)}
++	}
+ 	var last *elem
+-	for e := base; ; e = e.next {
++	for e := c.next(); e != nil; e = c.next() {
+ 		if e.isValue() && e.st.kind == stMemRef {
+ 			last = e
+ 		}
+@@ -1137,7 +1146,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
+ 	lastLoad := (*elem)(nil)
+ 	if storeValueLoadFoldEnabled &&
+ 		!(size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat()) {
+-		lastLoad = storeValueLastFoldableLoad(top)
++		lastLoad = f.storeValueLastFoldableLoad(top)
+ 	}
+ 	if lastLoad != nil {
+ 		f.materializePendingLoadsBelow(lastLoad)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
+new file mode 100644
+index 00000000..060f0a2d
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_emitter_independent_test.go
+@@ -0,0 +1,247 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture
++
++package amd64
++
++import (
++	"bytes"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
++	"reflect"
++	"testing"
++	"unsafe"
++)
++
++// Deliberately poison the legacy sentinel. A candidate that touches the list
++// cannot silently pass by rebuilding it behind the fixture's back.
++func independentForestFn(candidate bool) *fn {
++	f := &fn{a: &encoder.Asm{}, s: newStack(), sc: newScratch(), m: &wasm.Module{}, localSlot: []uint32{0}, nLocalSlots: 1, globalCellReg: regNone, memSizeReg: regNone, policy: currentCodegenPolicy()}
++	if candidate {
++		f.s.forest = &fixtureForest{}
++		f.s.head.prev = nil
++		f.s.head.next = nil
++	}
++	return f
++}
++func independentForestNilLinks(t *testing.T, f *fn, seen []*elem) {
++	t.Helper()
++	if f.s.forest == nil {
++		return
++	}
++	if f.s.head.prev != nil || f.s.head.next != nil {
++		t.Fatal("candidate rebuilt legacy sentinel")
++	}
++	for _, e := range seen {
++		if e.prev != nil || e.next != nil {
++			t.Fatal("candidate operand acquired legacy link")
++		}
++	}
++}
++func TestOwnedForestEmitterMaskedCompare(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.a.Push(RCX)
++		f.a.SubRsp(256)
++		f.a.MovImm32(RDI, 4)
++		f.a.Store32(RSP, f.localAddr(0), RDI)
++		var nodes []*elem
++		nodes = append(nodes, f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7}))
++		nodes = append(nodes, f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0}))
++		nodes = append(nodes, f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3}))
++		f.pushBinOp(opAnd, mtI32)
++		nodes = append(nodes, f.s.back())
++		f.pushUnOp(opEqz, mtI32)
++		nodes = append(nodes, f.s.back())
++		f.pushBinOp(opAdd, mtI32)
++		nodes = append(nodes, f.s.back())
++		independentForestNilLinks(t, f, nodes)
++		reg := f.materialize(f.s.back())
++		f.a.MovReg64(RAX, reg)
++		independentForestNilLinks(t, f, nodes)
++		f.a.AddRsp(256)
++		f.a.Pop(RCX)
++		f.a.Store64(RCX, 0, RAX)
++		f.a.Ret()
++		if got := runCompiledAmd64u(t, &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}); got != 8 {
++			t.Fatalf("candidate=%v got=%d", candidate, got)
++		}
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else {
++			if !bytes.Equal(oracle, f.a.B) {
++				t.Fatal("same-emitter native mismatch")
++			}
++			if f.s.forest.flagsTransitions == 0 {
++				t.Fatal("masked flags transition not activated")
++			}
++			if f.s.forest.stores == 0 || f.s.forest.retirements == 0 {
++				t.Fatal("forest bookkeeping not selected")
++			}
++			t.Logf("root stores=%d growth=%d retired=%d peak=%d capacity=%d", f.s.forest.stores, f.s.forest.grows, f.s.forest.retirements, f.s.forest.peak, cap(f.s.forest.roots))
++		}
++	}
++}
++
++func TestOwnedForestEmitterPressureWrapper(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.a.Push(RCX)
++		f.a.SubRsp(1024)
++		var nodes []*elem
++		for i, r := range gpAlloc {
++			f.a.MovImm32(r, int32(i+1))
++			nodes = append(nodes, f.pushReg(r, mtI32))
++		}
++		r := f.allocReg(0)
++		f.a.MovImm32(r, 99)
++		nodes = append(nodes, f.pushReg(r, mtI32))
++		if candidate && f.s.forest.spills == 0 {
++			t.Fatal("no actual GP pressure spill")
++		}
++		independentForestNilLinks(t, f, nodes)
++		f.flushWrapper()
++		independentForestNilLinks(t, f, nodes)
++		for _, r := range gpAlloc {
++			f.a.MovImm32(r, 0xdead)
++		} // call-like clobber after real wrapper prep
++		for i := 0; i < len(gpAlloc); i++ {
++			f.pushBinOp(opAdd, mtI32)
++		}
++		reg := f.materialize(f.s.back())
++		f.a.MovReg64(RAX, reg)
++		f.a.AddRsp(1024)
++		f.a.Pop(RCX)
++		f.a.Store64(RCX, 0, RAX)
++		f.a.Ret()
++		want := uint64(len(gpAlloc)*(len(gpAlloc)+1)/2 + 99)
++		if got := runCompiledAmd64u(t, &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}); got != want {
++			t.Fatalf("candidate=%v got=%d want=%d", candidate, got, want)
++		}
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else {
++			if !bytes.Equal(oracle, f.a.B) {
++				t.Fatal("wrapper/pressure native mismatch")
++			}
++			t.Logf("spills=%d visits=%d cursorWrites=%d capacity=%d", f.s.forest.spills, f.s.forest.visits, f.s.forest.cursorWrites, cap(f.s.forest.roots))
++		}
++	}
++}
++func TestOwnedForestEmitterControlAgreement(t *testing.T) {
++	var oracle []byte
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.a.Push(RCX)
++		f.a.SubRsp(256)
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 11})
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 22})
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 33})
++		fr := &ctrlFrame{kind: cfBlock}
++		f.setFrameBaseTypePrefix(fr, 1)
++		f.flushWrapper()
++		f.moveBranchValues(fr, f.depth(), 1)
++		f.setDepthTypes([]machineType{mtI32, mtI32})
++		independentForestNilLinks(t, f, f.rootsBottomToTop())
++		f.pushBinOp(opAdd, mtI32)
++		r := f.materialize(f.s.back())
++		f.a.MovReg64(RAX, r)
++		f.a.AddRsp(256)
++		f.a.Pop(RCX)
++		f.a.Store64(RCX, 0, RAX)
++		f.a.Ret()
++		if got := runCompiledAmd64u(t, &encoder.CompiledModule{Code: f.a.B, Entry: []int{0}}); got != 44 {
++			t.Fatalf("candidate=%v agreement=%d", candidate, got)
++		}
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++		} else if !bytes.Equal(oracle, f.a.B) {
++			t.Fatal("control agreement native mismatch")
++		}
++	}
++}
++func TestOwnedForestEmitterMemoryTrapEmission(t *testing.T) {
++	var oracle []byte
++	var sites [trapMax + 1][]trapSite
++	for _, candidate := range []bool{false, true} {
++		f := independentForestFn(candidate)
++		f.wasmPC = 37
++		f.traceFuncIdx = 3
++		address := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		r := wasm.ReaderFrom([]byte{2, 0})
++		if err := f.memLoad(&r, 4, false, false); err != nil {
++			t.Fatal(err)
++		}
++		load := f.s.back()
++		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++		f.pushBinOp(opEq, mtI32)
++		f.materialize(f.s.back())
++		independentForestNilLinks(t, f, []*elem{address, load, f.s.back()})
++		n := 0
++		for _, group := range f.sc.trapSites {
++			for _, site := range group {
++				n++
++				if site.pc != 37 || site.function != 3 {
++					t.Fatalf("trap provenance %+v", site)
++				}
++			}
++		}
++		if n == 0 {
++			t.Fatal("no actual bounds trap site")
++		}
++		if !candidate {
++			oracle = append([]byte(nil), f.a.B...)
++			for i, g := range f.sc.trapSites {
++				sites[i] = append([]trapSite(nil), g...)
++			}
++		} else {
++			if !bytes.Equal(oracle, f.a.B) || !reflect.DeepEqual(sites, f.sc.trapSites) {
++				t.Fatal("memory/trap native or PC mismatch")
++			}
++			if f.s.forest.flagsTransitions == 0 {
++				t.Fatal("folded comparison not activated")
++			}
++		}
++	}
++}
++
++func TestOwnedForestEmitterStorageReceipt(t *testing.T) {
++	t.Logf("actual bytes elem=%d stack=%d cursor=%d forest=%d cursorFrame=%d frameBound=%d; no node-layout shrink claimed", unsafe.Sizeof(elem{}), unsafe.Sizeof(stack{}), unsafe.Sizeof(fixtureCursor{}), unsafe.Sizeof(fixtureForest{}), unsafe.Sizeof(fixtureCursorFrame{}), len(fixtureCursor{}.frames))
++}
++
++func TestOwnedForestEmitterRejectsUnsupported(t *testing.T) {
++	cases := []struct {
++		name, want string
++		run        func(*fn)
++	}{
++		{"keep-block", "fixture forest: unported keepBlockOperands", func(f *fn) { f.keepBlockOperands() }},
++		{"local-refs", "fixture forest: unported realizeLocalRefs", func(f *fn) { f.realizeLocalRefs(0, nil) }},
++		{"eh", "fixture forest: unported markEHReferenceResults", func(f *fn) { f.markEHReferenceResults(&ctrlFrame{}) }},
++		{"flush-below", "fixture forest: unported flushBelow", func(f *fn) { f.flushBelow(nil) }},
++		{"missing-effect-limit", "fixture forest: partial effect limit not found", func(f *fn) { f.fixturePendingEffects(true, new(elem)) }},
++		{"missing-effect-pending", "fixture forest: partial effect limit not found", func(f *fn) { f.s.pendingEffects = pendingLoad; f.fixturePendingEffects(true, new(elem)) }},
++		{"pending-erase", "fixture forest: erase unresolved subtree or pending result", func(f *fn) {
++			e := f.pushValue(storage{kind: stConst, typ: mtI32})
++			e.forestPending = true
++			f.s.erase(e)
++		}},
++		{"deferred-erase", "fixture forest: erase unresolved subtree or pending result", func(f *fn) {
++			f.pushValue(storage{kind: stLocalRef, typ: mtI32})
++			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
++			f.pushBinOp(opAnd, mtI32)
++			f.s.erase(f.s.back())
++		}},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			f := independentForestFn(true)
++			defer func() {
++				if got := recover(); got != tc.want {
++					t.Fatalf("panic=%v want=%s", got, tc.want)
++				}
++			}()
++			tc.run(f)
++			t.Fatal("unsupported path returned")
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+new file mode 100644
+index 00000000..513b7854
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -0,0 +1,261 @@
++//go:build amd64
++
++package amd64
++
++// fixtureForest is a direct-emitter experiment, not a publicly admitted path.
++// Existing elem layout is retained for the independent legacy oracle.
++type fixtureForest struct {
++	spills                                                          uint64
++	cursorWrites, visits, lostPrefixOpportunities, flagsTransitions uint64
++	peakCursor                                                      int
++	roots                                                           []*elem
++	stores, grows, retirements                                      uint64
++	peak                                                            int
++}
++
++func (s *stack) operandAttached(e *elem) bool {
++	if s.forest != nil {
++		return e.forestLive
++	}
++	return e.prev != nil && e.next != nil
++}
++
++func (s *stack) forestLast(n int) *elem {
++	i := len(s.forest.roots) - 1 - n
++	if i < 0 {
++		return nil
++	}
++	return s.forest.roots[i]
++}
++
++func (s *stack) forestAppend(e *elem) *elem {
++	if e.prev != nil || e.next != nil || e.forestLive || !e.st.hasLogicalRoot() {
++		panic("fixture forest: invalid root append")
++	}
++	e.forestLive = true
++	v := s.forest
++	if len(v.roots) == cap(v.roots) {
++		v.grows++
++		v.stores += uint64(len(v.roots))
++	}
++	v.roots = append(v.roots, e)
++	v.stores++
++	v.peak = max(v.peak, len(v.roots))
++	return e
++}
++
++func (s *stack) forestReplace(arity int, e *elem) *elem {
++	v := s.forest
++	i := len(v.roots) - arity
++	if i < 0 || v.roots[i] != e.arg0 || (arity == 2 && v.roots[i+1] != e.arg1) {
++		panic("fixture forest: wrong deferred suffix")
++	}
++	if e.forestLive || e.prev != nil || e.next != nil {
++		panic("fixture forest: attached replacement")
++	}
++	v.roots[i] = e
++	v.stores++
++	if arity == 2 {
++		v.roots[i+1] = nil
++		v.stores++
++	}
++	v.roots = v.roots[:i+1]
++	e.forestLive = true
++	return e
++}
++
++// Structural retirement only: existing lowering owns all register releases.
++func (s *stack) forestRetire(e *elem) {
++	if !e.forestLive || e.prev != nil || e.next != nil {
++		panic("fixture forest: retire invalid operand")
++	}
++	s.forgetSpill(e)
++	s.canonicalSlots = false
++	s.pendingPrefix = nil
++	if e.st.hasLogicalRoot() {
++		if s.logicalDepth == 0 {
++			panic("fixture forest: logical depth underflow")
++		}
++		s.logicalDepth--
++		e.st.setLogicalRoot(false)
++	}
++	e.forestLive = false
++	s.forest.retirements++
++	if len(s.forest.roots) == 0 {
++		s.pendingEffects &^= pendingLocalRef
++	}
++}
++
++func (f *fn) forestRetireSubtree(e *elem) {
++	if e == nil {
++		return
++	}
++	if e.isDeferred() {
++		f.forestRetireSubtree(e.arg1)
++		f.forestRetireSubtree(e.arg0)
++	}
++	if regallocCheckEnabled {
++		f.checkConsumeMemRef(e)
++	}
++	f.s.clearElemCold(e)
++	f.s.forestRetire(e)
++}
++
++func (f *fn) forestRetireChildren(node *elem) {
++	if !node.isDeferred() || node.arg0 == nil {
++		panic("fixture forest: invalid deferred owner")
++	}
++	f.forestRetireSubtree(node.arg1)
++	f.forestRetireSubtree(node.arg0)
++	node.arg0, node.arg1 = nil, nil
++}
++
++func (s *stack) forestResetRoots() {
++	v := s.forest
++	for i, e := range v.roots {
++		if e.isDeferred() || e.forestPending {
++			panic("fixture forest: cannot reset unresolved roots")
++		}
++		s.clearElemCold(e)
++		s.forestRetire(e)
++		v.roots[i] = nil
++		v.stores++
++	}
++	v.roots = v.roots[:0]
++}
++
++type fixtureCursorFrame struct {
++	node  *elem
++	phase uint8
++}
++
++// Independent cursor per allocator or barrier invocation. No retained pointer
++// vector other than the logical roots. Ancestor frames are bounded separately
++// from function size and roots, and returned nodes are already popped.
++type fixtureCursor struct {
++	s       *stack
++	legacy  *elem
++	root, n int
++	frames  [maxDeferDepth + 4]fixtureCursorFrame
++}
++
++func (s *stack) fixtureScan(skipSpillPrefix bool) fixtureCursor {
++	c := fixtureCursor{s: s}
++	if s.forest == nil {
++		c.legacy = s.head.next
++		if skipSpillPrefix {
++			c.legacy = s.firstUnspilled()
++		}
++	}
++	return c
++}
++
++func (c *fixtureCursor) push(e *elem) {
++	if c.n >= len(c.frames) || !e.forestLive || e.prev != nil || e.next != nil {
++		panic("fixture forest: invalid cursor child")
++	}
++	c.frames[c.n] = fixtureCursorFrame{node: e}
++	c.n++
++	v := c.s.forest
++	v.cursorWrites++
++	v.peakCursor = max(v.peakCursor, c.n)
++}
++
++func (c *fixtureCursor) next() *elem {
++	if c.s.forest == nil {
++		e := c.legacy
++		if e == c.s.head {
++			return nil
++		}
++		c.legacy = e.next
++		return e
++	}
++	v := c.s.forest
++	for {
++		if c.n == 0 {
++			if c.root == len(v.roots) {
++				return nil
++			}
++			c.push(v.roots[c.root])
++			c.root++
++		}
++		top := &c.frames[c.n-1]
++		e := top.node
++		if e.isDeferred() && !e.forestPending {
++			switch top.phase {
++			case 0:
++				top.phase = 1
++				v.cursorWrites++
++				if e.arg0 == nil {
++					panic("fixture forest: deferred node missing arg0")
++				}
++				c.push(e.arg0)
++				continue
++			case 1:
++				top.phase = 2
++				v.cursorWrites++
++				if e.arg1 != nil {
++					c.push(e.arg1)
++					continue
++				}
++			}
++		}
++		c.n--
++		c.frames[c.n] = fixtureCursorFrame{}
++		v.cursorWrites++
++		v.visits++
++		return e
++	}
++}
++
++func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
++	s := f.s
++	mask := pendingTrap
++	if loads {
++		mask |= pendingLoad
++	}
++	if limit == nil {
++		panic("fixture forest: nil effect limit")
++	}
++	if s.pendingEffects&mask == 0 {
++		if limit != s.head {
++			c := s.fixtureScan(false)
++			for e := c.next(); e != nil; e = c.next() {
++				if e == limit {
++					return
++				}
++			}
++			panic("fixture forest: partial effect limit not found")
++		}
++		return
++	}
++	if s.pendingPrefix != nil {
++		s.forest.lostPrefixOpportunities++
++	}
++	c := s.fixtureScan(false)
++	for {
++		e := c.next()
++		if e == limit {
++			break
++		}
++		if e == nil {
++			if limit != s.head {
++				panic("fixture forest: partial effect limit not found")
++			}
++			break
++		}
++		if e.forestPending {
++			panic("fixture forest: pending result observed at effect barrier")
++		}
++		if e.isDeferred() && isDivRem(e.deferredOp()) {
++			f.materialize(e)
++		} else if e.isValue() && e.st.kind == stMemRef && loads {
++			f.stats.addForcedLoad()
++			f.materializeByType(e)
++		}
++	}
++	if limit == s.head {
++		s.pendingEffects &^= mask
++		s.pendingPrefix = s.back() // observation only; no physical cursor.
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/references.go b/src/core/compiler/backend/railshot/amd64/references.go
+index 8b3b212e..1b78c4bf 100644
+--- a/src/core/compiler/backend/railshot/amd64/references.go
++++ b/src/core/compiler/backend/railshot/amd64/references.go
+@@ -56,7 +56,7 @@ func (f *fn) replaceStorage(e *elem, st storage) {
+ 	if regallocCheckEnabled {
+ 		f.checkTrackMemRef(e)
+ 	}
+-	if e.prev != nil && e.next != nil {
++	if f.s.operandAttached(e) {
+ 		if st.kind == stMemRef {
+ 			// A replacement can introduce a guard-backed load inside the
+ 			// previously checked prefix. Appended values need no reset.
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
+index ab54edb3..2ff81bd2 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
+@@ -144,7 +144,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
+ // fallback (condenseBinary's RHS relocation) use it to degrade to a spill slot
+ // instead of failing under extreme pressure.
+ func (f *fn) allocRegOrNone(avoid regMask) Reg {
+-	if ownedForestCensusEnabled {
++	if ownedForestCensusEnabled && f.s.forest == nil {
+ 		f.observeOwnedForest("gp-allocation")
+ 	}
+ 	block := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+@@ -160,7 +160,11 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
+ 	}
+ 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
+ 	// used furthest in the future, WARP's spill heuristic approximated by depth.
+-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(true); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
+ 			r := e.st.reg
+ 			f.spill(e)
+@@ -169,7 +173,11 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
+ 	}
+ 	// Under high pressure, a pending deferred load holds an address register: emit
+ 	// its load and spill the result to free the register.
+-	for e := f.s.firstUnspilled(); e != f.s.head; e = e.next {
++	for c := f.s.fixtureScan(true); ; {
++		e := c.next()
++		if e == nil {
++			break
++		}
+ 		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
+ 			r := e.st.reg
+ 			if e.st.typ.isFloat() {
+@@ -205,7 +213,11 @@ func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
+ 			continue
+ 		}
+ 		borrowed := false
+-		for e := f.s.head.next; e != f.s.head; e = e.next {
++		for c := f.s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
+ 			if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+ 				borrowed = true
+ 				break
+@@ -248,6 +260,9 @@ func (f *fn) spillIfUsed(r Reg) {
+ 
+ // spill evicts the register-resident value elem e to a fresh frame slot.
+ func (f *fn) spill(e *elem) {
++	if f.s.forest != nil {
++		f.s.forest.spills++
++	}
+ 	before := f.a.Len()
+ 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
+ 	if e.st.kind == stMemRef {
+@@ -310,7 +325,11 @@ func (f *fn) curSpillSlot() int {
+ 	s := f.s
+ 	if !s.spillExtentValid {
+ 		used := 0
+-		for e := s.head.next; e != s.head; e = e.next {
++		for c := s.fixtureScan(false); ; {
++			e := c.next()
++			if e == nil {
++				break
++			}
+ 			if e.isValue() && e.st.kind == stSlot {
+ 				end := e.st.slotIndex() + e.st.typ.stackSlots()
+ 				if end > used {
+@@ -489,6 +508,10 @@ func (f *fn) materializePendingEffects(loads bool) {
+ }
+ 
+ func (f *fn) materializePendingEffectsBelow(loads bool, limit *elem) {
++	if f.s.forest != nil {
++		f.fixturePendingEffects(loads, limit)
++		return
++	}
+ 	if ownedForestCensusEnabled {
+ 		f.observeOwnedForest("effect-barrier")
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index dc1e92b4..1df9dd9e 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -187,6 +187,8 @@ const (
+ // elem is one node on the operand stack: a value, a deferred operation, or a
+ // control-frame marker. Deferred nodes carry their opcode and operand links.
+ type elem struct {
++	forestPending bool
++	forestLive    bool // No locator; only used by the experimental fixture.
+ 	// st is the variant payload. Concrete values use it as storage. Deferred
+ 	// nodes reuse slot for their opcode, depth, and register-need labels; those
+ 	// bits are otherwise dead for the variant. typ and metadata retain their
+@@ -274,6 +276,7 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
+ // can be reused at proven-empty top-level reader checkpoints; other node
+ // pointers remain stable until the function finishes.
+ type stack struct {
++	forest             *fixtureForest // Installed only by the direct emitter fixture.
+ 	arena              *operandArena
+ 	chunks             [][]elem
+ 	activeChunk        *[]elem // points into chunks; refreshed after header-array growth
+@@ -490,6 +493,9 @@ func (s *stack) allocNextChunk() *elem {
+ 
+ // push appends e as the new top of the stack and returns it.
+ func (s *stack) push(e *elem) *elem {
++	if s.forest != nil {
++		return s.forestAppend(e)
++	}
+ 	last := s.head.prev
+ 	e.prev, e.next = last, s.head
+ 	last.next, s.head.prev = e, e
+@@ -580,11 +586,17 @@ func (s *stack) pushDeferred(e *elem) *elem {
+ 	if arity == 2 {
+ 		s.logicalDepth--
+ 	}
++	if s.forest != nil {
++		return s.forestReplace(arity, e)
++	}
+ 	return s.push(e)
+ }
+ 
+ // back returns the top element, or nil when empty.
+ func (s *stack) back() *elem {
++	if s.forest != nil {
++		return s.forestLast(0)
++	}
+ 	if s.head.prev == s.head {
+ 		return nil
+ 	}
+@@ -594,6 +606,20 @@ func (s *stack) back() *elem {
+ // erase unlinks e from the physical list (used when a node is condensed away or
+ // consumed). It does not touch parent/sibling links.
+ func (s *stack) erase(e *elem) {
++	if s.forest != nil {
++		if s.forestLast(0) != e {
++			panic("fixture forest: unported non-top erase")
++		}
++		if e.forestPending || (e.isDeferred() && (e.arg0 != nil || e.arg1 != nil)) {
++			panic("fixture forest: erase unresolved subtree or pending result")
++		}
++		i := len(s.forest.roots) - 1
++		s.forest.roots[i] = nil
++		s.forest.stores++
++		s.forest.roots = s.forest.roots[:i]
++		s.forestRetire(e)
++		return
++	}
+ 	if s.pendingPrefix == e {
+ 		s.pendingPrefix = e.prev
+ 	}
+@@ -619,6 +645,9 @@ func (s *stack) erase(e *elem) {
+ // exposeLogicalRoot restores a deferred operand that an optimization peeled
+ // from a wrapper without changing the logical stack depth.
+ func (s *stack) exposeLogicalRoot(e *elem) {
++	if s.forest != nil {
++		panic("fixture forest: unported exposed subtree")
++	}
+ 	s.canonicalSlots = false
+ 	if e == nil || e.st.hasLogicalRoot() {
+ 		panic("amd64: invalid logical operand root exposure")
+@@ -645,7 +674,12 @@ func baseOfValentBlock(root *elem) *elem {
+ // Guard-mode div/rem resolves pending traps now; other ops wait for a sink.
+ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 	right := f.s.back()
+-	left := baseOfValentBlock(right).prev
++	var left *elem
++	if f.s.forest != nil {
++		left = f.s.forestLast(1)
++	} else {
++		left = baseOfValentBlock(right).prev
++	}
+ 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
+ 	if right.isValue() && right.st.kind == stConst &&
+ 		left.isValue() && left.st.kind == stConst {
+@@ -923,7 +957,7 @@ func (s *stack) noteSpill(st storage) {
+ }
+ 
+ func (s *stack) forgetSpill(e *elem) {
+-	if e.prev == nil || e.next == nil || !e.isValue() || e.st.kind != stSlot {
++	if !s.operandAttached(e) || !e.isValue() || e.st.kind != stSlot {
+ 		return
+ 	}
+ 	if e.st.slotIndex()+e.st.typ.stackSlots() == int(s.spillExtent) {
