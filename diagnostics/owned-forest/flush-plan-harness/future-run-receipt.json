@@ -1,0 +1,9 @@
+{
+  "executed": false,
+  "scope": "Variable rename only. If ever separately authorized, place a copy named run.py in a fresh attempt directory and retain the source pin or explicitly review any changes. No previous logs or results altered.",
+  "original_runner": "fe2779f0adb7a1d2394ba152545133bd34aa356e0f0be43ecc721a76f2b04bde",
+  "corrected_runner": "ccda3ec5dcaf5a02c87d389a61a206c3167458b3fb8a7c5b6607c809156d1c68",
+  "diff": "70d38604be2d7e55dad5fd8f560ecd82985042f915efbcd2b89f026364a8f82b",
+  "original_summary": "72ef796d7a85787c6d550db3fd4c76619a97c2f49da76eab04dcab41cbdafc7d",
+  "attribution": "f3357817dde88125bcc5a84dd32428036cc7aca08617fa95b5ea65e9f4f84fc7"
+}

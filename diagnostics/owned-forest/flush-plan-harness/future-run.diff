@@ -1,0 +1,48 @@
+--- attempt1/run.py
++++ future-run.py
+@@ -16,8 +16,8 @@
+     return dict(head=subprocess.check_output(['git','-C',S,'rev-parse','HEAD'],text=True).strip(),
+         tree=subprocess.check_output(['git','-C',S,'rev-parse','HEAD^{tree}'],text=True).strip(),
+         status=subprocess.check_output(['git','-C',S,'status','--porcelain'],text=True).strip())
+-before = state()
+-assert before['head'] == HEAD and not before['status'], before
++sourceBefore = state()
++assert sourceBefore['head'] == HEAD and not sourceBefore['status'], sourceBefore
+ lock=(D/'run.lock').open('a')
+ fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ j=(D/'journal.jsonl').open('x')
+@@ -38,8 +38,8 @@
+ env.update(GOWORK='off',GOTOOLCHAIN='local',GOFLAGS='',GOMAXPROCS='1',GOOS='linux',GOARCH='amd64',CGO_ENABLED='0',GOPROXY='off',GOSUMDB='off',GOCACHE=str(R/'go-cache'),GOMODCACHE=str(R/'go-modcache'),TMPDIR=str(R/'tmp'),WAGO_MAPPED_OPERAND_ARENA='1',WAGO_DEBUG_PANIC='0')
+ for k in ('WAGO_BOUNDS','WAGO_EXPLAIN','WAGO_LAYOUT_PROBE_ARM'):
+     env.pop(k,None)
+-json.dump(dict(source=before,hashes={str(p):hs(p) for p in [D/'run.py',P/SRC_NAME,graph,grsum,H/'go.mod',H/'go.sum']},flags=flags,graph_main='github.com/wago-org/wago',tests=['TestOwnedForestCompactLayoutOrdinary','TestOwnedForestFlushPlanTupleOrdinary','TestOwnedForestFlushPlanReentrantOrdinary']), (D/'receipt.json').open('x'),indent=2)
+-event('start',source=before)
++json.dump(dict(source=sourceBefore,hashes={str(p):hs(p) for p in [D/'run.py',P/SRC_NAME,graph,grsum,H/'go.mod',H/'go.sum']},flags=flags,graph_main='github.com/wago-org/wago',tests=['TestOwnedForestCompactLayoutOrdinary','TestOwnedForestFlushPlanTupleOrdinary','TestOwnedForestFlushPlanReentrantOrdinary']), (D/'receipt.json').open('x'),indent=2)
++event('start',source=sourceBefore)
+ binaries={}
+ try:
+     for variant,tags in [('wide','wago_owned_forest_layout_probe'),('compact','wago_owned_forest_layout_probe,wago_owned_forest_compact')]:
+@@ -102,12 +102,12 @@
+             assert {k:v for k,v in n.items() if k!='flushPlan'}==b,(arm,b['case'],b['intr'])
+     counted=[]
+     for k,w in sets['wide-forest'].items():
+-        before=w['flushPlan'];after=sets['compact-forest'][k]['flushPlan']
++        planBefore=w['flushPlan'];planAfter=sets['compact-forest'][k]['flushPlan']
+         for field in ('CanonicalBitExits','CanonicalLayoutExits','Plans','WideRoutes','NarrowRoutes'):
+-            assert before[field]==after[field],(k,field,before,after)
+-        assert before['FusedPlans']==0 and after['FusedPlans']==after['Plans']
+-        assert before['RootVisits']==before['RootTypeReads']==2*after['RootVisits']==2*after['RootTypeReads']
+-        counted.append(dict(case=k[0],intr=k[1],wide_forest=before,compact_forest=after))
++            assert planBefore[field]==planAfter[field],(k,field,planBefore,planAfter)
++        assert planBefore['FusedPlans']==0 and planAfter['FusedPlans']==planAfter['Plans']
++        assert planBefore['RootVisits']==planBefore['RootTypeReads']==2*planAfter['RootVisits']==2*planAfter['RootTypeReads']
++        counted.append(dict(case=k[0],intr=k[1],wide_forest=planBefore,compact_forest=planAfter))
+     assert any(x['compact_forest']['FusedPlans'] for x in counted)
+     direct=rows('compact-forest','FLUSH_EMIT')
+     assert len(direct)==6 and len({(x['lane'],x['fused']) for x in direct})==6 and all((x['v128SpillsDuringFlush']>0 and x['gpSpillsDuringFlush']==0) if x['lane']=='v128-wrapper-pressure-wide' else (x['gpSpillsDuringFlush']>0 and x['v128SpillsDuringFlush']==0) for x in direct)
+@@ -122,4 +122,4 @@
+     event('exit',returncode=1,source=state())
+     raise
+ finally:
+-    assert state()==before
++    assert state()==sourceBefore
