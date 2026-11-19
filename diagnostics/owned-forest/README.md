@@ -240,3 +240,19 @@ observed. This does not verify i64, multivalue, floating point,
 exception handling, function targets, or the 31 original corpus
 panics. No exceptional-input or corpus run, timing or net savings
 claim, or default change.
+
+## Focused direct register-ABI call lanes
+
+Apply direct-call-focused.patch on top of 3149f705. It archives
+implementation 275111a6 and tests at clean 87b15a63. The ordinary
+valid-input gate passed 12 execution images and 36 runtime calls,
+with six exact native pairs. Every image recorded one actual
+register-ABI call. The natural local-result i64 fusion activated
+once in both arms and both interruption modes; the other cases
+recorded no such fusion. Each candidate image reached two legacy
+forest bodies with no bypass, inline gap, or rejection.
+
+The gate covers direct void and single-i64 return lanes, not
+wrapper, inline, tail, host, or wider ABI cases. Serialized metadata
+was not compared. No exceptional-input, corpus, original 31-panic,
+or timing check ran. No performance or default change is claimed.

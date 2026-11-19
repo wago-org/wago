@@ -1,0 +1,121 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 042aa2d7..7fd166bc 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -376,9 +376,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		panic("fixture forest: selected inline call ownership is not ported")
+ 	}
+ 	if f.s.forest != nil && (int(idx) < imported ||
+-		!f.opt(optRegABI) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Results) != 1 ||
+-		!wasm.EqualValType(ft.Results[0], wasm.I32) || f.gcFrameRoots != nil) {
+-		panic("fixture forest: only direct non-inlined scalar integer register calls with one i32 result are ported")
++		!f.opt(optRegABI) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || len(ft.Results) > 1 ||
++		f.gcFrameRoots != nil) {
++		panic("fixture forest: only direct non-inlined scalar integer register calls with at most one integer result are ported")
+ 	}
+ 	if int(idx) < imported && f.customInstructions != nil {
+ 		if custom, ok := f.customInstructions[idx]; ok && (pluginAMD64Lowering(custom) != nil || len(custom.Nodes) != 0) {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_call_lane_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_call_lane_independent_test.go
+new file mode 100644
+index 00000000..1bb023de
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_call_lane_independent_test.go
+@@ -0,0 +1,98 @@
++//go:build (linux || darwin || windows) && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++	"testing"
++)
++
++func ownedCallLaneModule(t *testing.T, mode string) *wasm.Module {
++	t.Helper()
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x20, 0, 0x42, 10, 0x7e, 0x20, 1, 0x7c)
++	results := []wasm.ValType{wasm.I64}
++	var caller []byte
++	switch mode {
++	case "unfused-i64":
++		caller = []byte{0, 0x20, 0, 0x20, 1, 0x20, 0, 0x10, 1, 0x7c, 0x0b}
++	case "local-result-i64":
++		caller = []byte{0, 0x20, 0, 0x20, 1, 0x20, 0, 0x10, 1, 0x21, 0, 0x20, 0, 0x7c, 0x0b}
++	case "void-global-effect":
++		results = nil
++		callee = append(callee, 0x24, 0)
++		caller = []byte{0, 0x23, 0, 0x20, 0, 0x20, 1, 0x20, 0, 0x10, 1, 0x23, 0, 0x7c, 0x7c, 0x0b}
++	default:
++		t.Fatal("unknown fixture")
++	}
++	callee = append(callee, 0x0b)
++	params := []wasm.ValType{wasm.I64, wasm.I64}
++	sections := [][]byte{
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I64}), wasmtest.FuncType(params, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++	}
++	if mode == "void-global-effect" {
++		sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0, 0x0b}))))
++	}
++	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(callee))), callee...))))
++	m, e := wasm.DecodeModule(wasmtest.Module(sections...))
++	if e != nil {
++		t.Fatal(e)
++	}
++	return m
++}
++
++func TestOwnedForestCallLanesOrdinary(t *testing.T) {
++	for _, mode := range []string{"unfused-i64", "local-result-i64", "void-global-effect"} {
++		t.Run(mode, func(t *testing.T) {
++			m := ownedCallLaneModule(t, mode)
++			for _, intr := range []bool{false, true} {
++				var oracle []byte
++				oracleFuse := 0
++				for _, candidate := range []bool{false, true} {
++					var stats ModuleStats
++					work := &fixtureModuleWork{Forest: candidate}
++					cm, e := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if e != nil {
++						t.Fatal(e)
++					}
++					if work.LegacyBodies != 2 || work.Opcodes == 0 || work.SharedScalarBodies != 0 || work.InlineCallGaps != 0 || (candidate && work.Vector.stores == 0) {
++						t.Fatalf("inactive direct legacy call: %+v", work)
++					}
++					st := stats.Funcs[0]
++					if st.Calls["regabi"] != 1 || st.Calls["wrapper"] != 0 || st.Calls["mixed"] != 0 {
++						t.Fatalf("unexpected lane: %+v", st.Calls)
++					}
++					fuse := st.Peephole["call-localset-fuse"]
++					if mode != "local-result-i64" && fuse != 0 {
++						t.Fatal("unexpected fusion")
++					}
++					for _, args := range [][2]uint64{{0x100000001, 0x200000003}, {0xfffffffffffffff0, 0x100000007}, {7, 13}} {
++						want := 2*args[0] + 10*args[1]
++						if mode == "void-global-effect" {
++							want += 17
++						}
++						got, e := ownedRunModule(t, cm, args[:])
++						if e != nil || got != want {
++							t.Fatalf("candidate=%v args=%x got=%x want=%x err=%v", candidate, args, got, want, e)
++						}
++					}
++					if !candidate {
++						oracle = append([]byte(nil), cm.Code...)
++						oracleFuse = fuse
++					} else if !bytes.Equal(oracle, cm.Code) || fuse != oracleFuse {
++						t.Fatal("native/selection differs")
++					}
++					t.Logf("mode=%s intr=%v candidate=%v bytes=%d regabi=%d fused=%d work=%+v", mode, intr, candidate, len(cm.Code), st.Calls["regabi"], fuse, work)
++					if cm.CodeImage != nil {
++						cm.CodeImage.Close()
++					}
++				}
++			}
++		})
++	}
++}
