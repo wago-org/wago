@@ -620,3 +620,25 @@ timing result. The 90-of-114 census at 39f93798 and defaults are unchanged.
 
 Focused summary SHA-256:
 `f852f4943a219c3b29300050ddf98eb4e46100a20765f3044a4242a6ebfac40e`.
+
+## Focused private all-FP internal calls
+
+Apply fp-internal-focused.patch on top of 9d47a31e. This separate
+experimental capability admits same-module non-inlined register-ABI
+calls with at most four FP arguments and one FP result, without
+changing the shared emitter or prologue.
+
+At 429aadf2 the focused tests passed 16 images and 64 ordinary calls,
+with eight exact native and encoder-exported JSON pairs. Each image
+recorded one actual all-FP internal call and one deferred FP literal.
+The existing `mixed` statistics label identifies the shared emitter,
+not a mixed signature. The fixtures used three all-FP arguments and an
+f32/f64 or void result through an exported integer Engine.Call adapter;
+raw carrier bits are not evidence about FP arithmetic payloads.
+
+No zero- or four-argument coverage, cycles, pressure, public artifact
+codec parity, held-input, corpus or timing result is claimed. The prior
+90-of-114 census and defaults are unchanged.
+
+Focused summary SHA-256:
+`d7eb87d21e4dcc6095c069e3b4416a3bcefa293c0588780c7c952bc5b87a14ef`.

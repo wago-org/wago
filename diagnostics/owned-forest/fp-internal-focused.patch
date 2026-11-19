@@ -1,0 +1,229 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 784df2f3..aaeaff82 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -391,6 +391,11 @@ func fixtureScalarFPMixedSignature(ft *wasm.CompType) bool {
+ 	return hasGP && hasFP
+ }
+ 
++func (w *fixtureModuleWork) admitsFPInternalDirect(ft *wasm.CompType) bool {
++	return w != nil && w.ScalarFP && w.ScalarFPFunctionABI && w.ScalarFPInternalDirectCalls &&
++		fixtureScalarFPFunctionSignature(ft) && !sigIsIntOnly(ft)
++}
++
+ func (f *fn) callOp(r *wasm.Reader) error {
+ 	idx, err := r.U32()
+ 	if err != nil {
+@@ -421,7 +426,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 		} else {
+ 			mixed := f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPMixedDirectCalls &&
+ 				fixtureScalarFPMixedSignature(ft) && len(f.customInstructions) == 0 && !f.s.hasGCRoots
+-			if int(idx) < imported || !f.opt(optRegABI) || (!sigIsIntOnly(ft) && !mixed) ||
++			allFP := f.fixtureScalarFPEnabled() && f.sc.fixtureWork.admitsFPInternalDirect(ft) &&
++				len(f.customInstructions) == 0 && !f.s.hasGCRoots
++			if int(idx) < imported || !f.opt(optRegABI) || (!sigIsIntOnly(ft) && !mixed && !allFP) ||
+ 				len(ft.Results) > 1 || f.gcFrameRoots != nil {
+ 				panic("fixture forest: only internal scalar integer calls with at most one integer result are ported")
+ 			}
+@@ -2713,6 +2720,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 
+ 	fixtureReceipt := f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFP &&
+ 		f.sc.fixtureWork.ScalarFPMixedDirectCalls && fixtureScalarFPMixedSignature(ft)
++	fpInternalReceipt := f.sc != nil && f.sc.fixtureWork.admitsFPInternalDirect(ft)
+ 
+ 	// Register-resident args are materialized into owned, pinned registers now
+ 	// (per bank), so the flush below cannot spill them; const/slot/local-ref args
+@@ -2816,6 +2824,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 				if fixtureReceipt {
+ 					f.sc.fixtureWork.FPMixedDeferredConstants++
+ 				}
++				if fpInternalReceipt {
++					f.sc.fixtureWork.FPInternalDeferredConstants++
++				}
+ 			case stSlot:
+ 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
+ 			case stLocalRef:
+@@ -2844,6 +2855,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+ 	if fixtureReceipt {
+ 		f.sc.fixtureWork.FPMixedDirectCalls++
+ 	}
++	if fpInternalReceipt {
++		f.sc.fixtureWork.FPInternalDirectCalls++
++	}
+ 
+ 	// Capture integer results out of RAX/RDX before the reload below reuses them as
+ 	// scratch. A float result stays in XMM0 (never a pin target, so reload-safe).
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index fc721fd9..70ecef27 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1915,10 +1915,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+ 			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+-			ImmutableIntegerIndirect: work.ImmutableIntegerIndirect,
+-			ScalarFPMixedDirectCalls: work.ScalarFPMixedDirectCalls,
+-			ScalarFPSignedSaturation: work.ScalarFPSignedSaturation,
+-			IntegerControlInline:     work.IntegerControlInline,
++			ImmutableIntegerIndirect:    work.ImmutableIntegerIndirect,
++			ScalarFPMixedDirectCalls:    work.ScalarFPMixedDirectCalls,
++			ScalarFPInternalDirectCalls: work.ScalarFPInternalDirectCalls,
++			ScalarFPSignedSaturation:    work.ScalarFPSignedSaturation,
++			IntegerControlInline:        work.IntegerControlInline,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index b4f20d21..a6ef25ca 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	ScalarFPInternalDirectCalls                                                                     bool
++	FPInternalDirectCalls, FPInternalDeferredConstants                                              uint64
+ 	MemorySizeEmissions                                                                             uint64
+ 	DivRemConstPairSeekVisits                                                                       uint64
+ 	IntegerControlInline                                                                            bool
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_internal_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_internal_independent_test.go
+new file mode 100644
+index 00000000..51f5435a
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_internal_independent_test.go
+@@ -0,0 +1,135 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedFPInternalModule(t *testing.T, wide, void bool) *wasm.Module {
++	t.Helper()
++	it, ft := wasm.I32, wasm.F32
++	toFP, toInt, iConst, sub, add, xor, literal := byte(0xbe), byte(0xbc), byte(0x41), byte(0x6b), byte(0x6a), byte(0x73), byte(0x43)
++	bits := uint64(0x40200000)
++	if wide {
++		it, ft = wasm.I64, wasm.F64
++		toFP, toInt, iConst, sub, add, xor, literal = 0xbf, 0xbd, 0x42, 0x7d, 0x7c, 0x85, 0x44
++		bits = 0x4004000000000000
++	}
++	// Call with (b, literal, a), keeping the old a beneath the call.
++	caller := []byte{0, 0x20, 0, 0x20, 1, toFP, literal}
++	if wide {
++		caller = binary.LittleEndian.AppendUint64(caller, bits)
++	} else {
++		caller = binary.LittleEndian.AppendUint32(caller, uint32(bits))
++	}
++	caller = append(caller, 0x20, 0, toFP, 0x10, 1, iConst, 23, 0x21, 0)
++	// A real, nontrivial loop body length keeps the existing inline policy.
++	callee := []byte{0, 0x03, 0x40, 0x01, 0x0b}
++	callee = append(callee, bytes.Repeat([]byte{0x01}, 512)...)
++	callee = append(callee, 0x20, 0, toInt, 0x20, 2, toInt, sub, 0x20, 1, toInt, xor)
++	results := []wasm.ValType{ft}
++	if void {
++		results = nil
++		caller = append(caller, 0x23, 0)
++		callee = append(callee, 0x24, 0)
++	} else {
++		caller = append(caller, toInt)
++		callee = append(callee, toFP)
++	}
++	caller = append(caller, add, 0x20, 0, add, 0x0b)
++	callee = append(callee, 0x0b)
++	sections := [][]byte{
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{it, it}, []wasm.ValType{it}), wasmtest.FuncType([]wasm.ValType{ft, ft, ft}, results))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
++	}
++	if void {
++		sections = append(sections, wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(it, true, []byte{iConst, 0, 0x0b}))))
++	}
++	sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))), wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(callee))), callee...))))
++	m, err := wasm.DecodeModule(wasmtest.Module(sections...))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = wasm.ValidateModule(m); err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestOwnedForestFPInternalCallsOrdinary(t *testing.T) {
++	for _, wide := range []bool{false, true} {
++		for _, void := range []bool{false, true} {
++			t.Run(fmt.Sprintf("wide=%v/void=%v", wide, void), func(t *testing.T) {
++				m := ownedFPInternalModule(t, wide, void)
++				literal := uint64(0x40200000)
++				carriers := []uint64{0, 0x80000000, 0x7fc01234, 0x40c00000}
++				if wide {
++					literal = 0x4004000000000000
++					carriers = []uint64{0, 0x8000000000000000, 0x7ff8000000001234, 0x4018000000000000}
++				}
++				narrow := func(x uint64) uint64 {
++					if !wide {
++						return uint64(uint32(x))
++					}
++					return x
++				}
++				for _, intr := range []bool{false, true} {
++					var native, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPFunctionABI: true, ScalarFPInternalDirectCalls: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						st := stats.Funcs[0]
++						if work.LegacyBodies != 2 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++							t.Fatalf("inactive bodies: %+v", work)
++						}
++						if work.FPInternalDirectCalls != 1 || work.FPInternalDeferredConstants != 1 || st.Calls["inline"] != 0 || st.Calls["wrapper"] != 0 {
++							t.Fatalf("wrong path: calls=%v work=%+v", st.Calls, work)
++						}
++						if len(cm.Entry) != 2 || len(cm.InternalEntry) != 2 || cm.Entry[0] >= cm.InternalEntry[0] || st.NativeSize.HostAdapterBytes <= 0 {
++							t.Fatal("exported integer caller adapter absent")
++						}
++						// Solve the integer formula for each requested raw result, and pair
++						// each one with a different input carrier. FP operations only move bits.
++						for i, raw := range carriers {
++							a := carriers[(i+1)%len(carriers)]
++							b := narrow(a + (raw ^ literal))
++							want := narrow(a + 23 + raw)
++							got, err := ownedRunModule(t, cm, []uint64{a, b})
++							if err != nil || got != want {
++								t.Fatalf("intr=%v forest=%v a=%x b=%x got=%x want=%x err=%v", intr, candidate, a, b, got, want, err)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							native = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v forest=%v bytes=%d calls=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, work)
++					}
++				}
++			})
++		}
++	}
++}
