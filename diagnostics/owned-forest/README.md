@@ -452,3 +452,23 @@ Summary SHA-256:
 `a339f1d13798f96cd1699e49ee26bba50159809c659b22336bb9a0666af48edd`.
 Retained rows SHA-256:
 `b86fe1026753b159ae95f1fe250ef05fcba5fa0760581193e2e3ec104f590fd1`.
+
+## Focused scalar FP select
+
+Apply fp-select-focused.patch on top of 054dc7f8. This is a fifth
+explicit experimental capability for typed and untyped select with
+matching scalar FP operands. Default emission is unchanged.
+
+The ordinary gate at 214c190d passed 24 execution images and 96 calls,
+with 12 exact native and encoder-exported JSON pairs. Every image
+emitted one FP select. The eight inverted deferred-comparison images
+each deferred and materialized the comparison once; none used the
+integer flags-select path. Integer ABI fixtures checked raw f32/f64
+carriers, alias overwrite, qNaN and signed zero.
+
+No pressure, spill, public artifact codec, exceptional-input, corpus,
+or timing result is claimed. The prior 83-of-114 census still exited 1
+with its unexpected error unchanged. The 31 held inputs were untouched.
+
+Focused summary SHA-256:
+`873b3822f6dd503e3d8eee816fcf2a799357a30d1a36f84328ab0fc4c2e3454c`.

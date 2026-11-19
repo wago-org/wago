@@ -1,0 +1,265 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 9243cb5b..3b6fb8ed 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1914,7 +1914,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 		*work = fixtureModuleWork{
+ 			Forest: work.Forest, ScalarFP: work.ScalarFP,
+ 			ScalarFPBlockResults: work.ScalarFPBlockResults, ScalarFPFunctionABI: work.ScalarFPFunctionABI,
+-			ScalarFPBulkMemory: work.ScalarFPBulkMemory,
++			ScalarFPBulkMemory: work.ScalarFPBulkMemory, ScalarFPSelect: work.ScalarFPSelect,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index 1e63a473..aa06ee6d 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -92,6 +92,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+ 			if err := f.checkFixtureScalarOpcode(op); err != nil {
+ 				return err
+ 			}
++			if op == 0x1b || op == 0x1c {
++				if err := f.checkFixtureSelect(op, *r); err != nil {
++					return err
++				}
++			}
+ 			if op == 0xfc {
+ 				// Preflight before interval/control effects can touch operands.
+ 				probe := *r
+@@ -211,6 +216,59 @@ func (f *fn) fixtureScalarFPBulkEnabled() bool {
+ 	return f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPBulkMemory
+ }
+ 
++func (f *fn) fixtureScalarFPSelectEnabled() bool {
++	return f.fixtureScalarFPEnabled() && f.sc.fixtureWork.ScalarFPSelect
++}
++
++// Preflight the typed immediate and logical operands without consuming the
++// emitter reader or changing effect/ownership state.
++func (f *fn) checkFixtureSelect(op byte, probe wasm.Reader) error {
++	typ := mtNone
++	if op == 0x1c {
++		n, err := probe.U32()
++		if err != nil {
++			return err
++		}
++		if n != 1 {
++			return fmt.Errorf("fixture forest: unsupported typed float select immediate")
++		}
++		bt, err := probe.Byte()
++		if err != nil {
++			return err
++		}
++		switch bt {
++		case 0x7d:
++			typ = mtF32
++		case 0x7c:
++			typ = mtF64
++		default:
++			return fmt.Errorf("fixture forest: unsupported typed float select immediate")
++		}
++	}
++	if f.unreachable {
++		return nil // No concrete alternatives in the polymorphic stack.
++	}
++	b, a := f.s.forestLast(1), f.s.forestLast(2)
++	if op == 0x1b && (b == nil || a == nil ||
++		!rootMachineType(a).isFloat() && !rootMachineType(b).isFloat()) {
++		return nil // Existing integer lane.
++	}
++	if !f.fixtureScalarFPSelectEnabled() {
++		return fmt.Errorf("fixture forest: unsupported float select")
++	}
++	c := f.s.forestLast(0)
++	if a == nil || b == nil || c == nil || rootMachineType(c) != mtI32 {
++		return fmt.Errorf("fixture forest: unsupported float select operands")
++	}
++	if typ == mtNone {
++		typ = rootMachineType(a)
++	}
++	if !typ.isFloat() || rootMachineType(a) != typ || rootMachineType(b) != typ {
++		return fmt.Errorf("fixture forest: unsupported float select alternatives")
++	}
++	return nil
++}
++
+ func fixtureScalarFPOpcode(op byte) bool {
+ 	return op == 0x2a || op == 0x2b || op == 0x38 || op == 0x39 ||
+ 		op == 0x43 || op == 0x44 || op >= 0x5b && op <= 0x66 ||
+@@ -218,7 +276,8 @@ func fixtureScalarFPOpcode(op byte) bool {
+ }
+ 
+ func (f *fn) checkFixtureScalarOpcode(op byte) error {
+-	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) {
++	if !fixtureScalarOpcode(op) && !(f.fixtureScalarFPEnabled() && fixtureScalarFPOpcode(op)) &&
++		!(op == 0x1c && f.fixtureScalarFPSelectEnabled()) {
+ 		return fmt.Errorf("fixture forest: unsupported opcode %#x", op)
+ 	}
+ 	if f.moduleEH || f.moduleHasSIMD || f.gcFrameRoots != nil || f.guardMode || f.threadedMemory0 ||
+@@ -309,9 +368,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ 	case 0x1a: // drop
+ 		f.dropValue()
+ 	case 0x1b: // select
+-		if f.fixtureScalarFPEnabled() && rootMachineType(f.s.forestLast(1)).isFloat() {
+-			return fmt.Errorf("fixture forest: unsupported float select")
+-		}
+ 		if done, err := f.trySelectLocalSink(r); done || err != nil {
+ 			return err
+ 		}
+@@ -1188,6 +1244,9 @@ func (f *fn) emitSelect() {
+ 		f.erase(b)
+ 		f.erase(a)
+ 		f.pushFReg(aX, typ)
++		if f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.ScalarFPSelect {
++			f.sc.fixtureWork.FPSelectEmissions++
++		}
+ 		return
+ 	}
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index f660355c..6e674ce0 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,16 +272,17 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
+-	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                uint64
+-	FPBlockRegMerges, FPBlockPinConflictSlots                                       uint64
+-	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps               uint64
+-	Opcodes                                                                         uint64
+-	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI, ScalarFPBulkMemory bool
+-	Attempts, Completed, Rejected                                                   int
+-	List                                                                            fixtureListWork
+-	Vector                                                                          fixtureForest
+-	RootCapacity                                                                    int
+-	Spills                                                                          []fixtureSpillTrace
++	FPSelectEmissions                                                                               uint64
++	FPFunctionAdapterXMM0Results, FPFunctionAdapterSlotReloadResults                                uint64
++	FPBlockRegMerges, FPBlockPinConflictSlots                                                       uint64
++	SharedScalarBodies, StreamingBodies, LegacyBodies, InlineCallGaps                               uint64
++	Opcodes                                                                                         uint64
++	Forest, ScalarFP, ScalarFPBlockResults, ScalarFPFunctionABI, ScalarFPBulkMemory, ScalarFPSelect bool
++	Attempts, Completed, Rejected                                                                   int
++	List                                                                                            fixtureListWork
++	Vector                                                                                          fixtureForest
++	RootCapacity                                                                                    int
++	Spills                                                                                          []fixtureSpillTrace
+ }
+ 
+ type fixtureSpillTrace struct {
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fp_select_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_select_independent_test.go
+new file mode 100644
+index 00000000..b37f4d42
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fp_select_independent_test.go
+@@ -0,0 +1,108 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"math"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++)
++
++func TestOwnedForestFPSelectOrdinary(t *testing.T) {
++	for _, sh := range []ownedFPShape{
++		{integer: wasm.I32, floatCode: 0x7d, intoFP: 0xbe, fromFP: 0xbc, eq: 0x5b, xor: 0x73, bits: func(v float64) uint64 { return uint64(math.Float32bits(float32(v))) }, quiet: 0x7fc01234, sign: 1 << 31},
++		{integer: wasm.I64, floatCode: 0x7c, intoFP: 0xbf, fromFP: 0xbd, eq: 0x61, xor: 0x85, bits: math.Float64bits, quiet: 0x7ff8000000001234, sign: 1 << 63},
++	} {
++		for _, lane := range []string{"untyped", "typed", "deferred-inverted"} {
++			t.Run(fmt.Sprintf("width=%x/%s", sh.floatCode, lane), func(t *testing.T) {
++				// Locals 5 and 6 are FP. Keep an old snapshot of local 5
++				// under the alternatives and use local 6 for the chosen result.
++				body := []byte{1, 2, sh.floatCode, 0x20, 0, sh.intoFP, 0x21, 5, 0x20, 5, 0x20, 1, sh.intoFP, 0x20, 2, sh.intoFP}
++				if lane == "deferred-inverted" {
++					body = append(body, 0x20, 3, sh.intoFP, 0x20, 4, sh.intoFP, sh.eq, 0x45)
++				} else {
++					body = append(body, 0x20, 3)
++				}
++				if lane == "typed" {
++					body = append(body, 0x1c, 1, sh.floatCode)
++				} else {
++					body = append(body, 0x1b)
++				}
++				// Overwrite the aliased local while the old snapshot still
++				// lives, then reinterpret and compare both raw carriers.
++				body = append(body, 0x21, 6, 0x20, 2, sh.intoFP, 0x21, 5, sh.fromFP, 0x20, 6, sh.fromFP, sh.xor, 0x0b)
++				params := []wasm.ValType{sh.integer, sh.integer, sh.integer, wasm.I32, sh.integer}
++				if lane == "deferred-inverted" {
++					params[3] = sh.integer
++				}
++				m := mod1(t, params, []wasm.ValType{sh.integer}, body)
++				for _, intr := range []bool{false, true} {
++					var native, metaOracle []byte
++					for _, candidate := range []bool{false, true} {
++						work := &fixtureModuleWork{Forest: candidate, ScalarFP: true, ScalarFPSelect: true}
++						var stats ModuleStats
++						cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++						if err != nil {
++							t.Fatal(err)
++						}
++						if cm.CodeImage != nil {
++							defer cm.CodeImage.Close()
++						}
++						if work.LegacyBodies != 1 || work.Opcodes == 0 || work.Rejected != 0 || (candidate && work.Vector.stores == 0) {
++							t.Fatalf("inactive legacy forest: %+v", work)
++						}
++						if work.FPSelectEmissions != 1 {
++							t.Fatalf("FP select emission absent: %+v", work)
++						}
++						peeps := stats.Funcs[0].Peephole
++						if lane == "deferred-inverted" && (peeps["float-branch-defer"] != 1 || peeps["float-branch-materialize"] != 1 || peeps["select-flags"] != 0) {
++							t.Fatalf("wrong FP condition strategy: %v", peeps)
++						}
++						for _, tc := range []struct {
++							old, a, b, x, y uint64
++							choose          bool
++						}{
++							{sh.bits(3.25), 0, sh.sign, 0, 0, false},
++							{sh.bits(3.25), sh.quiet, 0, sh.quiet, 0, true},
++							{sh.bits(-2), sh.sign, sh.quiet, sh.sign, 0, false},
++							{sh.bits(-2), sh.sign, sh.quiet, sh.bits(5), sh.bits(-5), true},
++						} {
++							x := tc.x
++							if lane != "deferred-inverted" {
++								x = 0
++								if tc.choose {
++									x = 1
++								}
++							}
++							chosen := tc.b
++							if tc.choose {
++								chosen = tc.a
++							}
++							got, err := ownedRunModule(t, cm, []uint64{tc.old, tc.a, tc.b, x, tc.y})
++							if err != nil || got != (tc.old^chosen) {
++								t.Fatalf("intr=%v forest=%v got=%x want=%x err=%v", intr, candidate, got, tc.old^chosen, err)
++							}
++						}
++						meta := *cm
++						meta.Code, meta.CodeImage = nil, nil
++						encoded, err := json.Marshal(meta)
++						if err != nil {
++							t.Fatal(err)
++						}
++						if !candidate {
++							native = append([]byte(nil), cm.Code...)
++							metaOracle = encoded
++						} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++							t.Fatal("native or encoder metadata differs")
++						}
++						t.Logf("intr=%v candidate=%v bytes=%d peeps=%v work=%+v", intr, candidate, len(cm.Code), peeps, work)
++					}
++				}
++			})
++		}
++	}
++}
