@@ -1172,3 +1172,11 @@ Apply `storage-accessors-focused.patch` after `c84da8cd` to reach `07d2bd690ee8d
 The first gate passed 36 images, 114 ordinary calls and 24 exact body/native/encoder-JSON comparisons. All 60 capacity rows and the 40-byte compact element layout were unchanged. The gate retained two wide and three compact packed direct checks and added two typed direct checks per forest arm.
 
 Summary SHA-256: `5305c32cceaadee5c806227725122e490418a35698980742e33919fe444700a0`. No 32-byte representation, variant-union proof, public serialization, corpus, timing, RSS or default change.
+
+### Typed operand constructors, unchanged layout
+
+Apply `storage-constructors-focused.patch` after `07d2bd69` to reach `82dd50786e4ac98854b397fb1ff7f65a2ff0bc21` (tree `7a5e8032fff39e7fee83abc10557b42b01179519`). The eight-configuration typed audit records 108 migrated literals with original expression order. Its pointer-expression, map and existing unsafe-use inventory found no direct whole-value interface use, but does not prove interprocedural or transitive variant safety.
+
+The first gate passed 36 images, 114 ordinary calls and 24 exact body/native/encoder-JSON comparisons. The 40-byte layout and all 60 capacity rows were unchanged. Earlier arbitrary, packed and accessor tests remained intact. New direct coverage included 13 constructor comparisons, two FP occupation widths, an inert-emitter tee without guest execution and GP captured-slot clearing.
+
+Summary SHA-256: `50ead4082cc3db929c1eb6463663161121e7884ea7e905cfc1120df47cd9a7ff`. No 32-byte representation, public serializer, corpus, timing or RSS claim. Active source and defaults are unchanged.

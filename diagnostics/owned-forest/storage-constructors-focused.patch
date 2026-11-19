@@ -1,0 +1,1195 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/atomic.go b/src/core/compiler/backend/railshot/amd64/atomic.go
+index 00ec6572..69c55348 100644
+--- a/src/core/compiler/backend/railshot/amd64/atomic.go
++++ b/src/core/compiler/backend/railshot/amd64/atomic.go
+@@ -81,10 +81,10 @@ func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
+ 	if f.memoryAddr64(d.MemoryIndex) {
+ 		params[0] = wasm.I64
+ 	}
+-	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(d.Offset)})
++	f.pushValue(constantStorage(mtI64, int64(d.Offset)))
+ 	if d.MemoryIndex != 0 {
+ 		params = append(params, wasm.I32)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(d.MemoryIndex)})
++		f.pushValue(constantStorage(mtI32, int64(d.MemoryIndex)))
+ 	}
+ 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{wasm.I32}}
+ 	return f.callHostSync(int(railshared.AtomicWaitDispatchBit|helper), ft)
+diff --git a/src/core/compiler/backend/railshot/amd64/atomic_zero_wait.go b/src/core/compiler/backend/railshot/amd64/atomic_zero_wait.go
+index d2e0f0fc..392ebe29 100644
+--- a/src/core/compiler/backend/railshot/amd64/atomic_zero_wait.go
++++ b/src/core/compiler/backend/railshot/amd64/atomic_zero_wait.go
+@@ -61,7 +61,7 @@ func (f *fn) atomicZeroNotify(d railshared.Atomic) error {
+ 	f.release(ea)
+ 	// Preserve queue-event ordering even though no waiter can wake.
+ 	f.a.Mfence()
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 0})
++	f.pushValue(constantStorage(mtI32, 0))
+ 	f.stats.peep("atomic-notify-empty")
+ 	return nil
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 317d5249..f3e75ecb 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -550,7 +550,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType)
+ 		if width >= 32 {
+ 			return
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(width)) - 1)})
++		f.pushValue(constantStorage(mtI32, int64((uint64(1)<<uint(width))-1)))
+ 		f.pushBinOp(opAnd, mtI32)
+ 	}
+ 	signExtendTop := func(width int32) {
+@@ -558,9 +558,9 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType)
+ 			return
+ 		}
+ 		shift := int64(32 - width)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: shift})
++		f.pushValue(constantStorage(mtI32, shift))
+ 		f.pushBinOp(opShl, mtI32)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: shift})
++		f.pushValue(constantStorage(mtI32, shift))
+ 		f.pushBinOp(opShrS, mtI32)
+ 	}
+ 	var emit func(int) error
+@@ -581,13 +581,13 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType)
+ 			maskTop(n.Width)
+ 			return nil
+ 		case CustomInstructionConst:
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(n.Const)})
++			f.pushValue(constantStorage(mtI32, int64(n.Const)))
+ 			return nil
+ 		case CustomInstructionNot:
+ 			if err := emit(n.A); err != nil {
+ 				return err
+ 			}
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: -1})
++			f.pushValue(constantStorage(mtI32, -1))
+ 			f.pushBinOp(opXor, mtI32)
+ 			maskTop(n.Width)
+ 		case CustomInstructionIsZero:
+@@ -624,7 +624,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType)
+ 			}
+ 			if n.Op == CustomInstructionShl || n.Op == CustomInstructionShrU || n.Op == CustomInstructionShrS {
+ 				if operandWidth < 32 {
+-					f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(operandWidth)})
++					f.pushValue(constantStorage(mtI32, int64(operandWidth)))
+ 					f.pushBinOp(opRemU, mtI32)
+ 				}
+ 			}
+@@ -806,7 +806,7 @@ func (f *fn) returnCallIndex(idx uint32) error {
+ 			// The existing stack-compatible input recipe retains the physical
+ 			// i32 word. Canonicalize its narrow logical result on this new path.
+ 			if pluginAMD64Lowering(custom) == nil && custom.StackCompatible && custom.ResultWidth < 32 && custom.Nodes[custom.Output].Op == CustomInstructionInput {
+-				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(custom.ResultWidth)) - 1)})
++				f.pushValue(constantStorage(mtI32, int64((uint64(1)<<uint(custom.ResultWidth))-1)))
+ 				f.pushBinOp(opAnd, mtI32)
+ 			}
+ 			return f.opReturn()
+diff --git a/src/core/compiler/backend/railshot/amd64/control.go b/src/core/compiler/backend/railshot/amd64/control.go
+index 729baf88..5beb9cb0 100644
+--- a/src/core/compiler/backend/railshot/amd64/control.go
++++ b/src/core/compiler/backend/railshot/amd64/control.go
+@@ -1758,7 +1758,7 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
+ 		}
+ 		*budget += consumed
+ 		if wantFloat && steps < 256 && (op == 0x43 || op == 0x44) {
+-			st := storage{kind: stConst, typ: mtF32, cval: floatBits}
++			st := constantStorage(mtF32, floatBits)
+ 			if op == 0x44 {
+ 				st.setMachineType(mtF64)
+ 			}
+diff --git a/src/core/compiler/backend/railshot/amd64/driver.go b/src/core/compiler/backend/railshot/amd64/driver.go
+index e326d003..8502193e 100644
+--- a/src/core/compiler/backend/railshot/amd64/driver.go
++++ b/src/core/compiler/backend/railshot/amd64/driver.go
+@@ -475,7 +475,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
+ 			checkNativeSourceGet(f, x)
+ 		}
+ 		if constant, known := f.inlineTailConstantGet(int(x)); known {
+-			f.pushValue(storage{kind: stConst, typ: f.localType[x], cval: constant})
++			f.pushValue(constantStorage(f.localType[x], constant))
+ 			f.stats.peep("inline-tail-constant-get")
+ 			break
+ 		}
+@@ -1142,7 +1142,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
+ 	f.markLocalDirty(x)
+ 	f.stats.peep(stat)
+ 	if op == 0x22 {
+-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
++		f.pushValue(indexedStorage(stLocalReg, f.localType[x], pr, uint32(x), 0))
+ 	}
+ 	return true, nil
+ }
+@@ -1549,8 +1549,7 @@ func (f *fn) realizeLocalRefsCursor(x int, skipFrom *elem, c fixtureCursor) {
+ 			}
+ 			f.materializeByType(e)
+ 			if extent > 0 && e.st.kind == stReg {
+-				e.st.setConstantBits(int64(extent))
+-				e.st.meta |= uint8(storageCapturedBounds)
++				e.st.setCapturedBoundsExtent(extent)
+ 			}
+ 			if cleanI32 {
+ 				e.st.setValueFacts(e.st.valueFacts() | factUpper32Zero)
+@@ -1724,7 +1723,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 				f.replaceStorage(e, originalSlot)
+ 				f.stats.peep("tee-slot-predicate")
+ 			} else {
+-				f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
++				f.replaceStorage(e, indexedStorage(stLocalReg, f.localType[x], pr, uint32(x), 0)) // borrowed ref stays
+ 			}
+ 		} else {
+ 			f.erase(e)
+@@ -1755,7 +1754,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 		}
+ 		f.markLocalDirty(x)
+ 		if tee {
+-			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x), meta: uint8(facts)})
++			f.replaceStorage(e, indexedStorage(stLocalReg, mtV128, pr, uint32(x), uint8(facts)))
+ 		} else {
+ 			f.erase(e)
+ 		}
+@@ -1796,7 +1795,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 		}
+ 		f.markLocalDirty(x)
+ 		if tee {
+-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
++			f.replaceStorage(e, indexedStorage(stLocalReg, f.localType[x], pr, uint32(x), 0))
+ 		} else {
+ 			f.erase(e)
+ 		}
+@@ -1818,7 +1817,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
+ 			// The tee result still owns xmm and aliases the just-stored local.
+ 			// Short SIMD peepholes use this to recognize a following local.get
+ 			// without promoting the local to a dedicated pin.
+-			e.st.setConstantBits(int64(x + 1))
++			e.st.setVectorAliasCookie(int64(x + 1))
+ 		}
+ 		return
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/float_const_ranking.go b/src/core/compiler/backend/railshot/amd64/float_const_ranking.go
+index 26c3b533..e56e9faa 100644
+--- a/src/core/compiler/backend/railshot/amd64/float_const_ranking.go
++++ b/src/core/compiler/backend/railshot/amd64/float_const_ranking.go
+@@ -33,7 +33,7 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
+ 	first := func() {
+ 		count = min(n, len(choice))
+ 		for i := 0; i < count; i++ {
+-			choice[i] = storage{kind: stConst, typ: candidates[i].typ, cval: candidates[i].bits}
++			choice[i] = constantStorage(candidates[i].typ, candidates[i].bits)
+ 		}
+ 	}
+ 	r := wasm.NewReader(code)
+@@ -95,7 +95,7 @@ func (f *fn) rankFloatConsts(code []byte) (choice [2]storage, count int, changed
+ 		return
+ 	}
+ 	for i, at := range best {
+-		choice[i] = storage{kind: stConst, typ: candidates[at].typ, cval: candidates[at].bits}
++		choice[i] = constantStorage(candidates[at].typ, candidates[at].bits)
+ 	}
+ 	changed = best != [2]int{0, 1}
+ 	return
+diff --git a/src/core/compiler/backend/railshot/amd64/fp.go b/src/core/compiler/backend/railshot/amd64/fp.go
+index 8a5c5c0d..c407d682 100644
+--- a/src/core/compiler/backend/railshot/amd64/fp.go
++++ b/src/core/compiler/backend/railshot/amd64/fp.go
+@@ -47,8 +47,7 @@ func (f *fn) occupyF(e *elem, r Reg) {
+ 		e.st.setMachineType(e.valueType())
+ 	}
+ 	e.setElemKind(ekValue)
+-	e.st.kind, e.st.reg = stReg, r
+-	e.st.setConstantBits(0)
++	e.st.setOccupiedFP(r)
+ 	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+ 		f.s.hasGCRoots = true
+ 	}
+@@ -361,13 +360,13 @@ func (f *fn) preloadFloatConsts(code []byte) {
+ 			if err != nil {
+ 				return
+ 			}
+-			f.preloadFloatConst(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
++			f.preloadFloatConst(constantStorage(mtF32, int64(bits)))
+ 		case 0x44: // f64.const
+ 			bits, err := r.LEU64()
+ 			if err != nil {
+ 				return
+ 			}
+-			f.preloadFloatConst(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
++			f.preloadFloatConst(constantStorage(mtF64, int64(bits)))
+ 		default:
+ 			if err := f.classifier.SkipImmediate(r, op); err != nil {
+ 				return
+@@ -422,7 +421,7 @@ func (f *fn) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
+ 		if f64 {
+ 			bits = mask64
+ 		}
+-		f.loadFConst(dst, storage{typ: mtOf2(f64), cval: int64(bits)})
++		f.loadFConst(dst, floatLiteralPayload(mtOf2(f64), int64(bits)))
+ 		f.stats.peep("float-mask-const-pool")
+ 		return
+ 	}
+@@ -457,7 +456,7 @@ const (
+ // --- float op handlers ---
+ 
+ func (f *fn) fconst(bits uint64, typ machineType) {
+-	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
++	f.pushValue(constantStorage(typ, int64(bits)))
+ }
+ 
+ // WAGO_AMD64_NO_FLOAT_FRAME_MEM=1 is the rollback switch. Keep the default on
+@@ -976,7 +975,7 @@ func truncLimitBits(signed, f64src, dstWide bool) (minBits, maxBits uint64) {
+ // loadFConstBits materializes raw float bits into a fresh XMM register.
+ func (f *fn) loadFConstBits(bits uint64, f64 bool) Reg {
+ 	x := f.allocFReg(0)
+-	f.loadFConst(x, storage{typ: mtOf2(f64), cval: int64(bits)})
++	f.loadFConst(x, floatLiteralPayload(mtOf2(f64), int64(bits)))
+ 	return x
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array.go b/src/core/compiler/backend/railshot/amd64/gc_array.go
+index c4665c20..ed474113 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array.go
+@@ -62,7 +62,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		}
+ 		if valueType.Kind() != wasm.ValRef {
+ 			if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+-				f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++				f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 				if err := f.callGCStructHelper(gcArrayCheckUniform, []wasm.ValType{valueType, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+ 					return err
+ 				}
+@@ -75,7 +75,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 			fill.replaceInitializer(f)
+ 		}
+ 		freshValue, freshOK := f.gcFreshArray16Candidate(typeIndex, field)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		helper := uint32(gcArrayAllocUniform)
+ 		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
+@@ -109,8 +109,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		if !ok || field.Storage().Val().Kind() != wasm.ValRef {
+ 			return fmt.Errorf("amd64: array.new_elem type %d is not a reference array", typeIndex)
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(elemIndex)))
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		if err := f.callGCStructHelper(gcArrayAllocElem, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{result}); err != nil {
+ 			return err
+@@ -134,8 +134,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 			return fmt.Errorf("amd64: array.new_data type %d has unsupported storage", typeIndex)
+ 		}
+ 		deadUse := f.checkedDeadGCConstructorUse(r, true)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(dataIndex)))
+ 		if deadUse != checkedDeadGCNone {
+ 			if err := f.callGCStructHelper(gcArrayCheckData, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+ 				return err
+@@ -182,8 +182,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		for i := uint32(0); i < count; i++ {
+ 			params = append(params, valueType)
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(count)))
+ 		params = append(params, wasm.I32, wasm.I32)
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		helper := uint32(gcArrayAllocFixed)
+@@ -209,14 +209,14 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 			return fmt.Errorf("amd64: array.new_default type %d is unavailable", typeIndex)
+ 		}
+ 		if deadUse := f.checkedDeadGCConstructorUse(r, true); deadUse != checkedDeadGCNone {
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++			f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 			if err := f.callGCStructHelper(gcArrayCheckDefault, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, deadUse)); err != nil {
+ 				return err
+ 			}
+ 			f.finishCheckedDeadGCConstructor(r, deadUse)
+ 			return nil
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		helper := uint32(gcArrayAllocDefault)
+ 		if layout, native := nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+@@ -268,7 +268,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 				return f.emitNativeFinalArrayRefGet(typeIndex)
+ 			}
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType})
+ 	case 14: // array.set typeidx
+@@ -300,7 +300,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 			f.gcOpcodeBarrier = true
+ 			f.stats.peep("gc-barrier-slow")
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(gcArraySet, []wasm.ValType{object, wasm.I32, valueType, wasm.I32}, nil)
+ 	case 15: // array.len
+@@ -332,7 +332,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		} else {
+ 			f.stats.peep("gc-barrier-none")
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, valueType, wasm.I32, wasm.I32}, nil)
+ 	case 18: // array.init_data typeidx dataidx
+@@ -348,8 +348,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		if !ok || field.Mut() != wasm.Var || (!field.Storage().Packed() && field.Storage().Val().Kind() == wasm.ValRef) {
+ 			return fmt.Errorf("amd64: array.init_data type %d is unavailable", typeIndex)
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dataIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(dataIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(gcArrayInitData, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+ 	case 19: // array.init_elem typeidx elemidx
+@@ -368,8 +368,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		if gcFrameRefType(f.m, field.Storage().Val()) {
+ 			f.gcOpcodeBarrier = true
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(elemIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(gcArrayInitElem, []wasm.ValType{object, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+ 	case 17: // array.copy dsttype srcType
+@@ -394,8 +394,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
+ 		if dstField.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, dstField.Storage().Val()) {
+ 			f.gcOpcodeBarrier = true
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(dstType)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(srcType)})
++		f.pushValue(constantStorage(mtI32, int64(dstType)))
++		f.pushValue(constantStorage(mtI32, int64(srcType)))
+ 		dst := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: dstType}), false))
+ 		src := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: srcType}), false))
+ 		return f.callGCStructHelper(gcArrayCopy, []wasm.ValType{dst, wasm.I32, src, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+@@ -428,8 +428,8 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
+ 	ptr := f.allocReg(0)
+ 	f.a.LeaRsp(ptr, f.spillOff(firstSlot))
+ 	f.pushReg(ptr, mtI64)
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++	f.pushValue(constantStorage(mtI32, int64(count)))
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 	if err := f.callGCStructHelper(gcArrayAllocFixedV128Spill, []wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+ 		return err
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+index 3f2ef2f4..2baab40d 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_array_new_fill.go
+@@ -120,7 +120,7 @@ func (f *fn) pushI32LocalValue(x, pos int) {
+ 	if f.localConstZero(x) {
+ 		if pr, _, ok := f.pinReg(x); ok {
+ 			f.recoverLocal(x)
+-			f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)})
++			f.pushValue(indexedStorage(stLocalReg, mtI32, pr, uint32(x), 0))
+ 		} else {
+ 			f.pushValue(zeroStorage(mtI32))
+ 		}
+@@ -128,10 +128,10 @@ func (f *fn) pushI32LocalValue(x, pos int) {
+ 	}
+ 	if pr, _, ok := f.pinReg(x); ok {
+ 		f.recoverLocal(x)
+-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)})
++		f.pushValue(indexedStorage(stLocalReg, mtI32, pr, uint32(x), 0))
+ 		return
+ 	}
+-	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: uint32(x)})
++	f.pushValue(indexedStorage(stLocalRef, mtI32, 0, uint32(x), 0))
+ }
+ 
+ func (p gcArrayNewFillPlan) finish(f *fn, r *wasm.Reader) {
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+index d45e7820..8dc497ee 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_constructor_if.go
+@@ -47,13 +47,13 @@ func (f *fn) tryForwardGCConstructorIf(reader *wasm.Reader, sourceType uint32, s
+ 		if err != nil || local == objectLocal {
+ 			return fail()
+ 		}
+-		values[2] = storage{kind: stLocalRef, typ: mtI32, idx: local}
++		values[2] = indexedStorage(stLocalRef, mtI32, 0, local, 0)
+ 	case 0x41:
+ 		v, err := r.I32()
+ 		if err != nil {
+ 			return fail()
+ 		}
+-		values[2] = storage{kind: stConst, typ: mtI32, cval: int64(v)}
++		values[2] = constantStorage(mtI32, int64(v))
+ 	default:
+ 		return fail()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_dead_group.go b/src/core/compiler/backend/railshot/amd64/gc_dead_group.go
+index 5f3cdd53..c912666d 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_dead_group.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_dead_group.go
+@@ -97,7 +97,7 @@ func (f *fn) tryDeadGCDefaultGroup(r *wasm.Reader, firstType uint32) (bool, erro
+ 	originalPC := f.wasmPC
+ 	for _, site := range sites[:n] {
+ 		f.wasmPC = site.pc
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(site.typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(site.typeIndex)))
+ 		if err := f.callGCStructHelper(gcStructReserveDeadNative, []wasm.ValType{wasm.I32}, nil); err != nil {
+ 			return true, err
+ 		}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_dead_new.go b/src/core/compiler/backend/railshot/amd64/gc_dead_new.go
+index 1f392995..212b20ca 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_dead_new.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_dead_new.go
+@@ -46,7 +46,7 @@ func deadGCReservationResults(typeIndex uint32, use checkedDeadGCUse) []wasm.Val
+ }
+ 
+ func (f *fn) reserveDeadGCStructConstructor(typeIndex uint32, operandN int, use checkedDeadGCUse) error {
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 	if err := f.callGCStructHelper(gcStructReserveDead, []wasm.ValType{wasm.I32}, deadGCReservationResults(typeIndex, use)); err != nil {
+ 		return err
+ 	}
+@@ -59,8 +59,8 @@ func (f *fn) reserveDeadGCStructConstructor(typeIndex uint32, operandN int, use
+ }
+ 
+ func (f *fn) reserveDeadGCFixedArrayConstructor(typeIndex, count uint32, use checkedDeadGCUse) error {
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(count)})
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++	f.pushValue(constantStorage(mtI32, int64(count)))
+ 	if err := f.callGCStructHelper(gcArrayCheckFixed, []wasm.ValType{wasm.I32, wasm.I32}, deadGCReservationResults(typeIndex, use)); err != nil {
+ 		return err
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_direct.go b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+index 0e16aefa..b640bff5 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_direct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_direct.go
+@@ -938,8 +938,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
+ 	fallback := f.a.JccPlaceholder(condE)
+ 	done := f.a.JmpPlaceholder()
+ 	f.a.PatchRel32(fallback, f.a.Len())
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++	f.pushValue(constantStorage(mtI32, int64(fieldIndex)))
+ 	objectType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 	err := f.callGCStructHelper(gcStructSet, []wasm.ValType{objectType, valueType, wasm.I32, wasm.I32}, nil)
+ 	f.reloadConditionalGCPinnedLocals(savedLocals[:len(f.pinnedLocals)])
+@@ -982,7 +982,7 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
+ 	fallback := f.a.JccPlaceholder(condE)
+ 	done := f.a.JmpPlaceholder()
+ 	f.a.PatchRel32(fallback, f.a.Len())
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 	objectType := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 	err := f.callGCStructHelper(gcArraySet, []wasm.ValType{objectType, wasm.I32, valueType, wasm.I32}, nil)
+ 	f.reloadConditionalGCPinnedLocals(savedLocals[:len(f.pinnedLocals)])
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_induction_emit.go b/src/core/compiler/backend/railshot/amd64/gc_induction_emit.go
+index 66e3eb09..b5ce5deb 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_induction_emit.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_induction_emit.go
+@@ -18,9 +18,9 @@ import (
+ func (f *fn) pushGCInductionCount() {
+ 	if r, _, ok := f.pinReg(0); ok {
+ 		f.recoverLocal(0)
+-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: r, idx: 0})
++		f.pushValue(indexedStorage(stLocalReg, mtI32, r, 0, 0))
+ 	} else {
+-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
++		f.pushValue(indexedStorage(stLocalRef, mtI32, 0, 0, 0))
+ 	}
+ }
+ 
+@@ -39,7 +39,7 @@ func (f *fn) emitGCInductionReservation(helper uint32, descriptor uint64, descri
+ 	f.a.Cmovcc(x64.CondE, count, one, false)
+ 	f.release(one)
+ 	f.pushReg(count, mtI32)
+-	f.pushValue(storage{kind: stConst, typ: mtOf(descriptorType), cval: int64(descriptor)})
++	f.pushValue(constantStorage(mtOf(descriptorType), int64(descriptor)))
+ 	return f.callGCStructHelper(helper, []wasm.ValType{wasm.I32, descriptorType}, nil)
+ }
+ 
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_reference.go b/src/core/compiler/backend/railshot/amd64/gc_reference.go
+index a7657635..89be215f 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_reference.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_reference.go
+@@ -62,8 +62,8 @@ func (f *fn) emitNullI31Reference(sub uint32, heap int64) error {
+ 		f.a.PatchRel32(foreign, f.a.Len())
+ 	}
+ 	f.a.PatchRel32(object, f.a.Len())
+-	f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(sub & 1)})
++	f.pushValue(constantStorage(mtI64, heap))
++	f.pushValue(constantStorage(mtI32, int64(sub&1)))
+ 	f.pushValue(storage{kind: stConst, typ: mtI32})
+ 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+ 	helper, result := uint32(gcStructRefTest), wasm.I32
+diff --git a/src/core/compiler/backend/railshot/amd64/gc_struct.go b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+index 9ee0de9f..29f5de4e 100644
+--- a/src/core/compiler/backend/railshot/amd64/gc_struct.go
++++ b/src/core/compiler/backend/railshot/amd64/gc_struct.go
+@@ -138,7 +138,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 		}
+ 		scalarReplacement := canReplace && (forwardOK || selectionOK) && gcStructHasOnlyDirectScalars(st)
+ 		freshValue, freshOK := f.gcFreshStructCandidate(st)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		params = append(params, wasm.I32)
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		if native {
+@@ -193,7 +193,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 			f.finishCheckedDeadGCConstructor(r, deadUse)
+ 			return nil
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
+ 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		if err := f.callGCStructHelper(gcStructAllocDefault, []wasm.ValType{wasm.I32}, []wasm.ValType{result}); err != nil {
+ 			return err
+@@ -234,8 +234,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 		if f.emitDirectGCStructGet(r, typeIndex, fieldIndex, helper) {
+ 			return nil
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(fieldIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		if err := f.callGCStructHelper(helper, []wasm.ValType{object, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+ 			return err
+@@ -273,8 +273,8 @@ func (f *fn) emitFB(r *wasm.Reader) error {
+ 			f.gcOpcodeBarrier = true
+ 			f.stats.peep("gc-barrier-slow")
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
++		f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++		f.pushValue(constantStorage(mtI32, int64(fieldIndex)))
+ 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+ 		return f.callGCStructHelper(gcStructSet, []wasm.ValType{object, valueType, wasm.I32, wasm.I32}, nil)
+ 	default:
+@@ -338,7 +338,7 @@ func (f *fn) getGCFreshStructFact() (gcFreshStructFact, bool) {
+ 		f.invalidateGCFreshStructFact()
+ 		return gcFreshStructFact{}, false
+ 	}
+-	value := storage{kind: stLocalRef, typ: f.localType[sourceLocal], idx: sourceLocal}
++	value := indexedStorage(stLocalRef, f.localType[sourceLocal], 0, sourceLocal, 0)
+ 	return gcFreshStructFact{value: value, objectLocal: objectLocal, typeIndex: indices[0]}, true
+ }
+ 
+@@ -553,7 +553,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+ 			if nullable {
+ 				matched = 1
+ 			}
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
++			f.pushValue(constantStorage(mtI32, matched))
+ 			return nil
+ 		}
+ 		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.isValue() && top.st.kind == stFuncRef && top.st.indexBits() >= uint32(f.m.ImportedFuncCount()) && top.st.indexBits() < uint32(len(f.m.FuncTypes)) {
+@@ -564,7 +564,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+ 			if f.m.ReferenceTypeSubtype(actual, required) {
+ 				matched = 1
+ 			}
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
++			f.pushValue(constantStorage(mtI32, matched))
+ 			return nil
+ 		}
+ 	}
+@@ -601,9 +601,9 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
+ 	if f.gcStructHelpers {
+ 		value := f.materialize(f.popValue())
+ 		f.pushReg(value, mtI64)
+-		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
++		f.pushValue(constantStorage(mtI64, heap))
+ 		if nullable {
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++			f.pushValue(constantStorage(mtI32, 1))
+ 		} else {
+ 			f.pushValue(storage{kind: stConst, typ: mtI32})
+ 		}
+@@ -691,9 +691,9 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
+ 	if f.gcStructHelpers {
+ 		value := f.materialize(f.popValue())
+ 		f.pushReg(value, mtI64)
+-		f.pushValue(storage{kind: stConst, typ: mtI64, cval: heap})
++		f.pushValue(constantStorage(mtI64, heap))
+ 		if sub == 23 {
+-			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++			f.pushValue(constantStorage(mtI32, 1))
+ 		} else {
+ 			f.pushValue(storage{kind: stConst, typ: mtI32})
+ 		}
+@@ -701,7 +701,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
+ 		if exactTarget {
+ 			exact = 1
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
++		f.pushValue(constantStorage(mtI32, exact))
+ 		anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+ 		if err := f.callGCStructHelper(gcStructRefCast, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{anyref}); err != nil {
+ 			return err
+@@ -802,14 +802,14 @@ func (f *fn) tryFuseFinalCastStructGet(typeIndex uint32, nullable bool, r *wasm.
+ 	if field.Storage().Packed() {
+ 		resultType = wasm.I32
+ 	}
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
++	f.pushValue(constantStorage(mtI32, int64(typeIndex)))
++	f.pushValue(constantStorage(mtI32, int64(fieldIndex)))
+ 	if nullable {
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++		f.pushValue(constantStorage(mtI32, 1))
+ 	} else {
+ 		f.pushValue(storage{kind: stConst, typ: mtI32})
+ 	}
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(sub - 2)})
++	f.pushValue(constantStorage(mtI32, int64(sub-2)))
+ 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+ 	f.stats.peep("final-cast-struct-get-fuse")
+ 	if err := f.callGCStructHelper(gcStructFinalCastGet, []wasm.ValType{anyref, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{resultType}); err != nil {
+@@ -926,9 +926,9 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
+ 	f.a.AluRI(cmpDigit, RAX, 2, false)
+ 	known := f.a.JccPlaceholder(condNE)
+ 
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(targetType)})
++	f.pushValue(constantStorage(mtI32, int64(targetType)))
+ 	if nullable {
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++		f.pushValue(constantStorage(mtI32, 1))
+ 	} else {
+ 		f.pushValue(storage{kind: stConst, typ: mtI32})
+ 	}
+@@ -1052,9 +1052,9 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
+ 		}
+ 		return f.brOnCastResult(depth, sub == 24)
+ 	}
+-	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
++	f.pushValue(constantStorage(mtI64, target))
+ 	if flags&2 != 0 {
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++		f.pushValue(constantStorage(mtI32, 1))
+ 	} else {
+ 		f.pushValue(storage{kind: stConst, typ: mtI32})
+ 	}
+@@ -1062,7 +1062,7 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
+ 	if exactTarget {
+ 		exact = 1
+ 	}
+-	f.pushValue(storage{kind: stConst, typ: mtI32, cval: exact})
++	f.pushValue(constantStorage(mtI32, exact))
+ 	anyref := wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapAny), false))
+ 	if err := f.callGCStructHelper(gcStructRefTest, []wasm.ValType{anyref, wasm.I64, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}); err != nil {
+ 		return err
+diff --git a/src/core/compiler/backend/railshot/amd64/globals.go b/src/core/compiler/backend/railshot/amd64/globals.go
+index c90e7c06..cef8f291 100644
+--- a/src/core/compiler/backend/railshot/amd64/globals.go
++++ b/src/core/compiler/backend/railshot/amd64/globals.go
+@@ -93,7 +93,7 @@ func (f *fn) globalGetIndex(x uint32) error {
+ 		if wasm.EqualValType(gtv, wasm.I64) {
+ 			typ = mtI64
+ 		}
+-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
++		f.pushValue(indexedStorage(stGlobReg, typ, reg, x, 0))
+ 		return nil
+ 	}
+ 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
+diff --git a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+index cff0de9a..b1d990f1 100644
+--- a/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
++++ b/src/core/compiler/backend/railshot/amd64/if_prefix_remat.go
+@@ -131,12 +131,12 @@ func (f *fn) restoreIfPrefix(fr *ctrlFrame) {
+ 	x := local.st.index()
+ 	// Local residency may have changed while emitting the arms. Rebind the
+ 	// unchanged Wasm local through its current home, never its old borrowed reg.
+-	st := storage{kind: stLocalRef, typ: mtI32, idx: uint32(x)}
++	st := indexedStorage(stLocalRef, mtI32, 0, uint32(x), 0)
+ 	if f.localConstZero(x) {
+ 		st = zeroStorage(mtI32)
+ 	} else if pr, _, ok := f.pinReg(x); ok {
+ 		f.recoverLocal(x)
+-		st = storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)}
++		st = indexedStorage(stLocalReg, mtI32, pr, uint32(x), 0)
+ 	}
+ 	f.replaceStorage(local, st)
+ 	// The local was detached during replacement; restore its summary as well.
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index fbc647c2..abb78952 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1100,7 +1100,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
+ 			previous := f.enterProfileInlineAdd(t)
+ 			defer f.leaveProfileInlineAdd(previous)
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(t.i32AddImmediate())})
++		f.pushValue(constantStorage(mtI32, int64(t.i32AddImmediate())))
+ 		f.pushBinOp(opAdd, mtI32)
+ 		f.stats.peep("inline-i32-add-const")
+ 		f.stats.addInlineSiteBytes(f.a.Len() - start)
+diff --git a/src/core/compiler/backend/railshot/amd64/localstate.go b/src/core/compiler/backend/railshot/amd64/localstate.go
+index 39c11938..65dbd1fc 100644
+--- a/src/core/compiler/backend/railshot/amd64/localstate.go
++++ b/src/core/compiler/backend/railshot/amd64/localstate.go
+@@ -60,7 +60,7 @@ func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
+ }
+ 
+ func zeroStorage(typ machineType) storage {
+-	return storage{kind: stConst, typ: typ, cval: 0}
++	return constantStorage(typ, 0)
+ }
+ 
+ func (f *fn) localConstZero(x int) bool {
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 56b7ffdf..cf4201d8 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -472,7 +472,7 @@ func (f *fn) memAddrModular(off uint32, size int, aliasPinned bool, rangeExtent
+ 	// The address may be an owned snapshot of a local whose value changed after
+ 	// a successful check. Its proof belongs to that snapshot, not the new local.
+ 	capturedBounds := capturedBoundsEnabled && f.boundsFacts && e.st.kind == stReg && e.st.machineType() == mtI32 &&
+-		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off)+int64(size) <= e.st.constantBits()
++		e.st.meta&uint8(storageCapturedBounds) != 0 && int64(off)+int64(size) <= e.st.capturedBoundsExtent()
+ 	// The preheader proof zero-extends the induction local, and the admitted
+ 	// update is a 32-bit add. Its physical register therefore remains canonical
+ 	// throughout the loop; don't emit a self-move before every access.
+@@ -1740,7 +1740,7 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
+ 			// Failed shared growth still performs an atomic length read.
+ 			f.sharedMemorySize(memoryIndex)
+ 			f.dropValue()
+-			f.pushValue(storage{kind: stConst, typ: typ, cval: -1})
++			f.pushValue(constantStorage(typ, -1))
+ 			return nil
+ 		}
+ 	}
+@@ -1751,7 +1751,7 @@ func (f *fn) sharedMemoryGrow(memoryIndex uint32) error {
+ 	params := []wasm.ValType{typ}
+ 	if memoryIndex != 0 {
+ 		params = append(params, wasm.I32)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(memoryIndex)})
++		f.pushValue(constantStorage(mtI32, int64(memoryIndex)))
+ 	}
+ 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: []wasm.ValType{typ}}
+ 	return f.callHostSync(int(shared.AtomicWaitDispatchBit|shared.AtomicHelperMemoryGrow), ft)
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index e26ad4a8..2070b365 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -1916,3 +1916,117 @@ func TestOwnedForestTypedStorageAccessorsOrdinary(t *testing.T) {
+ 		layoutEmit(t, "STORAGE_ACCESSORS", map[string]any{"case": "borrow-displacements-tee-and-deferred", "memoryRows": 5, "maxBorrowCode": uint64(0x100000000), "compact": compactOperandNodes})
+ 	})
+ }
++
++func TestOwnedForestStorageConstructorsOrdinary(t *testing.T) {
++	t.Run("constructor-raw-equivalence", func(t *testing.T) {
++		const bits32 int64 = 0x80000000
++		const bits64 int64 = -0x7ffffffffff1abcf
++		raw := []struct {
++			got, want storage
++		}{
++			{floatLiteralPayload(mtF32, bits32), storage{kind: stInvalid, typ: mtF32, cval: bits32}},
++			{floatLiteralPayload(mtF64, bits64), storage{kind: stInvalid, typ: mtF64, cval: bits64}},
++			{constantStorage(mtF32, bits32), storage{kind: stConst, typ: mtF32, cval: bits32}},
++			{constantStorage(mtF64, bits64), storage{kind: stConst, typ: mtF64, cval: bits64}},
++			{constantStorage(mtI64, bits64), storage{kind: stConst, typ: mtI64, cval: bits64}},
++			{indexedStorage(stLocalRef, mtI32, regNone, 0xfffffff0, uint8(factUpper32Zero)), storage{kind: stLocalRef, typ: mtI32, reg: regNone, idx: 0xfffffff0, meta: uint8(factUpper32Zero)}},
++			{indexedStorage(stLocalReg, mtV128, RCX, 19, uint8(factBytesBelow16)), storage{kind: stLocalReg, typ: mtV128, reg: RCX, idx: 19, meta: uint8(factBytesBelow16)}},
++			{indexedStorage(stGlobalRef, mtI64, regNone, 0xfedcba98, 0), storage{kind: stGlobalRef, typ: mtI64, reg: regNone, idx: 0xfedcba98}},
++			{indexedStorage(stGlobReg, mtI64, RDX, 29, 0), storage{kind: stGlobReg, typ: mtI64, reg: RDX, idx: 29}},
++			{indexedStorage(stFuncRef, mtI64, 0, 0x76543210, 0), storage{kind: stFuncRef, typ: mtI64, idx: 0x76543210}},
++			{memRefStorage(RCX, -1<<31, 2, true, true, 0xffffffff), storage{kind: stMemRef, typ: mtI64, reg: RCX, slot: 0x80000000, idx: 0x102, cval: 0x100000000}},
++			{fmemRefStorage(RDX, 1<<31-1, false, -1), storage{kind: stMemRef, typ: mtF32, reg: RDX, slot: 0x7fffffff, idx: 4}},
++			{fmemRefStorage(RDX, -17, true, 510), storage{kind: stMemRef, typ: mtF64, reg: RDX, slot: 0xffffffef, idx: 8, cval: 511}},
++		}
++		for i, row := range raw {
++			if row.got != row.want {
++				t.Fatalf("case%d differs from original constructor literal: %+v != %+v", i, row.got, row.want)
++			}
++			donor := elem{st: row.got}
++			donor.setForestLive(true)
++			donor.setForestPending(true)
++			var dst elem
++			dst.setFreshStorage(donor.st)
++			if dst.st != row.want || dst.forestIsLive() || dst.forestIsPending() || !donor.forestIsPending() {
++				t.Fatalf("case%d fresh transition lost data or copied donor ownership", i)
++			}
++		}
++		layoutEmit(t, "STORAGE_CONSTRUCTORS", map[string]any{"case": "constructor-raw-equivalence", "rows": len(raw), "compact": compactOperandNodes})
++	})
++	t.Run("occupy-and-vector-tee", func(t *testing.T) {
++		f := layoutOwnedTagState()
++		f.a = f.sc.asm
++		// Two scalar FP widths retain stale slot/index/meta while only
++		// clearing cval; the value has an actual allocator owner afterward.
++		for _, typ := range []machineType{mtF32, mtF64} {
++			e := f.pushValue(storage{kind: stSlot, typ: typ, reg: RDX, slot: 11, idx: 0x87654321, cval: -55, meta: uint8(factUpper32Zero)})
++			e.setForestPending(true)
++			f.occupyF(e, RCX)
++			want := storage{kind: stReg, typ: typ, reg: RCX, slot: 11, idx: 0x87654321, meta: uint8(factUpper32Zero | storageLogicalRoot)}
++			copy := elem{}
++			copy.setFreshStorage(e.st)
++			if !e.forestIsLive() || !e.forestIsPending() || f.fregUser[RCX] != e || copy.st != want {
++				t.Fatalf("occupyF(%v) raw contract: %+v want %+v", typ, copy.st, want)
++			}
++			e.setForestPending(false)
++			f.releaseF(RCX)
++			f.s.erase(e)
++		}
++		f.sc.fixtureWork.TemporaryV128SIMD = true
++		f.fixtureTemporarySIMD = true
++		f.sc.fixtureWork.TemporaryV128Locals = true
++		f.nLocals = 1
++		f.localType = []machineType{mtV128}
++		f.localSlot = []uint32{0}
++		f.locals = []localDef{{typ: mtV128, reg: regNone, isFloat: true, state: lsMem}}
++		v := f.pushValue(storage{kind: stSlot, typ: mtV128, slot: 5, idx: 59, cval: 17, meta: uint8(factBytesBelow16)})
++		v.setForestPending(true)
++		f.occupyF(v, RCX)
++		if v.st.vectorAliasCookie() != 0 || v.st.slot != 5 || v.st.idx != 59 {
++			t.Fatal("V128 occupyF altered stale fields or kept cval")
++		}
++		// Exercise actual unpinned full-width tee lowering into inert assembler
++		// scratch, without running any generated instructions.
++		start := f.a.Len()
++		next := wasm.NewReader([]byte{0x0b})
++		f.setLocal(next, 0, true)
++		if f.a.Len() <= start || f.depth() != 1 || f.s.back() != v || f.fregUser[RCX] != v || !v.forestIsLive() || !v.forestIsPending() ||
++			v.st.kind != stReg || v.st.slot != 5 || v.st.idx != 59 || v.st.cval != 1 || v.st.vectorAliasCookie() != 1 || !v.st.valueFacts().has(factBytesBelow16) {
++			t.Fatalf("actual V128 post-occupy tee changed ownership or stale/alias data: %+v", v.st)
++		}
++		layoutEmit(t, "STORAGE_CONSTRUCTORS", map[string]any{"case": "occupy-and-vector-tee", "fpWidths": 2, "actualTee": 1, "compact": compactOperandNodes})
++	})
++	t.Run("captured-extent-slot-and-gp-transition", func(t *testing.T) {
++		f := layoutOwnedTagState()
++		original := storage{kind: stSlot, typ: mtI32, slot: 0xfffffffe, idx: 0xfedcba98, cval: -9, meta: uint8(factUpper32Zero)}
++		extent := original
++		extent.setCapturedBoundsExtent(0x7fffffff)
++		want := original
++		want.cval = 0x7fffffff
++		want.meta |= uint8(storageCapturedBounds)
++		if extent != want || extent.capturedBoundsExtent() != 0x7fffffff {
++			t.Fatalf("setting captured extent rewrote provenance fields: %+v", extent)
++		}
++		// Detached preservation is independent of spill range. Real attached
++		// occupy uses a small ordinary slot while keeping the other payload.
++		donor := elem{st: extent}
++		donor.setForestLive(true)
++		donor.setForestPending(true)
++		var detached elem
++		detached.setStoragePreservingOwnership(donor.st)
++		if detached.st != want || detached.forestIsLive() || detached.forestIsPending() {
++			t.Fatal("detached captured/slot replacement lost data or copied ownership")
++		}
++		extent.slot = 3
++		e := f.pushValue(extent)
++		e.setForestPending(true)
++		f.occupy(e, RAX)
++		fresh := elem{}
++		fresh.setFreshStorage(e.st)
++		want = storage{kind: stReg, typ: mtI32, reg: RAX, meta: uint8(factUpper32Zero | storageLogicalRoot)}
++		if fresh.st != want || !e.forestIsLive() || !e.forestIsPending() || f.regUser[RAX] != e || !donor.forestIsPending() {
++			t.Fatalf("GP occupy did not clear captured/slot/index payload or retain destination owner: %+v", fresh.st)
++		}
++		layoutEmit(t, "STORAGE_CONSTRUCTORS", map[string]any{"case": "captured-extent-slot-and-gp-transition", "gpClears": 1, "compact": compactOperandNodes})
++	})
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/plugin_machine.go b/src/core/compiler/backend/railshot/amd64/plugin_machine.go
+index 73c7dbd7..3a092a0a 100644
+--- a/src/core/compiler/backend/railshot/amd64/plugin_machine.go
++++ b/src/core/compiler/backend/railshot/amd64/plugin_machine.go
+@@ -351,7 +351,7 @@ func (c *pluginAMD64Context) finish(resultWidth int32) {
+ 	c.f.release(c.output)
+ 	c.f.pushReg(c.output, mtI32)
+ 	if resultWidth < 32 {
+-		c.f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64((uint64(1) << uint(resultWidth)) - 1)})
++		c.f.pushValue(constantStorage(mtI32, int64((uint64(1)<<uint(resultWidth))-1)))
+ 		c.f.pushBinOp(opAnd, mtI32)
+ 	}
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/regalloc.go b/src/core/compiler/backend/railshot/amd64/regalloc.go
+index eee17dfe..8812bc34 100644
+--- a/src/core/compiler/backend/railshot/amd64/regalloc.go
++++ b/src/core/compiler/backend/railshot/amd64/regalloc.go
+@@ -56,7 +56,7 @@ func (f *fn) preloadLoopIntConsts(h *funcHintView) {
+ 			break
+ 		}
+ 		bits := h.loopIntConsts.bits[i]
+-		f.loadConst(reg, storage{kind: stConst, typ: mtI64, cval: bits})
++		f.loadConst(reg, constantStorage(mtI64, bits))
+ 		f.iconsts[f.iconstN] = intConstReg{bits: bits, reg: reg}
+ 		if regallocCheckEnabled {
+ 			f.checkImmutable(reg, false, 8)
+@@ -100,11 +100,7 @@ func (f *fn) occupy(e *elem, r Reg) {
+ 		e.st.setMachineType(e.valueType())
+ 	}
+ 	e.setElemKind(ekValue)
+-	e.st.kind, e.st.reg = stReg, r
+-	e.st.setConstantBits(0)
+-	e.st.meta &^= uint8(storageCapturedBounds)
+-	e.st.setIndexBits(0)
+-	e.st.slot = 0
++	e.st.setOccupiedGP(r)
+ 	if e.st.hasGCRoot() && e.st.hasLogicalRoot() {
+ 		f.s.hasGCRoots = true
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/simd.go b/src/core/compiler/backend/railshot/amd64/simd.go
+index 393540d0..80c99541 100644
+--- a/src/core/compiler/backend/railshot/amd64/simd.go
++++ b/src/core/compiler/backend/railshot/amd64/simd.go
+@@ -605,8 +605,8 @@ func v128LocalAlias(e *elem) (int, bool) {
+ 	case stLocalRef, stLocalReg:
+ 		return e.st.index(), true
+ 	case stReg:
+-		if e.st.constantBits() > 0 {
+-			return int(e.st.constantBits()) - 1, true
++		if e.st.vectorAliasCookie() > 0 {
++			return int(e.st.vectorAliasCookie()) - 1, true
+ 		}
+ 	}
+ 	return 0, false
+@@ -623,7 +623,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ 		if e == nil || !f.s.operandAttached(e) {
+ 			continue
+ 		}
+-		if !e.isValue() || e.st.kind != stReg || e.st.machineType() != mtV128 || e.st.constantBits() != int64(x+1) {
++		if !e.isValue() || e.st.kind != stReg || e.st.machineType() != mtV128 || e.st.vectorAliasCookie() != int64(x+1) {
+ 			continue
+ 		}
+ 		facts := e.st.valueFacts()
+@@ -632,7 +632,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
+ 			// The following SIMD opcode consumes this top-of-stack read before
+ 			// the older tee value can be released. Model it as a borrowed local
+ 			// register so three-operand instructions read it in place.
+-			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: uint32(x), meta: uint8(facts)})
++			f.pushValue(indexedStorage(stLocalReg, mtV128, e.st.reg, uint32(x), uint8(facts)))
+ 			f.stats.peep("simd-local-forward")
+ 			return true
+ 		}
+@@ -674,8 +674,8 @@ func (f *fn) clearV128LocalAliases(x int) {
+ 			if e == nil {
+ 				break
+ 			}
+-			if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.constantBits() == int64(x+1) {
+-				e.st.setConstantBits(0)
++			if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.vectorAliasCookie() == int64(x+1) {
++				e.st.setVectorAliasCookie(0)
+ 				f.sc.fixtureWork.TemporaryV128AliasInvalidations++
+ 			}
+ 		}
+@@ -687,8 +687,8 @@ func (f *fn) clearV128LocalAliases(x int) {
+ 		return
+ 	}
+ 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prevLink() {
+-		if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.constantBits() == int64(x+1) {
+-			e.st.setConstantBits(0)
++		if e.isValue() && e.st.kind == stReg && e.st.machineType() == mtV128 && e.st.vectorAliasCookie() == int64(x+1) {
++			e.st.setVectorAliasCookie(0)
+ 		}
+ 	}
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/stack.go b/src/core/compiler/backend/railshot/amd64/stack.go
+index ea4c1c9b..785118eb 100644
+--- a/src/core/compiler/backend/railshot/amd64/stack.go
++++ b/src/core/compiler/backend/railshot/amd64/stack.go
+@@ -141,7 +141,7 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int)
+ 	if signed {
+ 		sidx |= 0x100
+ 	}
+-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
++	return memoryReferenceStorage(typ, ea, uint32(disp), uint32(sidx), borrow)
+ }
+ 
+ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+@@ -151,7 +151,7 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+ 		typ = mtF64
+ 		size = 8
+ 	}
+-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(size), cval: int64(borrow + 1)}
++	return memoryReferenceStorage(typ, ea, uint32(disp), uint32(size), borrow)
+ }
+ 
+ func (st storage) memDisp() int32  { return int32(st.slot) }
+@@ -183,6 +183,48 @@ type storage struct {
+ 	meta uint8 // semantic value facts and root-state bits
+ }
+ 
++// These constructors describe the semantic source of each occupied word.
++// Keep the wide raw representation and all zero/default field values.
++func constantStorage(typ machineType, bits int64) storage {
++	return storage{kind: stConst, typ: typ, cval: bits}
++}
++
++// Some FP scratch loads use a typed literal payload without a stack value.
++func floatLiteralPayload(typ machineType, bits int64) storage {
++	return storage{typ: typ, cval: bits}
++}
++
++func indexedStorage(kind storageKind, typ machineType, reg Reg, index uint32, meta uint8) storage {
++	return storage{kind: kind, typ: typ, reg: reg, idx: index, meta: meta}
++}
++
++func memoryReferenceStorage(typ machineType, carrier Reg, disp, memIndexBits uint32, borrow int) storage {
++	return storage{kind: stMemRef, typ: typ, reg: carrier, slot: disp, idx: memIndexBits, cval: int64(borrow + 1)}
++}
++
++func (st *storage) setOccupiedGP(reg Reg) {
++	st.kind, st.reg = stReg, reg
++	st.setConstantBits(0)
++	st.meta &^= uint8(storageCapturedBounds)
++	st.setIndexBits(0)
++	st.slot = 0
++}
++
++// FP occupation has never cleared the inactive index or slot words.
++func (st *storage) setOccupiedFP(reg Reg) {
++	st.kind, st.reg = stReg, reg
++	st.setConstantBits(0)
++}
++
++func (st storage) capturedBoundsExtent() int64 { return st.constantBits() }
++func (st *storage) setCapturedBoundsExtent(extent int32) {
++	st.setConstantBits(int64(extent))
++	st.meta |= uint8(storageCapturedBounds)
++}
++
++func (st storage) vectorAliasCookie() int64           { return st.constantBits() }
++func (st *storage) setVectorAliasCookie(cookie int64) { st.setConstantBits(cookie) }
++
+ // Raw storage words remain independent in this layout. Accessors centralize
+ // their use without restricting the payload combinations accepted by copies.
+ func (st storage) machineType() machineType        { return st.typ }
+@@ -760,7 +802,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 			// The left operand is already the remaining logical root. Reuse it
+ 			// instead of erasing, allocating, and republishing the same position.
+ 			f.s.clearElemCold(left)
+-			f.replaceStorage(left, storage{kind: stConst, typ: typ, cval: v})
++			f.replaceStorage(left, constantStorage(typ, v))
+ 			return
+ 		}
+ 		if isCompare(op) {
+@@ -769,7 +811,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
+ 			v := foldCompare(op, left.st.constantBits(), right.st.constantBits(), typ.is64())
+ 			f.erase(right)
+ 			f.s.clearElemCold(left)
+-			f.replaceStorage(left, storage{kind: stConst, typ: mtI32, cval: v})
++			f.replaceStorage(left, constantStorage(mtI32, v))
+ 			return
+ 		}
+ 	}
+@@ -936,7 +978,7 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
+ 		// x==x, x<=x, x>=x → 1 (integer compares only; floats go through fp.go).
+ 		f.erase(right)
+ 		f.erase(left)
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
++		f.pushValue(constantStorage(mtI32, 1))
+ 		return true
+ 	case opNe, opLtS, opLtU, opGtS, opGtU:
+ 		// x!=x, x<x, x>x → 0.
+@@ -999,7 +1041,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
+ 		if v, rtyp, ok := foldUnaryConst(op, operand.st.constantBits(), typ); ok {
+ 			f.stats.peep("const-fold")
+ 			f.erase(operand)
+-			f.pushValue(storage{kind: stConst, typ: rtyp, cval: v})
++			f.pushValue(constantStorage(rtyp, v))
+ 			return
+ 		}
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/table.go b/src/core/compiler/backend/railshot/amd64/table.go
+index 0d8ff444..01abd5f2 100644
+--- a/src/core/compiler/backend/railshot/amd64/table.go
++++ b/src/core/compiler/backend/railshot/amd64/table.go
+@@ -222,7 +222,7 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
+ 	}
+ 	// Only segment zero can own the staged checked-element roots.
+ 	if f.gcArrayHelpers && elemIdx == 0 {
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(elemIdx)})
++		f.pushValue(constantStorage(mtI32, int64(elemIdx)))
+ 		return f.callGCStructHelper(gcArrayDropElem, []wasm.ValType{wasm.I32}, nil)
+ 	}
+ 	f.materializePendingLoads()
+@@ -568,7 +568,7 @@ func (f *fn) tableSet(r *wasm.Reader) error {
+ 		if tt.Limits.Addr64 {
+ 			indexType = wasm.I64
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(tableIdx)})
++		f.pushValue(constantStorage(mtI32, int64(tableIdx)))
+ 		return f.callGCStructHelper(gcStructTableSet, []wasm.ValType{indexType, wasm.RefVal(tt.Ref), wasm.I32}, nil)
+ 	}
+ 	ref := f.materialize(f.popValue())
+@@ -593,7 +593,7 @@ func (f *fn) refNull(r *wasm.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	value := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 0})
++	value := f.pushValue(constantStorage(mtI64, 0))
+ 	gcReference := false
+ 	if heap >= 0 {
+ 		if target, ok := f.stagedGCType(uint32(heap)); ok {
+@@ -627,7 +627,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
+ 		return err
+ 	}
+ 	if f.gcTypeSubtypingRefTest {
+-		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: idx})
++		f.pushValue(indexedStorage(stFuncRef, mtI64, 0, idx, 0))
+ 		return nil
+ 	}
+ 	ref := f.allocReg(0)
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_loop_inline.go b/src/core/compiler/backend/railshot/amd64/tail_loop_inline.go
+index a20dd138..c0858f14 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_loop_inline.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_loop_inline.go
+@@ -26,7 +26,7 @@ func (f *fn) zeroTailInlineLocals(t *inlineTarget, base int) {
+ 			f.stats.peep("tail-inline-zero-elide")
+ 			continue
+ 		}
+-		f.pushValue(storage{kind: stConst, typ: f.localType[base+i], cval: 0})
++		f.pushValue(constantStorage(f.localType[base+i], 0))
+ 		f.setLocal(nil, base+i, false)
+ 	}
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/tail_select_flags.go b/src/core/compiler/backend/railshot/amd64/tail_select_flags.go
+index 06aa459f..63c222e0 100644
+--- a/src/core/compiler/backend/railshot/amd64/tail_select_flags.go
++++ b/src/core/compiler/backend/railshot/amd64/tail_select_flags.go
+@@ -166,7 +166,7 @@ func (f *fn) emitTailSelectOnFlags(r *wasm.Reader, end int, left, right [4]tailS
+ 			if capture.direct {
+ 				local := f.localBase + i
+ 				f.markLocalDirty(local)
+-				root = f.pushValue(storage{kind: stLocalReg, typ: capture.typ, reg: capture.result, idx: uint32(local)})
++				root = f.pushValue(indexedStorage(stLocalReg, capture.typ, capture.result, uint32(local), 0))
+ 				f.stats.peep("tail-select-parameter-home")
+ 			} else {
+ 				root = f.pushReg(capture.result, capture.typ)
+diff --git a/src/core/compiler/backend/railshot/amd64/vector_region.go b/src/core/compiler/backend/railshot/amd64/vector_region.go
+index 5f8d4899..f17cd00a 100644
+--- a/src/core/compiler/backend/railshot/amd64/vector_region.go
++++ b/src/core/compiler/backend/railshot/amd64/vector_region.go
+@@ -112,7 +112,7 @@ func (f *fn) homeVectorLocal(i int) {
+ 
+ func (f *fn) rebaseVectorLocalAlias(e *elem, x int) bool {
+ 	if e.isValue() && e.st.kind == stLocalReg && e.st.machineType() == mtV128 && e.st.index() == x {
+-		f.replaceStorage(e, storage{kind: stLocalRef, typ: mtV128, idx: uint32(x)})
++		f.replaceStorage(e, indexedStorage(stLocalRef, mtV128, 0, uint32(x), 0))
+ 		return true
+ 	}
+ 	return false
+@@ -147,7 +147,7 @@ func (f *fn) cacheVectorLocal(e *elem, x int, tee bool) bool {
+ 	f.vectorRegion.locals[i] = uint16(x + 1)
+ 	f.vectorRegion.next = uint8((i + 1) % len(f.vectorRegion.locals))
+ 	if tee {
+-		f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: reg, idx: uint32(x), meta: uint8(facts)})
++		f.replaceStorage(e, indexedStorage(stLocalReg, mtV128, reg, uint32(x), uint8(facts)))
+ 	} else {
+ 		f.erase(e)
+ 	}
