@@ -1,0 +1,245 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/call.go b/src/core/compiler/backend/railshot/amd64/call.go
+index 08bea898..6c19bfdc 100644
+--- a/src/core/compiler/backend/railshot/amd64/call.go
++++ b/src/core/compiler/backend/railshot/amd64/call.go
+@@ -404,10 +404,15 @@ func (f *fn) callOp(r *wasm.Reader) error {
+ 	target := f.selectedInlineTarget(idx)
+ 	if f.s.forest != nil {
+ 		if target != nil {
+-			if !sigIsIntOnly(ft) || target.recursive() || target.hasCtrl ||
+-				target.tupleSelect() || target.tupleLoop() || target.tailLoop() ||
+-				!f.fixtureInlineIntegerLocals(target) ||
+-				(f.fixtureScalarFPEnabled() && !f.fixtureInlineIntegerBody(target)) {
++			supportedBody := false
++			if target.hasCtrl {
++				supportedBody = f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.IntegerControlInline &&
++					len(ft.Results) <= 1 && f.fixtureInlineIntegerControlBody(target)
++			} else {
++				supportedBody = !target.recursive() && (!f.fixtureScalarFPEnabled() || f.fixtureInlineIntegerBody(target))
++			}
++			if !sigIsIntOnly(ft) || !supportedBody || target.tupleSelect() || target.tupleLoop() ||
++				target.tailLoop() || !f.fixtureInlineIntegerLocals(target) {
+ 				if f.sc != nil && f.sc.fixtureWork != nil {
+ 					f.sc.fixtureWork.InlineCallGaps++
+ 				}
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index cf5a1378..fc721fd9 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1918,6 +1918,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
+ 			ImmutableIntegerIndirect: work.ImmutableIntegerIndirect,
+ 			ScalarFPMixedDirectCalls: work.ScalarFPMixedDirectCalls,
+ 			ScalarFPSignedSaturation: work.ScalarFPSignedSaturation,
++			IntegerControlInline:     work.IntegerControlInline,
+ 		}
+ 		defer work.releaseRoots()
+ 	}
+diff --git a/src/core/compiler/backend/railshot/amd64/inline.go b/src/core/compiler/backend/railshot/amd64/inline.go
+index 6dea7d9c..a232820d 100644
+--- a/src/core/compiler/backend/railshot/amd64/inline.go
++++ b/src/core/compiler/backend/railshot/amd64/inline.go
+@@ -1140,6 +1140,14 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
+ 		storesConsumed, err = f.inlineTupleSelectBody(t, stores)
+ 	} else if t.hasCtrl {
+ 		err = f.inlineBodyCtrl(t, constants)
++		if err == nil && f.sc != nil && f.sc.fixtureWork != nil && f.sc.fixtureWork.IntegerControlInline &&
++			!t.tailLoop() && !t.tupleLoop() {
++			if t.recursive() {
++				f.sc.fixtureWork.IntegerControlInlineRecursive++
++			} else {
++				f.sc.fixtureWork.IntegerControlInlineLeaves++
++			}
++		}
+ 	} else {
+ 		err = f.inlineBody(t.body)
+ 	}
+@@ -1286,6 +1294,52 @@ func (f *fn) fixtureInlineIntegerBody(t *inlineTarget) bool {
+ 	return false
+ }
+ 
++// Preflight a selected non-tail control splice before binding arguments or
++// changing the caller's local base. A recursive target may call only itself;
++// the ordinary selector suppresses re-splicing at nonzero inlineDepth.
++func (f *fn) fixtureInlineIntegerControlBody(t *inlineTarget) bool {
++	if !t.hasCtrl || t.tupleSelect() || t.tupleLoop() || t.tailLoop() {
++		return false
++	}
++	r := wasm.NewReader(t.body)
++	depth := 1 // synthetic function-result frame
++	for r.HasNext() {
++		op, err := r.Byte()
++		if err != nil || !fixtureScalarOpcode(op) {
++			return false
++		}
++		switch op {
++		case 0x03, 0x0e, 0x23, 0x24, 0xfc: // loop, br_table, globals, prefixed effects
++			return false
++		case 0x02, 0x04:
++			bt, ok := r.Peek()
++			if !ok || (bt != 0x40 && bt != 0x7f && bt != 0x7e) {
++				return false
++			}
++			depth++
++		case 0x0b:
++			depth--
++			if depth == 0 {
++				return !r.HasNext()
++			}
++		case 0x10:
++			callee, err := r.U32()
++			if err != nil || !t.recursive() || callee != uint32(t.globalIdx) {
++				return false
++			}
++			// The existing direct-call sink uses an unrebased local index.
++			if next, ok := r.Peek(); ok && next == 0x21 {
++				return false
++			}
++			continue
++		}
++		if f.classifier.SkipImmediate(r, op) != nil {
++			return false
++		}
++	}
++	return false
++}
++
+ func (f *fn) realizeInlineLocalBeforeWrite(local int) {
+ 	if f.s.forest != nil {
+ 		f.realizeLocalRefsCursor(local, nil, f.s.fixtureScan(false))
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_control_inline_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_control_inline_independent_test.go
+new file mode 100644
+index 00000000..c14153f2
+--- /dev/null
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_control_inline_independent_test.go
+@@ -0,0 +1,118 @@
++//go:build linux && amd64 && wago_owned_forest_fixture && wago_codegenstats
++
++package amd64
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/wago-org/wago/src/core/compiler/wasm"
++	"github.com/wago-org/wago/tests/support/wasmtest"
++)
++
++func ownedControlInlineMemoryModule(t *testing.T) *wasm.Module {
++	t.Helper()
++	i32 := wasm.I32
++	params := []wasm.ValType{i32, i32}
++	caller := []byte{0, 0x20, 0, 0x20, 0, 0x20, 1, 0x10, 1, 0x41, 23, 0x21, 0, 0x6a, 0x20, 0, 0x6a, 0x0b}
++	leaf := []byte{1, 1, 0x7f, 0x20, 0, 0x41, 3, 0x6a, 0x21, 2, 0x20, 1, 0x04, 0x40,
++		// True branch stores the new numerically private local and returns directly.
++		0x41, 24, 0x20, 2, 0x36, 2, 0, 0x41, 24, 0x28, 2, 0, 0x0f, 0x05,
++		// False branch overwrites the private local and reaches ordinary end.
++		0x20, 0, 0x41, 5, 0x6b, 0x21, 2, 0x0b,
++		0x41, 24, 0x20, 2, 0x36, 2, 0, 0x41, 24, 0x28, 2, 0, 0x0b}
++	m, e := wasm.DecodeModule(wasmtest.Module(
++		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{i32}))),
++		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
++		wasmtest.Section(5, wasmtest.Vec([]byte{0, 1})),
++		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
++		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(caller))), caller...), append(wasmtest.ULEB(uint32(len(leaf))), leaf...))),
++	))
++	if e != nil {
++		t.Fatal(e)
++	}
++	return m
++}
++
++func TestOwnedForestControlInlineOrdinary(t *testing.T) {
++	for _, name := range []string{"memory-leaf", "one-level-fib"} {
++		t.Run(name, func(t *testing.T) {
++			var m *wasm.Module
++			recursive := name == "one-level-fib"
++			if recursive {
++				// Same bounded non-tail one-level recursive class as existing backend test.
++				body := []byte{0, 0x20, 0, 0x41, 2, 0x48, 0x04, 0x7e, 0x20, 0, 0xac, 0x05,
++					0x20, 0, 0x41, 1, 0x6b, 0x10, 0, 0x20, 0, 0x41, 2, 0x6b, 0x10, 0, 0x7c, 0x0b, 0x0b}
++				m = modFuncs(t, funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I64}, body: body})
++			} else {
++				m = ownedControlInlineMemoryModule(t)
++			}
++			if err := wasm.ValidateModule(m); err != nil {
++				t.Fatal(err)
++			}
++			for _, intr := range []bool{false, true} {
++				var native, metaOracle []byte
++				for _, candidate := range []bool{false, true} {
++					work := &fixtureModuleWork{Forest: candidate, IntegerControlInline: true}
++					var stats ModuleStats
++					cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Interruptible: intr, Stats: &stats, fixtureWork: work})
++					if err != nil {
++						t.Fatal(err)
++					}
++					if cm.CodeImage != nil {
++						defer cm.CodeImage.Close()
++					}
++					if work.LegacyBodies == 0 || work.Opcodes == 0 || work.Rejected != 0 || candidate && work.Vector.stores == 0 {
++						t.Fatalf("inactive forest: %+v", work)
++					}
++					inline, nativeCalls := 1, 0
++					if recursive {
++						inline, nativeCalls = 2, 4
++					}
++					if (!recursive && (work.IntegerControlInlineLeaves != 1 || work.IntegerControlInlineRecursive != 0)) || (recursive && (work.IntegerControlInlineLeaves != 0 || work.IntegerControlInlineRecursive != 2)) {
++						t.Fatalf("control inline inactive: %+v", work)
++					}
++					st := stats.Funcs[0]
++					if st.Calls["inline"] != inline || st.Calls["regabi"] != nativeCalls || st.Calls["wrapper"] != 0 || st.Calls["mixed"] != 0 {
++						t.Fatalf("wrong inline strategy: %v", st.Calls)
++					}
++					if !recursive {
++						for _, args := range [][2]uint64{{7, 0}, {7, 1}, {0x80000001, 1}, {0xffffffff, 0}} {
++							want := uint32(args[0]) + uint32(args[0]) + 23
++							if args[1] != 0 {
++								want += 3
++							} else {
++								want -= 5
++							}
++							got, e := ownedRunModule(t, cm, args[:])
++							if e != nil || got != uint64(want) {
++								t.Fatalf("args=%v result=%v want=%v err=%v", args, got, want, e)
++							}
++						}
++					} else {
++						for _, row := range [][2]uint64{{0, 0}, {1, 1}, {2, 1}, {5, 5}, {10, 55}} {
++							got, e := ownedRunModule(t, cm, row[:1])
++							if e != nil || got != row[1] {
++								t.Fatalf("n=%v result=%v want=%v err=%v", row[0], got, row[1], e)
++							}
++						}
++					}
++					meta := *cm
++					meta.Code, meta.CodeImage = nil, nil
++					encoded, err := json.Marshal(meta)
++					if err != nil {
++						t.Fatal(err)
++					}
++					if !candidate {
++						native = append([]byte(nil), cm.Code...)
++						metaOracle = encoded
++					} else if !bytes.Equal(native, cm.Code) || !bytes.Equal(metaOracle, encoded) {
++						t.Fatal("native or encoder metadata differs")
++					}
++					t.Logf("intr=%v candidate=%v bytes=%d calls=%v work=%+v", intr, candidate, len(cm.Code), st.Calls, work)
++				}
++			}
++		})
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index e308bd13..286fc6f1 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -272,6 +272,8 @@ func (f *fn) fixturePendingEffects(loads bool, limit *elem) {
+ 
+ // Test-only per-module receipt. Never installed in public or parallel compile.
+ type fixtureModuleWork struct {
++	IntegerControlInline                                                                            bool
++	IntegerControlInlineLeaves, IntegerControlInlineRecursive                                       uint64
+ 	ScalarFPSignedSaturation                                                                        bool
+ 	FPSignedSaturationEmissions                                                                     [8]uint64
+ 	ScalarFPMixedDirectCalls                                                                        bool

@@ -530,3 +530,24 @@ is unchanged; the 31 held inputs were untouched.
 
 Focused summary SHA-256:
 `1efc99f207d708a0399756c7022c2d197a638eac092acccecb4d2a7b15501b1a`.
+
+## Focused control inlining
+
+Apply control-inline-focused.patch on top of 1c803c57. The ordinary
+gate at ab4c2085 passed eight images and 36 calls, with four exact
+native and encoder-exported JSON pairs. The private-local memory leaf
+used in-bounds load/store, explicit and fallthrough returns, and a live
+old caller prefix. Each leaf image emitted one splice and no residual
+call. Each singleton non-tail, one-level recursive Fibonacci image
+emitted two splices and four residual register-ABI calls. Inputs were
+0, 1, 2, 5, and 10.
+
+Whole-body preflight excludes loops, tail calls, tuples, br_table,
+globals and FC operations. Nested-call fusion and repeated leaf splices
+are not proven by these checks. Existing selection policy is unchanged.
+No public artifact codec, exceptional-input, held-input, corpus or
+timing claim. The prior 83-of-114 exit-1 census and defaults remain
+unchanged; the 31 held inputs were untouched.
+
+Focused summary SHA-256:
+`6bac9a91cf25fa2213ceacf0121203c38d7e8dca90fe1a37f99e5bc99d54c2f4`.
