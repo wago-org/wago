@@ -1,0 +1,206 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 45a5dbbc..bc163a49 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1251,6 +1251,7 @@ func (sc *scratch) observeFixtureOperandCapacity(funcIdx int) {
+ 		row.RootCapacity, row.RootPeak = cap(v.roots), v.peak
+ 		row.ColdTypeCapacity, row.CursorFramePeak = cap(v.coldControlTypes), v.peakCursor
+ 		row.RootGrows, row.RootGrowCopies, row.RootStores, row.CursorWrites = v.grows, v.growCopies, v.stores, v.cursorWrites
++		row.CursorReadyRootReturns = v.readyRootReturns
+ 	}
+ 	w.OperandCapacities = append(w.OperandCapacities, row)
+ }
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+index 9d936830..fcf89b0f 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_compact_layout_independent_test.go
+@@ -742,3 +742,134 @@ func layoutScalarModules(t *testing.T) (*wasm.Module, *wasm.Module) {
+ 	natural := layoutProbeModFuncs(t, layoutProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0, 0x20, 0, 0x41, 3, 0x6a, 0x20, 1, 0x20, 0, 0x10, 1, 0x6a, 0x0b}}, layoutProbeFuncDef{[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, callee})
+ 	return layoutProbeModMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, effectIf), natural
+ }
++
++// layoutPriorCursor is a test-only transcription of the pre-opt-in forest
++// traversal. All roots first get push/pop frames, including concrete or pending.
++type layoutPriorCursor struct {
++	roots                            []*elem
++	root, endRoot, n, writes, visits int
++	frames                           [maxDeferDepth + 4]fixtureCursorFrame
++}
++
++func (c *layoutPriorCursor) push(e *elem) {
++	if c.n >= len(c.frames) || !e.forestLive || e.hasPhysicalLinks() {
++		panic("prior cursor invalid child")
++	}
++	c.frames[c.n] = fixtureCursorFrame{node: e}
++	c.n++
++	c.writes++
++}
++
++func (c *layoutPriorCursor) next() *elem {
++	for {
++		if c.n == 0 {
++			if c.root == c.endRoot {
++				return nil
++			}
++			c.push(c.roots[c.root])
++			c.root++
++		}
++		top := &c.frames[c.n-1]
++		e := top.node
++		if e.isDeferred() && !e.forestPending {
++			switch top.phase {
++			case 0:
++				top.phase = 1
++				c.writes++
++				c.push(e.arg0)
++				continue
++			case 1:
++				top.phase = 2
++				c.writes++
++				if e.arg1 != nil {
++					c.push(e.arg1)
++					continue
++				}
++			}
++		}
++		c.n--
++		c.frames[c.n] = fixtureCursorFrame{}
++		c.writes++
++		c.visits++
++		return e
++	}
++}
++
++func TestOwnedForestReadyRootTraversalOrdinary(t *testing.T) {
++	val := func() *elem { return &elem{forestLive: true, st: storage{kind: stConst, typ: mtI32}} }
++	def := func(l, r *elem) *elem {
++		return &elem{forestLive: true, st: storage{kind: deferredStorageKind, typ: mtI32}, arg0: l, arg1: r}
++	}
++	t.Run("mixed-postorder", func(t *testing.T) {
++		ready, l, r, innerChild, tail := val(), val(), val(), val(), val()
++		inner := def(innerChild, nil)
++		pending := def(nil, nil)
++		pending.forestPending = true
++		left := def(l, r)
++		tree := def(left, inner)
++		checkLayoutReadyRoot(t, []*elem{ready, pending, tree, tail}, []*elem{ready, pending, l, r, left, innerChild, inner, tree, tail}, map[int]bool{0: true, 1: true, 8: true}, nil)
++	})
++	t.Run("retag-after-child-and-nested-scan", func(t *testing.T) {
++		child, nextChild, tail := val(), val(), val()
++		first := def(child, nextChild)
++		nextDeferredChild := val()
++		nextDeferred := def(nextDeferredChild, nil)
++		roots := []*elem{first, nextDeferred, tail}
++		checkLayoutReadyRoot(t, roots, []*elem{child, first, nextDeferred, tail}, map[int]bool{2: true, 3: true}, func(i int) {
++			if i == 0 {
++				// Complete materialization after the first child was yielded:
++				// neither cursor may consult the now-retired sibling.
++				first.st.kind = stConst
++				first.arg0, first.arg1 = nil, nil
++				child.forestLive, nextChild.forestLive = false, false
++				// A pending flags result has no remaining children to revisit.
++				nextDeferred.arg0 = nil
++				nextDeferred.forestPending = true
++				nextDeferredChild.forestLive = false
++				// Independent nested walk sees current state, while the
++				// suspended cursor retains and resumes its own frame.
++				checkLayoutReadyRoot(t, roots, []*elem{first, nextDeferred, tail}, map[int]bool{0: true, 1: true, 2: true}, nil)
++			}
++		})
++	})
++	t.Run("fixed-end-and-early-limit", func(t *testing.T) {
++		a, b, unseen := val(), val(), val()
++		// Deliberately stop after first yield and verify no later root was
++		// touched; then start an independent cursor restricted to prefix.
++		v := fixtureForest{roots: []*elem{a, b, unseen}}
++		s := stack{forest: &v}
++		c := s.fixtureScan(false)
++		if got := c.next(); got != a || c.root != 1 || v.visits != 1 || v.readyRootReturns != 1 || v.cursorWrites != 0 {
++			t.Fatalf("early yield=%p root=%d work=%+v", got, c.root, v)
++		}
++		checkLayoutReadyRoot(t, v.roots[:2], []*elem{a, b}, map[int]bool{0: true, 1: true}, nil)
++	})
++}
++
++func checkLayoutReadyRoot(t *testing.T, roots, want []*elem, ready map[int]bool, after func(int)) {
++	t.Helper()
++	v := fixtureForest{roots: roots}
++	s := stack{forest: &v}
++	got := s.fixtureScan(false)
++	old := layoutPriorCursor{roots: roots, endRoot: len(roots)}
++	for i, w := range want {
++		pw, cw, cr, cv := old.writes, v.cursorWrites, v.readyRootReturns, v.visits
++		o, n := old.next(), got.next()
++		if o != w || n != w {
++			t.Fatalf("yield%d old=%p current=%p want=%p", i, o, n, w)
++		}
++		saved := uint64(0)
++		if ready[i] {
++			saved = 1
++		}
++		if v.visits-cv != 1 || v.readyRootReturns-cr != saved || uint64(old.writes-pw) != v.cursorWrites-cw+2*saved {
++			t.Fatalf("yield%d old writes=%d current writes=%d bypass=%d expected=%d", i, old.writes-pw, v.cursorWrites-cw, v.readyRootReturns-cr, saved)
++		}
++		if after != nil {
++			after(i)
++		}
++	}
++	if old.next() != nil || got.next() != nil || old.visits != len(want) || v.visits != uint64(len(want)) || got.n != 0 || old.n != 0 {
++		t.Fatal("cursor failed exact exhaustion")
++	}
++}
+diff --git a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+index f9351506..bc3f0ef0 100644
+--- a/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
++++ b/src/core/compiler/backend/railshot/amd64/owned_forest_fixture.go
+@@ -19,7 +19,7 @@ type fixtureForest struct {
+ 	roots                                                           []*elem
+ 	stores, grows, retirements                                      uint64
+ 	peak                                                            int
+-	growCopies                                                      uint64
++	growCopies, readyRootReturns                                    uint64
+ }
+ 
+ func (s *stack) operandAttached(e *elem) bool {
+@@ -191,7 +191,21 @@ func (c *fixtureCursor) next() *elem {
+ 			if c.root == c.endRoot {
+ 				return nil
+ 			}
+-			c.push(v.roots[c.root])
++			root := v.roots[c.root]
++			// A ready root has no descendants to visit. Validate it
++			// just as push would, then advance before returning so a
++			// nested allocation or in-place materialization cannot
++			// cause this cursor to revisit the root.
++			if root != nil && (root.isValue() || root.forestPending) {
++				if !root.forestLive || root.hasPhysicalLinks() {
++					panic("fixture forest: invalid cursor child")
++				}
++				c.root++
++				v.visits++
++				v.readyRootReturns++
++				return root
++			}
++			c.push(root)
+ 			c.root++
+ 		}
+ 		top := &c.frames[c.n-1]
+@@ -368,12 +382,12 @@ type fixtureOperandLayout struct {
+ }
+ 
+ type fixtureOperandCapacity struct {
+-	Function                                                     int
+-	NodeChunks, NodeCapacity, NodesAtSample, ColdSidecarCapacity int
+-	RootCapacity, RootPeak, ColdTypeCapacity, CursorFramePeak    int
+-	RootGrows, RootGrowCopies, RootStores, CursorWrites          uint64
+-	NodeUsedBytes, NodeReservedBytes                             uint64
+-	ArenaMappedBytes, ArenaAppendedBytes                         int
++	Function                                                                    int
++	NodeChunks, NodeCapacity, NodesAtSample, ColdSidecarCapacity                int
++	RootCapacity, RootPeak, ColdTypeCapacity, CursorFramePeak                   int
++	RootGrows, RootGrowCopies, RootStores, CursorWrites, CursorReadyRootReturns uint64
++	NodeUsedBytes, NodeReservedBytes                                            uint64
++	ArenaMappedBytes, ArenaAppendedBytes                                        int
+ }
+ 
+ func (w *fixtureModuleWork) releaseRoots() {

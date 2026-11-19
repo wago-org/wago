@@ -1070,3 +1070,11 @@ Apply `compact-operand-layout-proof.patch` after `402216f0` to reach the tested 
 Measured element widths were 64 bytes for the experimental list and wide forest and 48 bytes for the compact forest. At matching capacities, requested node bytes fell 25%; that is not a total-memory result. The pristine 56-byte comparison is accounting only. The forest structure (168 bytes), cursor (200 bytes), root buffer and cold backing are separate costs. Natural compile samples used the heap, and neither allocator rounding nor RSS was measured. Both mapping-only probes reserved the same 1 MiB; append consumption fell from 3,200 to 2,400 bytes without explicit payload writes.
 
 Summary SHA-256: `65f34ca0fb63f2c8fb8f052ec76e7b0e8e29b46437fa2a97c8a519bbd3b01006`. No corpus, timing, public serializer, or default change.
+
+### Ready-root cursor bypass
+
+Apply `ready-root-focused.patch` after `d192d3cd` to reach `5da3216e76868eba8f9c346e76d18656eb71de02` (tree `a5882c0a9695cce4986966471e84c0c35dc2cea0`). This bypasses cursor-frame writes when the next root is already ready; it does not cache a traversal or elide child visits.
+
+The focused proof passed 36 images, 114 ordinary calls, 24 strict body/native/encoder-JSON comparisons and three direct cursor-oracle cases. Per mode, 711 observed bypasses removed 1,422 of 1,436 frame writes, leaving 14. The cold case accounted for 666 bypasses and went from 1,346 writes to 14. Visit counts and matched capacities stayed exact. Diagnostic counters raised the forest header from 168 to 176 bytes and the receipt row from 136 to 144 bytes; the cursor stayed at 200 bytes.
+
+Summary SHA-256: `32e0700c137a4d5040842c12892996b41707e64856ae15da1f17873217e00b83`. This is a bounded operation count, not a timing, RSS, public serialization, or corpus result. Active source and defaults are unchanged.
