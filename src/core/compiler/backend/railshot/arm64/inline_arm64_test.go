@@ -140,6 +140,49 @@ func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateArm64(t *testing.T) {
 	}
 }
 
+func TestInlineAdmissionSlotsAndEmitterFactsArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	pair := []wasm.ValType{wasm.I32, wasm.I64}
+	m := modFuncs(t,
+		funcDef{body: []byte{0, 0x41, 0, 0x10, 0x01, 0x1a, 0x0b}},
+		funcDef{params: i32, results: i32, body: []byte{0, 0x20, 0, 0x0b}},
+		funcDef{body: []byte{0, 0x10, 0x00, 0x0b}},
+		funcDef{params: pair, results: pair, body: []byte{0, 0x20, 0, 0x20, 1, 0x0b}},
+		funcDef{results: i32, body: []byte{0, 0x41, 0, 0x0b}},
+	)
+	hints := []funcHints{
+		{flags: hintHasCall},
+		{localCount: 1},
+		{flags: hintHasCall},
+		{localCount: 2},
+		{flags: hintTouchesMemory | hintHasControlFlow, globalCount: 1},
+	}
+	policy := currentCodegenPolicy()
+	var targets inlineTargetTable
+	if allocs := testing.AllocsPerRun(25, func() {
+		targets = buildInlineTargets(m, hints, policy)
+	}); allocs > 4 {
+		t.Fatalf("inline plan allocations = %.0f; want only table, slots, targets, and types", allocs)
+	}
+	if targets.data == nil || !slices.Equal(targets.data.slots, []uint32{0, 1, 0, 2, 3}) {
+		t.Fatalf("admission did not publish stable compact slots: %+v", targets.data)
+	}
+	if got := targets.target(1); got == nil || !got.scalarLeaf || got.pairLeaf || got.hasCtrl ||
+		!slices.Equal(targets.localTypes(got), []machineType{mtI32}) ||
+		!slices.Equal(targets.resultTypes(got), []machineType{mtI32}) {
+		t.Fatalf("scalar leaf classification or types changed: %+v", got)
+	}
+	if got := targets.target(3); got == nil || got.scalarLeaf || !got.pairLeaf || got.hasCtrl ||
+		!slices.Equal(targets.localTypes(got), []machineType{mtI32, mtI64}) ||
+		!slices.Equal(targets.resultTypes(got), []machineType{mtI32, mtI64}) {
+		t.Fatalf("pair leaf classification or types changed: %+v", got)
+	}
+	if got := targets.target(4); got == nil || got.scalarLeaf || got.pairLeaf || !got.hasCtrl ||
+		!got.touchesMem || !got.touchesGlob || got.tupleControl || got.tailLoop() || got.recursive() {
+		t.Fatalf("effect and control classification changed: %+v", got)
+	}
+}
+
 func TestAnalyzeInlineCandidatesMixedMemory64MemargArm64(t *testing.T) {
 	body := []byte{
 		0x00,       // no locals
