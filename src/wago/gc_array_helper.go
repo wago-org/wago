@@ -450,7 +450,10 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			state.drop(in.gc)
 			break
 		}
-		if (in.c.stagedGCArrayProduct() == stagedGCArrayProductInitElem || in.c.stagedGCArrayProduct() == stagedGCArrayProductNewElem || in.c.stagedGCArrayProduct() == stagedGCArrayProductGeneric) && int(elemIndex) < len(in.c.passiveElems) && in.jm.PassiveElemPtr() != 0 {
+		// Without checked element roots, segment zero drops like every other
+		// segment: zero its descriptor length. Declarative and active segments
+		// keep zero-length descriptors, so dropping them is a no-op.
+		if int(elemIndex) < len(in.c.passiveElems) && in.jm.PassiveElemPtr() != 0 {
 			descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
 			desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
 			binary.LittleEndian.PutUint32(desc[8:], 0)

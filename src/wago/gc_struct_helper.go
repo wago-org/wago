@@ -249,6 +249,13 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc ref.test helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
+		if matched, ok := gcNonAnyHierarchyRefTest(args[0], int64(args[1]), args[2] != 0); ok {
+			results[0] = 0
+			if matched {
+				results[0] = 1
+			}
+			break
+		}
 		target, err := in.gcDynamicRefTarget(int64(args[1]), args[2] != 0, args[3] != 0)
 		if err != nil {
 			panic(gcHelperFailure(err))
@@ -272,6 +279,13 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailuref("gc ref.cast helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
 		exact := args[3] != 0
+		if matched, ok := gcNonAnyHierarchyRefTest(args[0], int64(args[1]), args[2] != 0); ok {
+			if !matched {
+				panic(gcHelperTrap(coreruntime.TrapCastFailure))
+			}
+			results[0] = args[0]
+			break
+		}
 		if value, handled, err := in.gcDefinedRefCast(args[0], int64(args[1]), args[2] != 0, exact); handled {
 			if errors.Is(err, gc.ErrCastFailure) {
 				panic(gcHelperTrap(coreruntime.TrapCastFailure))
@@ -549,6 +563,20 @@ func (in *Instance) gcDefinedRefCast(bits uint64, heap int64, nullable, exact bo
 		return 0, true, gc.ErrCastFailure
 	}
 	return bits, true, nil
+}
+
+// gcNonAnyHierarchyRefTest answers ref.test/ref.cast against the abstract
+// func, extern, and exn hierarchies, which have no collector identity.
+// Validation keeps the operand inside the target's hierarchy, so the top type
+// admits every non-null reference and the bottom type admits only null.
+func gcNonAnyHierarchyRefTest(bits uint64, heap int64, nullable bool) (matched, ok bool) {
+	switch heap {
+	case -16, -17, -23: // func, extern, exn
+		return bits != 0 || nullable, true
+	case -13, -14, -12: // nofunc, noextern, noexn
+		return bits == 0 && nullable, true
+	}
+	return false, false
 }
 
 func (in *Instance) gcDynamicRefTarget(heap int64, nullable, exact bool) (gc.RefTestTarget, error) {

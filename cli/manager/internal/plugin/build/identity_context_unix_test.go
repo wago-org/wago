@@ -41,7 +41,9 @@ func TestDecodeBuildGoJSONContextClosesInheritedStdoutOnCancel(t *testing.T) {
 			return decoder.Decode(&value)
 		})
 	}()
-	deadline := time.Now().Add(2 * time.Second)
+	// Startup only bounds a failure; a loaded machine (the whole suite runs in
+	// parallel) can take seconds to spawn the fake command.
+	deadline := time.Now().Add(15 * time.Second)
 	for {
 		if _, err := os.Stat(ready); err == nil {
 			break
