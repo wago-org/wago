@@ -44,6 +44,55 @@ func TestFuncHintsSize(t *testing.T) {
 	}
 }
 
+func TestModuleHintsResidencyShadowIsDiagnosticOnly(t *testing.T) {
+	m := intervalRegionModule(t)
+	const bodyLen = minParallelHintBodyBytes / 8
+	body := make([]byte, bodyLen)
+	tail := []byte{0x20, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x41, 0x00, 0x0b}
+	for i := range body[:len(body)-len(tail)] {
+		body[i] = 0x01 // nop
+	}
+	copy(body[len(body)-len(tail):], tail) // two local.get/drop pairs; i32.const 0; end
+	local := wasm.Func{Locals: m.Code[0].Locals, BodyBytes: body}
+	ft := m.FuncTypes[0]
+	m.Code = nil
+	m.FuncTypes = nil
+	for range 8 {
+		m.Code = append(m.Code, local)
+		m.FuncTypes = append(m.FuncTypes, ft)
+	}
+
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{
+		"interval-region-pins": true,
+		"wide-loop-int-const":  false,
+	}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := shared.DefaultCodegenPolicy(selection)
+	if !parallelHintScanEligible(m, 0, 4) {
+		t.Fatal("fixture does not exercise the parallel hint scan")
+	}
+	for _, workers := range []int{1, 4} {
+		normal, normalSidecar, normalGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, 0, 0, workers, nil, false, policy, false, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		detailed, detailedSidecar, detailedGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, 0, 0, workers, nil, false, policy, true, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if normalSidecar.residencyShadow != nil || len(detailedSidecar.residencyShadow) != len(m.Code) ||
+			!detailedSidecar.residencyShadow[0].Summary.Active() {
+			t.Fatalf("workers=%d: normal shadow=%v, detailed shadow=%v", workers, normalSidecar.residencyShadow, detailedSidecar.residencyShadow)
+		}
+		detailedSidecar.residencyShadow = nil
+		if !reflect.DeepEqual(normal, detailed) || !reflect.DeepEqual(normalSidecar, detailedSidecar) || !reflect.DeepEqual(normalGlobals, detailedGlobals) {
+			t.Fatalf("workers=%d: compilation hints depend on diagnostic shadow collection", workers)
+		}
+	}
+}
+
 func TestParallelModuleHintsMatchSerialDetailedResidency(t *testing.T) {
 	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
