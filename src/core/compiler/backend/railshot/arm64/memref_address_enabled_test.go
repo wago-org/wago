@@ -74,16 +74,18 @@ func TestRegallocDeferredLoadAddressPair(t *testing.T) {
 			if !f.opt(optLoadPair) {
 				t.Fatal("load pair is disabled")
 			}
-			first.st.slot |= 1 << 10 // address copied from local 0
-			first.st.slot = 0
+			size := first.st.memSize()
+			var disp int32
 			if !accepted {
-				first.st.slot = uint32(64 * first.st.memSize())
+				disp = int32(64 * size)
 			}
+			first.st.slot |= 1 << 10 // address copied from local 0
+			first.st.cval = packedMemoryAddress(disp, first.st.memBorrow())
 			f.pinnedLocalMask = maskOf(X13)
 			f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X13})
-			off := first.st.slot + uint32(first.st.memSize())
+			off := uint32(disp) + uint32(size)
 			r := wasm.ReaderFrom([]byte{0, byte(off&0x7f) | 0x80, byte(off >> 7)})
-			if err := f.memLoad(&r, first.st.memSize(), false, wide); err != nil {
+			if err := f.memLoad(&r, size, false, wide); err != nil {
 				t.Fatal(err)
 			}
 			if accepted {
