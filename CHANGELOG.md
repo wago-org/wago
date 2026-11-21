@@ -6,6 +6,25 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Fixed
+
+- Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
+  `exn` hierarchies (including `noextern`, `nofunc`, and `noexn`) instead of
+  trapping or rejecting the module at compile time.
+- Allow `elem.drop` of declarative and passive element segments in AMD64 GC
+  modules that use array helpers.
+- Use 8-byte entries for `exnref`, `nullexnref`, and `nullexternref` tables in
+  AMD64 and ARM64 code. Growing or filling such a table wrote 32-byte entries
+  past its storage, corrupting adjacent tables or crashing, and non-null
+  `exnref` values could not be read back from a table.
+- Publish ARM64 module-pinned globals before `throw` and `throw_ref`; a caught
+  exception reloaded them from stale memory cells, discarding earlier
+  `global.set` values (for example, loop counters reset and never terminated).
+- Capture AMD64 register-call results in spill slots when no free register
+  remains. A call returning three to seven integers in a function with
+  module-pinned and value-pinned globals failed to compile with "no GP register
+  available after spilling optional pins".
+
 ## [v0.1.0-beta.15] - 2026-11-18
 
 ### Changed
