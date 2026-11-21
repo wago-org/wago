@@ -2628,7 +2628,7 @@ type moduleGlobalPin struct {
 // extra one demands a much hotter global (it steals a pinned-local register from
 // every function module-wide). X26 is unavailable because arm64 keeps linMem there
 // to avoid clobbering Go's X28/g register while native code is running.
-var moduleGlobalRegs = []Reg{X25, X24, X23}
+var moduleGlobalRegs = [...]Reg{X25, X24, X23}
 
 // pickModuleGlobals aggregates loop-weighted global hotness across the whole
 // module and assigns the top mutable int globals a module-wide register. The
@@ -3214,7 +3214,10 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		g     int
 		score int64
 	}
-	var cs []cand
+	var top [len(moduleGlobalRegs)]cand
+	n := 0
+	// The debug report deliberately retains every eligible candidate.
+	var debugCandidates []cand
 	// A module pin is an ABI-wide reservation, not a function-local choice: every
 	// function must preserve the register even when it never reads that global.
 	// Demand enough aggregate reuse to amortize that opportunity cost for the
@@ -3232,12 +3235,28 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		cs = append(cs, cand{g, agg[g]})
+		score := agg[g]
+		if diagnosticsEnabled && debugModGlobals {
+			debugCandidates = append(debugCandidates, cand{g, score})
+			continue
+		}
+		// Insert after ties to preserve the previous stable index ordering.
+		at := n
+		for at > 0 && score > top[at-1].score {
+			at--
+		}
+		if at == len(top) {
+			continue
+		}
+		n = min(n+1, len(top))
+		copy(top[at+1:n], top[at:n-1])
+		top[at] = cand{g, score}
 	}
-	sort.SliceStable(cs, func(a, b int) bool { return cs[a].score > cs[b].score })
 	if diagnosticsEnabled && debugModGlobals {
+		sort.SliceStable(debugCandidates, func(a, b int) bool { return debugCandidates[a].score > debugCandidates[b].score })
+		n = copy(top[:], debugCandidates)
 		fmt.Fprint(os.Stderr, "wago: module-global candidates:")
-		for _, c := range cs {
+		for _, c := range debugCandidates {
 			fmt.Fprintf(os.Stderr, " g%d=%d", c.g, c.score)
 		}
 		fmt.Fprintln(os.Stderr)
@@ -3250,12 +3269,12 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		limit = pinGlobalK
 	}
 	var pins []moduleGlobalPin
-	for k, c := range cs {
+	for k, c := range top[:n] {
 		if k >= limit {
 			break
 		}
 		if pinGlobalK < 0 && k >= 1 && c.score < extraBar {
-			break // auto: cs is score-descending, so no later candidate clears the bar
+			break // auto: top is score-descending, so no later candidate clears the bar
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}

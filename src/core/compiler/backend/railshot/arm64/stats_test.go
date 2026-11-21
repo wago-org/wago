@@ -384,6 +384,44 @@ func TestModuleGlobalPinRequiresABIWideReuseArm64(t *testing.T) {
 	}
 }
 
+func TestModuleGlobalPinsKeepStableCutoffArm64(t *testing.T) {
+	m := &wasm.Module{Globals: make([]wasm.Global, 258), Code: []wasm.Func{{}}}
+	scores := make([]int64, len(m.Globals))
+	bar := 50 * loopWeight(1)
+	for i := range scores {
+		m.Globals[i].Type = wasm.GlobalType{Type: wasm.I32, Mutable: true}
+		scores[i] = bar
+	}
+	m.Globals[0].Type.Mutable = false
+	m.Globals[1].Type.Type = wasm.F64
+	scores[0], scores[1], scores[257] = bar+3, bar+2, bar+1
+	saved := pinGlobalK
+	defer func() { pinGlobalK = saved }()
+	for _, k := range []int{-1, 0, 1, 2, 3} {
+		pinGlobalK = k
+		want := []uint32{257, 2, 3}
+		if k >= 0 {
+			want = want[:k]
+		}
+		pins := pickModuleGlobals(m, m.GlobalCount(), scores)
+		if len(pins) != len(want) {
+			t.Fatalf("K=%d: pins=%+v, want globals %v", k, pins, want)
+		}
+		for i, g := range want {
+			if pins[i].global != g || pins[i].reg != moduleGlobalRegs[i] {
+				t.Fatalf("K=%d pin %d=%+v, want global %d in %v", k, i, pins[i], g, moduleGlobalRegs[i])
+			}
+		}
+	}
+	pinGlobalK = 3
+	for i := range scores {
+		scores[i] = bar - 1
+	}
+	if pins := pickModuleGlobals(m, m.GlobalCount(), scores); len(pins) != 0 {
+		t.Fatalf("forced K bypassed ARM64 first-pin score floor: %+v", pins)
+	}
+}
+
 func TestCommonBoundsLimitUsesMemoryZeroMinimumArm64(t *testing.T) {
 	requireCompilerDiagnostics(t)
 	body := []byte{
