@@ -2687,7 +2687,9 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			}
 			intervalLocals += count
 			intervalFunctions++
-			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
+			if detailedResidency {
+				eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
+			}
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -2739,7 +2741,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		scoreAt := 0
 		intervalAt := intervalFunctions * 2
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
-		localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
+		var localEvents *shared.LocalEventTape
+		if residencyShadow != nil {
+			localEvents = &shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
+		}
 		intervalEventAt := 0
 		for i := range m.Code {
 			nLocals := int(allHints[i].localCount)
@@ -2764,8 +2769,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			h.localCount = uint16(nLocals)
 			h.localStart = uint32(scoreAt)
 			if intervalStorage {
-				localEvents.Reset(shared.LocalEventLimit)
-				h.localEvents = &localEvents
+				h.beginLocalEvents(localEvents)
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
 			h.directCallRefs = allHints[i].directCallRefs
@@ -2779,11 +2783,11 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			h.directCallRefs = allHints[i].directCallRefs
 			h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
 			if intervalStorage {
-				h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+				h.finishLocalEvents()
 				localEventMeta[intervalEventAt*2] = h.localStart
 				localEventMeta[intervalEventAt*2+1] = h.localEventMeta
 				if residencyShadow != nil {
-					residencyShadow[intervalEventAt] = hintResidencyShadow(&localEvents, nLocals, h.localStart)
+					residencyShadow[intervalEventAt] = hintResidencyShadow(localEvents, nLocals, h.localStart)
 				}
 				intervalEventAt++
 			}
@@ -2970,11 +2974,14 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 				h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
 			}
 			if base.flags.has(hintIntervalRegionStorage) {
-				if state.localEvents.Events == nil {
-					state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+				var localEvents *shared.LocalEventTape
+				if residencyShadow != nil {
+					if state.localEvents.Events == nil {
+						state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+					}
+					localEvents = &state.localEvents
 				}
-				state.localEvents.Reset(shared.LocalEventLimit)
-				h.localEvents = &state.localEvents
+				h.beginLocalEvents(localEvents)
 			}
 			state.globals.Reset(nGlobals)
 			h, scanErr := scanBodyBytesIntoModule(m.Code[i].BodyBytes, m.Code[i].LocalDeclBytes, nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &state.elig, m, &state.classifier, nil, calleeHints, importedFuncs, &state.globals, collectLoopIntConsts, collectLoopMemoryBases)
@@ -2985,7 +2992,7 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
 			if base.flags.has(hintIntervalRegionStorage) {
 				event := int(owners[i].event)
-				h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
+				h.finishLocalEvents()
 				localEventMeta[event*2] = h.localStart
 				localEventMeta[event*2+1] = h.localEventMeta
 				if residencyShadow != nil {

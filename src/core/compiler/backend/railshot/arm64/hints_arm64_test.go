@@ -143,8 +143,7 @@ func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h := newFuncHints(2, 0)
 	var tape shared.LocalEventTape
-	tape.Reset(shared.LocalEventLimit)
-	h.localEvents = &tape
+	h.beginLocalEvents(&tape)
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
 	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true, false)
@@ -162,6 +161,95 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	}
 	if got.localEvents != &tape {
 		t.Fatal("scanner lost worker-owned tape")
+	}
+}
+
+func TestCountOnlyLocalEventsMatchesTapeAtCapacityArm64(t *testing.T) {
+	var tape shared.LocalEventTape
+	var counted, detailed funcHintView
+	counted.beginLocalEvents(nil)
+	detailed.beginLocalEvents(&tape)
+	verify := func(count int, overflow bool) {
+		t.Helper()
+		detailed.finishLocalEvents()
+		if counted.localEventMeta != detailed.localEventMeta || counted.localEventCount() != count ||
+			counted.localEventOverflowed() != overflow {
+			t.Fatalf("ordinary events = %d/%v, detailed = %d/%v, want %d/%v",
+				counted.localEventCount(), counted.localEventOverflowed(), detailed.localEventCount(),
+				detailed.localEventOverflowed(), count, overflow)
+		}
+	}
+	for i := range shared.LocalEventLimit {
+		if i&1 == 0 {
+			counted.noteLocalEvent(shared.LocalEventRead, 1, i)
+			detailed.noteLocalEvent(shared.LocalEventRead, 1, i)
+		} else {
+			counted.noteBoundaryEvent(shared.LocalEventLoop, i)
+			detailed.noteBoundaryEvent(shared.LocalEventLoop, i)
+		}
+	}
+	verify(shared.LocalEventLimit, false)
+	counted.noteBoundaryEvent(shared.LocalEventEnd, 0)
+	detailed.noteBoundaryEvent(shared.LocalEventEnd, 0)
+	verify(shared.LocalEventLimit, true)
+
+	counted.beginLocalEvents(nil)
+	detailed.beginLocalEvents(&tape)
+	// The tape marks bad locals as overflow without truncating later valid notes.
+	counted.noteLocalEvent(shared.LocalEventDefine, uint32(shared.NoLocal), 0)
+	detailed.noteLocalEvent(shared.LocalEventDefine, uint32(shared.NoLocal), 0)
+	counted.noteLocalEvent(shared.LocalEventDefine, 2, 0)
+	detailed.noteLocalEvent(shared.LocalEventDefine, 2, 0)
+	verify(1, true)
+
+	var ordinary funcHintView
+	if allocs := testing.AllocsPerRun(10, func() {
+		ordinary.beginLocalEvents(nil)
+		for range shared.LocalEventLimit + 1 {
+			ordinary.noteLocalEvent(shared.LocalEventRead, 0, 0)
+		}
+		ordinary.finishLocalEvents()
+	}); allocs != 0 || ordinary.localEvents != nil {
+		t.Fatalf("count-only events allocated scratch: %.0f allocations, tape = %p", allocs, ordinary.localEvents)
+	}
+}
+
+func TestCountOnlyLocalEventsKeepsScanBehaviorArm64(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		fn      wasm.Func
+		wantErr bool
+	}{
+		{name: "structured bytes", fn: wasm.Func{BodyBytes: []byte{0x02, 0x40, 0x20, 0, 0x21, 1, 0x0b, 0x0b}}},
+		{name: "truncated local", fn: wasm.Func{BodyBytes: []byte{0x20, 0, 0x21, 0x80}}, wantErr: true},
+		{name: "unterminated control", fn: wasm.Func{BodyBytes: []byte{0x02, 0x40, 0x20, 0}}, wantErr: true},
+		{name: "structured AST", fn: wasm.Func{Body: wasm.Expr{Instrs: []wasm.Instruction{
+			{Kind: wasm.InstrLocalGet, Index: 0},
+			{Kind: wasm.InstrLocalSet, Index: 1},
+			{Kind: wasm.InstrCall, Index: 0},
+		}}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			scan := func(tape *shared.LocalEventTape) (funcHintView, error) {
+				h := newFuncHints(2, 0)
+				h.beginLocalEvents(tape)
+				elig := newGlobalEligibilityTracker(0)
+				var globals shared.GlobalHintAccumulator
+				got, err := scanFuncBodyIntoModule(test.fn, 2, 0, 0, nil, h, &elig, nil, nil, nil, 0, &globals, true, false)
+				got.finishLocalEvents()
+				got.localEvents = nil // compare all ordinary hints, including partial error state
+				return got, err
+			}
+			got, gotErr := scan(nil)
+			var tape shared.LocalEventTape
+			want, wantErr := scan(&tape)
+			if (gotErr != nil) != test.wantErr || !reflect.DeepEqual(gotErr, wantErr) {
+				t.Fatalf("ordinary error = %v, detailed error = %v, want failure = %v", gotErr, wantErr, test.wantErr)
+			}
+			if got.localEventCount() == 0 || !reflect.DeepEqual(got, want) {
+				t.Fatalf("ordinary hints = %+v, detailed hints = %+v", got, want)
+			}
+		})
 	}
 }
 

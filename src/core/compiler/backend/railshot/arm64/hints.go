@@ -171,19 +171,20 @@ func (h *funcHints) markLoopIntConsts() {
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
 	funcHints
-	scalarMergeWeight uint32 // scan-only; retained as one threshold bit in maxControlDepth
-	entryInitialized  uint64 // scan-local view; compilation decodes bits during pin planning
-	paramAddressSeen  uint64 // scan-local first direct scalar-load use; second use is retained in localScore
-	nLocals           int
-	localScore        []uint32
-	localLastGet      []uint32
-	sparseGlobals     []shared.GlobalHint
-	localEvents       *shared.LocalEventTape // scan-only, never copied into funcHints
-	localEventMeta    uint32                 // reconstructed from the sparse sidecar
-	residencyShadow   shared.ResidencyShadowSummary
-	loopIntConst      [4]int64
-	loopIntConstTypes uint8 // two bits per entry: 1=i32, 2=i64, 3=memory page base
-	loopIntConstCount uint8
+	scalarMergeWeight  uint32 // scan-only; retained as one threshold bit in maxControlDepth
+	entryInitialized   uint64 // scan-local view; compilation decodes bits during pin planning
+	paramAddressSeen   uint64 // scan-local first direct scalar-load use; second use is retained in localScore
+	nLocals            int
+	localScore         []uint32
+	localLastGet       []uint32
+	sparseGlobals      []shared.GlobalHint
+	localEvents        *shared.LocalEventTape // scan-only, never copied into funcHints
+	localEventMeta     uint32                 // counts during ordinary scans; reconstructed during lowering
+	residencyShadow    shared.ResidencyShadowSummary
+	loopIntConst       [4]int64
+	loopIntConstTypes  uint8 // two bits per entry: 1=i32, 2=i64, 3=memory page base
+	loopIntConstCount  uint8
+	collectLocalEvents bool // collection is enabled even when no diagnostic tape is needed
 }
 
 type loopIntConstHintEntry struct {
@@ -375,20 +376,58 @@ func (h funcHintView) localEventOverflowed() bool {
 	return h.localEventMeta&localEventOverflow != 0
 }
 
+func (h *funcHintView) beginLocalEvents(tape *shared.LocalEventTape) {
+	h.collectLocalEvents = true
+	h.localEventMeta = 0
+	h.localEvents = tape
+	if tape != nil {
+		tape.Reset(shared.LocalEventLimit)
+	}
+}
+
+func (h *funcHintView) finishLocalEvents() {
+	if tape := h.localEvents; tape != nil {
+		h.setLocalEventSummary(len(tape.Events), tape.Overflow)
+	}
+}
+
+// Ordinary lowering only uses the count to reserve its access list; the
+// event kinds, locals, and depth are needed solely by the diagnostic shadow.
+func (h *funcHintView) countLocalEvent() {
+	if h.localEventMeta&localEventCountMask == shared.LocalEventLimit {
+		h.localEventMeta |= localEventOverflow
+		return
+	}
+	h.localEventMeta++
+}
+
 func (h *funcHintView) noteLocalEvent(kind shared.LocalEventKind, local uint32, depth int) {
-	if h.localEvents == nil {
+	if !h.collectLocalEvents {
 		return
 	}
-	if local > uint32(^uint16(0)-1) {
-		h.localEvents.Overflow = true
+	if local >= uint32(shared.NoLocal) {
+		if h.localEvents != nil {
+			h.localEvents.Overflow = true
+		} else {
+			h.localEventMeta |= localEventOverflow
+		}
 		return
 	}
-	h.localEvents.Append(kind, uint16(local), depth)
+	if h.localEvents != nil {
+		h.localEvents.Append(kind, uint16(local), depth)
+	} else {
+		h.countLocalEvent()
+	}
 }
 
 func (h *funcHintView) noteBoundaryEvent(kind shared.LocalEventKind, depth int) {
+	if !h.collectLocalEvents {
+		return
+	}
 	if h.localEvents != nil {
 		h.localEvents.Append(kind, shared.NoLocal, depth)
+	} else {
+		h.countLocalEvent()
 	}
 }
 
@@ -1245,7 +1284,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.immediateFreeOps |= streamingReductionHintMask
 		}
 		curIndex := ^uint32(0)
-		if s.h.localEvents != nil {
+		if s.h.collectLocalEvents {
 			s.notePhysicalEvent(op, depth)
 		}
 		switch op {
