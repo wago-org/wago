@@ -17,7 +17,6 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -2820,7 +2819,7 @@ type moduleGlobalPin struct {
 // module, chosen adaptively by pickModuleGlobals: the first is cheap, each extra
 // one demands a much hotter global (it steals a pinned-local register from every
 // function module-wide).
-var moduleGlobalRegs = []Reg{R14, R13, R12}
+var moduleGlobalRegs = [...]Reg{R14, R13, R12}
 
 // pickModuleGlobals aggregates loop-weighted global hotness across the whole
 // module and assigns the top mutable int globals a module-wide register. The
@@ -3535,7 +3534,8 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		g     int
 		score int64
 	}
-	var cs []cand
+	var top [len(moduleGlobalRegs)]cand
+	n := 0
 	minScore := 3 * loopWeight(1)
 	// A global must clear extraBar (much higher than minScore) to justify a
 	// SECOND or THIRD module-wide register: each extra reservation removes a
@@ -3552,9 +3552,19 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		cs = append(cs, cand{g, agg[g]})
+		// Only the available register homes can be used. Insert after equal
+		// scores to keep the original stable ordering by global index.
+		at := n
+		for at > 0 && agg[g] > top[at-1].score {
+			at--
+		}
+		if at == len(top) {
+			continue
+		}
+		n = min(n+1, len(top))
+		copy(top[at+1:n], top[at:n-1])
+		top[at] = cand{g, agg[g]}
 	}
-	sort.SliceStable(cs, func(a, b int) bool { return cs[a].score > cs[b].score })
 	// K = number of module-wide registers to spend. auto (pinGlobalK<0) applies the
 	// extraBar gate for the 2nd/3rd; WAGO_PIN_GLOBAL_K forces a fixed cap (0..3),
 	// bypassing the gate — for A/B measuring the adaptive choice.
@@ -3563,12 +3573,12 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		limit = pinGlobalK
 	}
 	var pins []moduleGlobalPin
-	for k, c := range cs {
+	for k, c := range top[:n] {
 		if k >= limit {
 			break
 		}
 		if pinGlobalK < 0 && k >= 1 && c.score < extraBar {
-			break // auto: cs is score-descending, so no later candidate clears the bar
+			break // auto: top is score-descending, so no later candidate clears the bar
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}

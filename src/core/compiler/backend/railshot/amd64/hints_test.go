@@ -481,6 +481,39 @@ func TestPickModuleGlobalsUsesAggregateScores(t *testing.T) {
 	}
 }
 
+func TestPickModuleGlobalsPreservesStableCutoff(t *testing.T) {
+	if pinGlobalK >= 0 {
+		t.Skip("requires adaptive global pin selection")
+	}
+	m := &wasm.Module{Globals: make([]wasm.Global, 258), Code: []wasm.Func{{}}}
+	scores := make([]int64, len(m.Globals))
+	bar := 50 * loopWeight(1)
+	for i := range scores {
+		m.Globals[i].Type = wasm.GlobalType{Type: wasm.I32, Mutable: true}
+		scores[i] = bar
+	}
+	m.Globals[0].Type.Mutable = false
+	m.Globals[1].Type.Type = wasm.F64
+	scores[0], scores[1], scores[257] = bar+3, bar+2, bar+1
+	want := []uint32{257, 2, 3}
+	pins := pickModuleGlobals(m, m.GlobalCount(), scores)
+	if len(pins) != len(want) {
+		t.Fatalf("pins = %+v, want globals %v", pins, want)
+	}
+	for i, g := range want {
+		if pins[i].global != g || pins[i].reg != moduleGlobalRegs[i] {
+			t.Fatalf("pin %d = %+v, want global %d in %v", i, pins[i], g, moduleGlobalRegs[i])
+		}
+	}
+
+	for i := range scores {
+		scores[i] = bar - 1
+	}
+	if pins := pickModuleGlobals(m, m.GlobalCount(), scores); len(pins) != 1 || pins[0].global != 2 {
+		t.Fatalf("pins below extra threshold = %+v, want global 2 only", pins)
+	}
+}
+
 func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 	globals := []wasm.Global{
 		{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}},
