@@ -978,6 +978,11 @@ func newCompileScratch(stackCap int) *scratch {
 	return &scratch{stack: &stack{}, stackCap: stackCap, asm: &amd64.Asm{}}
 }
 
+// Ordinary fallback functions need not reserve the entire hinted node budget
+// before lowering reaches it. Four KiB is one common page and comfortably
+// holds this first group of nodes. Growth retains stable operand addresses.
+const compileStackFirstChunkCap = 64
+
 func (sc *scratch) ensureTargetStack() {
 	if len(sc.stack.chunks) != 0 {
 		return
@@ -985,7 +990,7 @@ func (sc *scratch) ensureTargetStack() {
 	if sc.mappedOperands {
 		sc.stack.arena = newOperandArena()
 	}
-	sc.stack.initWithCap(sc.stackCap)
+	sc.stack.initWithFirstChunk(sc.stackCap, compileStackFirstChunkCap)
 	_, reserved := sc.stack.nodeMemory()
 	sc.nodeScratchReserved = reserved
 	sc.nodeScratchPeak = reserved

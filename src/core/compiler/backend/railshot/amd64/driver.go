@@ -74,7 +74,7 @@ func (f *fn) representationError() error {
 func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	for len(f.ctrl) > minCtrl {
 		if !profileEnabled && minCtrl == 0 && !f.unreachable && f.s.logicalDepth == 0 &&
-			(f.s.cur != 0 || len(f.s.chunks[0]) >= defaultStackArenaCap) {
+			f.s.recycleThresholdReached() {
 			f.recycleEmptyOperandArena()
 		}
 		f.wasmPC = f.tracePCBase + uint32(r.Offset())

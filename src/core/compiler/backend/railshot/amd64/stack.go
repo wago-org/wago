@@ -285,6 +285,8 @@ type stack struct {
 	hasGCRoots         bool
 	nextChunkCap       uint16
 	nextGeometricCap   uint16
+	recycleAt          uint16 // node count at which the original chunk plan would recycle
+	recycleAfter       uint16 // nodes still needed, measured from the start of activeChunk
 	spillExtentValid   bool
 	pendingEffects     uint8
 	pendingPrefixLoads bool
@@ -311,16 +313,22 @@ func newStackWithCap(capHint int) *stack {
 // initWithCap initializes an empty stack without replacing its address. The
 // function compiler may already hold an alias when fallback first needs it.
 func (s *stack) initWithCap(capHint int) {
-	if capHint < minStackArenaCap {
-		capHint = minStackArenaCap
-	}
-	next, geometric := stackArenaGrowthCaps(capHint)
+	s.initWithFirstChunk(capHint, capHint)
+}
+
+func (s *stack) initWithFirstChunk(capHint, firstChunkCap int) {
+	capHint = max(capHint, minStackArenaCap)
+	firstChunkCap = max(min(firstChunkCap, capHint), minStackArenaCap)
+	next, geometric := stackArenaGrowthCaps(firstChunkCap)
 	arena := s.arena
 	*s = stack{
 		arena:            arena,
-		chunks:           [][]elem{operandArenaChunk(arena, capHint)},
+		chunks:           [][]elem{operandArenaChunk(arena, firstChunkCap)},
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
+		// The former driver recycled when it hit the default threshold or
+		// used the first node in a second chunk, whichever came first.
+		recycleAt: uint16(min(capHint, defaultStackArenaCap-1) + 1),
 	}
 	s.initSentinel()
 }
@@ -338,6 +346,7 @@ func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
 // initSentinel rewinds to the first chunk and installs the sentinel node.
 func (s *stack) initSentinel() {
 	s.cur = 0
+	s.recycleAfter = s.recycleAt
 	chunk := &s.chunks[0]
 	s.activeChunk = chunk
 	*chunk = append((*chunk)[:0], elem{})
@@ -439,6 +448,12 @@ func stackArenaCapForBody(bodyLen, nLocals int) int {
 	return nodes + nLocals/4 + 1
 }
 
+// recycleThresholdReached uses the original node-count threshold independent
+// of physical chunk boundaries. Chunk growth alone is not a reader checkpoint.
+func (s *stack) recycleThresholdReached() bool {
+	return len(*s.activeChunk) >= int(s.recycleAfter)
+}
+
 // alloc returns a fresh zeroed node from the arena. The returned pointer is
 // stable for the life of the function: chunks are never reallocated, and when the
 // current chunk is full alloc advances to (or grows) the next one rather than
@@ -469,6 +484,9 @@ func (s *stack) tryAlloc() *elem {
 //
 //go:noinline
 func (s *stack) allocNextChunk() *elem {
+	if s.recycleAfter != 0 {
+		s.recycleAfter = uint16(max(0, int(s.recycleAfter)-len(*s.activeChunk)))
+	}
 	s.cur++
 	if int(s.cur) == len(s.chunks) {
 		s.chunks = append(s.chunks, operandArenaChunk(s.arena, int(s.nextChunkCap)))
