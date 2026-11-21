@@ -2707,7 +2707,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	}
 	localLastGets := make([]uint32, lastGetCount)
 	localEventMeta := make([]uint32, intervalFunctions*2)
-	residencyShadow := make([]shared.ResidencyShadowEntry, intervalFunctions)
+	// The shadow estimate is telemetry only. Keep event summaries and
+	// last-get storage independently available to ordinary lowering.
+	var residencyShadow []shared.ResidencyShadowEntry
+	if detailedResidency && intervalFunctions != 0 {
+		residencyShadow = make([]shared.ResidencyShadowEntry, intervalFunctions)
+	}
 	var sparseGlobals []shared.GlobalHint
 	var loopIntConsts []loopIntConstHintEntry
 	var agg []int64
@@ -2720,7 +2725,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	if parallelHintScanEligible(m, nGlobals, workers) {
 		var parallelEH bool
 		var err error
-		sparseGlobals, loopIntConsts, intervalRangeAt, parallelEH, err = scanModuleHintsParallel(m, nGlobals, importedFuncs, workers, allHints, localScores, localLastGets, compactLastGets, intervalFunctions, localEventMeta, residencyShadow, eventReserve, detailedResidency, collectLoopIntConsts, collectLoopMemoryBases)
+		sparseGlobals, loopIntConsts, intervalRangeAt, parallelEH, err = scanModuleHintsParallel(m, nGlobals, importedFuncs, workers, allHints, localScores, localLastGets, compactLastGets, intervalFunctions, localEventMeta, residencyShadow, eventReserve, collectLoopIntConsts, collectLoopMemoryBases)
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, err
 		}
@@ -2777,7 +2782,9 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 				h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
 				localEventMeta[intervalEventAt*2] = h.localStart
 				localEventMeta[intervalEventAt*2+1] = h.localEventMeta
-				residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals, detailedResidency)}
+				if residencyShadow != nil {
+					residencyShadow[intervalEventAt] = hintResidencyShadow(&localEvents, nLocals, h.localStart)
+				}
 				intervalEventAt++
 			}
 			h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -2827,14 +2834,13 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	}, agg, nil
 }
 
-// summarizeHintResidency uses the same bounded event tape and planner for
-// serial and parallel scans. Each worker owns its tape; output slots are
-// assigned in function order before workers start.
-func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int, detailed bool) shared.ResidencyShadowSummary {
-	if !detailed {
-		return shared.ResidencyShadowSummary{}
+// hintResidencyShadow runs only for explicit diagnostics. Workers own their
+// tapes; output slots are assigned in function order before workers start.
+func hintResidencyShadow(tape *shared.LocalEventTape, nLocals int, localStart uint32) shared.ResidencyShadowEntry {
+	return shared.ResidencyShadowEntry{
+		LocalStart: localStart,
+		Summary:    shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow),
 	}
-	return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
 }
 
 const (
@@ -2905,7 +2911,7 @@ func newParallelHintWorkers(m *wasm.Module, nGlobals, workers int) []parallelHin
 	return states
 }
 
-func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers int, allHints []funcHints, localScores, localLastGets []uint32, compactLastGets bool, intervalFunctions int, localEventMeta []uint32, residencyShadow []shared.ResidencyShadowEntry, eventReserve int, detailedResidency, collectLoopIntConsts, collectLoopMemoryBases bool) (sparseGlobals []shared.GlobalHint, loopIntConsts []loopIntConstHintEntry, intervalRangeAt int, moduleEH bool, err error) {
+func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers int, allHints []funcHints, localScores, localLastGets []uint32, compactLastGets bool, intervalFunctions int, localEventMeta []uint32, residencyShadow []shared.ResidencyShadowEntry, eventReserve int, collectLoopIntConsts, collectLoopMemoryBases bool) (sparseGlobals []shared.GlobalHint, loopIntConsts []loopIntConstHintEntry, intervalRangeAt int, moduleEH bool, err error) {
 	// Assign every worker-owned local range before starting goroutines. globalStart
 	// temporarily carries the last-get start and is replaced during flattening.
 	scoreAt, intervalAt := 0, intervalFunctions*2
@@ -2982,7 +2988,9 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 				h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
 				localEventMeta[event*2] = h.localStart
 				localEventMeta[event*2+1] = h.localEventMeta
-				residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+				if residencyShadow != nil {
+					residencyShadow[event] = hintResidencyShadow(&state.localEvents, nLocals, h.localStart)
+				}
 			}
 			allHints[i] = h.funcHints
 			if h.loopIntConstCount != 0 {

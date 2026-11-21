@@ -29,6 +29,51 @@ func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
 	return m
 }
 
+func TestModuleHintsResidencyShadowIsDiagnosticOnlyArm64(t *testing.T) {
+	const bodyLen = minParallelHintBodyBytes / 8
+	bodyWithDecls := []byte{1, 32, 0x7f} // 32 i32 locals
+	body := make([]byte, bodyLen)
+	tail := []byte{0x20, 0, 0x1a, 0x20, 0, 0x1a, 0x41, 0, 0x0b}
+	for i := range body[:len(body)-len(tail)] {
+		body[i] = 0x01 // nop
+	}
+	copy(body[len(body)-len(tail):], tail)
+	bodyWithDecls = append(bodyWithDecls, body...)
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, bodyWithDecls)
+	for range 7 {
+		m.Code = append(m.Code, m.Code[0])
+		m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0])
+	}
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{
+		"interval-region-pins": true,
+	}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := shared.DefaultCodegenPolicy(selection)
+	if !parallelHintScanEligible(m, 0, 4) {
+		t.Fatal("fixture does not exercise the parallel hint scan")
+	}
+	for _, workers := range []int{1, 4} {
+		normal, normalSidecar, normalGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, 0, 0, workers, policy, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		detailed, detailedSidecar, detailedGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, 0, 0, workers, policy, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if normalSidecar.residencyShadow != nil || len(detailedSidecar.residencyShadow) != len(m.Code) ||
+			!detailedSidecar.residencyShadow[0].Summary.Active() {
+			t.Fatalf("workers=%d: normal shadow=%v, detailed shadow=%v", workers, normalSidecar.residencyShadow, detailedSidecar.residencyShadow)
+		}
+		detailedSidecar.residencyShadow = nil
+		if !reflect.DeepEqual(normal, detailed) || !reflect.DeepEqual(normalSidecar, detailedSidecar) || !reflect.DeepEqual(normalGlobals, detailedGlobals) {
+			t.Fatalf("workers=%d: compilation hints depend on diagnostic shadow collection", workers)
+		}
+	}
+}
+
 func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
 	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
