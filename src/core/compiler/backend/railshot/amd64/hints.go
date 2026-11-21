@@ -24,7 +24,7 @@ func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, 
 		uint64(cap(sidecar.residencyShadow))*uint64(unsafe.Sizeof(shared.ResidencyShadowEntry{})) +
 		uint64(cap(sidecar.loopIntConsts))*uint64(unsafe.Sizeof(loopIntConstHintEntry{}))
 	if sidecar.inlineCaller != nil {
-		sidecars += uint64(cap(sidecar.inlineCaller.calls))*4 + uint64(cap(sidecar.inlineCaller.ranges))*8 + uint64(unsafe.Sizeof(inlineCallerHints{}))
+		sidecars += uint64(sidecar.inlineCaller.storageBytes())
 	}
 	return
 }
@@ -1150,7 +1150,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintCallsSelf)
 			}
 			if tape := s.h.inlineCaller; tape != nil {
-				if op == 0x10 {
+				if op == 0x10 && idx >= uint32(s.importedFuncs) {
 					tape.record(idx)
 				} else {
 					tape.blocked = true

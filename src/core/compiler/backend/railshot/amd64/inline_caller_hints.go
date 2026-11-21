@@ -11,46 +11,55 @@ package amd64
 
 import "unsafe"
 
-// inlineCallerHints retains only ordinary call indices from the existing serial
-// hint scan. It avoids another bytecode walk when constructing caller plans.
-// Unknown entries (AST bodies, parallel scans, or a budget overflow) use the
-// original body scanner. The limit bounds optional metadata, never Wasm input.
-const maxInlineCallerHintBytes = 4 << 20
-const inlineCallerHintHeaderBytes = int(unsafe.Sizeof(inlineCallerHints{}))
-
+// inlineCallerHints retains calls in source order from the serial hint scan.
+// Only bodies that saw calls get range records. If the optional budget is
+// exhausted, the original caller scan remains the fallback for every function.
 const (
-	inlineCallerKnown   = uint32(1 << 31)
-	inlineCallerBlocked = uint32(1 << 30)
-	inlineCallerEndMask = inlineCallerBlocked - 1
+	maxInlineCallerHintBytes   = 4 << 20
+	smallInlineCallerHintBytes = 32 << 10
+	minInlineCallerHintBody    = 128
+	largeInlineCallerModule    = 64 << 10
+	inlineCallerBlocked        = uint32(1 << 31)
+	inlineCallerEndMask        = inlineCallerBlocked - 1
 )
 
-type inlineCallerRange struct{ start, end uint32 }
+type inlineCallerRange struct{ function, end uint32 }
 
 type inlineCallerHints struct {
 	calls    []uint32
-	ranges   []inlineCallerRange
-	limit    int
-	start    int
+	ranges   []inlineCallerRange // the previous end is the next range's start
+	budget   int
 	blocked  bool
 	disabled bool
 }
 
-func newInlineCallerHints(n int) *inlineCallerHints {
-	if n <= 0 || n > (maxInlineCallerHintBytes-inlineCallerHintHeaderBytes)/8 {
+const (
+	inlineCallerHintHeaderBytes = int(unsafe.Sizeof(inlineCallerHints{}))
+	inlineCallerRangeBytes      = int(unsafe.Sizeof(inlineCallerRange{}))
+	inlineCallerWordBytes       = int(unsafe.Sizeof(uint32(0)))
+)
+
+func newInlineCallerHints(n, budget int) *inlineCallerHints {
+	if n <= 0 || uint64(n) > uint64(^uint32(0)) || budget < inlineCallerHintHeaderBytes {
 		return nil
 	}
-	return &inlineCallerHints{
-		ranges: make([]inlineCallerRange, n),
-		limit:  (maxInlineCallerHintBytes - inlineCallerHintHeaderBytes - n*8) / 4,
-	}
+	return &inlineCallerHints{budget: min(budget, maxInlineCallerHintBytes)}
+}
+
+func (h *inlineCallerHints) storageBytes() int {
+	return inlineCallerHintHeaderBytes + cap(h.calls)*inlineCallerWordBytes + cap(h.ranges)*inlineCallerRangeBytes
 }
 
 func (h *inlineCallerHints) begin() bool {
 	if h == nil || h.disabled {
 		return false
 	}
-	h.start, h.blocked = len(h.calls), false
+	h.blocked = false
 	return true
+}
+
+func (h *inlineCallerHints) disable() {
+	h.calls, h.ranges, h.disabled = nil, nil, true
 }
 
 func (h *inlineCallerHints) record(index uint32) {
@@ -58,13 +67,12 @@ func (h *inlineCallerHints) record(index uint32) {
 		return
 	}
 	if len(h.calls) == cap(h.calls) {
-		if len(h.calls) == h.limit {
-			// Drop the complete cache; all callers retain the original scan fallback.
-			h.calls, h.ranges, h.disabled = nil, nil, true
+		limit := (h.budget - inlineCallerHintHeaderBytes - cap(h.ranges)*inlineCallerRangeBytes) / inlineCallerWordBytes
+		if len(h.calls) >= limit {
+			h.disable()
 			return
 		}
-		capacity := min(h.limit, max(1024, 2*cap(h.calls)))
-		calls := make([]uint32, len(h.calls), capacity)
+		calls := make([]uint32, len(h.calls), min(limit, max(8, 2*cap(h.calls))))
 		copy(calls, h.calls)
 		h.calls = calls
 	}
@@ -75,25 +83,55 @@ func (h *inlineCallerHints) finish(function int) {
 	if h.disabled {
 		return
 	}
-	end := uint32(len(h.calls)) | inlineCallerKnown
+	var start uint32
+	if n := len(h.ranges); n != 0 {
+		start = h.ranges[n-1].end & inlineCallerEndMask
+	}
+	end := uint32(len(h.calls))
+	if start == end && !h.blocked {
+		return
+	}
+	if len(h.ranges) == cap(h.ranges) {
+		limit := (h.budget - inlineCallerHintHeaderBytes - cap(h.calls)*inlineCallerWordBytes) / inlineCallerRangeBytes
+		if len(h.ranges) >= limit {
+			h.disable()
+			return
+		}
+		ranges := make([]inlineCallerRange, len(h.ranges), min(limit, max(4, 2*cap(h.ranges))))
+		copy(ranges, h.ranges)
+		h.ranges = ranges
+	}
 	if h.blocked {
 		end |= inlineCallerBlocked
 	}
-	h.ranges[function] = inlineCallerRange{uint32(h.start), end}
+	h.ranges = append(h.ranges, inlineCallerRange{uint32(function), end})
 }
 
 func (h *inlineCallerHints) plan(function int, targets inlineTargetTable) (inlineCallerPlan, bool) {
-	if h == nil || h.disabled || function < 0 || function >= len(h.ranges) {
+	if h == nil || h.disabled || function < 0 {
 		return inlineCallerPlan{}, false
 	}
-	span := h.ranges[function]
-	if span.end&inlineCallerKnown == 0 {
+	lo, hi := 0, len(h.ranges)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if int(h.ranges[mid].function) < function {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo == len(h.ranges) || int(h.ranges[lo].function) != function {
 		return inlineCallerPlan{}, false
 	}
+	span := h.ranges[lo]
 	if targets.empty() {
 		return inlineCallerPlan{}, true
 	}
-	calls := h.calls[span.start : span.end&inlineCallerEndMask]
+	var start uint32
+	if lo != 0 {
+		start = h.ranges[lo-1].end & inlineCallerEndMask
+	}
+	calls := h.calls[start : span.end&inlineCallerEndMask]
 	plan := inlineCallerPlan{allCallsInline: len(calls) != 0 && span.end&inlineCallerBlocked == 0}
 	var accumulate inlineCallerAccumulator
 	for _, index := range calls {

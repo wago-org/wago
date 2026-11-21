@@ -27,7 +27,7 @@ func TestInlineCallerHintPlanParity(t *testing.T) {
 		targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 		check := func(body []byte, mustScan ...bool) {
 			t.Helper()
-			tape := newInlineCallerHints(1)
+			tape := newInlineCallerHints(1, smallInlineCallerHintBytes)
 			tape.begin()
 			h := newFuncHints(4, 0)
 			h.inlineCaller = tape
@@ -47,6 +47,9 @@ func TestInlineCallerHintPlanParity(t *testing.T) {
 			tape.finish(0)
 			got, known := tape.plan(0, targets)
 			want := buildInlineCallerPlan(&wasm.Func{BodyBytes: body}, targets)
+			if !known && len(want.callees) == 0 && !want.allCallsInline {
+				return // success with no plan can remain sparse
+			}
 			if !known || !reflect.DeepEqual(got, want) {
 				t.Fatalf("wide=%v body=%x: got=%+v known=%v want=%+v", wide, body, got, known, want)
 			}
@@ -97,11 +100,11 @@ func TestInlineCallerHintFallbackAndBudget(t *testing.T) {
 	if _, known := absent.plan(0, inlineTargetTable{}); known {
 		t.Fatal("nil tape known")
 	}
-	tape := newInlineCallerHints(2)
+	const budget = inlineCallerHintHeaderBytes + 8*inlineCallerWordBytes + 4*inlineCallerRangeBytes
+	tape := newInlineCallerHints(2, budget)
 	if _, known := tape.plan(0, inlineTargetTable{}); known {
 		t.Fatal("unknown AST range known")
 	}
-	tape.limit = 2
 	tape.begin()
 	tape.record(0)
 	tape.finish(0)
@@ -110,8 +113,9 @@ func TestInlineCallerHintFallbackAndBudget(t *testing.T) {
 	}
 	tape.begin()
 	tape.blocked = true
-	tape.record(1)
-	tape.record(2)
+	for range 8 {
+		tape.record(1)
+	}
 	tape.finish(1)
 	if !tape.disabled || tape.calls != nil || tape.ranges != nil {
 		t.Fatal("budget did not discard cache")
@@ -119,8 +123,43 @@ func TestInlineCallerHintFallbackAndBudget(t *testing.T) {
 	if _, known := tape.plan(0, inlineTargetTable{}); known {
 		t.Fatal("overflow retained earlier range")
 	}
-	if newInlineCallerHints(maxInlineCallerHintBytes/8+1) != nil {
-		t.Fatal("oversized range allocation")
+	if newInlineCallerHints(1, inlineCallerHintHeaderBytes-1) != nil {
+		t.Fatal("undersized budget retained header")
+	}
+}
+
+func TestSparseInlineCallerRangesPreserveOrderAndBlockers(t *testing.T) {
+	data := &inlineTargetData{
+		slots:   []uint32{1, 2},
+		targets: []inlineTarget{{globalIdx: 3}, {globalIdx: 4}},
+	}
+	targets := inlineTargetTable{first: 3, data: data, classifier: wasm.NewModuleInstructionClassifier(nil, true)}
+	tape := newInlineCallerHints(8, smallInlineCallerHintBytes)
+	for function, body := range [][]byte{
+		{0x10, 3, 0x10, 3, 0x0b},          // repeated local target
+		{0x0b},                            // call-free hole
+		{0x10, 1, 0x0b},                   // imported-only (blocker)
+		{0x10, 4, 0x10, 1, 0x10, 3, 0x0b}, // mixed, first-seen order
+		{0x12, 3, 0x0b},                   // tail-only (blocker)
+		{0x10, 3, 0x0b},
+	} {
+		tape.begin()
+		h := newFuncHints(0, 0)
+		h.inlineCaller = tape
+		elig := newGlobalEligibilityTracker(0)
+		var globals shared.GlobalHintAccumulator
+		if _, err := scanBodyBytesIntoMemory64WithModuleCalls(body, 0, 0, 99, h, &elig, false, nil, nil, nil, false, nil, nil, 3, &globals); err != nil {
+			t.Fatal(err)
+		}
+		tape.finish(function)
+		got, known := tape.plan(function, targets)
+		want := buildInlineCallerPlan(&wasm.Func{BodyBytes: body}, targets)
+		if known != (function != 1) || !reflect.DeepEqual(got, want) {
+			t.Fatalf("function %d: cached=%+v known=%v body=%+v", function, got, known, want)
+		}
+	}
+	if len(tape.calls) != 5 || len(tape.ranges) != 5 || tape.storageBytes() > smallInlineCallerHintBytes {
+		t.Fatalf("expected local calls and sparse range records only: %+v", tape)
 	}
 }
 
@@ -148,9 +187,9 @@ func TestInlineCallerHintModuleIntegration(t *testing.T) {
 	for i := range m.Code {
 		view := sidecar.viewAt(hints[i], i)
 		got, known := view.inlineCaller.plan(view.inlineCallerIndex, targets)
-		if i == 2 {
+		if i != 0 {
 			if known {
-				t.Fatal("AST body published cached plan")
+				t.Fatalf("function %d: call-free or AST body published cached plan", i)
 			}
 			continue
 		}
@@ -171,14 +210,31 @@ func TestInlineCallerHintModuleIntegration(t *testing.T) {
 	if gotBytes-baseBytes != wantBytes || wantBytes > maxInlineCallerHintBytes {
 		t.Fatalf("cache accounting=%d want=%d", gotBytes-baseBytes, wantBytes)
 	}
-	// A small module retains the original planner without cache allocations.
-	m.Code[0].BodyBytes = []byte{0x10, 1, 0x0b}
+	// Smaller modules with a meaningful rescan use a small, sparse budget.
+	m.Code[0].BodyBytes = append([]byte{0x10, 1}, bytes.Repeat([]byte{0x01}, minInlineCallerHintBody)...)
+	m.Code[0].BodyBytes = append(m.Code[0].BodyBytes, 0x0b)
 	_, small, _, err := computeModuleHintsWithPolicy(m, 0, 0, nil, false, policy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if small.inlineCaller != nil {
-		t.Fatal("small module retained a cache")
+	if tape := small.inlineCaller; tape == nil || len(tape.ranges) != 1 || cap(tape.calls) != 8 ||
+		tape.storageBytes() > smallInlineCallerHintBytes {
+		t.Fatalf("small module tape=%+v", tape)
+	}
+	got, known := small.inlineCaller.plan(0, targets)
+	want := buildInlineCallerPlan(&m.Code[0], targets)
+	if !known || !reflect.DeepEqual(got, want) {
+		t.Fatalf("small caller: cached=%+v known=%v body=%+v", got, known, want)
+	}
+
+	// A tiny body still takes the original allocation-free tape path.
+	m.Code[0].BodyBytes = []byte{0x10, 1, 0x0b}
+	_, tiny, _, err := computeModuleHintsWithPolicy(m, 0, 0, nil, false, policy, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tiny.inlineCaller != nil {
+		t.Fatal("tiny module retained a cache")
 	}
 }
 

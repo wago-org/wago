@@ -2858,10 +2858,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
-	inlineHintBodyBytes := 0
+	inlineHintBodyBytes, inlineHintMaxBody := 0, 0
 	for i := range m.Code {
-		if inlineHintBodyBytes < 64<<10 {
-			inlineHintBodyBytes += min(64<<10, len(m.Code[i].BodyBytes))
+		if inlineHintBodyBytes < largeInlineCallerModule {
+			bodyLen := len(m.Code[i].BodyBytes)
+			inlineHintBodyBytes += min(largeInlineCallerModule, bodyLen)
+			inlineHintMaxBody = max(inlineHintMaxBody, bodyLen)
 		}
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -2930,8 +2932,14 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			agg[gh.Index] += int64(gh.Score)
 		}
 	} else {
-		if collectInlineCalls && policy.EnabledOption(optInline) && inlineHintBodyBytes >= 64<<10 {
-			inlineCaller = newInlineCallerHints(n)
+		minCallerBody := minInlineCallerHintBody
+		if collectInlineCalls && policy.EnabledOption(optInline) {
+			if inlineHintBodyBytes >= largeInlineCallerModule {
+				inlineCaller = newInlineCallerHints(n, maxInlineCallerHintBytes)
+				minCallerBody = 1
+			} else if n > 1 && inlineHintMaxBody >= minCallerBody {
+				inlineCaller = newInlineCallerHints(n, smallInlineCallerHintBytes)
+			}
 		}
 		var sparseAccum shared.GlobalHintAccumulator
 		eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -2961,7 +2969,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 				localEvents.Reset(shared.LocalEventLimit)
 				h.localEvents = &localEvents
 			}
-			if len(m.Code[i].BodyBytes) != 0 && inlineCaller.begin() {
+			if len(m.Code[i].BodyBytes) >= minCallerBody && inlineCaller.begin() {
 				h.inlineCaller = inlineCaller
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
@@ -3022,7 +3030,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		localEventMeta = nil
 		residencyShadow = nil
 	}
-	if inlineCaller != nil && inlineCaller.disabled {
+	if inlineCaller != nil && len(inlineCaller.ranges) == 0 {
 		inlineCaller = nil
 	}
 	return allHints, funcHintSidecar{inlineCaller: inlineCaller, localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals, residencyShadow: residencyShadow, loopIntConsts: loopIntConsts}, agg, nil
