@@ -26,6 +26,25 @@ const (
 	nopWord = 0xD503201F // NOP (HINT #0)
 )
 
+// Use bounded function-local inventories for candidate families whose
+// predecessors cannot create new roots. Dense code retains the old walkers.
+const maxPeepholeReplaySites = 32
+
+type peepholeReplaySites struct {
+	pcs      [maxPeepholeReplaySites]uint32
+	count    int
+	overflow bool
+}
+
+func (s *peepholeReplaySites) add(pc, limit int) {
+	if s.count == limit || uint64(pc) > uint64(^uint32(0)) {
+		s.overflow = true
+		return
+	}
+	s.pcs[s.count] = uint32(pc)
+	s.count++
+}
+
 // finalizePeepholes runs the size-preserving post-assembly peepholes over the
 // finalized function code. They share one linear scan's worth of preconditions:
 // the code must contain no indirect branch (br_table jump table — its embedded
@@ -33,6 +52,11 @@ const (
 // targets), and each rewrite must not disturb a word another branch targets. So
 // the branch-target set is collected once here and threaded into both passes.
 func (f *fn) finalizePeepholes(entryOffsets ...int) {
+	f.finalizePeepholesWithReplayLimit(maxPeepholeReplaySites, entryOffsets...)
+}
+
+// A zero replay limit exercises the original full-walk paths in parity tests.
+func (f *fn) finalizePeepholesWithReplayLimit(replayLimit int, entryOffsets ...int) {
 	compact := nativeFinalizerEnabled && f.compactNative()
 	if !f.opt(optRepeatedNativeAddress) && !f.opt(optRepeatedStoreRegion) && !f.opt(optBranchFold) && !f.opt(optStoreLoadFwd) && !f.opt(optGuardedTestCCMP) && !f.opt(optDominatedIndexedBase) && !f.opt(optCommonExitCompare) && !f.opt(optGuardedBooleanXor) && !f.opt(optTakenZeroBranch) && !f.opt(optCsetLineage) && !compact {
 		return
@@ -65,7 +89,6 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	sc.branchTargets = targets
 	threadEligible := f.opt(optTakenZeroBranch) && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
-	threadCandidate := false
 	addressEligible := f.opt(optRepeatedNativeAddress) && !f.opaqueFragments && !f.moduleEH && !f.interruptible && len(f.customInstructions) == 0
 	var addressSites [32]uint32
 	addressSiteN := 0
@@ -78,7 +101,7 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	var scratchReloadSites [64]uint32
 	scratchReloadN := 0
 	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4
-	branchPairCandidate, storeLoadCandidate := false, false
+	var branchPairs, storeLoads, takenZeroBranches peepholeReplaySites
 	exitCompareCandidate, testCompareCandidate := false, false
 	branchFold := f.opt(optBranchFold)
 	storeLoad := f.opt(optStoreLoadFwd)
@@ -89,8 +112,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		w := rdWord(b, pc)
 		// Earlier branch folds never introduce frame loads/stores. An absent
 		// adjacent pair therefore needs no separate forwarding walk later.
-		if storeLoad && !storeLoadCandidate && w&0xbfc003e0 == 0xb90003e0 && pc+8 <= n {
-			storeLoadCandidate = rdWord(b, pc+4)&^uint32(31) == (w|1<<22)&^uint32(31)
+		if storeLoad && !storeLoads.overflow && w&0xbfc003e0 == 0xb90003e0 && pc+8 <= n &&
+			rdWord(b, pc+4)&^uint32(31) == (w|1<<22)&^uint32(31) {
+			storeLoads.add(pc, replayLimit)
 		}
 		if scratchReloadEligible && w&0x7f80001f == 0x52800011 {
 			if scratchReloadN < len(scratchReloadSites) && w == lastScratchMove && pc-lastScratchMoveAt <= maxScratchConstantReloadDistance {
@@ -125,9 +149,11 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 			sc.hasBranchTargets = true
 			branchTargetAdd(targets, t, n)
 			if w&0xff000010 == 0x54000000 {
-				if branchFold && !branchPairCandidate && pc+8 <= n {
+				if branchFold && !branchPairs.overflow && pc+8 <= n {
 					_, skip := bcondSkipOne(w)
-					branchPairCandidate = skip && rdWord(b, pc+4)&0xfc000000 == 0x14000000
+					if skip && rdWord(b, pc+4)&0xfc000000 == 0x14000000 {
+						branchPairs.add(pc, replayLimit)
+					}
 				}
 				// These folds require two adjacent compare/branch pairs. Earlier
 				// passes can remove such roots, but cannot create new compares.
@@ -137,9 +163,11 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 					testCompareCandidate = testCompareCandidate || testCompare && first&0x7fe0fc1f == 0x6a00001f
 				}
 			}
-			if threadEligible && !threadCandidate && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
+			if threadEligible && !takenZeroBranches.overflow && w&0x7e000000 == 0x34000000 && t >= 0 && t+4 <= n && t != pc {
 				next := rdWord(b, t)
-				threadCandidate = next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0
+				if next&0x7e000000 == 0x34000000 && (w^next)&0xfe00001f == 0 {
+					takenZeroBranches.add(pc, replayLimit)
+				}
 			}
 			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
 				f.recordBranchNext(pc)
@@ -162,15 +190,30 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if branchFold {
 		f.foldSingleBitBranches(b, n, targets)
-		if branchPairCandidate {
+		if branchPairs.overflow {
 			f.foldBranchPairs(b, n, targets)
+		} else {
+			// Earlier address and single-bit folds only remove candidates.
+			for _, pc := range branchPairs.pcs[:branchPairs.count] {
+				f.foldBranchPairAt(b, int(pc), targets)
+			}
 		}
 	}
-	if threadCandidate {
+	if takenZeroBranches.overflow {
 		f.threadTakenZeroBranches(b, n, targets)
+	} else {
+		// Threading changes displacements, not the opcode, register, or
+		// width at a destination. Replay in source order against live words.
+		for _, pc := range takenZeroBranches.pcs[:takenZeroBranches.count] {
+			f.threadTakenZeroBranchAt(b, n, int(pc), targets)
+		}
 	}
-	if storeLoadCandidate {
+	if storeLoads.overflow {
 		f.forwardStoreLoads(b, n, targets)
+	} else {
+		for _, pc := range storeLoads.pcs[:storeLoads.count] {
+			f.forwardStoreLoadAt(b, n, int(pc), targets, true)
+		}
 	}
 	if exitCompareCandidate {
 		f.foldCommonExitCompares(b, n, targets, entryOffsets...)
@@ -306,35 +349,41 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-8; pc += 4 {
-		w := rdWord(b, pc)
-		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
-		if !ok {
-			continue
+		if f.foldBranchPairAt(b, pc, targets) {
+			pc += 4 // step past the NOP we just wrote
 		}
-		mid := pc + 4
-		if branchTargeted(targets, mid) {
-			continue // something jumps to the middle word — cannot NOP it
-		}
-		wm := rdWord(b, mid)
-		off, ok := uncondBranchImm(wm)
-		if !ok {
-			continue // middle word is not an unconditional B
-		}
-		tgt := mid + off
-		d := (tgt - pc) / 4
-		if d < -(1<<18) || d >= (1<<18) {
-			continue // target out of B.cond (imm19) range — keep the two-branch form
-		}
-		inv := uint32(cc.Invert())
-		wrWord(b, pc, 0x54000000|(uint32(d)&0x7FFFF)<<5|inv)
-		wrWord(b, mid, nopWord)
-		f.recordDeadHole(mid)
-		f.stats.peep("br-pair-fold")
-		if diagnosticsEnabled && f.stats != nil {
-			f.stats.NativeSize.BranchFoldHoleBytes += 4
-		}
-		pc += 4 // step past the NOP we just wrote
 	}
+}
+
+func (f *fn) foldBranchPairAt(b []byte, pc int, targets []uint64) bool {
+	w := rdWord(b, pc)
+	cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
+	if !ok {
+		return false
+	}
+	mid := pc + 4
+	if branchTargeted(targets, mid) {
+		return false // something jumps to the middle word — cannot NOP it
+	}
+	wm := rdWord(b, mid)
+	off, ok := uncondBranchImm(wm)
+	if !ok {
+		return false // middle word is not an unconditional B
+	}
+	tgt := mid + off
+	d := (tgt - pc) / 4
+	if d < -(1<<18) || d >= (1<<18) {
+		return false // target out of B.cond (imm19) range — keep the two-branch form
+	}
+	inv := uint32(cc.Invert())
+	wrWord(b, pc, 0x54000000|(uint32(d)&0x7FFFF)<<5|inv)
+	wrWord(b, mid, nopWord)
+	f.recordDeadHole(mid)
+	f.stats.peep("br-pair-fold")
+	if diagnosticsEnabled && f.stats != nil {
+		f.stats.NativeSize.BranchFoldHoleBytes += 4
+	}
+	return true
 }
 
 // forwardStoreLoads rewrites an SP-relative store immediately followed by a load

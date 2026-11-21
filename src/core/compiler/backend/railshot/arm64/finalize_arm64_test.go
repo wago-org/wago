@@ -145,6 +145,78 @@ func TestRemapPCRelativeWordArm64(t *testing.T) {
 	}
 }
 
+func TestPeepholeReplayMatchesFullWalkArm64(t *testing.T) {
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{
+		"branch-fold":       true,
+		"store-load-fwd":    true,
+		"taken-zero-branch": true,
+	}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := shared.DefaultCodegenPolicy(selection)
+	for _, blocks := range []int{6, 64} {
+		const blockBytes = 36
+		code := make([]byte, blocks*blockBytes)
+		for i := 0; i < blocks; i++ {
+			base := i * blockBytes
+			words := [9]uint32{
+				0x54000040, // B.EQ +8
+				0x14000007, // B to the end of this block
+				0x34000041, // CBZ W1 -> +16 from base
+				nopWord,
+				0x35000041, // CBNZ W1 -> +24 from base
+				nopWord,
+				0xb90003e2, // STR W2,[SP]
+				0xb94003e3, // LDR W3,[SP]
+				nopWord,
+			}
+			switch i % 5 {
+			case 1:
+				words[8] = 0x17fffff9 // B -28 protects pair's middle word
+			case 2:
+				words[8] = 0x17ffffff // B -4 protects the load
+			case 3:
+				words[3] = 0x34ffffe1 // CBZ W1 back to a branch already threaded
+			case 4:
+				words[4] = 0x34000041 // same polarity: take its branch, not fallthrough
+			}
+			for j, word := range words {
+				wrWord(code, base+j*4, word)
+			}
+		}
+		run := func(limit int) (*scratch, []byte, *CodegenStats) {
+			a := &a64.Asm{B: bytes.Clone(code)}
+			sc := &scratch{asm: a}
+			stats := &CodegenStats{}
+			f := fn{a: a, sc: sc, stats: stats, policy: policy}
+			f.finalizePeepholesWithReplayLimit(limit)
+			return sc, a.B, stats
+		}
+		want, full, fullStats := run(0)
+		if rdWord(full, 4) != nopWord || rdWord(full, 28) != 0x2a0203e3 {
+			t.Fatal("fixture did not activate branch pair and store/load folds")
+		}
+		if pc, ok := branchTarget(8, rdWord(full, 8)); !ok || pc != 20 {
+			t.Fatal("fixture did not activate taken-zero threading")
+		}
+		for _, limit := range []int{1, maxPeepholeReplaySites} {
+			got, replay, replayStats := run(limit)
+			if !bytes.Equal(full, replay) || !slices.Equal(want.branchTargets, got.branchTargets) ||
+				!slices.Equal(want.deadHoleSites[:want.deadHoleN], got.deadHoleSites[:got.deadHoleN]) ||
+				!slices.Equal(want.branchNextSites[:want.branchNextN], got.branchNextSites[:got.branchNextN]) {
+				t.Fatalf("%d blocks with limit %d changed code or candidate metadata", blocks, limit)
+			}
+			if diagnosticsEnabled && (fullStats.NativeSize != replayStats.NativeSize ||
+				fullStats.Peephole["br-pair-fold"] != replayStats.Peephole["br-pair-fold"] ||
+				fullStats.Peephole["taken-zero-branch"] != replayStats.Peephole["taken-zero-branch"] ||
+				fullStats.Peephole["store-load-fwd"] != replayStats.Peephole["store-load-fwd"]) {
+				t.Fatalf("%d blocks with limit %d changed rewrite diagnostics", blocks, limit)
+			}
+		}
+	}
+}
+
 func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
 	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
