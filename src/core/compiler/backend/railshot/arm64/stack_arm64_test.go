@@ -283,8 +283,9 @@ func TestInitialChunkCacheOwnsNoPointers(t *testing.T) {
 		}
 	}
 	check(reflect.TypeOf(initialStackChunk{}))
-	if got := unsafe.Sizeof(initialStackChunk{}); got != 8192 {
-		t.Fatalf("cache bytes=%d", got)
+	const want = 6 << 10 // 256 packed 24-byte nodes
+	if got := unsafe.Sizeof(initialStackChunk{}); got != want {
+		t.Fatalf("cache bytes=%d, want %d", got, want)
 	}
 }
 
