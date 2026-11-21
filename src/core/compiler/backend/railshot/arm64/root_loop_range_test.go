@@ -198,7 +198,7 @@ func TestRootLoopRangeLatchProofBoundaries(t *testing.T) {
 
 func TestRootLoopRangeMaximumRequiresOpenRootFrame(t *testing.T) {
 	f := fn{rootLoopRangeLocal: 2, rootLoopRangeMinimum: 4, rootLoopRangeMaximum: 16}
-	e := elem{st: storage{kind: stLocalRef, typ: mtI32, idx: 1}}
+	e := elem{st: storage{kind: stLocalRef, typ: mtI32, slot: 1}}
 	e.setElemKind(ekValue)
 	f.ctrl = []ctrlFrame{{kind: cfFunc}, {kind: cfLoop}}
 	if max, ok := f.localAddressMaximum(&e); !ok || max != 16 {

@@ -132,8 +132,8 @@ func TestPureIntegerIfSelectPreservesPendingTrapOrder(t *testing.T) {
 func TestPureIntegerIfConditionMovePreservesArenaTrees(t *testing.T) {
 	f := gpClassEmitter()
 	prefix := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 13})
-	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X0, idx: 0})
-	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X1, idx: 1})
+	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X0, slot: 0})
+	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X1, slot: 1})
 	f.pushBinOp(opEq, mtI32)
 	id := f.s.head.prev
 	condition := f.s.node(id)

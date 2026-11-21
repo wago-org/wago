@@ -23,8 +23,8 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	// producer explicitly marks a newly-created value.
 	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
 	st.setValueFacts(st.valueFacts() | e.st.valueFacts())
-	if st.typ == mtCustom {
-		st.cold = e.st.cold
+	if st.typ == mtCustom && e.elemKind() == ekValue && e.st.typ == mtCustom {
+		st.cval = e.st.cval
 	}
 	e.st = st
 	if regallocCheckEnabled {

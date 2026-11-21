@@ -1219,10 +1219,10 @@ func (f *fn) forwardReadonlyIntegerParams(t *inlineTarget) bool {
 	e := f.s.back()
 	for i := t.paramCount() - 1; i >= 0; i-- {
 		if e == nil || e == f.s.head || e.elemKind() != ekValue || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) ||
-			int(e.st.idx) >= f.nLocals || e.st.typ != localTypes[i] || f.localType[e.st.idx] != localTypes[i] {
+			int(e.st.slot) >= f.nLocals || e.st.typ != localTypes[i] || f.localType[e.st.slot] != localTypes[i] {
 			return false
 		}
-		sources[i] = e.st.idx
+		sources[i] = e.st.slot
 		e = f.s.prev(e)
 	}
 	for range t.paramCount() {

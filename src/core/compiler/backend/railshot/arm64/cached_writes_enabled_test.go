@@ -79,7 +79,7 @@ func TestRegallocReadInputGP64Normalization(t *testing.T) {
 	f := cachedWriteFunction(t)
 	f.pinnedLocalMask = maskOf(X13)
 	f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X13})
-	f.pushValue(storage{kind: stLocalReg, typ: mtI64, reg: X13, idx: 1})
+	f.pushValue(storage{kind: stLocalReg, typ: mtI64, reg: X13, slot: 1})
 	r := wasm.ReaderFrom([]byte{0, 0})
 	requireAllocationFailure(t, "read-only GP input", func() {
 		if err := f.memStore(&r, 8); err != nil {

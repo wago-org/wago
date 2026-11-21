@@ -168,7 +168,7 @@ func (f *fn) tryColdTupleLoopExit(r *wasm.Reader, signature wasm.Reader, types [
 	frame := &f.ctrl[len(f.ctrl)-1]
 	mark := f.a.Len()
 	for i, local := range locals {
-		value := f.pushValue(storage{kind: stLocalReg, typ: types[i], reg: registers[i], idx: uint32(local)})
+		value := f.pushValue(storage{kind: stLocalReg, typ: types[i], reg: registers[i], slot: uint32(local)})
 		f.applyFactsForLocal(value, local)
 	}
 	f.flush()

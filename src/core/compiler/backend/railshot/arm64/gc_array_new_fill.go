@@ -140,7 +140,7 @@ func (f *fn) pushI32LocalValue(x, pos int) {
 	if f.localConstZero(x) {
 		if pr, _, ok := f.pinReg(x); ok {
 			f.recoverLocal(x)
-			f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)})
+			f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, slot: uint32(x)})
 		} else {
 			f.pushValue(zeroStorage(mtI32))
 		}
@@ -148,10 +148,10 @@ func (f *fn) pushI32LocalValue(x, pos int) {
 	}
 	if pr, _, ok := f.pinReg(x); ok {
 		f.recoverLocal(x)
-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, idx: uint32(x)})
+		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: pr, slot: uint32(x)})
 		return
 	}
-	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: uint32(x)})
+	f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: uint32(x)})
 }
 
 func (p gcArrayNewFillPlan) finish(f *fn, r *wasm.Reader) {

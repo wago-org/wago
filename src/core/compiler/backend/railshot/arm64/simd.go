@@ -474,7 +474,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 					if local, err := r2.U32(); err == nil {
 						x := int(local) + f.localBase
 						if x >= 0 && x < len(f.locals) && f.localType[x] == mtV128 &&
-							aElem.st.idx == uint32(x) && f.locals[x].reg == src {
+							aElem.st.slot == uint32(x) && f.locals[x].reg == src {
 							if err := r.JumpTo(r2.Offset()); err != nil {
 								return err
 							}
@@ -487,7 +487,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 							f.fpinned = f.fpinned.remove(src)
 							f.markLocalDirty(x)
 							if op == 0x22 {
-								f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: src, idx: uint32(x)})
+								f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: src, slot: uint32(x)})
 							}
 							if lanes == i8x16Rotate16 {
 								f.stats.peep("simd-shuffle-rotr16-inplace")
@@ -622,7 +622,7 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: uint32(x)})
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, slot: uint32(x)})
 		}
 		f.stats.peep("v128-local-sink")
 		return nil
@@ -972,7 +972,7 @@ func (f *fn) tryI32x4RotateRight(r *wasm.Reader, value *elem, shift uint8) bool 
 		return false
 	}
 	x, err := r2.U32()
-	if err != nil || uint32(int(x)+f.localBase) != value.st.idx {
+	if err != nil || uint32(int(x)+f.localBase) != value.st.slot {
 		return false
 	}
 	op, err = r2.Byte()

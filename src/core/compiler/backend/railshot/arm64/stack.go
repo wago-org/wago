@@ -85,15 +85,15 @@ type storageKind uint8
 const (
 	stInvalid   storageKind = iota
 	stConst                 // an immediate; cval holds the value/bits
-	stFuncRef               // exact staged local ref.func provenance; idx = function index
+	stFuncRef               // exact staged local ref.func provenance; slot = function index
 	stReg                   // a physical register the value OWNS; reg holds it
 	stSlot                  // a frame stack slot; slot holds the SP-relative slot index
-	stLocalRef              // a frame-resident local read (lazy); idx = local index
-	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
-	stGlobalRef             // a reference to a wasm global; idx = global index
-	stGlobReg               // a value-pinned global read (borrowed); reg = pinned reg, idx = global
+	stLocalRef              // a frame-resident local read (lazy); slot = local index
+	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, slot = local
+	stGlobalRef             // a reference to a wasm global; slot = global index
+	stGlobReg               // a value-pinned global read (borrowed); reg = pinned reg, slot = global
 	stMemRef                // a bounds-checked but not-yet-loaded memory value (deferred load):
-	//	reg = effective-address register, slot = static disp, idx = size|(signed<<8)
+	//	reg = effective-address register, cval = disp + borrowed local, slot = size|(signed<<8)
 )
 
 // memRefStorage builds the storage for a deferred integer load: the bounds check
@@ -115,7 +115,7 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow, alia
 	if aliasLocal >= 0 {
 		sidx |= (aliasLocal + 1) << 10
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(sidx), cval: packedMemoryAddress(disp, borrow)}
 }
 
 func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storage {
@@ -128,32 +128,34 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storag
 	if aliasLocal >= 0 {
 		size |= (aliasLocal + 1) << 10
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(size), cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(size), cval: packedMemoryAddress(disp, borrow)}
 }
 
-func (st storage) memDisp() int32     { return int32(st.slot) }
+func packedMemoryAddress(disp int32, borrow int) int64 {
+	return int64(uint64(uint32(disp)) | uint64(uint32(borrow+1))<<32)
+}
+
+func (st storage) memDisp() int32     { return int32(st.cval) }
 func (st storage) slotIndex() int     { return int(st.slot) }
-func (st storage) index() int         { return int(st.idx) }
-func (st storage) memSize() int       { return int(st.idx & 0xff) }
-func (st storage) memSigned() bool    { return st.idx&0x100 != 0 }
-func (st storage) memUXTW() bool      { return st.idx&0x200 != 0 }
-func (st storage) memAliasLocal() int { return int(st.idx>>10) - 1 }
+func (st storage) index() int         { return int(st.slot) }
+func (st storage) memSize() int       { return int(st.slot & 0xff) }
+func (st storage) memSigned() bool    { return st.slot&0x100 != 0 }
+func (st storage) memUXTW() bool      { return st.slot&0x200 != 0 }
+func (st storage) memAliasLocal() int { return int(st.slot>>10) - 1 }
 
 func (st storage) withMemUXTW() storage {
-	st.idx |= 0x200
+	st.slot |= 0x200
 	return st
 }
 
 // memBorrow returns the local whose pinned register serves as this deferred
 // load's address, or -1 when the address register is owned.
-func (st storage) memBorrow() int { return int(st.cval) - 1 }
+func (st storage) memBorrow() int { return int(uint64(st.cval)>>32) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	cval int64  // constant value/bits for stConst
-	slot uint32 // spill-slot index, or int32 displacement bits for stMemRef
-	cold uint32 // index+1 into stack.cold for custom plugin values
-	idx  uint32 // local/global/function index, or packed stMemRef metadata
+	cval int64  // constant bits, packed mem displacement/borrow, or custom sidecar index
+	slot uint32 // spill slot, local/global/function index, or packed mem-ref flags/alias
 	kind storageKind
 	typ  machineType
 	reg  Reg
@@ -392,16 +394,16 @@ func (s *stack) reset() {
 }
 
 func (s *stack) elemCold(e *elem) *elemCold {
-	if e.st.cold == 0 {
+	if e.elemKind() != ekValue || e.st.typ != mtCustom || e.st.cval == 0 {
 		return nil
 	}
-	return &s.cold[e.st.cold-1]
+	return &s.cold[e.st.cval-1]
 }
 
 func (s *stack) setElemCold(e *elem, custom *coreplugins.CustomType, vregs []Reg) {
-	if e.st.cold == 0 {
+	if e.st.cval == 0 {
 		s.cold = append(s.cold, elemCold{})
-		e.st.cold = uint32(len(s.cold))
+		e.st.cval = int64(len(s.cold))
 	}
 	*s.elemCold(e) = elemCold{custom: custom, vregs: vregs}
 }
@@ -412,6 +414,19 @@ func (s *stack) clearElemCold(e *elem) {
 	}
 }
 
+// Keep the original node-count policy when nodes get smaller. Besides
+// isolating this layout change, this saves bytes at a worker's retained cap
+// rather than spending the difference on keeping additional giant chunks.
+const stackRetentionNodeBytes = 32
+
+// Keep the admission check in the same node-equivalent units as the trim.
+func (s *stack) retentionBytes(reserved uint64) uint64 {
+	for i := range s.chunks {
+		reserved += uint64(cap(s.chunks[i])) * (stackRetentionNodeBytes - uint64(unsafe.Sizeof(elem{})))
+	}
+	return reserved
+}
+
 // finishFunction releases the suffix above the fixed worker-retention budget.
 // The caller invokes it only after the function is complete and has severed
 // scratch-owned node references. Keeping every chunk within the byte budget
@@ -420,7 +435,7 @@ func (s *stack) finishFunction() (discarded uint64) {
 	elemBytes := uint64(unsafe.Sizeof(elem{}))
 	retained, keep := uint64(0), 0
 	for i := range s.chunks {
-		chunkBytes := uint64(cap(s.chunks[i])) * elemBytes
+		chunkBytes := uint64(cap(s.chunks[i])) * stackRetentionNodeBytes
 		if i != 0 && (retained >= shared.MaxRetainedStackArenaBytes || chunkBytes > shared.MaxRetainedStackArenaBytes-retained) {
 			break
 		}
@@ -779,7 +794,7 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
 		return false
 	}
 	sameLocal := (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
-		left.st.kind == right.st.kind && left.st.idx == right.st.idx
+		left.st.kind == right.st.kind && left.st.slot == right.st.slot
 	if !sameLocal {
 		return false
 	}

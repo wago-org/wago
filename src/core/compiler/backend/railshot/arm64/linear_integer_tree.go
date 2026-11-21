@@ -46,7 +46,7 @@ func (w *linearIntegerTree) collect(e *elem, scale uint32) bool {
 		}
 		for i := 0; i < w.count; i++ {
 			t := &w.terms[i]
-			if t.index == e.st.idx {
+			if t.index == e.st.slot {
 				t.coefficient += scale
 				t.reads++
 				return true
@@ -55,7 +55,7 @@ func (w *linearIntegerTree) collect(e *elem, scale uint32) bool {
 		if w.count == len(w.terms) {
 			return false
 		}
-		w.terms[w.count] = linearIntegerTerm{source: e, coefficient: scale, index: e.st.idx, reads: 1}
+		w.terms[w.count] = linearIntegerTerm{source: e, coefficient: scale, index: e.st.slot, reads: 1}
 		w.count++
 		return true
 	}

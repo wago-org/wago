@@ -161,7 +161,7 @@ func (f *fn) emitTailSelectOnFlags(r *wasm.Reader, end int, left, right [4]tailS
 				f.invalidateLocalWriteFacts(local)
 				f.setFactsForLocal(local, 0)
 				f.markLocalDirty(local)
-				root = f.pushValue(storage{kind: stLocalReg, typ: capture.typ, reg: capture.result, idx: uint32(local)})
+				root = f.pushValue(storage{kind: stLocalReg, typ: capture.typ, reg: capture.result, slot: uint32(local)})
 				f.stats.peep("tail-select-parameter-home")
 			} else {
 				root = f.pushReg(capture.result, capture.typ)

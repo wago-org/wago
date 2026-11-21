@@ -277,15 +277,15 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: x})
 			} else {
 				value = f.pushValue(zeroStorage(f.localType[x]))
 			}
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: x})
 		} else {
-			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
+			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], slot: x})
 		}
 		value.st.setGCRoot(f.gcFrameLocal(int(x)))
 		f.applyFactsForLocal(value, int(x))
@@ -910,7 +910,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	}
 	f.markLocalDirty(x)
 	if tee {
-		result := f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: dest, idx: uint32(x)})
+		result := f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: dest, slot: uint32(x)})
 		result.st.setGCRoot(f.gcFrameLocal(x))
 		f.stats.peep("select-local-tee-sink")
 	}
@@ -1088,7 +1088,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	f.markLocalDirty(x)
 	f.stats.peep("float-local-sink")
 	if op == 0x22 {
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: uint32(x)})
 	}
 	return true, nil
 }
@@ -1147,7 +1147,7 @@ func (f *fn) tryFscalarLocalSet(r *wasm.Reader, f64 bool, arity int, emit func(R
 	f.markLocalDirty(x)
 	result := f.s.back()
 	if op == 0x22 {
-		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
+		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: uint32(x)})
 	} else {
 		f.erase(result)
 	}
@@ -1348,7 +1348,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			continue
 		}
 		switch {
-		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.slot == uint32(x):
 			f.materializeByType(e)
 		case e.elemKind() == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.
@@ -1368,7 +1368,7 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 		return false
 	}
 	if e.elemKind() == ekValue {
-		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.slot == uint32(x)
 	}
 	if e.elemKind() == ekDeferred {
 		return subtreeRefsLocal(s, s.arg0(e), x) || subtreeRefsLocal(s, s.arg1(e), x)
@@ -1432,7 +1432,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: uint32(x)}) // borrowed ref stays
 		} else {
 			f.erase(e)
 		}
@@ -1456,7 +1456,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: uint32(x)})
 		} else {
 			f.erase(e)
 		}
@@ -1486,7 +1486,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, slot: uint32(x)})
 		} else {
 			f.erase(e)
 		}

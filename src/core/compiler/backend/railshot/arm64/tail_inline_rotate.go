@@ -77,8 +77,8 @@ func (f *fn) tryInlineRotatingTail(t *inlineTarget) (bool, error) {
 	}
 	step := func(left, right Reg, li, ri int) error {
 		f.wasmPC = f.tracePCBase + uint32(operationPC)
-		f.pushValue(storage{kind: stLocalReg, typ: types[0], reg: left, idx: uint32(li)})
-		divisor := f.pushValue(storage{kind: stLocalReg, typ: types[0], reg: right, idx: uint32(ri)})
+		f.pushValue(storage{kind: stLocalReg, typ: types[0], reg: left, slot: uint32(li)})
+		divisor := f.pushValue(storage{kind: stLocalReg, typ: types[0], reg: right, slot: uint32(ri)})
 		divisor.st.setValueFacts(factNonZero) // the preceding CBZ excludes zero
 		if err := f.emitPlain(wasm.NewReader(nil), op); err != nil {
 			return err

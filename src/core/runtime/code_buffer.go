@@ -20,12 +20,13 @@ import (
 // CodeBuffer is deliberately not safe for concurrent use. Compilation and
 // sealing transfer exclusive ownership between phases.
 type CodeBuffer struct {
-	mem        []byte
-	n          int
-	heap       bool
-	sealed     bool
-	registered bool
-	closed     bool
+	mem                  []byte
+	n                    int
+	heap                 bool
+	sealed               bool
+	registered           bool
+	closed               bool
+	heapRecoveryCapacity int
 	// A failed growth retirement can leave both mappings owned. The buffer
 	// rejects further use and Close retries their release independently.
 	retired []byte
@@ -68,10 +69,18 @@ func (b *CodeBuffer) seal(mem []byte) error {
 // stable after compilation. It is used when executable mapping is deferred
 // until first instantiation.
 func NewHeapCodeBuffer(capacity int) (*CodeBuffer, error) {
+	return NewHeapCodeBufferWithRecovery(capacity, capacity)
+}
+
+// NewHeapCodeBufferWithRecovery starts a heap-only code image with a narrower
+// reservation. If that reservation runs out, the first growth uses the
+// original conservative estimate (or the actual need, whichever is larger)
+// before resuming ordinary geometric growth.
+func NewHeapCodeBufferWithRecovery(capacity, recovery int) (*CodeBuffer, error) {
 	if capacity < 0 {
 		return nil, fmt.Errorf("jit: negative code capacity %d", capacity)
 	}
-	return &CodeBuffer{mem: make([]byte, capacity), heap: true}, nil
+	return &CodeBuffer{mem: make([]byte, capacity), heap: true, heapRecoveryCapacity: recovery}, nil
 }
 
 // NewCodeBuffer allocates an RW code image with at least capacity bytes.
@@ -349,6 +358,9 @@ func (b *CodeBuffer) growPreserving(extra, preserveEnd int) error {
 		return nil
 	}
 	capacity := len(b.mem) * 2
+	if b.heap && b.heapRecoveryCapacity > len(b.mem) {
+		capacity = b.heapRecoveryCapacity
+	}
 	if capacity < need {
 		capacity = need
 	}

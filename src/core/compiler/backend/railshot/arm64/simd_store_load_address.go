@@ -77,7 +77,7 @@ func (f *fn) matchRepeatedAddress(r *wasm.Reader, e *elem, wide bool, budget *in
 				return false
 			}
 			local, err := r.U32()
-			return err == nil && uint64(local)+uint64(f.localBase) == uint64(e.st.idx)
+			return err == nil && uint64(local)+uint64(f.localBase) == uint64(e.st.slot)
 		case stConst:
 			op, err := r.Byte()
 			if err != nil {

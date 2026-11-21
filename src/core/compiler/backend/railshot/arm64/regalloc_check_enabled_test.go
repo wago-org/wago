@@ -174,7 +174,7 @@ func TestRegallocCheckSeedsProvenFrameForwardAlias(t *testing.T) {
 		f.frameForwardEnd = uint32(f.a.Len())
 		f.frameForwardOff = offset
 		f.frameForwardReg = X9
-		e := f.pushValue(storage{kind: stLocalRef, typ: mtI64, idx: 0})
+		e := f.pushValue(storage{kind: stLocalRef, typ: mtI64, slot: 0})
 		f.checkBeginFlush(nil)
 		f.ld64(dst, SP, offset)
 		f.checkOccupy(e, dst, false)

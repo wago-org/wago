@@ -268,3 +268,36 @@ func TestCodeBufferAppendNoGrowthAllocations(t *testing.T) {
 		}
 	}
 }
+
+func TestHeapCodeBufferRecoveryReservation(t *testing.T) {
+	image, err := NewHeapCodeBufferWithRecovery(128, 160)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer image.Close()
+	want := bytes.Repeat([]byte{0x7b}, 136)
+	if err := image.Append(want[:120]); err != nil {
+		t.Fatal(err)
+	}
+	tail, err := image.AppendTail(16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cap(tail) != 40 {
+		t.Fatalf("first growth reserved %d total, want original estimate 160", cap(tail)+120)
+	}
+	if !image.CommitTail(append(tail, want[120:]...)) || !bytes.Equal(image.Bytes(), want) {
+		t.Fatal("recovered image changed prefix or emitted tail")
+	}
+	more := bytes.Repeat([]byte{0x29}, 32)
+	if err := image.Append(more); err != nil {
+		t.Fatal(err)
+	}
+	if len(image.mem) != 320 {
+		t.Fatalf("next growth reserved %d, want geometric 320", len(image.mem))
+	}
+	code, err := image.TakeHeap()
+	if err != nil || !bytes.Equal(code, append(want, more...)) {
+		t.Fatalf("ownership handoff changed image: %v, %x", err, code)
+	}
+}

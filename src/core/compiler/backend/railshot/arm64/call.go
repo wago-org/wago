@@ -928,7 +928,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 	refValue := f.popValue()
-	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.importedFunctionCount()) {
+	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.slot < uint32(f.importedFunctionCount()) {
 		importIndex := refValue.st.index()
 		if f.importBindings != nil && importIndex < len(f.importBindings) {
 			binding := f.importBindings[importIndex]

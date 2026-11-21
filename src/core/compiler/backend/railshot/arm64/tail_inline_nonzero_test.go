@@ -101,7 +101,7 @@ func TestTailLoopInlineNonzeroFactsFailClosed(t *testing.T) {
 	f := fn{policy: currentCodegenPolicy(), inlineTailLoopFrame: 1,
 		localBase: 2, localType: []machineType{mtI32, mtI32, mtI64},
 		ctrl: []ctrlFrame{{kind: cfLoop}, {kind: cfIf}}}
-	e := elem{st: storage{kind: stLocalReg, typ: mtI64, idx: 2}}
+	e := elem{st: storage{kind: stLocalReg, typ: mtI64, slot: 2}}
 	predicate := f.inlineNonzeroPredicate(&e)
 	if predicate == 0 {
 		t.Fatal("raw local condition was not recognized")

@@ -13,10 +13,10 @@ import (
 )
 
 func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(16); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(32); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(24); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
@@ -194,8 +194,8 @@ func TestSignedI32LoadCarriesUpperZeroFactArm64(t *testing.T) {
 
 func TestCompareCarriesBooleanFactArm64(t *testing.T) {
 	f := fn{s: newStack(), policy: currentCodegenPolicy()}
-	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
-	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
+	f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
+	f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 1})
 	f.pushBinOp(opLtU, mtI32)
 	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)

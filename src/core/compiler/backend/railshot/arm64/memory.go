@@ -540,9 +540,9 @@ func (f *fn) memAddrMode(off uint64, size int, aliasPinned bool, rangeExtent int
 	bcKind, bcIdx, bcBias := affineKind, affineIdx, affineBias
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		bcKind, bcIdx = 1, uint32(e.st.idx)
+		bcKind, bcIdx = 1, uint32(e.st.slot)
 	case stGlobReg:
-		bcKind, bcIdx = 2, uint32(e.st.idx)
+		bcKind, bcIdx = 2, uint32(e.st.slot)
 	case stReg:
 		if local, ok := f.teeAddressLocal(e); ok {
 			bcKind, bcIdx = 1, local
@@ -855,7 +855,7 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 
 func (f *fn) loadDefinedAddressLocal(e *elem) bool {
 	return e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stLocalRef) &&
-		e.st.idx < 64 && f.loadDefinedLocals&(uint64(1)<<e.st.idx) != 0
+		e.st.slot < 64 && f.loadDefinedLocals&(uint64(1)<<e.st.slot) != 0
 }
 
 type boundsCert struct {
@@ -867,9 +867,9 @@ type boundsCert struct {
 func boundsSource(s storage) (kind uint8, idx uint32) {
 	switch s.kind {
 	case stLocalReg, stLocalRef:
-		return 1, uint32(s.idx)
+		return 1, uint32(s.slot)
 	case stGlobReg:
-		return 2, uint32(s.idx)
+		return 2, uint32(s.slot)
 	default:
 		return 0, 0
 	}

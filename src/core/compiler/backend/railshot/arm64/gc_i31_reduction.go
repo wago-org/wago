@@ -87,9 +87,9 @@ func (f *fn) emitGCI31Reduction() error {
 	f.gcI31Induction = f.gcReducedBounded && f.opt(optRegABI) && f.opt(optPreparedDirectEntry)
 	if reg, _, ok := f.pinReg(0); ok {
 		f.recoverLocal(0)
-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, idx: 0})
+		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, slot: 0})
 	} else {
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
 	}
 	n := f.materialize(f.popValue())
 	f.a.MovReg32(n, n)

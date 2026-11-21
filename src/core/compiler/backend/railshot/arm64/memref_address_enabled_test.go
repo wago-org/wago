@@ -74,7 +74,7 @@ func TestRegallocDeferredLoadAddressPair(t *testing.T) {
 			if !f.opt(optLoadPair) {
 				t.Fatal("load pair is disabled")
 			}
-			first.st.idx |= 1 << 10 // address copied from local 0
+			first.st.slot |= 1 << 10 // address copied from local 0
 			first.st.slot = 0
 			if !accepted {
 				first.st.slot = uint32(64 * first.st.memSize())

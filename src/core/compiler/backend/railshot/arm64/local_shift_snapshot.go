@@ -22,7 +22,7 @@ var localShiftSnapshotEnabled = os.Getenv("WAGO_ARM64_NO_LOCAL_SHIFT_SNAPSHOT") 
 // The existing shifted-register selector chooses and emits the native form.
 func (f *fn) snapshotLocalShiftedBinary(first *elem, local int) *elem {
 	if !localShiftSnapshotEnabled || f.makesCalls || f.moduleEH || len(f.customInstructions) != 0 ||
-		first == f.s.head || first.elemKind() != ekValue || first.st.kind != stLocalReg || first.st.idx != uint32(local) ||
+		first == f.s.head || first.elemKind() != ekValue || first.st.kind != stLocalReg || first.st.slot != uint32(local) ||
 		(first.st.typ != mtI32 && first.st.typ != mtI64) {
 		return nil
 	}
@@ -39,7 +39,7 @@ func (f *fn) snapshotLocalShiftedBinary(first *elem, local int) *elem {
 		root = f.s.next(second)
 		plain, shifted = second, first
 	}
-	if second == f.s.head || second.elemKind() != ekValue || second.st.kind != stLocalReg || second.st.idx != uint32(local) || second.st.reg != first.st.reg || second.st.typ != first.st.typ {
+	if second == f.s.head || second.elemKind() != ekValue || second.st.kind != stLocalReg || second.st.slot != uint32(local) || second.st.reg != first.st.reg || second.st.typ != first.st.typ {
 		return nil
 	}
 	if constant == f.s.head || constant.elemKind() != ekValue || constant.st.kind != stConst || constant.st.typ != first.st.typ {

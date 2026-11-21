@@ -56,8 +56,8 @@ func TestLinearIntegerTreeProofRejectsEffectsAndUnknownSources(t *testing.T) {
 	}
 	for _, op := range []wOp{opDivS, opDivU, opRemS, opShrS, opShrU, opAnd, opMul} {
 		f := fn{s: newStack(), policy: currentCodegenPolicy()}
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 1})
 		f.pushBinOp(op, mtI32)
 		w := linearIntegerTree{f: &f, budget: 64}
 		if w.collect(f.s.back(), 0) {
@@ -67,7 +67,7 @@ func TestLinearIntegerTreeProofRejectsEffectsAndUnknownSources(t *testing.T) {
 	f := fn{s: newStack(), policy: currentCodegenPolicy()}
 	w := linearIntegerTree{f: &f, budget: 64}
 	for i := uint32(0); i < 9; i++ {
-		e := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: i})
+		e := f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: i})
 		if got := w.collect(e, 1); got != (i < 8) {
 			t.Fatalf("index%d admitted=%t", i, got)
 		}
@@ -96,7 +96,7 @@ func TestLinearIntegerTreePressureFallsBackBeforeEmission(t *testing.T) {
 			// Six repeated terms need a result and coefficient register while
 			// X0 remains borrowed. Only X1 is available for both temporaries.
 			for i := 0; i < 6; i++ {
-				f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X0, idx: 0})
+				f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: X0, slot: 0})
 				f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
 				f.pushBinOp(opMul, mtI32)
 				if i != 0 {
@@ -120,7 +120,7 @@ func TestLinearIntegerTreePressureAccountsForLocalLoads(t *testing.T) {
 	f.hasLoop = true
 	f.reserved = allAllocatableGP().remove(X0).remove(X1)
 	for i := 0; i < 6; i++ {
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
 		f.pushBinOp(opMul, mtI32)
 		if i != 0 {

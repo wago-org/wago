@@ -21,7 +21,7 @@ func isSelectLocal(e *elem) bool {
 }
 
 func sameSelectLocal(a, b *elem) bool {
-	return isSelectLocal(a) && isSelectLocal(b) && a.st.typ == b.st.typ && a.st.idx == b.st.idx
+	return isSelectLocal(a) && isSelectLocal(b) && a.st.typ == b.st.typ && a.st.slot == b.st.slot
 }
 
 func reverseSelectCompare(cc Cond) Cond {

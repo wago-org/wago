@@ -189,9 +189,9 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 
 	if reg, _, ok := f.pinReg(0); ok {
 		f.recoverLocal(0)
-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, idx: 0})
+		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, slot: 0})
 	} else {
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
 	}
 	count := f.materialize(f.popValue())
 	f.cmpImm(count, 0, false)
@@ -206,9 +206,9 @@ func (f *fn) emitGCStructReduction(typeIndex uint32) error {
 	// full i32 input domain; n=0 also produces zero after the wrapping subtract.
 	if reg, _, ok := f.pinReg(0); ok {
 		f.recoverLocal(0)
-		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, idx: 0})
+		f.pushValue(storage{kind: stLocalReg, typ: mtI32, reg: reg, slot: 0})
 	} else {
-		f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+		f.pushValue(storage{kind: stLocalRef, typ: mtI32, slot: 0})
 	}
 	result := f.materialize(f.popValue())
 	f.a.MovReg32(result, result)

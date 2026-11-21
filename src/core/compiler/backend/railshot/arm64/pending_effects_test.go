@@ -21,7 +21,7 @@ func TestPendingTrapsPreservePureAncestors(t *testing.T) {
 	f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
 	f.pushBinOp(opAdd, mtI32)
 	ancestor := f.s.back()
-	load := f.pushValue(storage{kind: stMemRef, typ: mtI32, reg: X12, idx: 4})
+	load := f.pushValue(storage{kind: stMemRef, typ: mtI32, reg: X12, slot: 4})
 	argument := f.pushValue(storage{kind: stSlot, typ: mtI32, slot: 0})
 	f.materializePendingTraps()
 	if !pure.isDeferred() || !ancestor.isDeferred() {

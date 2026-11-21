@@ -65,8 +65,8 @@ func TestStackCustomSidecarIsLazyAndClearedArm64(t *testing.T) {
 	_, ordinaryReserved := s.nodeMemory()
 	e := s.pushValue(storage{kind: stReg, typ: mtCustom})
 	s.setElemCold(e, nil, []Reg{1, 2})
-	if e.st.cold == 0 || len(s.cold) != 1 {
-		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cold, len(s.cold))
+	if e.st.cval == 0 || len(s.cold) != 1 {
+		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cval, len(s.cold))
 	}
 	if _, reserved := s.nodeMemory(); reserved <= ordinaryReserved {
 		t.Fatalf("reserved node memory = %d, want more than ordinary %d", reserved, ordinaryReserved)
@@ -154,8 +154,8 @@ func TestStackFinishFunctionRetainsBoundedReusableOverflowArm64(t *testing.T) {
 	keepCapacity := 0
 	keep := 0
 	for i := range s.chunks {
-		chunkBytes := uint64(cap(s.chunks[i])) * uint64(unsafe.Sizeof(elem{}))
-		if i != 0 && uint64(keepCapacity)*uint64(unsafe.Sizeof(elem{}))+chunkBytes > shared.MaxRetainedStackArenaBytes {
+		chunkBytes := uint64(cap(s.chunks[i])) * stackRetentionNodeBytes
+		if i != 0 && uint64(keepCapacity)*stackRetentionNodeBytes+chunkBytes > shared.MaxRetainedStackArenaBytes {
 			break
 		}
 		keepCapacity += cap(s.chunks[i])
@@ -347,4 +347,23 @@ func TestInitialChunkCacheConcurrentOwnership(t *testing.T) {
 		}(worker)
 	}
 	wg.Wait()
+}
+
+func TestCompactOperandStorageMemRefPayloadArm64(t *testing.T) {
+	for _, disp := range []int32{-1 << 31, -33, 0, 37, 1<<31 - 1} {
+		for _, borrow := range []int{-1, 0, 65537, 1<<31 - 1} {
+			for _, alias := range []int{-1, 0, 65537, 1<<22 - 2} {
+				integer := memRefStorage(X9, disp, 2, true, false, borrow, alias).withMemUXTW()
+				floating := fmemRefStorage(X10, disp, true, borrow, alias)
+				if integer.memDisp() != disp || integer.memBorrow() != borrow || integer.memAliasLocal() != alias ||
+					integer.memSize() != 2 || !integer.memSigned() || !integer.memUXTW() {
+					t.Fatalf("corrupt integer address %d/%d/%d: %+v", disp, borrow, alias, integer)
+				}
+				if floating.memDisp() != disp || floating.memBorrow() != borrow || floating.memAliasLocal() != alias ||
+					floating.memSize() != 8 || floating.memSigned() || floating.memUXTW() {
+					t.Fatalf("corrupt floating address %d/%d/%d: %+v", disp, borrow, alias, floating)
+				}
+			}
+		}
+	}
 }

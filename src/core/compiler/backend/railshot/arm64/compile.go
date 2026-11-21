@@ -736,6 +736,21 @@ func (f *fn) alignCode(log2 uint8) int {
 	return pad
 }
 
+// A single guarded memory avoids the repeated inline bounds sequence. Trim
+// speculative headroom only for ordinary medium-size images; tiny functions
+// are adapter/alignment heavy and unusually large generated modules retain
+// the existing taper. A miss returns to the original reservation before the
+// normal geometric growth regime.
+func guardedCodeImageInitialCapacity(bodyBytes, functions, estimate int) int {
+	if bodyBytes < 32<<10 || bodyBytes > 512<<10 {
+		return estimate
+	}
+	if n := shared.TaperedModuleCodeCapacity(bodyBytes, functions, 28, 28, 0); n > 0 && n < estimate {
+		return n
+	}
+	return estimate
+}
+
 func asmCapForBody(bodyLen int) int {
 	// A direct lowering usually emits several native bytes per wasm byte. Reserve
 	// enough for small/medium functions to avoid repeated encoder slice growth,
@@ -1178,7 +1193,7 @@ func (sc *scratch) finishStackFunction() {
 	if reserved > sc.nodeScratchPeak {
 		sc.nodeScratchPeak = reserved
 	}
-	if reserved <= shared.MaxRetainedStackArenaBytes {
+	if sc.stack.retentionBytes(reserved) <= shared.MaxRetainedStackArenaBytes {
 		return
 	}
 	sc.clearNodeReferences()
@@ -1968,7 +1983,16 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		var codeBuffer *coreruntime.CodeBuffer
 		var err error
 		if opts.DeferCodeMapping {
-			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+			initialCap := codeCap
+			if guardMode && !policy.CompactNative && !expandedLowering && !opts.SyncHostCalls && m.TagCount() == 0 &&
+				len(opts.Codegen.Module.GCTypeLayouts) == 0 && opts.GCFrameRoots == nil {
+				if memory, ok := m.MemoryType(0); ok && !memory.Limits.Addr64 && !memory.Shared {
+					if _, multi := m.MemoryType(1); !multi {
+						initialCap = guardedCodeImageInitialCapacity(totalBody, n, codeCap)
+					}
+				}
+			}
+			codeBuffer, err = coreruntime.NewHeapCodeBufferWithRecovery(initialCap, codeCap)
 		} else {
 			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
 		}

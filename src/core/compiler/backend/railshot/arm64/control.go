@@ -2077,7 +2077,7 @@ func (f *fn) tryAffineIfSelect(r *wasm.Reader) (bool, error) {
 			a, b := f.s.arg0(sum), f.s.arg1(sum)
 			matches := func(localElem, constElem *elem) bool {
 				return localElem != nil && localElem.elemKind() == ekValue &&
-					(localElem.st.kind == stLocalReg || localElem.st.kind == stLocalRef) && localElem.st.idx == uint32(x) &&
+					(localElem.st.kind == stLocalReg || localElem.st.kind == stLocalRef) && localElem.st.slot == uint32(x) &&
 					constElem != nil && constElem.elemKind() == ekValue && constElem.st.kind == stConst && constElem.st.cval == int64(add-1)
 			}
 			if matches(a, b) || matches(b, a) {

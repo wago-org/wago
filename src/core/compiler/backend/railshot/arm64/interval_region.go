@@ -549,7 +549,7 @@ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 
 func (f *fn) demoteIntervalLocalRefs(x int) {
 	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
-		if e.elemKind() == ekValue && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
+		if e.elemKind() == ekValue && e.st.kind == stLocalReg && e.st.slot == uint32(x) {
 			e.st.kind = stLocalRef
 			e.st.reg = regNone
 		}

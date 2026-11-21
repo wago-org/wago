@@ -125,9 +125,23 @@ type Asm struct {
 	DominatedIndexedCandidates    uint16
 }
 
-// word appends one 32-bit instruction little-endian.
+// word writes directly into the reserved encoder tail. The hot path changes
+// only the slice length; allocation and pointer publication share one cold path
+// rather than duplicating append growth code in every inlined encoder.
 func (a *Asm) word(w uint32) {
-	a.B = append(a.B, byte(w), byte(w>>8), byte(w>>16), byte(w>>24))
+	b := a.B
+	end := len(b) + 4
+	if uint(end) > uint(cap(b)) {
+		a.growWord(w)
+		return
+	}
+	a.B = b[:end]
+	binary.LittleEndian.PutUint32(b[end-4:end], w)
+}
+
+//go:noinline
+func (a *Asm) growWord(w uint32) {
+	a.B = binary.LittleEndian.AppendUint32(a.B, w)
 }
 
 // Len is the current code length in bytes (also the offset of the next word).

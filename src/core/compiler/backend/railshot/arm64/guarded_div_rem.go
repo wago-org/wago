@@ -62,7 +62,7 @@ func (f *fn) tryGuardedDivRem(r *wasm.Reader) (bool, error) {
 	if indices[1] < f.inlineForwardN {
 		divisor = uint64(f.inlineForward[indices[1]])
 	}
-	if divisor != uint64(input.st.idx) || divisor >= uint64(len(f.localType)) || f.localType[divisor] != input.st.typ {
+	if divisor != uint64(input.st.slot) || divisor >= uint64(len(f.localType)) || f.localType[divisor] != input.st.typ {
 		return false, nil
 	}
 	_, floating, pinned := f.pinReg(int(divisor))

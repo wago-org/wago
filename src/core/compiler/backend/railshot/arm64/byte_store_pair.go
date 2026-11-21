@@ -47,7 +47,7 @@ func (f *fn) inspectByteStorePair(r *wasm.Reader, offset uint64) (int, bool) {
 		return 0, false
 	}
 	index, e := scan.U32()
-	if e != nil || int(index)+f.localBase != int(base.st.idx) || !next(0x41) {
+	if e != nil || int(index)+f.localBase != int(base.st.slot) || !next(0x41) {
 		return 0, false
 	}
 	second, e := scan.I32()
@@ -62,7 +62,7 @@ func (f *fn) inspectByteStorePair(r *wasm.Reader, offset uint64) (int, bool) {
 	same := false
 	switch value.st.kind {
 	case stLocalRef, stLocalReg:
-		same = int(value.st.idx) == x
+		same = int(value.st.slot) == x
 	case stReg:
 		// Only an unpinned local with a current canonical home can be
 		// identified through its recent frame-store fact.

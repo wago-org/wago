@@ -26,7 +26,7 @@ func bulkOperandKey(e *elem) (bulkValueKey, bool) {
 	case stConst:
 		return bulkValueKey{value: uint32(e.st.cval)}, true
 	case stLocalReg, stLocalRef:
-		return bulkValueKey{value: e.st.idx, local: true}, true
+		return bulkValueKey{value: e.st.slot, local: true}, true
 	}
 	return bulkValueKey{}, false
 }

@@ -18,12 +18,12 @@ var localSquareSnapshotEnabled = os.Getenv("WAGO_ARM64_NO_LOCAL_SQUARE_SNAPSHOT"
 // result; the result remains an ordinary spillable operand-stack node.
 func (f *fn) snapshotLocalSquare(first *elem, local int) *elem {
 	if !localSquareSnapshotEnabled || f.makesCalls || f.moduleEH || len(f.customInstructions) != 0 ||
-		first == f.s.head || first.elemKind() != ekValue || first.st.kind != stLocalReg || first.st.idx != uint32(local) ||
+		first == f.s.head || first.elemKind() != ekValue || first.st.kind != stLocalReg || first.st.slot != uint32(local) ||
 		(first.st.typ != mtI32 && first.st.typ != mtI64) {
 		return nil
 	}
 	second := f.s.next(first)
-	if second == f.s.head || second.elemKind() != ekValue || second.st.kind != stLocalReg || second.st.idx != uint32(local) || second.st.reg != first.st.reg || second.st.typ != first.st.typ {
+	if second == f.s.head || second.elemKind() != ekValue || second.st.kind != stLocalReg || second.st.slot != uint32(local) || second.st.reg != first.st.reg || second.st.typ != first.st.typ {
 		return nil
 	}
 	root := f.s.next(second)

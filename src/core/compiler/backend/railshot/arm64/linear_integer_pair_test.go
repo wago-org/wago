@@ -116,11 +116,11 @@ func TestLinearIntegerPairPressureRejectsBeforeEmission(t *testing.T) {
 			case "reserved":
 				f.reserved = blocked
 			}
-			f.pushValue(storage{kind: kind, typ: mtI32, reg: X0, idx: 0})
+			f.pushValue(storage{kind: kind, typ: mtI32, reg: X0, slot: 0})
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: 3})
 			f.pushBinOp(opMul, mtI32)
-			f.pushValue(storage{kind: kind, typ: mtI32, reg: X1, idx: 1})
-			f.pushValue(storage{kind: kind, typ: mtI32, reg: X0, idx: 0})
+			f.pushValue(storage{kind: kind, typ: mtI32, reg: X1, slot: 1})
+			f.pushValue(storage{kind: kind, typ: mtI32, reg: X0, slot: 0})
 			f.pushBinOp(opSub, mtI32)
 			f.pushBinOp(opAdd, mtI32)
 			root, pins := f.s.back(), f.pinned

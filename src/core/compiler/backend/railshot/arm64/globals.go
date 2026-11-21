@@ -98,7 +98,7 @@ func (f *fn) globalGetIndex(x uint32) error {
 		} else if wasm.EqualValType(gtv, wasm.F64) {
 			typ = mtF64
 		}
-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, slot: x})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -148,7 +148,7 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		}
 		next := f.s.next(e)
 		switch {
-		case e.elemKind() == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
+		case e.elemKind() == ekValue && e.st.kind == stGlobReg && e.st.slot == x:
 			f.materializeByType(e)
 		case e.elemKind() == ekDeferred && subtreeRefsGlobal(f.s, e, x):
 			f.condense(e, regNone)
@@ -164,7 +164,7 @@ func subtreeRefsGlobal(s *stack, e *elem, x uint32) bool {
 		return false
 	}
 	if e.elemKind() == ekValue {
-		return e.st.kind == stGlobReg && e.st.idx == x
+		return e.st.kind == stGlobReg && e.st.slot == x
 	}
 	if e.elemKind() == ekDeferred {
 		return subtreeRefsGlobal(s, s.arg0(e), x) || subtreeRefsGlobal(s, s.arg1(e), x)
