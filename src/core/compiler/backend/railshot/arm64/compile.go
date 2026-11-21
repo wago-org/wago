@@ -3664,12 +3664,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// from the pool for a memory-touching call-making function) would be skipped for
 	// a caller whose own body never touched memory.
 	var inlinedCallees []*inlineTarget
+	var allCallsInlined bool
 	if hasCall {
-		inlinedCallees = collectInlinedCallees(c, inlineTargets)
+		proveCallFree := policy.EnabledOption(optInlineCallFree) && !hints.flags.has(hintHasNonDirectCall)
+		inlinedCallees, allCallsInlined = planInlineCaller(c, inlineTargets, proveCallFree)
 	}
 	// Expanded tuple leaves depend on a call-free private register frame. Retain
 	// their calls if another source call or runtime helper remains in this caller.
-	allCallsInlined := policy.EnabledOption(optInlineCallFree) && hasCall && !hints.flags.has(hintHasNonDirectCall) && allCallsWillInline(c, inlineTargets, policy)
 	if !allCallsInlined {
 		kept := inlinedCallees[:0]
 		for _, callee := range inlinedCallees {

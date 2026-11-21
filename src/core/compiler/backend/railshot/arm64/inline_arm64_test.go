@@ -26,7 +26,7 @@ func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
 	}
 	body = append(body, 0x10, 0, 0x0b)
 	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
-	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	got, _ := planInlineCaller(&wasm.Func{BodyBytes: body}, targets, false)
 	if len(got) != targetsN {
 		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
 	}
@@ -54,7 +54,7 @@ func TestCollectInlinedCalleesFastImmediateDecodeArm64(t *testing.T) {
 		0x10, 0x01, // duplicate call 1
 		0x0b,
 	}
-	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	got, _ := planInlineCaller(&wasm.Func{BodyBytes: body}, targets, false)
 	if len(got) != 2 || got[0].globalIdx != 1 || got[1].globalIdx != 0 {
 		t.Fatalf("inline targets = %#v, want [1 0] in first-call order", got)
 	}
@@ -63,7 +63,6 @@ func TestCollectInlinedCalleesFastImmediateDecodeArm64(t *testing.T) {
 func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
 	data := &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{globalIdx: 0}}}
 	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
-	policy := currentCodegenPolicy()
 
 	// Exercise the allocation-free 64-frame bit stack and its bounded deep fallback.
 	body := []byte{0x00}
@@ -74,7 +73,7 @@ func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
 	for range 66 {                  // close 65 blocks and the function
 		body = append(body, 0x0b)
 	}
-	if !allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+	if _, all := planInlineCaller(&wasm.Func{BodyBytes: body}, targets, true); !all {
 		t.Fatal("deep block-nested direct call was not recognized as fully inlineable")
 	}
 
@@ -87,8 +86,73 @@ func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
 	for range 66 {
 		body = append(body, 0x0b)
 	}
-	if allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+	if _, all := planInlineCaller(&wasm.Func{BodyBytes: body}, targets, true); all {
 		t.Fatal("regressive call in a deeply nested loop was classified as fully inlineable")
+	}
+}
+
+func TestFusedInlineCallerMatchesSeparateWalksArm64(t *testing.T) {
+	const n = inlineLinearSeenTargets + 4
+	data := &inlineTargetData{slots: make([]uint32, n), targets: make([]inlineTarget, n)}
+	for i := range n {
+		data.slots[i] = uint32(i + 1)
+		data.targets[i].globalIdx = i + 1 // import at global index 0
+	}
+	data.targets[1].params = inlineRecursiveFlag
+	data.targets[2].scalarLeaf = true
+	data.targets[3].tupleControl = true
+	data.slots[4] |= inlineTargetInvalid
+	targets := inlineTargetTable{first: 1, data: data, classifier: wasm.NewModuleInstructionClassifier(nil, true)}
+	policy := currentCodegenPolicy()
+
+	var many []byte
+	for i := n; i > 0; i-- {
+		if i == 5 {
+			continue
+		}
+		many = append(many, 0x10, byte(i), 0x10, byte(i))
+	}
+	many = append(many, 0x0b)
+
+	deep := bytes.Repeat([]byte{0x02, 0x40}, 65)
+	deep = append(deep, 0x03, 0x40, 0x10, 0x03, 0x0b) // scalar target can inline inside a deep loop
+	deep = append(deep, bytes.Repeat([]byte{0x0b}, 65)...)
+	deep = append(deep, 0x10, 0x01, 0x0b) // otherwise-regressive target outside the loop
+	deepBlocked := slices.Clone(deep)
+	deepBlocked[2*65+3] = 1 // regressive target inside the loop
+
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"AST or empty", nil},
+		{"no calls", []byte{0x41, 0, 0x1a, 0x0b}},
+		{"all eligible", []byte{0x10, 3, 0x10, 1, 0x10, 3, 0x0b}},
+		{"unknown, pruned and imported", []byte{0x10, 5, 0x10, 0, 0x10, 100, 0x10, 4, 0x10, 1, 0x0b}},
+		{"return and reference", []byte{0x12, 3, 0x14, 0, 0x15, 0, 0x10, 1, 0x0b}},
+		{"indirect and return indirect", []byte{0x11, 0, 0, 0x13, 0, 0, 0x10, 3, 0x0b}},
+		{"recursive and map fallback", many},
+		{"if else and nested loop", []byte{0x04, 0x40, 0x03, 0x40, 0x10, 3, 0x0b, 0x05, 0x10, 1, 0x0b, 0x0b}},
+		{"deep loop exit", deep},
+		{"deep loop blocks proof", deepBlocked},
+		{"truncated following call", []byte{0x10, 3, 0x10, 0x80}},
+		{"truncated following control", []byte{0x10, 3, 0x02}},
+		{"truncated scalar immediate", []byte{0x10, 3, 0x44, 0}},
+		{"invalid following opcode", []byte{0x10, 3, 0xff, 0x10, 1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			caller := &wasm.Func{BodyBytes: tc.body}
+			wantTargets := legacyCollectInlinedCallees(caller, targets)
+			wantProof := legacyAllCallsWillInline(caller, targets, policy)
+			for _, prove := range []bool{false, true} {
+				gotTargets, gotProof := planInlineCaller(caller, targets, prove)
+				if !slices.Equal(gotTargets, wantTargets) || (gotTargets == nil) != (wantTargets == nil) ||
+					gotProof != (prove && wantProof) {
+					t.Fatalf("prove=%v: targets=%v, proof=%v; want %v, %v", prove, gotTargets, gotProof, wantTargets, prove && wantProof)
+				}
+			}
+		})
 	}
 }
 
