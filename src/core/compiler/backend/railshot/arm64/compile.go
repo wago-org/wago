@@ -1946,13 +1946,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// another allocation and copy of esbuild's entire code buffer.
 	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
-	// A one-worker join pays for a second arena and copy. It wins for large bodies,
-	// while serial heap staging is cheaper for modules made mostly of small
-	// functions.
-	serialHeap := opts.DeferCodeMapping && (len(m.Code) == 1 && totalBody < 2<<10 ||
-		len(m.Code) >= 32 && totalBody/len(m.Code) < 2<<10)
+	// An ordered compiler can write and patch a single module-owned image,
+	// whether the caller wants an eager mapping or deferred heap staging.
+	// Only multiple workers need private arenas and an ordered merge.
 	requiresLSE := false
-	if workers <= 1 && (!opts.DeferCodeMapping || serialHeap) {
+	if workers <= 1 {
 		relocs := newCallRelocTable(n, relocCap)
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, worker metadata, or intermediate arena.
