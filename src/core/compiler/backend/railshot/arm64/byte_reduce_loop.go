@@ -97,7 +97,7 @@ type byteReduceState struct {
 
 func (f *fn) emitByteReduceLoop(r *wasm.Reader) {
 	if !f.opt(optByteReduceLoop) || f.byteReduceLoop != nil || f.dotLoop != nil ||
-		f.usesCalls || f.interruptible || f.moduleEH || f.localBase != 0 ||
+		f.usesCalls || f.loopInterruptible() || f.moduleEH || f.localBase != 0 ||
 		len(f.customInstructions) != 0 || len(f.intervalLast) != 0 ||
 		f.depth() != 0 || f.memoryAddr64(0) || f.threadedMemory0 ||
 		len(f.ctrl) == 0 || f.ctrl[len(f.ctrl)-1].kind != cfBlock || f.ctrl[len(f.ctrl)-1].branchArity() != 0 ||
@@ -108,6 +108,10 @@ func (f *fn) emitByteReduceLoop(r *wasm.Reader) {
 	if !ok {
 		return
 	}
+	f.emitProvedByteReduceLoop(r, p)
+}
+
+func (f *fn) emitProvedByteReduceLoop(r *wasm.Reader, p byteReducePlan) {
 	oldPinned := f.pinned
 	oldFPinned := f.fpinned
 	var vectors [5]Reg

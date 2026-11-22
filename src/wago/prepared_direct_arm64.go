@@ -108,9 +108,15 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {
 		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
-		in.endFastInvocation(in.pluginState.Load())
+		in.endFastInvocation(nil)
 		return out, err
 	}
+	return fn.invokeDirectIntFixedSlow(a0, a1, a2, a3)
+}
+
+//go:noinline
+func (fn *WasmFunc) invokeDirectIntFixedSlow(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
 	if !in.tryBeginDirectInvocation() {
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
@@ -308,25 +314,30 @@ func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, err
 		return fn.invokeDirectIntPairSession(a0, a1, a2, a3)
 	}
 	in := fn.in
-	switch fn.paramSlots {
-	case 4:
-		if fn.scalarWideMask&8 == 0 {
-			a3 = uint64(uint32(a3))
-		}
-		fallthrough
-	case 3:
-		if fn.scalarWideMask&4 == 0 {
-			a2 = uint64(uint32(a2))
-		}
-		fallthrough
-	case 2:
-		if fn.scalarWideMask&2 == 0 {
-			a1 = uint64(uint32(a1))
-		}
-		fallthrough
-	case 1:
-		if fn.scalarWideMask&1 == 0 {
-			a0 = uint64(uint32(a0))
+	if fn.scalarWideMask == 0 {
+		// The entry reads only the argument lanes present in its signature.
+		a0, a1, a2, a3 = uint64(uint32(a0)), uint64(uint32(a1)), uint64(uint32(a2)), uint64(uint32(a3))
+	} else {
+		switch fn.paramSlots {
+		case 4:
+			if fn.scalarWideMask&8 == 0 {
+				a3 = uint64(uint32(a3))
+			}
+			fallthrough
+		case 3:
+			if fn.scalarWideMask&4 == 0 {
+				a2 = uint64(uint32(a2))
+			}
+			fallthrough
+		case 2:
+			if fn.scalarWideMask&2 == 0 {
+				a1 = uint64(uint32(a1))
+			}
+			fallthrough
+		case 1:
+			if fn.scalarWideMask&1 == 0 {
+				a0 = uint64(uint32(a0))
+			}
 		}
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)

@@ -102,7 +102,8 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h.localEvents = &tape
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true, false)
+	var scanner byteBodyScanner
+	got, err := scanner.scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,8 @@ func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
 	imported := newFuncHints(0, 0)
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true, false)
+	var scanner byteBodyScanner
+	imported, err = scanner.scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,6 +605,42 @@ func TestBranchHintWeightsIfArmLocalScores(t *testing.T) {
 	}
 	if got, want := likelyElse.localScore[1], uint32(branchHintWeight); got != want {
 		t.Fatalf("likely else local score = %d, want %d", got, want)
+	}
+}
+
+func TestTaskNativeCallsThroughPrivateTable(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(i32, i32))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := currentCodegenPolicy()
+	table := computeImmutableTableHint(m, hints, policy)
+	if !hints[1].flags.has(hintHasNonDirectCall) || !taskModuleCallsStayNative(m, hints, table) {
+		t.Fatal("indirect call through a private table of local functions should stay native")
+	}
+	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable}})
+	if taskModuleCallsStayNative(m, hints, computeImmutableTableHint(m, hints, policy)) {
+		t.Fatal("an exported table can dispatch to another instance")
+	}
+	m.Exports = nil
+	hints[1].markUnsupportedDynamicCall()
+	if taskModuleCallsStayNative(m, hints, table) {
+		t.Fatal("another kind of dynamic call invalidates the proof")
 	}
 }
 

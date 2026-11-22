@@ -57,7 +57,7 @@ func (p *floatMapPlan) spend() bool {
 }
 
 func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
-	if !integerLoadMapEnabled || !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !integerLoadMapEnabled || !f.opt(optDotLoopVector) || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
 	if len(f.intervalLast) != 0 && (!integerMapIntervalsEnabled || !f.intervalControl || f.intervalActive != 0) {
@@ -73,7 +73,7 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			return
 		}
 		if op == 0x28 {
-			f.emitIntegerLoadMapCandidate(source)
+			f.emitFloatMapBody(source, true)
 			return
 		}
 		switch op {
@@ -93,13 +93,4 @@ func (f *fn) emitIntegerLoadMap(source *wasm.Reader) {
 			return
 		}
 	}
-}
-
-// Keep the scoped reset outside the screen's loop. A defer declared inside a
-// Go loop heap-allocates its closure even when that branch immediately returns.
-func (f *fn) emitIntegerLoadMapCandidate(source *wasm.Reader) {
-	previous := f.integerLoadMapProbe
-	f.integerLoadMapProbe = true
-	defer func() { f.integerLoadMapProbe = previous }()
-	f.emitFloatMapBody(source)
 }

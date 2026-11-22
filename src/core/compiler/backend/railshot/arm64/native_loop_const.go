@@ -227,7 +227,7 @@ func matchNativeLoopConst(b []byte, back int, targets []uint64, entries []int, r
 // Lease an otherwise unused native register for exactly one loop. No memory
 // operation, arithmetic result, NZCV producer/consumer or side exit is removed.
 func (f *fn) finalizeNativeLoopConsts(entries ...int) {
-	if !f.opt(optNativeLoopConst) || !f.hasLoop || f.makesCalls || f.moduleEH || f.interruptible || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.opaqueFragments || f.preserveCallerPins || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() {
+	if !f.opt(optNativeLoopConst) || !f.hasLoop || f.makesCalls || f.moduleEH || f.loopInterruptible() || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.opaqueFragments || f.preserveCallerPins || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() {
 		return
 	}
 	n := len(f.a.B) &^ 3

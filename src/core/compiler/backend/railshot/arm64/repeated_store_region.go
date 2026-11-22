@@ -41,7 +41,7 @@ func (f *fn) truncateNativeCode(n int) {
 // Record only native stores emitted directly by an unshared Wasm constant
 // store. The fixed bitset is reused per function and does not retain code.
 func (f *fn) recordRepeatedWasmStores(start, end int) {
-	if f.guardMode || f.threadedMemory0 || f.moduleEH || f.interruptible || len(f.customInstructions) != 0 {
+	if f.guardMode || f.threadedMemory0 || f.moduleEH || f.loopInterruptible() || len(f.customInstructions) != 0 {
 		return
 	}
 	sc := f.scratchState()
@@ -290,7 +290,7 @@ func repeatStoreRegionAt(b []byte, first, second, words int, targets []uint64, e
 func (f *fn) foldRepeatedStoreRegions(b []byte, targets []uint64, entries ...int) {
 	// The repeated blocks selected here commonly arise after many identical
 	// indexed addresses are folded. Avoid another scan for ordinary loops.
-	if !f.opt(optRepeatedStoreRegion) || !f.hasLoop || f.a.DominatedIndexedCandidates < 8 || f.scratchState().repeatedStoreOriginsN < 16 || f.guardMode || f.threadedMemory0 || f.moduleEH || f.interruptible || f.opaqueFragments || profileEnabled || len(f.customInstructions) != 0 || len(b) > 16<<10 {
+	if !f.opt(optRepeatedStoreRegion) || !f.hasLoop || f.a.DominatedIndexedCandidates < 8 || f.scratchState().repeatedStoreOriginsN < 16 || f.guardMode || f.threadedMemory0 || f.moduleEH || f.loopInterruptible() || f.opaqueFragments || profileEnabled || len(f.customInstructions) != 0 || len(b) > 16<<10 {
 		return
 	}
 	for at := 0; at+4 <= len(b); at += 4 {

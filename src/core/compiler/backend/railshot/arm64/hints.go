@@ -115,11 +115,12 @@ type funcHints struct {
 	// The high bits retain sparse loop-constant presence and fail closed for
 	// non-table dynamic/helper calls without growing the compact hint record.
 	callRelocSites   uint16
-	immediateFreeOps uint16 // saturated density plus compact loop/stream pattern flags
+	immediateFreeOps uint16 // saturated density plus compact pattern flags
 }
 
 const (
 	immediateFreeOpCountMask   = uint16(1<<9 - 1)
+	vectorConstHintMask        = uint16(1 << 9)
 	tailTransferHintMask       = uint16(1 << 12)
 	loopI32OneHintMask         = uint16(1 << 13)
 	loopI64OneHintMask         = uint16(1 << 14)
@@ -129,6 +130,10 @@ const (
 
 func (h funcHints) immediateFreeOpCount() uint16 {
 	return h.immediateFreeOps & immediateFreeOpCountMask
+}
+
+func (h funcHints) hasVectorConstCandidates() bool {
+	return h.immediateFreeOps&vectorConstHintMask != 0
 }
 
 func (h funcHints) hasTailTransfer() bool {
@@ -561,13 +566,14 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHin
 	elig := newGlobalEligibilityTracker(nGlobals)
 	var accum shared.GlobalHintAccumulator
 	accum.Reset(nGlobals)
-	h, err := scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
+	var scanner byteBodyScanner
+	h, err := scanner.scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
 	return finishGlobalHints(h, &accum), err
 }
 
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
+func (s *byteBodyScanner) scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts, collectLoopMemoryBases)
+		return s.scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, nil, importedFuncs, globalHints, collectLoopIntConsts, collectLoopMemoryBases)
 	}
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, globalHints), nil
 }
@@ -694,6 +700,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			noteASTPhysicalEvent(&h, in.Kind, depth)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
+			}
+			if in.Kind == wasm.InstrV128Const || in.Kind == wasm.InstrI8x16Shuffle {
+				h.immediateFreeOps |= vectorConstHintMask
 			}
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.flags.set(hintModuleSIMD)
@@ -975,11 +984,12 @@ func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGl
 	elig := newGlobalEligibilityTracker(nGlobals)
 	var accum shared.GlobalHintAccumulator
 	accum.Reset(nGlobals)
-	h, err := scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
+	var scanner byteBodyScanner
+	h, err := scanner.scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, nil, 0, &accum, true, loopMemoryBaseEnabled)
 	return finishGlobalHints(h, &accum), err
 }
 
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
+func (s *byteBodyScanner) scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts, collectLoopMemoryBases bool) (funcHintView, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
@@ -988,7 +998,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts, collectLoopMemoryBases: collectLoopMemoryBases}
+	*s = byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts, collectLoopMemoryBases: collectLoopMemoryBases}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -1580,6 +1590,9 @@ func (s *byteBodyScanner) noteMemoryInstructionHints(op, previous byte, local ui
 	err = s.classifyInstructionInto(op, &imm)
 	if err != nil {
 		return false, err
+	}
+	if imm.Kind == wasm.InstrV128Const || imm.Kind == wasm.InstrI8x16Shuffle {
+		s.h.immediateFreeOps |= vectorConstHintMask
 	}
 	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 		s.h.flags.set(hintHasControlFlow)

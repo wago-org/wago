@@ -22,8 +22,8 @@ func (f *fn) assignPinnedFloatGlobals(hints []shared.GlobalHint, hasCall bool, l
 		return
 	}
 	var candidates [4]gpCand
-	globals := candidates[:0]
-	capacity := min(len(candidates), limit-used)
+	globals := candidates[:min(len(candidates), limit-used)]
+	count := 0
 	for _, hint := range hints {
 		if hint.Score < loopMin || int(hint.Index) < f.m.ImportedGlobalCount() || f.isModuleGlobal(int(hint.Index)) {
 			continue
@@ -36,9 +36,9 @@ func (f *fn) assignPinnedFloatGlobals(hints []shared.GlobalHint, hasCall bool, l
 		if !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
 			continue
 		}
-		globals = insertGPCandidate(globals, gpCand{global: true, idx: hint.Index, score: hint.Score}, capacity)
+		count = insertGPCandidate(globals, count, gpCand{global: true, idx: hint.Index, score: hint.Score})
 	}
-	for i, global := range globals {
+	for i, global := range globals[:count] {
 		reg := pinnedFLocalRegs[used+i]
 		f.globalReg[global.idx] = reg | globalRegFloat
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(reg)

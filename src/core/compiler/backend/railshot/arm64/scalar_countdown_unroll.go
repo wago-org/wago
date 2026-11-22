@@ -103,7 +103,7 @@ func matchScalarUnroll(b []byte, back, n int) (g scalarUnrollLoop, ok bool) {
 // exact iterations per backedge. The final SUBS preserves the original exit
 // counter representation and NZCV. The original zero-entry guard remains.
 func (f *fn) finalizeScalarLoopUnroll(entries ...int) {
-	if !f.opt(optScalarLoopUnroll) || profileEnabled || f.stats != nil && f.stats.RecordSources || f.moduleEH || f.interruptible || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() {
+	if !f.opt(optScalarLoopUnroll) || profileEnabled || f.stats != nil && f.stats.RecordSources || f.moduleEH || f.loopInterruptible() || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() {
 		return
 	}
 	n := len(f.a.B) &^ 3

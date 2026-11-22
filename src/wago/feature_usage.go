@@ -853,7 +853,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for i := 0; i < c.activeDataCount(); i++ {
-		data := c.activeDataAt(i)
+		data, _ := c.activeDataInfoAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
 	if len(c.PassiveData) != 0 {

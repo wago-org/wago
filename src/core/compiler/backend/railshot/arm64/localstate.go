@@ -414,18 +414,18 @@ func (f *fn) packFrameEndSite(site int, conditional bool) uint32 {
 
 func (f *fn) appendEndSite(sites *[]uint32, site uint32) {
 	if *sites == nil {
-		if n := len(f.endsPool); n > 0 {
-			*sites = f.endsPool[n-1][:0]
-			f.endsPool[n-1] = nil
-			f.endsPool = f.endsPool[:n-1]
+		if n := len(f.scratchState().endsPool); n > 0 {
+			*sites = f.scratchState().endsPool[n-1][:0]
+			f.scratchState().endsPool[n-1] = nil
+			f.scratchState().endsPool = f.scratchState().endsPool[:n-1]
 		}
 	}
 	*sites = append(*sites, site)
 }
 
 func (f *fn) freeEndsBuf(b []uint32) {
-	if capacity := cap(b); capacity > 0 && capacity <= maxRetainedEndsBufSites && len(f.endsPool) < maxRetainedEndsBufs {
-		f.endsPool = append(f.endsPool, b[:0])
+	if capacity := cap(b); capacity > 0 && capacity <= maxRetainedEndsBufSites && len(f.scratchState().endsPool) < maxRetainedEndsBufs {
+		f.scratchState().endsPool = append(f.scratchState().endsPool, b[:0])
 	}
 }
 

@@ -5,15 +5,13 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin || windows) && arm64 && !tinygo
+//go:build arm64 && (linux || darwin || (windows && !tinygo))
 
 package runtime
 
 import (
 	"encoding/binary"
 	"fmt"
-	"reflect"
-	goruntime "runtime"
 
 	"github.com/wago-org/wago/internal/runtimebridge"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -76,65 +74,13 @@ func scalarLeafInstruction(w uint32, defined *uint32) bool {
 	return write(dst)
 }
 
-func scalarLeafBody(fn any, params uint32) []byte {
-	if !scalarGoABI(goruntime.Version()) {
-		return nil
-	}
-	if params < 1 || params > 2 {
-		return nil
-	}
-	value := reflect.ValueOf(fn)
-	if value.Kind() != reflect.Func || value.IsNil() {
-		return nil
-	}
-	typ := value.Type()
-	if typ.IsVariadic() || typ.NumIn() != int(params) || typ.NumOut() != 1 || typ.Out(0).Kind() != reflect.Int32 {
-		return nil
-	}
-	for i := 0; i < typ.NumIn(); i++ {
-		if typ.In(i).Kind() != reflect.Int32 {
-			return nil
-		}
-	}
-	return scalarLeafBodyAtPC(value.Pointer(), params)
-}
-
-// The caller proves the initial register inputs. Every copied instruction is
-// still checked independently; no stack, memory, call or branch is accepted.
-func scalarLeafBodyAtPC(pc uintptr, params uint32) []byte {
-	f := goruntime.FuncForPC(pc)
-	if f == nil || f.Entry() != pc {
-		return nil
-	}
-	defined := uint32(1<<params) - 1
-	body := make([]byte, 0, 128)
-	for off := uintptr(0); off < 128; off += 4 {
-		current := goruntime.FuncForPC(pc + off)
-		if current == nil || current.Entry() != pc {
-			return nil
-		}
-		w := *(*uint32)(offHeapPointer(pc + off))
-		if w == 0xd65f03c0 { // RET LR, copied body leaves the native caller LR intact
-			if defined&1 == 0 {
-				return nil
-			}
-			return body
-		}
-		if !scalarLeafInstruction(w, &defined) {
-			return nil
-		}
-		body = binary.LittleEndian.AppendUint32(body, w)
-	}
-	return nil
-}
-
 // RegisterNativeScalarLeaf lowers a proven ordinary Go i32 leaf into a native
 // host trampoline. It copies arithmetic without calling Go code on a foreign
 // stack. The caller retains the ordinary Go binding as fallback and must use
 // syscall scheduling for this frame: a native leaf is not a Go safe point.
 // UnregisterHostCtrlFrame releases this frame's code reference after quiescence.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
-	if !access.Granted() || len(ctrl) != ctrlFrameSize {
+	if !access.Granted() || len(ctrl) != ctrlFrameSize || !scalarLeafCanRegister(fn, params) {
 		return false, nil
 	}
 	return registerSharedNativeScalarLeaf(ctrl, fn, params, buildNativeScalarLeaf)

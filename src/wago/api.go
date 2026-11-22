@@ -1084,7 +1084,19 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	decodeFeatures := wasm.ValidationFeatures{MultiMemory: features.MultiMemory}
-	m, deferredSyntax, err := decodeCompilerSource(wasmBytes, decodeFeatures)
+	source := wasmBytes
+	var staged *wruntime.Arena
+	if compilerInputStaging && len(wasmBytes) >= 128<<10 && len(wasmBytes) <= 1<<20 &&
+		cfg.codeProfile == nil && !codegen.SourceChecks && len(instructions) == 0 {
+		staged, _ = wruntime.NewArena(len(wasmBytes))
+		if staged != nil {
+			defer staged.Close()
+			source = staged.AllocNoZero(len(wasmBytes))
+			source = source[:len(source):len(source)]
+			copy(source, wasmBytes)
+		}
+	}
+	m, deferredSyntax, err := decodeCompilerSource(source, decodeFeatures)
 	if err != nil {
 		return nil, wrapContextError("decode", err)
 	}
@@ -1494,6 +1506,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		}
 	}
 	compileOptions := railshotCompileOptions{BitCountFeatures: bitCountHostFeaturesSupported(), Workers: workers, DeferCodeMapping: true, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers || ownedExceptionReferences || foreignFunctionSubtypeHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats, SourceMaps: codeProfileEnabled && cfg.codeProfile.IncludeSources(), UnwindMaps: codeProfileEnabled && cfg.codeProfile.IncludeUnwind(), Profile: codeProfileEnabled && cfg.codeProfile != nil}
+	setCapturedOptimizationSelection(&compileOptions, cfg)
 	if optionView != nil {
 		compileOptions.Codegen.Module.GCBodyViews = optionView.metadata()
 	}
@@ -1717,10 +1730,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, err
 	}
 	compiled := c
-	if goruntime.GOARCH == "amd64" && !wruntime.NativeCancellationSchedulerAvailable() &&
-		c.NumImports == 0 && cm.CodeImage == nil {
+	if (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && c.NumImports == 0 && cm.CodeImage == nil {
 		// There is no non-Go resource to reclaim until the code is mapped.
-		// TinyGo may allocate a scheduler stack on the first registration.
 		c.ensureCompileIndexes().pendingFinalizer = c
 	} else {
 		installCompilerCompiledFinalizer(c)
@@ -1928,7 +1939,31 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := installRV64SourceExecutionContract(compiled); err != nil {
 		return nil, joinPrimary(fmt.Errorf("compile: %w", err), compiled.Close())
 	}
-	return publishCompilerCompiled(compiled)
+	published, err := publishCompilerCompiled(compiled)
+	if err != nil || staged == nil {
+		return published, err
+	}
+	// The compiler snapshot already owns its copy. Rebase the compatibility
+	// view to the caller's original source before closing the temporary mapping.
+	stageBase := uintptr(unsafe.Pointer(unsafe.SliceData(source)))
+	for i := range published.Data {
+		data := &published.Data[i]
+		if data.Bytes == nil {
+			continue
+		}
+		if cap(data.Bytes) == 0 {
+			// An empty slice at the staged buffer's end need not carry
+			// its original address. Keep the caller's original capacity.
+			data.Bytes = wasmBytes[len(source):len(source)]
+			continue
+		}
+		offset := uintptr(unsafe.Pointer(unsafe.SliceData(data.Bytes))) - stageBase
+		if offset > uintptr(len(source)) || uintptr(len(data.Bytes)) > uintptr(len(source))-offset {
+			return nil, joinPrimary(errors.New("compile: invalid staged data range"), published.Close())
+		}
+		data.Bytes = wasmBytes[int(offset) : int(offset)+len(data.Bytes)]
+	}
+	return published, nil
 }
 
 func guardedMemoryGrowFunctions(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) []bool {
@@ -3243,7 +3278,7 @@ func (c *Compiled) validateMetadata() error {
 		}
 	}
 	for seg := 0; seg < c.activeDataCount(); seg++ {
-		d := c.activeDataAt(seg)
+		d, _ := c.activeDataInfoAt(seg)
 		if count := c.memoryCount(); d.MemoryIndex != 0 || count != 0 {
 			if uint64(d.MemoryIndex) >= uint64(count) {
 				return fmt.Errorf("compiled metadata invalid: active data %d memory index %d out of range", seg, d.MemoryIndex)

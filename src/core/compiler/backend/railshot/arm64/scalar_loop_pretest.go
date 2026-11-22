@@ -19,7 +19,7 @@ import (
 // Every copied edge is registered with that same owner before its end is
 // resolved; no already-patched or unknown PC-relative instruction is copied.
 func (f *fn) unrollScalarPretest(fr *ctrlFrame, after ...*wasm.Reader) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
 		return false
 	}
 	budget := f.newScalarLoopMetadataBudget()

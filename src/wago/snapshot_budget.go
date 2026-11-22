@@ -130,8 +130,8 @@ func snapshotMetadataBytes(c *Compiled, limit uint64) (uint64, error) {
 		}
 	}
 	for i := 0; i < c.activeDataCount(); i++ {
-		data := c.activeDataAt(i)
-		snapshotSlice(&b, data.Bytes)
+		data, payloadBytes := c.activeDataInfoAt(i)
+		b.add(payloadBytes, 1)
 		snapshotSlice(&b, data.Offset.Expr)
 		if b.err != nil {
 			return 0, b.err

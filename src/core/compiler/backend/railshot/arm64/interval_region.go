@@ -143,11 +143,11 @@ func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool
 		f.intervalEvents, f.intervalHead = nil, nil
 		return
 	}
-	events := f.tmpIntervalEvents[:0]
+	events := f.scratchState().tmpIntervalEvents[:0]
 	if cap(events) < reserve {
 		events = make([]intervalLocalEvent, 0, reserve)
 	}
-	index := resizeIntervalIndexScratch(f.tmpIntervalIndex, 2*(f.nLocals+1))
+	index := resizeIntervalIndexScratch(f.scratchState().tmpIntervalIndex, 2*(f.nLocals+1))
 	head, tail := index[:f.nLocals+1], index[f.nLocals+1:]
 	appendEvent := func(x int, pos uint32) {
 		i := uint32(len(events))
@@ -168,15 +168,15 @@ func (f *fn) prepareIntervalEvents(body []byte, reserve int, callBoundaries bool
 	if reusePins {
 		const maxControlDepth = 256
 		n := 2*f.nLocals + maxControlDepth
-		if cap(f.tmpWideTraffic) < n {
-			f.tmpWideTraffic = make([]uint32, n)
+		if cap(f.scratchState().tmpWideTraffic) < n {
+			f.scratchState().tmpWideTraffic = make([]uint32, n)
 		} else {
-			f.tmpWideTraffic = f.tmpWideTraffic[:n]
-			clear(f.tmpWideTraffic)
+			f.scratchState().tmpWideTraffic = f.scratchState().tmpWideTraffic[:n]
+			clear(f.scratchState().tmpWideTraffic)
 		}
-		reads = f.tmpWideTraffic[:f.nLocals]
-		writes = f.tmpWideTraffic[f.nLocals : 2*f.nLocals]
-		loopAtDepth = f.tmpWideTraffic[2*f.nLocals:]
+		reads = f.scratchState().tmpWideTraffic[:f.nLocals]
+		writes = f.scratchState().tmpWideTraffic[f.nLocals : 2*f.nLocals]
+		loopAtDepth = f.scratchState().tmpWideTraffic[2*f.nLocals:]
 	}
 	controlDepth, loopDepth, traffic := 0, 0, uint32(1)
 	r := wasm.ReaderFrom(body)
@@ -292,7 +292,7 @@ scan:
 		}
 		f.wideReuseScore = reads
 	}
-	f.tmpIntervalEvents, f.tmpIntervalIndex = events, index
+	f.scratchState().tmpIntervalEvents, f.scratchState().tmpIntervalIndex = events, index
 	if len(events) != 0 {
 		f.intervalEvents, f.intervalHead = events, head
 	}

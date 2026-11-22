@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	goruntime "runtime"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -107,8 +106,17 @@ func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
 // DataInit metadata remains unchanged and independently mutable. Common constant
 // offsets need neither a global index nor an expression slice in every record.
 type compactActiveData struct {
-	records []compactDataRecord
-	bytes   []byte
+	records           []compactDataRecord
+	bytes             []byte
+	arena             *coreruntime.Arena
+	nativePayloadSize int
+}
+
+func (d *compactActiveData) payloadSize() int {
+	if d.nativePayloadSize != 0 {
+		return d.nativePayloadSize
+	}
+	return len(d.bytes)
 }
 
 type compactDataRecord struct {
@@ -131,10 +139,24 @@ func (c *Compiled) validateCompactData() error {
 		return nil
 	}
 	for _, record := range c.compactData.records {
-		if record.end < record.start || uint64(record.end) > uint64(len(c.compactData.bytes)) {
+		if record.end < record.start || uint64(record.end) > uint64(c.compactData.payloadSize()) {
 			return fmt.Errorf("compiled metadata invalid: compact data payload range")
 		}
 	}
+	return nil
+}
+
+// closeNativeActiveData runs under the shared code owner lock after the last
+// instance reference, or on a snapshot that failed before publication.
+func (c *Compiled) closeNativeActiveData() error {
+	if c.compactData == nil || c.compactData.arena == nil {
+		return nil
+	}
+	if err := c.compactData.arena.Close(); err != nil {
+		return err
+	}
+	c.compactData.arena = nil
+	c.compactData.bytes = nil
 	return nil
 }
 
@@ -143,6 +165,17 @@ func (c *Compiled) activeDataCount() int {
 		return len(c.compactData.records)
 	}
 	return len(c.Data)
+}
+
+// activeDataInfoAt reads bounds and offsets before an instance has acquired
+// a code reference. It never borrows the packed payload itself.
+func (c *Compiled) activeDataInfoAt(index int) (DataInit, int) {
+	if c.compactData == nil {
+		d := c.Data[index]
+		return d, len(d.Bytes)
+	}
+	d := c.compactData.records[index]
+	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}}, int(d.end - d.start)
 }
 
 func (c *Compiled) activeDataAt(index int) DataInit {
@@ -886,15 +919,11 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 // offset forms and nil-vs-empty metadata retain the ordinary exact deep copy.
 func compactActiveDataSize(c *Compiled) (int, bool) {
 	if c.compactData != nil {
-		return len(c.compactData.bytes), true
+		return c.compactData.payloadSize(), true
 	}
-	// TinyGo's collector follows each interior slice pointer back to its
-	// allocation. Use offsets for large payloads at a lower segment count.
-	minSegments := minCompactActiveData
-	if goruntime.Compiler == "tinygo" {
-		minSegments = minLargeActiveDataSegments
-	}
-	if len(c.Data) < minSegments {
+	// A packed directory also avoids one allocation per segment for large
+	// payloads with a moderate number of constant-offset segments.
+	if len(c.Data) < minLargeActiveDataSegments {
 		return 0, false
 	}
 	var size uint64
@@ -907,14 +936,29 @@ func compactActiveDataSize(c *Compiled) (int, bool) {
 			return 0, false
 		}
 	}
-	if goruntime.Compiler == "tinygo" && len(c.Data) < minCompactActiveData && size < minLargeActiveDataBytes {
+	if len(c.Data) < minCompactActiveData && size < minLargeActiveDataBytes {
 		return 0, false
 	}
 	return int(size), true
 }
 
-func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int) {
-	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount()), bytes: make([]byte, payloadBytes)}
+func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int, native bool) {
+	records := make([]compactDataRecord, c.activeDataCount())
+	var data []byte
+	var arena *coreruntime.Arena
+	if native && payloadBytes >= minLargeActiveDataBytes {
+		if a, err := coreruntime.NewArena(payloadBytes); err == nil {
+			arena = a
+			data = a.AllocNoZero(payloadBytes)
+		}
+	}
+	if data == nil {
+		data = make([]byte, payloadBytes)
+	}
+	*out = compactActiveData{records: records, bytes: data, arena: arena}
+	if arena != nil {
+		out.nativePayloadSize = payloadBytes
+	}
 	next := 0
 	for i := range out.records {
 		d := c.activeDataAt(i)

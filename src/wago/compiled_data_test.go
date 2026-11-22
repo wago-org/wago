@@ -3,7 +3,6 @@ package wago
 import (
 	"bytes"
 	"reflect"
-	"runtime"
 	"testing"
 	"unsafe"
 
@@ -165,8 +164,8 @@ func TestCompactExecutionDataLargePayload(t *testing.T) {
 	c.Data[0].Bytes = make([]byte, minLargeActiveDataBytes-len(c.Data)+1)
 	c.Data[0].Bytes[0] = 42
 	view := cloneCompiledExecutionMetadata(c)
-	if got, want := view.compactData != nil, runtime.Compiler == "tinygo"; got != want {
-		t.Fatalf("compact large payload = %t, want %t", got, want)
+	if view.compactData == nil {
+		t.Fatal("large payload did not use compact data")
 	}
 	c.Data[0].Bytes[0] = 0
 	if view.activeDataAt(0).Bytes[0] != 42 {

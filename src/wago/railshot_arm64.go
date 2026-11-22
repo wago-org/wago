@@ -74,3 +74,9 @@ func railshotHostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int
 func railshotHostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
 	return railshot.HostIndirectOwnedSyncThunk(importIdx, paramSlots, resultSlots)
 }
+
+func setCapturedOptimizationSelection(opts *railshotCompileOptions, cfg *RuntimeConfig) {
+	if cfg.trustedOptimizations && len(cfg.optimizationDeltas) == 0 {
+		opts.Selection = cfg.defaultSelection
+	}
+}

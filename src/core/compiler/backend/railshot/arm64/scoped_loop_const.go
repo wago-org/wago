@@ -43,7 +43,7 @@ type scopedLoopConstUses struct {
 
 func (f *fn) scopedLoopConstUses() (scopedLoopConstUses, bool) {
 	h := &f.scopedConstHints
-	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.interruptible || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || !wideScopedLoopConstsEnabled && f.m != nil && len(f.m.Tables) != 0 {
+	if h.loopIntConstCount == 0 || !f.opt(optLoopIntConst) || f.loopInterruptible() || f.moduleEH || len(f.customInstructions) != 0 || h.flags.has(hintMutatesTable) || !wideScopedLoopConstsEnabled && f.m != nil && len(f.m.Tables) != 0 {
 		return scopedLoopConstUses{}, false
 	}
 	return scopedLoopConstUses{hints: h}, true

@@ -276,17 +276,13 @@ func (f *fn) prepareEntryTrapPins() {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	var savedGPWrites regallocWriteMask
-	if regallocCheckEnabled {
-		savedGPWrites = f.checkTerminalWrites()
-	}
-	before := f.a.Len()
-	defer func() {
+	if regallocCheckEnabled || diagnosticsEnabled && f.stats != nil {
+		var savedGPWrites regallocWriteMask
 		if regallocCheckEnabled {
-			f.checkRestoreWrites(savedGPWrites)
+			savedGPWrites = f.checkTerminalWrites()
 		}
-		f.stats.addGCTrapStubBytes(f.a.Len() - before)
-	}()
+		defer f.finishTrapStubs(savedGPWrites, f.a.Len())
+	}
 	f.prepareEntryTrapPins()
 	compact := f.policy.CompactNative
 	groups := 0
@@ -393,6 +389,13 @@ func (f *fn) emitTrapStubs() {
 	if sharedTails != 0 {
 		f.stats.peepN("cold-trap-unwind-share", sharedTails-1)
 	}
+}
+
+func (f *fn) finishTrapStubs(savedGPWrites regallocWriteMask, before int) {
+	if regallocCheckEnabled {
+		f.checkRestoreWrites(savedGPWrites)
+	}
+	f.stats.addGCTrapStubBytes(f.a.Len() - before)
 }
 
 func (f *fn) emitSharedTrapStubs() {
@@ -1399,8 +1402,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 // still consumes every instruction exactly once. This captures accumulator +
 // address shapes without retaining hidden state across arbitrary expressions.
 func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint64, size int, typ machineType) bool {
-	save := r.Offset()
-	defer func() { _ = r.JumpTo(save) }()
+	scan := *r
 	wantOp := byte(0x28) // i32.load
 	if size == 8 && typ == mtI64 {
 		wantOp = 0x29 // i64.load
@@ -1409,12 +1411,12 @@ func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint64, siz
 	}
 	lastLocal := -1
 	for gets := 0; gets <= 3; gets++ {
-		op, err := r.Byte()
+		op, err := scan.Byte()
 		if err != nil {
 			return false
 		}
 		if op == 0x20 {
-			x, err := r.U32()
+			x, err := scan.U32()
 			if err != nil {
 				return false
 			}
@@ -1424,7 +1426,7 @@ func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint64, siz
 		if op != wantOp || lastLocal != addrLocal {
 			return false
 		}
-		memoryIndex, loadOff, err := f.readMemArg(r)
+		memoryIndex, loadOff, err := f.readMemArg(&scan)
 		return err == nil && memoryIndex == 0 && loadOff == off
 	}
 	return false

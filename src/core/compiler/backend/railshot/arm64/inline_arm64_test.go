@@ -111,7 +111,7 @@ func TestInlineBasePoolRetentionIsBoundedArm64(t *testing.T) {
 	if got := len(f.inlineBase); got != len(callees) {
 		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
 	}
-	if got := len(f.inlineBasePool); got != 1 {
+	if got := len(f.scratchState().inlineBasePool); got != 1 {
 		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
 	}
 }

@@ -68,8 +68,8 @@ func (f *fn) emitTailIntegerRegisterArgs(ft *wasm.CompType, localHomes bool, jum
 		jump()
 		return
 	}
-	moves := f.tmpMoves[:0]
-	deferred := f.tmpDeferred[:0]
+	moves := f.scratchState().tmpMoves[:0]
+	deferred := f.scratchState().tmpDeferred[:0]
 	for i, root := range args {
 		capture := root.isDeferred()
 		if root.elemKind() == ekValue {
@@ -118,16 +118,12 @@ func (f *fn) emitTailIntegerRegisterArgs(ft *wasm.CompType, localHomes bool, jum
 		checkMoves = f.checkBeginRegMoves(moves, false)
 		defer checkMoves()
 	}
-	swaps := resolveRegMovesWindow(moves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
-		func(x, y Reg) { f.a.MovReg64(X16, x); f.a.MovReg64(x, y); f.a.MovReg64(y, X16) },
-		func(a, b, c Reg) { f.a.MovReg64(X16, a); f.a.MovReg64(a, b); f.a.MovReg64(b, c); f.a.MovReg64(c, X16) },
-	)
+	swaps := f.emitGPParallelMoves(moves)
 	if regallocCheckEnabled {
 		checkMoves()
 	}
 	f.stats.peepN("machine-swap-chain", swaps)
-	f.tmpMoves = moves[:0]
+	f.scratchState().tmpMoves = moves[:0]
 	for _, a := range deferred {
 		switch a.root.st.kind {
 		case stConst:
@@ -138,7 +134,7 @@ func (f *fn) emitTailIntegerRegisterArgs(ft *wasm.CompType, localHomes bool, jum
 			f.ld64(a.target, SP, f.localOff(a.root.st.index()))
 		}
 	}
-	f.tmpDeferred = deferred[:0]
+	f.scratchState().tmpDeferred = deferred[:0]
 	jump()
 }
 

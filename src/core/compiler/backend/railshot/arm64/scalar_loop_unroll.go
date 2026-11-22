@@ -78,7 +78,7 @@ func renameScalarLoopReads(word uint32, from, to Reg) uint32 {
 // pinned induction variable advances once per group; intermediate indexes are
 // computed from its original value, breaking the serial increment chain.
 func (f *fn) unrollScalarLatch(fr *ctrlFrame, cc Cond) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources || fr.paramN != 0 || uint8(cc) >= 14 {
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources || fr.paramN != 0 || uint8(cc) >= 14 {
 		return false
 	}
 	start, end := fr.controlSite, f.a.Len()

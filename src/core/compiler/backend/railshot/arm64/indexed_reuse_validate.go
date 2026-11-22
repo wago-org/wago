@@ -53,6 +53,12 @@ func (f *fn) validateIndexedReuse(entries ...int) error {
 		}
 	}
 	sc.reuseTargets = targets
+	if len(sc.reuseData) == 0 {
+		if !f.a.ValidateIndexedReuse(targets, nil) {
+			return errIndexedReuseTarget
+		}
+		return nil
+	}
 	next := 0
 	opaque := func(pc int) bool {
 		for next < len(sc.reuseData) && pc >= sc.reuseData[next].end {

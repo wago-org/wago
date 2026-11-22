@@ -16,7 +16,7 @@ import "encoding/binary"
 // Unlike unrolling, this neither copies nor moves any body instruction, so
 // already-patched inner control and memory operations keep their exact sites.
 func (f *fn) tryPretestLoopLatch(fr *ctrlFrame) bool {
-	if !f.opt(optScalarLoopUnroll) || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.height != 0 || f.depth() != 0 || f.makesCalls || f.usesCalls || f.lazyZero || f.unreachable || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.intervalControl || f.selectGroupEnd != 0 || f.streamingReduction || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
+	if !f.opt(optScalarLoopUnroll) || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.height != 0 || f.depth() != 0 || f.makesCalls || f.usesCalls || f.lazyZero || f.unreachable || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.intervalControl || f.selectGroupEnd != 0 || f.streamingReduction || f.policy.CompactNative || f.a.ReserveBranch19 || f.stats != nil && f.stats.RecordSources {
 		return false
 	}
 	start := fr.controlSite

@@ -18,7 +18,7 @@ var countedLoopBodyAlignEnabled = true
 // resident integer pin with no reconciliation code before the zero test.
 func (f *fn) alignCountedLoopBody(r *wasm.Reader, loop *ctrlFrame) bool {
 	if !f.opt(optCountedLoopBodyAlign) || !f.opt(optCountedLoopLatch) || !f.opt(optZeroBranch) ||
-		f.interruptible || f.inlineDepth != 0 || f.nLocals > pollFreeLoopPhaseMaxLocals || f.depth() != 0 ||
+		f.loopInterruptible() || f.inlineDepth != 0 || f.nLocals > pollFreeLoopPhaseMaxLocals || f.depth() != 0 ||
 		loop.paramN != 0 || loop.resultN != 0 || len(f.ctrl) == 0 {
 		return false
 	}

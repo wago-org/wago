@@ -20,7 +20,7 @@ import "encoding/binary"
 // to their original physical roles. Each intermediate zero test remains, and
 // odd exits restore the canonical local homes off the hot path.
 func (f *fn) unrollRemainderLatch(fr *ctrlFrame, condition Reg) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil ||
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil ||
 		len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.opaqueFragments ||
 		f.stats != nil && f.stats.RecordSources || fr.paramN != 0 {
 		return false

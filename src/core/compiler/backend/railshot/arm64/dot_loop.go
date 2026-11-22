@@ -24,6 +24,54 @@ type dotNode struct {
 	a, b int
 	v    uint32
 }
+
+// Both symbolic scans complete before another probe can use the worker.
+// Nodes, stack slots, and local values are written before they are read.
+type symbolicLoopScratch struct {
+	nodes       [128]dotNode
+	third       [128]int
+	stack       [24]int
+	values      [32]int
+	written     [32]bool
+	initialRead [32]bool
+	n, depth    int
+}
+
+func (f *fn) resetSymbolicLoop() *symbolicLoopScratch {
+	sc := f.scratchState()
+	if sc.symbolicLoop == nil {
+		sc.symbolicLoop = new(symbolicLoopScratch)
+	}
+	work := sc.symbolicLoop
+	work.n, work.depth = f.nLocals, 0
+	clear(work.written[:])
+	clear(work.initialRead[:])
+	for i := 0; i < work.n; i++ {
+		work.nodes[i] = dotNode{op: 0x20, a: i}
+		work.values[i] = i
+	}
+	return work
+}
+
+func (w *symbolicLoopScratch) push(node int) bool {
+	if w.depth == len(w.stack) {
+		return false
+	}
+	w.stack[w.depth] = node
+	w.depth++
+	return true
+}
+
+func (w *symbolicLoopScratch) node(value dotNode) int {
+	i := w.n
+	if i == len(w.nodes) {
+		return -1
+	}
+	w.nodes[i] = value
+	w.n++
+	return i
+}
+
 type dotAlias struct {
 	local, base int
 	offset      uint32
@@ -46,31 +94,8 @@ func (f *fn) inspectDotLoop(r *wasm.Reader) (plan dotLoopPlan, ok bool) {
 	}
 	scan := *r
 	start := scan.Offset()
-	var nodes [128]dotNode
-	var stack [24]int
-	var values [32]int
-	var written [32]bool
-	n, depth := f.nLocals, 0
-	for i := 0; i < n; i++ {
-		nodes[i] = dotNode{op: 0x20, a: i}
-		values[i] = i
-	}
-	push := func(x int) bool {
-		if depth == len(stack) {
-			return false
-		}
-		stack[depth] = x
-		depth++
-		return true
-	}
-	makeNode := func(x dotNode) int {
-		if n == len(nodes) {
-			return -1
-		}
-		nodes[n] = x
-		n++
-		return n - 1
-	}
+	work := f.resetSymbolicLoop()
+	nodes, stack, values, written := &work.nodes, &work.stack, &work.values, &work.written
 	for scan.Offset()-start < 384 {
 		op, err := scan.Byte()
 		if err != nil {
@@ -83,50 +108,50 @@ func (f *fn) inspectDotLoop(r *wasm.Reader) (plan dotLoopPlan, ok bool) {
 				return plan, false
 			}
 			if op == 0x20 {
-				if !push(values[x]) {
+				if !work.push(values[x]) {
 					return plan, false
 				}
 				continue
 			}
-			if depth == 0 {
+			if work.depth == 0 {
 				return plan, false
 			}
-			values[x] = stack[depth-1]
+			values[x] = stack[work.depth-1]
 			written[x] = true
 			if op == 0x21 {
-				depth--
+				work.depth--
 			}
 		case 0x41:
 			v, err := scan.I32()
 			if err != nil {
 				return plan, false
 			}
-			x := makeNode(dotNode{op: op, v: uint32(v)})
-			if x < 0 || !push(x) {
+			x := work.node(dotNode{op: op, v: uint32(v)})
+			if x < 0 || !work.push(x) {
 				return plan, false
 			}
 		case 0x6a, 0x6b, 0x6c, 0x47:
-			if depth < 2 {
+			if work.depth < 2 {
 				return plan, false
 			}
-			depth -= 2
-			x := makeNode(dotNode{op: op, a: stack[depth], b: stack[depth+1]})
-			if x < 0 || !push(x) {
+			work.depth -= 2
+			x := work.node(dotNode{op: op, a: stack[work.depth], b: stack[work.depth+1]})
+			if x < 0 || !work.push(x) {
 				return plan, false
 			}
 		case 0x28:
 			mem, off, err := f.readMemArg(&scan)
-			if err != nil || mem != 0 || off > 1<<20 || depth == 0 {
+			if err != nil || mem != 0 || off > 1<<20 || work.depth == 0 {
 				return plan, false
 			}
-			x := makeNode(dotNode{op: op, a: stack[depth-1], v: uint32(off)})
+			x := work.node(dotNode{op: op, a: stack[work.depth-1], v: uint32(off)})
 			if x < 0 {
 				return plan, false
 			}
-			stack[depth-1] = x
+			stack[work.depth-1] = x
 		case 0x0d:
 			label, err := scan.U32()
-			if err != nil || label != 0 || depth != 1 {
+			if err != nil || label != 0 || work.depth != 1 {
 				return plan, false
 			}
 			end, err := scan.Byte()
@@ -156,7 +181,7 @@ func (f *fn) inspectDotLoop(r *wasm.Reader) (plan dotLoopPlan, ok bool) {
 			if !written[plan.counter] || values[plan.counter] != increment || (plan.step != 4 && plan.step != 8 && plan.step != 16) {
 				return plan, false
 			}
-			return proveDotLoop(nodes[:n], values[:f.nLocals], written[:f.nLocals], plan)
+			return proveDotLoop(nodes[:work.n], values[:f.nLocals], written[:f.nLocals], plan)
 		default:
 			return plan, false
 		}
@@ -332,7 +357,7 @@ type dotLoopState struct {
 // Other final locals use canonical slots. Both paths therefore satisfy the
 // scalar lowering's final local-storage state, with value/range facts cleared.
 func (f *fn) emitDotLoop(r *wasm.Reader) {
-	if !f.opt(optDotLoopVector) || f.dotLoop != nil || f.usesCalls || f.interruptible || f.moduleEH ||
+	if !f.opt(optDotLoopVector) || f.dotLoop != nil || f.usesCalls || f.loopInterruptible() || f.moduleEH ||
 		f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 ||
 		f.depth() != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return

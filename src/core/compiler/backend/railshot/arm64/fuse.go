@@ -374,7 +374,7 @@ func (f *fn) brIfSimpleEqz(r *wasm.Reader, top *elem, labelIdx uint32) (bool, er
 	}
 	loopHeader := false
 	counter := -1
-	if f.opt(optCountedLoopLatch) && !f.interruptible && (!f.usesCalls || f.inCallFreeLoop()) && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+	if f.opt(optCountedLoopLatch) && !f.loopInterruptible() && (!f.usesCalls || f.inCallFreeLoop()) && labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		counter, loopHeader = localAddressKey(f.s.arg0(top))
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
@@ -545,13 +545,13 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setLocal int) error {
 	}
 	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag
 	// window tight) by relocating the edge bytes up one word.
-	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	f.scratchState().edgeScratch = append(f.scratchState().edgeScratch[:0], f.a.B[mark:]...)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rewindProfileEmission(mark)
 	}
 	f.truncateNativeCode(mark)
 	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
-	f.a.B = append(f.a.B, f.edgeScratch...)
+	f.a.B = append(f.a.B, f.scratchState().edgeScratch...)
 	f.branchJump(fr)
 	f.patchBranch19(over, f.a.Len())
 	return nil

@@ -313,13 +313,17 @@ func proveAbsReduce(nodes []dotNode, values []int, written, initialRead []bool, 
 }
 
 func (f *fn) emitAbsReduceLoop(source *wasm.Reader) {
-	if !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !f.opt(optDotLoopVector) || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
 	p, ok := f.inspectAbsReduceLoop(source)
 	if !ok {
 		return
 	}
+	f.emitProvedAbsReduceLoop(source, p)
+}
+
+func (f *fn) emitProvedAbsReduceLoop(source *wasm.Reader, p absReducePlan) {
 	oldPinned, oldFPinned := f.pinned, f.fpinned
 	var regs [6]Reg
 	nr := 0

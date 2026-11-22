@@ -776,8 +776,13 @@ func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
 		indexes.pendingFinalizer = published
 	}
 	*c = Compiled{}
-	if _, err := published.freezeExecution(0); err != nil {
+	snapshot, err := published.freezeExecutionWithNativeData(0, goruntime.GOARCH == "arm64")
+	if err != nil {
 		return nil, joinPrimary(err, published.Close())
+	}
+	if snapshot.compactData != nil && snapshot.compactData.arena != nil && indexes != nil && indexes.pendingFinalizer != nil {
+		indexes.pendingFinalizer = nil
+		goruntime.SetFinalizer(published, finalizeCompiled)
 	}
 	return published, nil
 }
@@ -837,6 +842,7 @@ func (c *Compiled) releaseCode() {
 		_ = c.releaseHostThunksLocked()
 		_ = c.releaseFailedMappingsLocked()
 		_ = railshotRetryNativeTail(c)
+		_ = c.executionView().closeNativeActiveData()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -1009,7 +1015,7 @@ func (c *Compiled) Close() error {
 			cc.mem = nil
 		}
 	}
-	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c), c.executionView().closeNativeActiveData())
 }
 
 func (c *Compiled) hasOpaqueExternFrames() bool {

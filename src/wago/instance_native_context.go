@@ -604,7 +604,8 @@ func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, active
 
 type preparedEntryMode uint8
 
-const preparedPrivateGlobalsSupported = goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64" && goruntime.Compiler == "tinygo"
+const preparedPrivateGlobalsSupported = goruntime.GOOS == "linux" && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") ||
+	goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"
 
 const (
 	preparedEntryGeneral preparedEntryMode = iota
