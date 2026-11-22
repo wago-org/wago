@@ -336,12 +336,18 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 
 func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier wasm.ModuleInstructionClassifier) error {
 	f.bodyBytes = len(body)
-	r := wasm.NewReader(body)
+	r := wasm.ReaderFrom(body)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
 			return err
+		}
+		if kind, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+			f.instructions++
+			f.hasControlFlow = f.hasControlFlow || shared.InstructionNeedsInlineBoundary(op, kind)
+			f.moduleEH = f.moduleEH || shared.InstructionNeedsEHFrame(op, kind)
+			continue
 		}
 		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			f.hasControlFlow = true
@@ -353,7 +359,7 @@ func scanInlineFactsBytesWithClassifier(body []byte, f *inlineFacts, classifier 
 		case 0x23, 0x24: // global.get / global.set
 			f.touchesGlobal = true
 		}
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
+		if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
 			return err
 		}
 		if op != 0x0b {
@@ -625,14 +631,9 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 	return t != nil && t.omitStandalone
 }
 
-// buildInlineTargets returns the straight-line leaf inline candidates keyed by
-// GLOBAL function index, or an empty table when inlining is disabled. Candidacy
-// here is a property of the callee alone (the call-site count only mattered for the report),
-// so a call to one of these can be spliced wherever it appears.
-// buildInlineTargets derives the splice set from the per-function hints already
-// gathered by computeModuleHints — no second body walk. inlineFacts is
-// reconstructed from the hints (any call ⇒ not a leaf ⇒ ineligible, so hasCall
-// stands in for both calleeCount>0 and hasControlCall), plus the signature.
+// buildInlineTargets builds the inline directory from hints and bounded callee
+// proofs. Retain the decisions in the directory slots so sizing and
+// construction share one admission analysis.
 func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
 	allowTail := len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
@@ -652,9 +653,19 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	if uint64(len(m.Code)) > uint64(^uint32(0)) {
 		return inlineTargetTable{}
 	}
+	const (
+		admitted = 1 << iota
+		tupleLoop
+		tailLoop
+		recursive
+		touchesMemory
+		hasControl
+	)
+	var slots []uint32
 	candidateCount, typeCount := 0, 0
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		ft, _, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
+		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy, classifier, allowTail)
 		if !ok {
 			continue
 		}
@@ -666,21 +677,41 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			return inlineTargetTable{}
 		}
 		typeCount += add
+		flags := uint32(admitted)
+		if facts.inlineTupleLoop(policy) {
+			flags |= tupleLoop
+		}
+		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
+			flags |= tailLoop | hasControl
+		}
+		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
+			flags |= recursive
+		}
+		if facts.touchesMem {
+			flags |= touchesMemory
+		}
+		if facts.hasControlFlow {
+			flags |= hasControl
+		}
+		if slots == nil {
+			slots = make([]uint32, len(m.Code))
+		}
+		slots[i] = flags
 	}
 	if candidateCount == 0 || candidateCount >= int(inlineTargetInvalid) {
 		return inlineTargetTable{}
 	}
 	data := &inlineTargetData{
-		slots:   make([]uint32, len(m.Code)),
+		slots:   slots,
 		targets: make([]inlineTarget, 0, candidateCount),
 		types:   make([]machineType, 0, typeCount),
 	}
-	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
-	for i := range m.Code {
-		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy, allowTail)
-		if !ok {
+	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: classifier}
+	for i, flags := range slots {
+		if flags == 0 {
 			continue
 		}
+		ft, _ := m.LocalFuncType(i)
 		h := allHints[i]
 		localStart := len(data.types)
 		for _, p := range ft.Params {
@@ -702,26 +733,27 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		}
 		addConst, addImmediate := inlineI32AddConst(m.Code[i].BodyBytes, ft)
 		localDeclBytes := m.Code[i].LocalDeclBytes
-		params := uint32(facts.params)
-		if facts.inlineTupleLoop(policy) {
+		paramCount := len(ft.Params)
+		noDeclaredLocals := int(h.localCount) == paramCount
+		params := uint32(paramCount)
+		if flags&tupleLoop != 0 {
 			params |= inlineTupleLoopFlag
 		}
-		if !policy.CompactNative && !profileEnabled && policy.EnabledOption(optTupleIfSelect) && facts.declaredLocals == 0 &&
-			facts.params <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
+		if !policy.CompactNative && !profileEnabled && policy.EnabledOption(optTupleIfSelect) && noDeclaredLocals &&
+			paramCount <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
 			params |= inlineTupleSelectFlag
 		}
-		if allowTail && tailLoopInlineCandidate(m, allHints, i, policy) {
+		if flags&tailLoop != 0 {
 			params |= inlineTailLoopFlag
-			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)) << inlineTailZeroShift
-			facts.hasControlFlow = true
+			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, paramCount, int(h.localCount), targets.classifier)) << inlineTailZeroShift
 		}
 		if addConst {
 			params |= inlineI32AddConstFlag
 			localDeclBytes = uint32(addImmediate)
-		} else if facts.declaredLocals == 0 && inlineI32AddParams(m.Code[i].BodyBytes, ft) {
+		} else if noDeclaredLocals && inlineI32AddParams(m.Code[i].BodyBytes, ft) {
 			params |= inlineI32AddParamsFlag
 		}
-		if recursiveInlineCandidate(m, allHints, i, facts, policy) {
+		if flags&recursive != 0 {
 			params |= inlineRecursiveFlag
 		}
 		// Selected tail transfers become local jumps and make no physical calls.
@@ -747,8 +779,8 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			resultTypeEnd:  uint32(resultEnd),
 			params:         params,
 			res0:           res0,
-			touchesMem:     facts.touchesMem,
-			hasCtrl:        facts.hasControlFlow,
+			touchesMem:     flags&touchesMemory != 0,
+			hasCtrl:        flags&hasControl != 0,
 			omitStandalone: policy.CompactNative &&
 				h.inlineCallSites == 1,
 		})
@@ -789,7 +821,7 @@ func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
 		len(ft.Results) != 1 || ft.Results[0] != wasm.I32 {
 		return false, 0
 	}
-	r := wasm.NewReader(body)
+	r := wasm.ReaderFrom(body)
 	op, err := r.Byte()
 	if err != nil || op != 0x20 {
 		return false, 0
@@ -814,7 +846,7 @@ func inlineI32AddConst(body []byte, ft *wasm.CompType) (bool, int32) {
 	return err == nil && end == 0x0b && !r.HasNext(), c
 }
 
-func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, tailLoops ...bool) (*wasm.CompType, inlineFacts, bool) {
+func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy CodegenPolicy, classifier wasm.ModuleInstructionClassifier, allowTail bool) (*wasm.CompType, inlineFacts, bool) {
 	body := m.Code[i].BodyBytes
 	if len(body) == 0 {
 		return nil, inlineFacts{}, false
@@ -849,7 +881,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		scanned.callSites = facts.callSites
 		scanned.regABIIntOnly = facts.regABIIntOnly
 		scanned.tinyLeafABI = true
-		if err := scanInlineFactsBytesWithClassifier(body, &scanned, wasm.NewModuleInstructionClassifier(m, true)); err != nil {
+		if err := scanInlineFactsBytesWithClassifier(body, &scanned, classifier); err != nil {
 			return nil, inlineFacts{}, false
 		}
 		scannedTiny = true
@@ -865,8 +897,8 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 	if h.flags.has(hintHasCall) && (facts.regABIIntOnly || !scannedTiny) {
 		facts.calleeCount = 1
 	}
-	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, wasm.NewModuleInstructionClassifier(m, true))
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
+	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, classifier)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || allowTail && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {

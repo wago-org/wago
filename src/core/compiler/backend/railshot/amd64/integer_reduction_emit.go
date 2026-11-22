@@ -27,25 +27,39 @@ func integerReductionLoopDefault(goos, setting string) bool {
 const integerReductionMinTripCount = 16
 
 func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
-	if f.unreachable || f.depth() != 0 || f.moduleEH || f.localBase != 0 || f.interruptible || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 {
+	if f.unreachable || f.depth() != 0 || f.moduleEH || f.localBase != 0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 {
 		return false, nil
 	}
+	hasAccumulator := false
 	for _, typ := range f.localType {
 		if typ != mtI32 && typ != mtI64 {
 			return false, nil
 		}
+		hasAccumulator = hasAccumulator || typ == mtI64
+	}
+	if !hasAccumulator {
+		return false, nil
 	}
 	look := *r
 	bt, err := look.Byte()
 	if err != nil || bt != 0x40 {
 		return false, nil
 	}
-	var p integerReductionPlan
 	features := shared.AMD64ModernBaseline | shared.AMD64BMI2
 	if f.sc != nil {
 		features = f.sc.amd64Features
 	}
-	if !inspectIntegerReductionLoop(look, f.localType, &p) || !features.Has(shared.AMD64SSE41) {
+	if !features.Has(shared.AMD64SSE41) {
+		return false, nil
+	}
+	sc := f.scratchState()
+	if sc.integerReduction == nil {
+		sc.integerReduction = new(integerReductionPlan)
+	}
+	// An accepted body has no nested loops or calls, so lowering its scalar
+	// fallback cannot reenter the planner while this plan is still in use.
+	p := sc.integerReduction
+	if !inspectIntegerReductionLoop(look, f.localType, p) {
 		return false, nil
 	}
 	depth := len(f.ctrl)
@@ -129,6 +143,9 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 	fallback := f.a.Len()
 	f.a.PatchRel32(short, fallback)
 	f.ctrl[len(f.ctrl)-1].controlSite = fallback
+	if !f.pollBeforeBodyOnly {
+		f.emitInterruptCheck(gp[1])
+	}
 	if err := f.bodyLoop(r, depth); err != nil {
 		return true, err
 	}
@@ -169,7 +186,7 @@ func (f *fn) tryIntegerReductionLoop(r *wasm.Reader) (bool, error) {
 		// The native finalizer can remove this jump to its own fall-through.
 		f.a.PatchRel32(entryDispatch, captureEntry)
 		f.cpuHas(shared.AMD64SSE41)
-		f.emitIntegerReduction(&p, gp, &fp, &entry, slot, fallback)
+		f.emitIntegerReduction(p, gp, &fp, &entry, slot, fallback)
 		f.stats.peep("integer-reduction-loop")
 	} else {
 		// Late home changes still need the reserved frame extent, but the
@@ -223,6 +240,9 @@ func (f *fn) emitIntegerReduction(p *integerReductionPlan, gp [2]Reg, fp *[16]Re
 	f.a.ShiftImm(5, gp[0], 1, false)
 	f.a.AlignLoop()
 	top := f.a.Len()
+	if !f.pollBeforeBodyOnly {
+		f.emitInterruptCheck(gp[1])
+	}
 	for id := uint8(1); id <= p.nodeN; id++ {
 		if !p.live[id] {
 			continue

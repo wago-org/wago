@@ -28,6 +28,14 @@ import (
 
 var errBadLabel = fmt.Errorf("amd64: br label out of range")
 
+func (f *fn) shouldAlignSingleFunctionTaskLoop64() bool {
+	// A small, single-function image starts at the mapping base. Place its
+	// backedge targets on full fetch boundaries after the task entry poll.
+	return f.pollBeforeBodyOnly && f.sc.taskDirectCalls && !profileEnabled && !f.compactNative() &&
+		f.policy.FunctionAlignLog2 >= 4 && f.policy.EnabledOption(optCompactLoopAlign32) &&
+		len(f.m.Code) == 1 && len(f.m.Code[0].BodyBytes) <= 1024
+}
+
 type ctrlKind uint8
 type ctrlFlags uint16
 
@@ -324,6 +332,11 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	}
 
 	group := f.a.Len()
+	if f.interruptible && !f.pollBeforeBodyOnly {
+		poll := f.allocReg(0)
+		f.emitInterruptCheck(poll)
+		f.release(poll)
+	}
 	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
 	f.a.AluIdx(aluTable[opAdd].rm, p1, RBX, addrReg, 8, true)
 	f.a.AluIdx(aluTable[opAdd].rm, p2, RBX, addrReg, 16, true)
@@ -341,6 +354,11 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 	f.a.TestSelf(counterReg, false)
 	noRemainder := f.a.JccPlaceholder(condE)
 	remainder := f.a.Len()
+	if f.interruptible && !f.pollBeforeBodyOnly {
+		poll := f.allocReg(0)
+		f.emitInterruptCheck(poll)
+		f.release(poll)
+	}
 	f.a.AluIdx(aluTable[opAdd].rm, accReg, RBX, addrReg, 0, true)
 	f.a.AluRI(aluTable[opAdd].digit, addrReg, 8, false)
 	f.a.AluRI(aluTable[opSub].digit, counterReg, 1, false)
@@ -363,10 +381,13 @@ func (f *fn) tryUnrolledLinearSumLatch(loop *ctrlFrame, counter int) bool {
 }
 
 // tryCountedLoopLatch recognizes the exact tail of a top-tested i32 countdown
-// and branches from the decrement flags directly to the loop body. Interruptible
-// loops retain their header poll and are deliberately excluded.
+// and branches from the decrement flags directly to the loop body. An
+// interruptible linear sum can use the unrolled latch with its own polls.
 func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+	if !f.opt(optCountedLoopLatch) || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+		return false, nil
+	}
+	if f.interruptible && !f.pollBeforeBodyOnly && (f.linearSumLoop == 0 || f.linearSumLoopDepth != uint16(len(f.ctrl))) {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
@@ -427,6 +448,10 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	}
 	f.unitAdjust(reg, false, false)
 	f.markLocalDirty(x)
+	if f.interruptible && !f.pollBeforeBodyOnly {
+		f.a.JmpBack(loop.controlSite)
+		return true, nil
+	}
 	site := f.a.JccPlaceholder(condNE)
 	f.a.PatchRel32(site, bodySite)
 	f.stats.peep("counted-loop-latch")
@@ -1508,19 +1533,8 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 	var candidates [16]candidate
 	n, steps := 0, 0
 	floatSafe := true
-	finish := func(writes uint64) (bool, uint64, storage, bool) {
-		if !wantFloat || !floatSafe || n == 0 {
-			return true, writes, storage{}, false
-		}
-		best := 0
-		for i := 1; i < n; i++ {
-			if candidates[i].score > candidates[best].score {
-				best = i
-			}
-		}
-		return true, writes, candidates[best].st, true
-	}
 	var imm wasm.InstructionImmediate
+scan:
 	for {
 		before := r2.Offset()
 		op, err := r2.Byte()
@@ -1656,13 +1670,23 @@ func scanLoopCallFreeDetails(r *wasm.Reader, classifier wasm.ModuleInstructionCl
 				// ifs likewise create merge edges where the weaker register-only
 				// state adds reconciliation outside the loop latch.
 				if brTable || nestedLoop || hasInnerControl {
-					return finish(0)
+					writes = 0
 				}
-				return finish(writes)
+				break scan
 			}
 			depth--
 		}
 	}
+	if !wantFloat || !floatSafe || n == 0 {
+		return true, writes, storage{}, false
+	}
+	best := 0
+	for i := 1; i < n; i++ {
+		if candidates[i].score > candidates[best].score {
+			best = i
+		}
+	}
+	return true, writes, candidates[best].st, true
 }
 
 // popBranchCondition protects the condition through the remaining stack flush.
@@ -1911,11 +1935,17 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			if f.compactLoopAlign32 {
 				f.a.AlignLoop32()
 				f.stats.peep("compact-loop-align32")
+			} else if f.shouldAlignSingleFunctionTaskLoop64() {
+				f.a.AlignLoop64()
 			} else {
 				f.a.AlignLoop()
 			}
 			fr.controlSite = f.a.Len()
-			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
+			if f.interruptible && !f.pollBeforeBodyOnly {
+				f.emitInterruptCheck(RSI) // RSI freed by the flush() above.
+				f.lastLoopPollStart = fr.controlSite
+				f.lastLoopPollEnd = f.a.Len()
+			}
 		}
 	}
 	f.pushCtrl(&fr)

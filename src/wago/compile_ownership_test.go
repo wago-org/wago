@@ -192,6 +192,27 @@ func TestCompileMemoryPressureOnlyForLargeSources(t *testing.T) {
 	}
 }
 
+func TestCompilerFinalizerWaitsForNativeMapping(t *testing.T) {
+	staged := newCompilerCompiled()
+	staged.code = []byte{0x90}
+	staged.ensureCompileIndexes().pendingFinalizer = staged
+	published, err := publishCompilerCompiled(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer published.Close()
+	if published.loadCompileIndexes().pendingFinalizer != published || published.codeCache.mem != nil {
+		t.Fatal("publication acquired native code ownership")
+	}
+	copied := *published
+	if err := copied.prepareCodeMapping(); err != nil {
+		t.Fatal(err)
+	}
+	if published.loadCompileIndexes().pendingFinalizer != nil || len(published.codeCache.mem) == 0 {
+		t.Fatal("native mapping did not install the deferred finalizer")
+	}
+}
+
 func TestCompilerPublicationReleasesHeapCodeBacking(t *testing.T) {
 	// Parallel compilation emits a Go slice. Its grouped staging owner remains
 	// reachable through the cache even after the public result is copied out.

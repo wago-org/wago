@@ -880,6 +880,19 @@ func (a *Asm) TestImm8(r Reg, imm byte) {
 	a.emit(0xF6, 0xC0|byte(r&7), imm)
 }
 
+// TestImm8Mem tests selected bits of a byte at [base+disp].
+func (a *Asm) TestImm8Mem(base Reg, disp int32, imm byte) {
+	if regallocCheckEnabled {
+		a.regallocRead(base, disp, 1)
+	}
+	if base >= 8 {
+		a.emit(a.rex(false, false, false, true))
+	}
+	a.emit(0xF6)
+	a.baseAddr(0, base, disp)
+	a.emit(imm)
+}
+
 // BtImm copies the selected register bit into CF. Unlike TEST r,imm32, its
 // immediate is a bit index rather than a sign-extended mask.
 func (a *Asm) BtImm(r Reg, bit uint8, w bool) {
@@ -1312,28 +1325,31 @@ func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wide b
 		a.regallocGPWrite(regallocGPRegMask(dst))
 	}
 
-	var op []byte
+	var op, second byte
 	rexW := false
 	switch {
 	case size == 8:
-		op, rexW = []byte{0x8B}, true // mov r64, m64
+		op, rexW = 0x8B, true // mov r64, m64
 	case size == 4 && signed && wide:
-		op, rexW = []byte{0x63}, true // movsxd r64, m32
+		op, rexW = 0x63, true // movsxd r64, m32
 	case size == 4:
-		op = []byte{0x8B} // mov r32, m32 (zero-extends to 64)
+		op = 0x8B // mov r32, m32 (zero-extends to 64)
 	case size == 1 && signed:
-		op, rexW = []byte{0x0F, 0xBE}, wide // movsx r, m8
+		op, second, rexW = 0x0F, 0xBE, wide // movsx r, m8
 	case size == 1:
-		op = []byte{0x0F, 0xB6} // movzx r, m8 (zero-extends to 64)
+		op, second = 0x0F, 0xB6 // movzx r, m8 (zero-extends to 64)
 	case size == 2 && signed:
-		op, rexW = []byte{0x0F, 0xBF}, wide // movsx r, m16
+		op, second, rexW = 0x0F, 0xBF, wide // movsx r, m16
 	default: // size == 2 unsigned
-		op = []byte{0x0F, 0xB7} // movzx r, m16 (zero-extends to 64)
+		op, second = 0x0F, 0xB7 // movzx r, m16 (zero-extends to 64)
 	}
 	if rexW || dst >= 8 || index >= 8 || base >= 8 {
 		a.emit(a.rex(rexW, dst >= 8, index >= 8, base >= 8))
 	}
-	a.emit(op...)
+	a.B = append(a.B, op)
+	if second != 0 {
+		a.B = append(a.B, second)
+	}
 	a.sibAddr(dst, base, index, disp)
 }
 

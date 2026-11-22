@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"reflect"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -155,5 +156,29 @@ func TestCompactExecutionDataThreshold(t *testing.T) {
 	c.Data = c.Data[:minCompactActiveData-1]
 	if cloneCompiledExecutionMetadata(c).compactData != nil {
 		t.Fatal("below threshold unexpectedly compacted")
+	}
+}
+
+func TestCompactExecutionDataLargePayload(t *testing.T) {
+	c := compactDataFixture()
+	c.Data = c.Data[:minLargeActiveDataSegments]
+	c.Data[0].Bytes = make([]byte, minLargeActiveDataBytes-len(c.Data)+1)
+	c.Data[0].Bytes[0] = 42
+	view := cloneCompiledExecutionMetadata(c)
+	if got, want := view.compactData != nil, runtime.Compiler == "tinygo"; got != want {
+		t.Fatalf("compact large payload = %t, want %t", got, want)
+	}
+	c.Data[0].Bytes[0] = 0
+	if view.activeDataAt(0).Bytes[0] != 42 {
+		t.Fatal("public edit reached snapshot")
+	}
+	c.Data[0].Bytes = c.Data[0].Bytes[:len(c.Data[0].Bytes)-1]
+	if cloneCompiledExecutionMetadata(c).compactData != nil {
+		t.Fatal("payload below byte threshold unexpectedly compacted")
+	}
+	c.Data = c.Data[:len(c.Data)-1]
+	c.Data[0].Bytes = make([]byte, minLargeActiveDataBytes)
+	if cloneCompiledExecutionMetadata(c).compactData != nil {
+		t.Fatal("too few segments unexpectedly compacted")
 	}
 }

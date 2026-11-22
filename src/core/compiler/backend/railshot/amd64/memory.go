@@ -191,13 +191,17 @@ func (f *fn) emitTrap(code, function uint32) {
 // hot (not-interrupted) path falls through; only the pointer load and a
 // compare-against-zero touch scratch, so no live value is clobbered.
 func (f *fn) emitInterruptCheck(scratch Reg) {
-	if !f.interruptible {
-		return
+	if f.interruptible {
+		f.emitInterruptPoll(scratch)
+		f.trapIf(condNE, trapInterrupted)
 	}
-	f.a.Load64(scratch, RBX, -offTrapCellPtr) // scratch = &trapCell
-	f.a.Load32(scratch, scratch, 0)           // scratch = *trapCell (reuse: pointer no longer needed)
-	f.a.TestSelf(scratch, false)              // ZF = (*trapCell == 0)
-	f.trapIf(condNE, trapInterrupted)         // nonzero → cold stub writes the code and unwinds
+}
+
+// emitInterruptPoll sets flags and may clobber scratch. Callers that borrow a
+// live register must restore it before branching to the shared trap stub.
+func (f *fn) emitInterruptPoll(scratch Reg) {
+	f.a.Load64(scratch, RBX, -offTrapCellPtr)
+	f.a.CmpImm32Mem(scratch, 0, 0)
 }
 
 // trapIf records a conditional jump to this function's shared trap stub for
@@ -273,17 +277,19 @@ func (f *fn) prepareEntryTrapPins() {
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
-	var savedGPWrites regallocWriteMask
-	if regallocCheckEnabled {
-		savedGPWrites = f.checkTerminalWrites()
-	}
-	before := f.a.Len()
-	defer func() {
+	if regallocCheckEnabled || diagnosticsEnabled {
+		var savedGPWrites regallocWriteMask
 		if regallocCheckEnabled {
-			f.checkRestoreWrites(savedGPWrites)
+			savedGPWrites = f.checkTerminalWrites()
 		}
-		f.stats.addGCTrapStubBytes(f.a.Len() - before)
-	}()
+		before := f.a.Len()
+		defer func() {
+			if regallocCheckEnabled {
+				f.checkRestoreWrites(savedGPWrites)
+			}
+			f.stats.addGCTrapStubBytes(f.a.Len() - before)
+		}()
+	}
 	f.prepareEntryTrapPins()
 	groups := 0
 	for code := uint32(1); code <= trapMax; code++ {

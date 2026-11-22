@@ -44,10 +44,14 @@ func tinygoARM64IntEntryCode(foreignStackTop uintptr) []byte {
 }
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	if err := e.initNativeEntry(); err != nil {
-		return 0, err
+	// NewEngine initializes the executable mapping and keeps its base in
+	// stackTop. Only an engine without a mapping needs the cold setup path.
+	if e.preparedInt.mem == nil {
+		if err := e.initNativeEntry(); err != nil {
+			return 0, err
+		}
 	}
-	return uintptr(unsafe.Pointer(&e.preparedInt.mem[0])) + tinygoARM64PreparedIntEntryOffset, nil
+	return e.stackTop + tinygoARM64PreparedIntEntryOffset, nil
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {

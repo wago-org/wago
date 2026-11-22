@@ -183,9 +183,10 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	var op directOp
 	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		counts, err := v.validateFunction(&fv, &op, i, importedFuncs, widths)
 		if err != nil {
 			return err
 		}
@@ -198,7 +199,7 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
+func (v *moduleValidator) validateFunction(fv *funcValidator, op *directOp, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	ft, ok := v.funcType(uint32(abs))
@@ -210,7 +211,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts, op)
 	} else {
 		err = fv.validateFunc(*fn, ft)
 	}
@@ -250,6 +251,7 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var op directOp
 			var summary validationSegmentCounts
 			defer func() {
 				results[worker].elemStateCount = summary.elem
@@ -260,7 +262,7 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 				if i >= len(v.m.Code) {
 					return
 				}
-				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				counts, err := v.validateFunction(&fv, &op, i, importedFuncs, widths)
 				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
@@ -340,7 +342,8 @@ type moduleValidator struct {
 	// constFV is serial module-validation scratch for global/table/data offsets
 	// and element initializer expressions. Function-body validation never reaches
 	// it: table.init reads the element type metadata validated in this phase.
-	constFV *funcValidator
+	constFV       *funcValidator
+	constDirectOp *directOp // allocated lazily and reused across byte-backed initializers
 }
 
 type compCacheEntry struct {

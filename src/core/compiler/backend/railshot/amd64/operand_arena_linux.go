@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && amd64 && !tinygo && !wago_target_tinygo
+//go:build linux && amd64 && !wago_target_tinygo
 
 package amd64
 
@@ -25,6 +25,8 @@ func newOperandArena() *operandArena {
 	if err != nil {
 		return nil
 	}
-	runtime.SetFinalizer(buffer, func(owner *operandArena) { _ = owner.Close() })
+	if runtime.Compiler != "tinygo" {
+		runtime.SetFinalizer(buffer, finalizeOperandArena)
+	}
 	return buffer
 }

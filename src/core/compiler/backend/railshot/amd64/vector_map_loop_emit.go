@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -537,6 +538,19 @@ func (e *regionLoopEmitter) body() {
 		if at == int(e.invariantPrefix) {
 			f.a.AlignLoop()
 			top = f.a.Len()
+			if f.interruptible && !f.pollBeforeBodyOnly {
+				// All-cached plans can lease gp[2] for an address. Restore the
+				// register and stack pointer before taking the trap edge.
+				scratch := e.gp[2]
+				if e.allCached {
+					f.a.Push(scratch)
+				}
+				f.emitInterruptPoll(scratch)
+				if e.allCached {
+					f.a.Pop(scratch)
+				}
+				f.trapIf(condNE, trapInterrupted)
+			}
 		}
 		if event&0x80 != 0 {
 			at := event & 0x7f
@@ -806,7 +820,7 @@ func (e *regionLoopEmitter) body() {
 }
 
 func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
-	if f.unreachable || f.depth() > 4 || f.moduleEH || f.localBase != 0 || f.interruptible || f.threadedMemory0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) {
+	if f.unreachable || f.depth() > 4 || f.moduleEH || f.localBase != 0 || f.threadedMemory0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) {
 		return false, nil
 	}
 	look := *r
@@ -814,6 +828,20 @@ func (f *fn) tryRegionLoop(r *wasm.Reader) (bool, error) {
 	if err != nil || bt != 0x40 {
 		return false, nil
 	}
+	// A region needs both an f64.load and an f64.store within the
+	// planner's byte budget. Immediates can cause false positives here.
+	window := regionLoopReader(look)
+	body, _ := window.Bytes(window.BytesLeft())
+	if bytes.IndexByte(body, 0x39) < 0 || bytes.IndexByte(body, 0x2b) < 0 {
+		return false, nil
+	}
+	return f.tryRegionLoopCandidate(r, look)
+}
+
+// Keep the region workspace off the ordinary loop-screen path.
+//
+//go:noinline
+func (f *fn) tryRegionLoopCandidate(r *wasm.Reader, look wasm.Reader) (bool, error) {
 	var p regionLoopPlan
 	if !inspectRegionLoop(look, f.localType, f.classifier, &p) {
 		return false, nil
@@ -827,7 +855,9 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 			return false, nil
 		}
 	} else if !regionAdjacentEnabled || !p.packAdjacentOutputs() {
-		if !scalarMemoryRecurrenceEnabled || !p.scalarMemoryRecurrence() {
+		// Scalar recurrences may defer guest stores until loop exit. A poll
+		// must never discard a store from an already completed iteration.
+		if f.interruptible && !f.pollBeforeBodyOnly || !scalarMemoryRecurrenceEnabled || !p.scalarMemoryRecurrence() {
 			return false, nil
 		}
 	}
@@ -916,6 +946,9 @@ func (f *fn) emitRegionLoop(r *wasm.Reader, p *regionLoopPlan) (bool, error) {
 	// A checked remainder may take multiple iterations. Its backedge skips
 	// the diagnostic guard-failure trap, just like its initial tail entry.
 	f.ctrl[len(f.ctrl)-1].controlSite = checkedBody
+	if !f.pollBeforeBodyOnly {
+		f.emitInterruptCheck(e.gp[2])
+	}
 	if err := f.bodyLoop(r, depth); err != nil {
 		return true, err
 	}

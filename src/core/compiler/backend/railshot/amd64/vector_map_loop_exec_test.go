@@ -33,7 +33,10 @@ func TestVectorMapIndependentLanesAndLastValue(t *testing.T) {
 			for _, n := range []uint64{2, 4, 8} {
 				var want uint64
 				var expected []byte
-				for _, on := range []bool{false, true} {
+				for _, mode := range []struct {
+					on, interruptible bool
+				}{{}, {on: true}, {on: true, interruptible: true}} {
+					on := mode.on
 					regionLoopEnabled, regionLoopTestFast = on, on
 					init := func(mem []byte) {
 						for i := uint64(0); i < n; i++ {
@@ -41,7 +44,7 @@ func TestVectorMapIndependentLanesAndLastValue(t *testing.T) {
 						}
 					}
 					var stats ModuleStats
-					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, init, 128, src, 0, n, math.Float64bits(2), math.Float64bits(1.5))
+					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Interruptible: mode.interruptible, AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)}, init, 128, src, 0, n, math.Float64bits(2), math.Float64bits(1.5))
 					// Partial overlap (132) must take fallback; exact overlap and disjoint
 					// arrays qualify. The forced-fast check is used only for those cases.
 					if err != nil {

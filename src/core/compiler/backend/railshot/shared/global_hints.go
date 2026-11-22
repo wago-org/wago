@@ -118,6 +118,9 @@ func (a *GlobalHintAccumulator) MarkEligible(index uint32) {
 // AppendTo appends deterministic index-sorted records to dst. Callers can keep
 // offset ranges while dst grows, then publish slices after the final append.
 func (a *GlobalHintAccumulator) AppendTo(dst []GlobalHint) []GlobalHint {
+	if a.touchedN == 0 && len(a.touchedExtra) == 0 {
+		return dst
+	}
 	needed := len(dst) + int(a.touchedN) + len(a.touchedExtra)
 	if needed > cap(dst) {
 		grown := make([]GlobalHint, len(dst), GlobalHintCapacity(needed))
@@ -127,24 +130,25 @@ func (a *GlobalHintAccumulator) AppendTo(dst []GlobalHint) []GlobalHint {
 	inline := a.touchedInline[:a.touchedN]
 	slices.Sort(inline)
 	slices.Sort(a.touchedExtra)
-	appendIndex := func(index uint32) {
-		dst = append(dst, GlobalHint{Index: index, Score: a.scores[index], Eligible: a.marks[index]&globalHintEligible != 0})
-	}
 	i, j := 0, 0
 	for i < len(inline) && j < len(a.touchedExtra) {
 		if inline[i] < a.touchedExtra[j] {
-			appendIndex(inline[i])
+			dst = append(dst, a.hintAt(inline[i]))
 			i++
 		} else {
-			appendIndex(a.touchedExtra[j])
+			dst = append(dst, a.hintAt(a.touchedExtra[j]))
 			j++
 		}
 	}
 	for ; i < len(inline); i++ {
-		appendIndex(inline[i])
+		dst = append(dst, a.hintAt(inline[i]))
 	}
 	for ; j < len(a.touchedExtra); j++ {
-		appendIndex(a.touchedExtra[j])
+		dst = append(dst, a.hintAt(a.touchedExtra[j]))
 	}
 	return dst
+}
+
+func (a *GlobalHintAccumulator) hintAt(index uint32) GlobalHint {
+	return GlobalHint{Index: index, Score: a.scores[index], Eligible: a.marks[index]&globalHintEligible != 0}
 }

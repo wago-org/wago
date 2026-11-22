@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	goruntime "runtime"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -117,7 +118,11 @@ type compactDataRecord struct {
 	end         uint32
 }
 
-const minCompactActiveData = 1024
+const (
+	minCompactActiveData       = 1024
+	minLargeActiveDataSegments = 64
+	minLargeActiveDataBytes    = 128 << 10
+)
 
 // Validate packed spans before any reader forms a payload slice. Public
 // metadata copies can reach admission without the execution clone's proof.
@@ -883,7 +888,13 @@ func compactActiveDataSize(c *Compiled) (int, bool) {
 	if c.compactData != nil {
 		return len(c.compactData.bytes), true
 	}
-	if len(c.Data) < minCompactActiveData {
+	// TinyGo's collector follows each interior slice pointer back to its
+	// allocation. Use offsets for large payloads at a lower segment count.
+	minSegments := minCompactActiveData
+	if goruntime.Compiler == "tinygo" {
+		minSegments = minLargeActiveDataSegments
+	}
+	if len(c.Data) < minSegments {
 		return 0, false
 	}
 	var size uint64
@@ -895,6 +906,9 @@ func compactActiveDataSize(c *Compiled) (int, bool) {
 		if size > uint64(^uint32(0)) || size > uint64(maxInt()) {
 			return 0, false
 		}
+	}
+	if goruntime.Compiler == "tinygo" && len(c.Data) < minCompactActiveData && size < minLargeActiveDataBytes {
+		return 0, false
 	}
 	return int(size), true
 }

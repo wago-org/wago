@@ -17,6 +17,19 @@ import (
 
 var byteSwapCoverEnabled = os.Getenv("WAGO_AMD64_NO_BSWAP_COVER") != "1"
 
+func byteSwapOpcode(r *wasm.Reader, want byte) bool {
+	got, err := r.Byte()
+	return err == nil && got == want
+}
+
+func byteSwapI32Const(r *wasm.Reader, want int32) bool {
+	if !byteSwapOpcode(r, 0x41) {
+		return false
+	}
+	got, err := r.I32()
+	return err == nil && got == want
+}
+
 // tryByteSwapAfterTee covers the exact Rust from_be i32 sequence following a
 // local.tee. The tee has already published the original value to its local;
 // the ten following pure instructions only byte-swap its stack result.
@@ -32,24 +45,14 @@ func (f *fn) tryByteSwapAfterTee(r *wasm.Reader, x int) bool {
 		return false
 	}
 	look := *r
-	op := func(want byte) bool {
-		got, err := look.Byte()
-		return err == nil && got == want
-	}
-	i32const := func(want int32) bool {
-		if !op(0x41) {
-			return false
-		}
-		got, err := look.I32()
-		return err == nil && got == want
-	}
-	if !i32const(0x00ff00ff) || !op(0x71) || !i32const(8) || !op(0x78) || !op(0x20) {
+	if !byteSwapI32Const(&look, 0x00ff00ff) || !byteSwapOpcode(&look, 0x71) ||
+		!byteSwapI32Const(&look, 8) || !byteSwapOpcode(&look, 0x78) || !byteSwapOpcode(&look, 0x20) {
 		return false
 	}
 	local, err := look.U32()
 	if err != nil || int(local)+f.localBase != x ||
-		!i32const(24) || !op(0x78) || !i32const(0x00ff00ff) ||
-		!op(0x71) || !op(0x72) {
+		!byteSwapI32Const(&look, 24) || !byteSwapOpcode(&look, 0x78) ||
+		!byteSwapI32Const(&look, 0x00ff00ff) || !byteSwapOpcode(&look, 0x71) || !byteSwapOpcode(&look, 0x72) {
 		return false
 	}
 	if err := r.JumpTo(look.Offset()); err != nil {

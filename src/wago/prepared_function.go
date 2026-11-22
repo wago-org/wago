@@ -864,7 +864,22 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
 }
 
-func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr error) {
+func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if fn.isolatedFast && !in.syncMode && !fn.gcMaintenance && fn.tryBeginFastInvocation() {
+		// The fast gate already excludes ownership revocation and concurrent
+		// entries. The asynchronous isolated wrapper cannot enter the host.
+		out, err := fn.invokeScalarAdmittedState(args, true)
+		in.endFastInvocation(in.pluginState.Load())
+		return out, err
+	}
+	return fn.invokeScalarSlow(args)
+}
+
+// Keep the panic-safe cleanup closures off the isolated entry path.
+//
+//go:noinline
+func (fn *WasmFunc) invokeScalarSlow(args []uint64) (result []uint64, resultErr error) {
 	in := fn.in
 	var admissionErr error
 	if fn.isolatedFast {
@@ -932,30 +947,27 @@ func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr erro
 }
 
 func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
+	return fn.invokeScalarAdmittedState(args, false)
+}
+
+func (fn *WasmFunc) invokeScalarAdmittedState(args []uint64, reserved bool) ([]uint64, error) {
 	in := fn.in
-	if fn.gcMaintenance || !in.preparedFastStateValid() {
+	if !reserved && (fn.gcMaintenance || !in.preparedFastStateValid()) {
 		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {
-		put := func(slot int) {
-			bits := args[slot]
-			if fn.scalarWideMask&(1<<slot) == 0 {
-				bits = uint64(uint32(bits))
-			}
-			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
-		}
 		switch len(args) {
 		case 4:
-			put(3)
+			putPreparedScalarArg(in.serArgs[24:], args[3], fn.scalarWideMask&8 != 0)
 			fallthrough
 		case 3:
-			put(2)
+			putPreparedScalarArg(in.serArgs[16:], args[2], fn.scalarWideMask&4 != 0)
 			fallthrough
 		case 2:
-			put(1)
+			putPreparedScalarArg(in.serArgs[8:], args[1], fn.scalarWideMask&2 != 0)
 			fallthrough
 		case 1:
-			put(0)
+			putPreparedScalarArg(in.serArgs, args[0], fn.scalarWideMask&1 != 0)
 		}
 	} else {
 		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
@@ -986,7 +998,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper || fn.boundedBulkArguments(args))
+			err = in.callPreparedIsolated(fn.entry, in.trap, reserved, fn.boundedWrapper || fn.boundedBulkArguments(args))
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {
@@ -1007,6 +1019,13 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	out := in.resultVals[:fn.resultSlots]
 	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
+}
+
+func putPreparedScalarArg(dst []byte, bits uint64, wide bool) {
+	if !wide {
+		bits = uint64(uint32(bits))
+	}
+	binary.LittleEndian.PutUint64(dst, bits)
 }
 
 // invokeScalarHostReserved is the host-capable counterpart to

@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"runtime"
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -19,6 +20,21 @@ import (
 // scalar storage and links to other nodes in the same worker-owned arena;
 // plugin-owned Go values remain in stack.cold, which is scanned normally.
 type operandArena = coreruntime.CodeBuffer
+
+func shouldMapOperands(bodyBytes int) bool {
+	// Mapping avoids repeatedly tracing large pointer-bearing chunks in TinyGo.
+	return bodyBytes >= minParallelHintBodyBytes || runtime.Compiler == "tinygo" && bodyBytes >= 8<<10
+}
+
+func closeOperandArena(arena *operandArena) {
+	if err := arena.Close(); err != nil && runtime.Compiler == "tinygo" {
+		// Scratch normally closes before leaving its worker. Keep the fallback
+		// for a failed unmap without starting TinyGo's finalizer task on success.
+		runtime.SetFinalizer(arena, finalizeOperandArena)
+	}
+}
+
+func finalizeOperandArena(arena *operandArena) { _ = arena.Close() }
 
 func operandArenaChunk(a *operandArena, capacity int) []elem {
 	if a != nil {

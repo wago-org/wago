@@ -51,18 +51,46 @@ type LocalEvent struct {
 // LocalEventTape is worker-owned scratch. Reset reuses its backing storage
 // across functions, and Append fails soft at the configured limit.
 type LocalEventTape struct {
-	Events   []LocalEvent
-	Limit    int
-	Overflow bool
+	Events    []LocalEvent
+	Limit     int
+	Overflow  bool
+	count     int
+	countOnly bool
 }
 
 func (t *LocalEventTape) Reset(limit int) {
 	t.Events = t.Events[:0]
 	t.Limit = limit
 	t.Overflow = false
+	t.count = 0
+	t.countOnly = false
+}
+
+// ResetCountOnly preserves the bounded append count and overflow contract without
+// storing event contents. Call only when no planner consumes Events.
+func (t *LocalEventTape) ResetCountOnly(limit int) {
+	t.Reset(limit)
+	t.countOnly = true
+}
+
+// Count is the recorded length in full mode and the identical logical length in
+// count-only mode. Actual planners retain ordinary Reset and the Events slice.
+func (t *LocalEventTape) Count() int {
+	if t.countOnly {
+		return t.count
+	}
+	return len(t.Events)
 }
 
 func (t *LocalEventTape) Append(kind LocalEventKind, local uint16, depth int) {
+	if t.countOnly {
+		if t.Limit <= 0 || t.count >= t.Limit {
+			t.Overflow = true
+			return
+		}
+		t.count++
+		return
+	}
 	if t.Limit <= 0 || len(t.Events) >= t.Limit {
 		t.Overflow = true
 		return

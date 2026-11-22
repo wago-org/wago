@@ -260,6 +260,58 @@ func TestPreparedPrivateGlobalRebindsAfterExport(t *testing.T) {
 	}
 }
 
+func TestPreparedPrivateGlobalsStayIsolatedUntilCallableExport(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 1, 0x41, 1, 0x0b})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0, 0x20, 0, 0x6a, 0x24, 0, 0x23, 0, 0x0b}))),
+	)
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	first, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	checkCall := func(fn *WasmFunc, arg, want uint64) {
+		t.Helper()
+		if out, err := fn.Invoke(arg); err != nil || len(out) != 1 || out[0] != want {
+			t.Fatalf("Invoke(%d) = %v, %v, want %d", arg, out, err, want)
+		}
+	}
+	fn, err := first.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preparedPrivateEntryEnabled && preparedIsolatedEntryEnabled && preparedScalarFastEnabled &&
+		fn.isolatedFast != preparedPrivateGlobalsSupported {
+		t.Fatalf("isolated entry = %v, want %v", fn.isolatedFast, preparedPrivateGlobalsSupported)
+	}
+	checkCall(fn, 41, 42)
+	other, err := second.WasmFunc("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCall(other, 1, 2)
+	if _, err := first.ExportedFunc("f"); err != nil {
+		t.Fatal(err)
+	}
+	if first.preparedIsolatedEligible() {
+		t.Fatal("callable publication retained isolated entry")
+	}
+	checkCall(fn, 1, 43)
+}
+
 func TestPreparedConcurrentExportTransition(t *testing.T) {
 	c := MustCompile(benchAddOneModule())
 	defer c.Close()

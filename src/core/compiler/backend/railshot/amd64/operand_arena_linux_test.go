@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo && !wago_target_tinygo
+//go:build linux && amd64 && !wago_target_tinygo
 
 package amd64
 

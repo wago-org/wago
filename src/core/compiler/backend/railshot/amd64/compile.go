@@ -445,6 +445,8 @@ type fn struct {
 	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	selfEntryAfterPoll      int    // private entry for recursive calls in a non-yielding task
+	pollBeforeBodyOnly      bool   // a non-yielding TinyGo task checks for pending interruption in the prologue
 	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
 	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
 	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
@@ -457,6 +459,8 @@ type fn struct {
 	bmi2Rorx                bool   // use non-destructive rotates below the dense-code crossover
 	linearSumLoop           uint32 // packed +1 address/accumulator locals for one exact active loop
 	linearSumLoopDepth      uint16 // control depth owning linearSumLoop; zero when inactive
+	lastLoopPollStart       int    // loop backward target for the most recent loop-header poll
+	lastLoopPollEnd         int    // first code offset after that poll
 	canonicalI32Uses        uint8  // saturated eligible uses; first two retain conservative code
 	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
 
@@ -606,6 +610,7 @@ type fn struct {
 	// live. Computed once per module in compileFunc.
 	syncHostCalls            bool
 	dynamicHostFast          bool
+	nativeImportTargetCached bool
 	syncHostSlots            int  // symmetric control-frame capacity; >64 selects the wide extension
 	gcTypeSubtypingRefTest   bool // typed function tests/casts resolve exact declared type identity after dynamic loads
 	gcStructHelpers          bool // exact staged numeric struct ops use the same parked Go re-entry frame
@@ -680,7 +685,8 @@ func gpCandBefore(a, b gpCand) bool {
 	return a.idx < b.idx
 }
 
-func insertGPCandidate(top []gpCand, candidate gpCand, limit int) []gpCand {
+// Insert into the caller's fixed backing and return its new active length.
+func insertGPCandidate(top []gpCand, candidate gpCand, limit int) int {
 	position := len(top)
 	for i := range top {
 		if gpCandBefore(candidate, top[i]) {
@@ -689,17 +695,17 @@ func insertGPCandidate(top []gpCand, candidate gpCand, limit int) []gpCand {
 		}
 	}
 	if position >= limit {
-		return top
+		return len(top)
 	}
 	if len(top) < limit {
-		top = append(top, gpCand{})
+		top = top[:len(top)+1]
 	}
 	copy(top[position+1:], top[position:len(top)-1])
 	top[position] = candidate
-	return top
+	return len(top)
 }
 
-func insertLocalCandidate(top []uint16, candidate uint16, scores []uint32, limit int) []uint16 {
+func insertLocalCandidate(top []uint16, candidate uint16, scores []uint32, limit int) int {
 	position := len(top)
 	candidateScore := localHotness(scores[candidate])
 	for i, local := range top {
@@ -710,14 +716,14 @@ func insertLocalCandidate(top []uint16, candidate uint16, scores []uint32, limit
 		}
 	}
 	if position >= limit {
-		return top
+		return len(top)
 	}
 	if len(top) < limit {
-		top = append(top, 0)
+		top = top[:len(top)+1]
 	}
 	copy(top[position+1:], top[position:len(top)-1])
 	top[position] = candidate
-	return top
+	return len(top)
 }
 
 // deferredArg is a call argument (const/slot/localRef) staged into its target
@@ -892,6 +898,7 @@ type scratch struct {
 	stack                 *stack     // the valent-block operand stack
 	stackCap              int        // deferred initial reservation for function-level fallback
 	mappedOperands        bool       // amortize mapping setup across a nontrivial module
+	taskDirectCalls       bool       // local direct calls cannot yield to a TinyGo task
 	controlCap            int        // target control frames, reserved with the first fallback
 	asm                   *amd64.Asm // the x86-64 encoder byte buffer
 	directPrepared        bool
@@ -901,8 +908,11 @@ type scratch struct {
 	fragmentOverflow      bool
 	policy                CodegenPolicy
 	classifier            wasm.ModuleInstructionClassifier
+	bodyReader            wasm.Reader // only the outer body uses this cursor
 	moduleTypes           moduleTypeCache
+	integerReduction      *integerReductionPlan
 	fnState               fn // per-function compiler state, reused across the module
+	attemptActive         bool
 	relocs                []callReloc
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
@@ -930,6 +940,9 @@ type scratch struct {
 	ctrlMergeTouched        int // high-water slot exposed for mutation since the last reset
 	ctrlRoots               []ctrlFrameRoots
 	functionResultTypeArena [maxScratchFunctionResults]machineType
+	gpPinPoolStorage        [16]Reg
+	gpPinCandidates         [32]gpCand
+	fpPinCandidates         [32]uint16
 	pinnedLocals            []int // pinned-local index backing; reused across functions
 	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
@@ -1049,7 +1062,6 @@ func (sc *scratch) finishControlWorker() {
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
-// Standard Go keeps 64 entries; TinyGo keeps none to protect release size.
 // Signatures above the active bound allocate for that function only.
 const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
 
@@ -1254,7 +1266,7 @@ func (sc *scratch) finishStackWorker() {
 	sc.stack.head = nil
 	sc.stack.pendingPrefix, sc.stack.pendingPrefixLoads = nil, false
 	sc.stack.cur = 0
-	_ = sc.stack.arena.Close()
+	closeOperandArena(sc.stack.arena)
 }
 
 // workerState owns every mutable buffer used by one parallel compiler worker.
@@ -1856,6 +1868,29 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	return compiled, err
 }
 
+// taskDirectCallModule admits backedge poll elision in task-scheduled modules
+// whose entire local call graph stays in native code. Function entry polls
+// remain in place for pending interrupts. Bulk operations on a single private
+// memory lower to native code and do not enter Go.
+func taskDirectCallModule(m *wasm.Module, opts CompileOptions, hints []funcHints) bool {
+	if !opts.Interruptible || coreruntime.NativeCancellationSchedulerAvailable() ||
+		m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.MemCount() > 1 ||
+		opts.SyncHostCalls || opts.GCTypeSubtypingRefTest || opts.GCFrameRoots != nil || len(opts.Codegen.Module.GCTypeLayouts) != 0 ||
+		len(opts.CustomInstructions) != 0 {
+		return false
+	}
+	if memory, ok := m.MemoryType(0); ok && memory.Shared {
+		return false
+	}
+	for _, hint := range hints {
+		if hint.hasNonDirectCall() || hint.hasUnsupportedDynamicCall() ||
+			hint.flags.has(hintMutatesTable|hintModuleEH) {
+			return false
+		}
+	}
+	return true
+}
+
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
 	if err := validateGCBodyViews(m, opts.Codegen.Module.GCBodyViews); err != nil {
 		return nil, err
@@ -2043,8 +2078,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts, policy)
 		sc := newCompileScratch(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
-		defer func() { _ = sc.stack.arena.Close() }()
-		sc.mappedOperands = totalBody >= minParallelHintBodyBytes
+		defer func() { closeOperandArena(sc.stack.arena) }()
+		sc.mappedOperands = shouldMapOperands(totalBody)
+		sc.taskDirectCalls = taskDirectCallModule(m, opts, allHints)
 		sc.amd64Features = opts.AMD64Features
 		sc.asm.BitCountState = opts.BitCountFeatures & 0x07
 		sc.policy = policy
@@ -2088,6 +2124,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		var trapBodyCluster sharedTrapBodyClusterAMD64
 		relocArena := make([]callReloc, 0, relocCap)
+		var hints funcHintView
 		for i := range m.Code {
 			var st *CodegenStats
 			if diagnosticsEnabled && ms != nil {
@@ -2122,7 +2159,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.rel32TailBound = false
 			sc.localRefs.Sites = nil
 			sc.localRefTailBound = false
-			hints := hintSidecar.viewAt(allHints[i], i)
+			hints = hintSidecar.viewAt(allHints[i], i)
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, moduleHasSIMD, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc, referenceWrapperTargets, opts.Codegen.Module.GCBodyViews)
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
@@ -2307,11 +2344,13 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	localCap := parallelLocalScratchCapacity(allHints, inlineTargets, hostAdapters)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	taskDirectCalls := taskDirectCallModule(m, opts, allHints)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
-		states[i].scratch.mappedOperands = totalBody >= minParallelHintBodyBytes
+		states[i].scratch.mappedOperands = shouldMapOperands(totalBody)
+		states[i].scratch.taskDirectCalls = taskDirectCalls
 		if regallocCheckEnabled {
 			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
 		}
@@ -2694,7 +2733,7 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 					if targetIndex >= len(internalEntry) {
 						return fmt.Errorf("amd64: missing internal entry for call relocation target %d in function %d", rl.target, i)
 					}
-					target = internalEntry[targetIndex]
+					target = internalEntry[targetIndex] + int(rl.entryAdvance)
 				}
 				if target < 0 || target > len(code) {
 					return fmt.Errorf("amd64: invalid call relocation target entry %#x for function %d", target, i)
@@ -2886,7 +2925,9 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			}
 			intervalLocals += count
 			intervalFunctions++
-			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
+			if detailedResidency {
+				eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
+			}
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -2895,7 +2936,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	localScores := make([]uint32, totalScores)
 	localLastGets := make([]uint32, intervalLocals)
 	localEventMeta := make([]uint32, intervalFunctions*2)
-	residencyShadow := make([]shared.ResidencyShadowEntry, intervalFunctions)
+	var residencyShadow []shared.ResidencyShadowEntry
+	if detailedResidency {
+		residencyShadow = make([]shared.ResidencyShadowEntry, intervalFunctions)
+	}
 	var sparseGlobals []shared.GlobalHint
 	var loopIntConsts []loopIntConstHintEntry
 	var inlineCaller *inlineCallerHints
@@ -2925,11 +2969,15 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			inlineCaller = newInlineCallerHints(n)
 		}
 		var sparseAccum shared.GlobalHintAccumulator
+		var scanner byteBodyScanner
 		eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
 		scoreAt := 0
 		intervalAt := 0
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
-		localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
+		var localEvents shared.LocalEventTape
+		if detailedResidency {
+			localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+		}
 		intervalEventAt := 0
 		for i := range m.Code {
 			nLocals := int(allHints[i].localCount)
@@ -2949,7 +2997,11 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 				intervalAt += nLocals
 			}
 			if intervalStorage {
-				localEvents.Reset(shared.LocalEventLimit)
+				if detailedResidency {
+					localEvents.Reset(shared.LocalEventLimit)
+				} else {
+					localEvents.ResetCountOnly(shared.LocalEventLimit)
+				}
 				h.localEvents = &localEvents
 			}
 			if len(m.Code[i].BodyBytes) != 0 && inlineCaller.begin() {
@@ -2959,7 +3011,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			var err error
 			var loopBits [2]int64
 			var loopCount uint8
-			h, loopBits, loopCount, err = scanFuncBodyWithLoopIntConsts(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum, collectLoopIntConsts)
+			h, loopBits, loopCount, err = scanner.scanFuncBodyWithLoopIntConsts(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum, collectLoopIntConsts)
 			if err != nil {
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 			}
@@ -2968,10 +3020,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
 			if intervalStorage {
-				h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+				h.setLocalEventSummary(localEvents.Count(), localEvents.Overflow)
 				localEventMeta[intervalEventAt*2] = h.localStart
 				localEventMeta[intervalEventAt*2+1] = h.localEventMeta
-				residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals, detailedResidency)}
+				if detailedResidency {
+					residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals)}
+				}
 				intervalEventAt++
 			}
 			h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -3020,10 +3074,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 // summarizeHintResidency uses the same bounded event tape and planner for
 // serial and parallel scans. Each worker owns its tape; output slots are
 // assigned in function order before workers start.
-func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int, detailed bool) shared.ResidencyShadowSummary {
-	if !detailed {
-		return shared.ResidencyShadowSummary{}
-	}
+func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int) shared.ResidencyShadowSummary {
 	return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
 }
 
@@ -3143,10 +3194,14 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 				h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
 			}
 			if base.flags.has(hintIntervalRegionStorage) {
-				if state.localEvents.Events == nil {
+				if detailedResidency && state.localEvents.Events == nil {
 					state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
 				}
-				state.localEvents.Reset(shared.LocalEventLimit)
+				if detailedResidency {
+					state.localEvents.Reset(shared.LocalEventLimit)
+				} else {
+					state.localEvents.ResetCountOnly(shared.LocalEventLimit)
+				}
 				h.localEvents = &state.localEvents
 			}
 			state.globals.Reset(nGlobals)
@@ -3158,10 +3213,12 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
 			if base.flags.has(hintIntervalRegionStorage) {
 				event := int(owners[i].event)
-				h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
+				h.setLocalEventSummary(state.localEvents.Count(), state.localEvents.Overflow)
 				localEventMeta[event*2] = h.localStart
 				localEventMeta[event*2+1] = h.localEventMeta
-				residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+				if detailedResidency {
+					residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals)}
+				}
 			}
 			allHints[i] = h.funcHints
 			start := len(state.retained)
@@ -3646,21 +3703,32 @@ func (f *fn) compilerPanicError(m *wasm.Module, funcIdx int, recovered any) *rai
 	return railcore.NewInternalCompilerError("amd64", index, offset, recovered)
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool, bodyViews ...map[uint32]codegen.GCBodyView) (code []byte, relocs []callReloc, internalOff int, err error) {
+// Finish the active attempt even if lowering panics. Until the active
+// function takes ownership of the scratch, its state may still be stale.
+func (sc *scratch) finishCompileAttempt(m *wasm.Module, index int, err *error) {
 	var state *fn
-	defer func() {
-		// Reuse the existing unwind scope: even a disabled conditional defer
-		// changes TinyGo defer lowering in ordinary builds.
-		if regallocCheckEnabled && state != nil {
+	if sc.attemptActive {
+		state = &sc.fnState
+		sc.attemptActive = false
+		sc.ctrl = state.ctrl
+		sc.transient = state.transient
+		sc.relocs = state.relocs
+		sc.bodyReader = wasm.Reader{}
+		if regallocCheckEnabled {
 			state.checkEndLifetimes()
 		}
-		if recovered := recover(); recovered != nil {
-			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
-				panic(recovered)
-			}
-			err = state.compilerPanicError(m, funcIdx, recovered)
+	}
+	if recovered := recover(); recovered != nil {
+		if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
+			panic(recovered)
 		}
-	}()
+		*err = state.compilerPanicError(m, index, recovered)
+	}
+}
+
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible, moduleHasSIMD bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch, wrapperTargets []bool, bodyViews ...map[uint32]codegen.GCBodyView) (code []byte, relocs []callReloc, internalOff int, err error) {
+	sc.attemptActive = false
+	defer sc.finishCompileAttempt(m, funcIdx, &err)
 
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
@@ -3719,6 +3787,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.localType, f.gcLocalTypes, f.localSlot, f.locals = localType, gcLocalTypes, localSlot, locals
 	f.globalReg = globalReg[:0]
 	f.guardMode, f.boundsFacts, f.interruptible = guardMode, boundsFacts, interruptible
+	// With a single scheduler thread, cancellation cannot begin while a body
+	// that never yields is running. Its prologue still checks pending traps.
+	f.pollBeforeBodyOnly = interruptible && !coreruntime.NativeCancellationSchedulerAvailable() &&
+		hints.flags.has(hintHasLoop) && !hints.flags.has(hintMutatesTable|hintModuleEH) &&
+		(sc.taskDirectCalls || !hints.flags.has(hintHasCall|hintUsesBulkMem)) &&
+		m.ImportedFuncCount() == 0 && m.MemCount() <= 1 && !mt0.Shared &&
+		len(custom) == 0 && len(gcTypeLayouts) == 0 && gcFrameRoots == nil && !syncHostCalls
 	f.regMerge = policy.EnabledOption(optRegMerge) && !moduleEH
 	f.globalCellReg, f.memSizeReg, f.moduleGlobalRegionalLease = regNone, regNone, regNone
 	f.immutableTables, f.importBindings = immutableTables, importBindings
@@ -3739,7 +3814,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.transient.tmpRootsWritten = 0
 	sc.transient.tmpBelowWritten = 0
 	sc.transient.tmpDeferredWritten = 0
-	state = f
+	sc.attemptActive = true
 	if f.nParams >= 64 {
 		f.localWritten = ^uint64(0)
 	} else if f.nParams != 0 {
@@ -3752,12 +3827,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
-	// Retain the (possibly grown) control-frame backing for the next function.
-	defer func() {
-		sc.ctrl = f.ctrl
-		sc.transient = f.transient
-		sc.relocs = f.relocs
-	}()
 	if moduleEH {
 		shape, err := ehFrameShape(sc, c.BodyBytes)
 		if err != nil {
@@ -3972,8 +4041,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		sc.ensureTargetStack()
 	}
-	var gpPoolStorage [16]Reg
-	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
+	gpPool := gpPinPool(sc.gpPinPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
+	if f.cacheNativeImportTarget(regABI, importBindings) {
+		f.nativeImportTargetCached = true
+		gpPool = withoutReg(gpPool, R15)
+		f.reserved = f.reserved.add(R15)
+	}
 	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.flags.has(hintHasControlFlow) {
 		preferPinReg(gpPool, RBP)
 	}
@@ -4571,15 +4644,15 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// mutable int accessed inside a loop (score >= one loop level): WARP pins only int
 	// globals as values, and the loop gate ensures the per-iteration memory traffic it
 	// removes outweighs the one-time prologue load + epilogue write-back.
-	var gpStorage [32]gpCand // no target can dedicate more than its physical register file
-	if len(gpPool) > len(gpStorage) {
+	if len(gpPool) > len(f.sc.gpPinCandidates) {
 		panic("amd64: GP pin pool exceeds architectural register file")
 	}
-	gp := gpStorage[:0]
+	gp := f.sc.gpPinCandidates[:0]
 	if len(gpPool) != 0 {
 		for i := 0; i < f.nLocals; i++ {
 			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+				n := insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+				gp = gp[:n]
 			}
 		}
 	}
@@ -4593,7 +4666,8 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		gp = insertGPCandidate(gp, gpCand{global: true, idx: uint32(g), score: gh.Score}, len(gpPool))
+		n := insertGPCandidate(gp, gpCand{global: true, idx: uint32(g), score: gh.Score}, len(gpPool))
+		gp = gp[:n]
 	}
 	for k, c := range gp {
 		if k >= len(gpPool) {
@@ -4626,15 +4700,15 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	if fpPinLimit > len(pinnedFLocalRegs) {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	var fcStorage [32]uint16 // bounded by the 16-register architectural XMM file
-	if fpPinLimit > len(fcStorage) {
+	if fpPinLimit > len(f.sc.fpPinCandidates) {
 		panic("amd64: FP pin limit exceeds architectural register file")
 	}
-	fc := fcStorage[:0]
+	fc := f.sc.fpPinCandidates[:0]
 	if fpPinLimit != 0 {
 		for i := 0; i < f.nLocals; i++ {
 			if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-				fc = insertLocalCandidate(fc, uint16(i), scores, fpPinLimit)
+				n := insertLocalCandidate(fc, uint16(i), scores, fpPinLimit)
+				fc = fc[:n]
 			}
 		}
 	}
@@ -5111,14 +5185,29 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 	}
 	internalOff := a.Len()
+	splitPoll := f.sc.taskDirectCalls && hints.flags.has(hintCallsSelf) &&
+		!hints.flags.has(hintHasTailCall) && f.m.GlobalCount() == 0 && !profileEnabled
+	if splitPoll {
+		f.emitInterruptCheck(RSI)
+		// Keep the recursive path at the same offset within each 64-byte window.
+		for range (internalOff - a.Len()) & 63 {
+			a.EmitBytes([]byte{0x90})
+		}
+		f.selfEntryAfterPoll = a.Len()
+	}
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
 	if f.moduleGlobalRegionalLease != regNone {
 		a.Store64(RSP, f.moduleGlobalRegionalLeaseOff(), f.moduleGlobalRegionalLease)
 	}
 	f.emitStackFenceCheck(RBX, RSI)
-	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
+	if !splitPoll {
+		f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
+	}
 	f.entryTrapEnd = a.Len()
+	if f.nativeImportTargetCached {
+		f.emitCacheNativeImportTarget()
+	}
 	gp, fp = 0, 0
 	if len(f.intervalReg) != 0 && !f.intervalControl {
 		// Home all incoming integer parameters so the regional cache can claim and

@@ -117,7 +117,7 @@ func (f *fn) tryIntegerMapLoop(r *wasm.Reader) (bool, error) {
 		f.stats.peep("integer-map-stack-reject")
 		return false, nil
 	}
-	if f.moduleEH || f.localBase != 0 || f.interruptible || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) || f.threadedMemory0 || profileEnabled {
+	if f.moduleEH || f.localBase != 0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || f.nLocals > 256 || f.m.MemCount() == 0 || f.memoryAddr64(0) || f.threadedMemory0 || profileEnabled {
 		f.stats.peep("integer-map-context-reject")
 		return false, nil
 	}
@@ -271,6 +271,7 @@ func (f *fn) tryIntegerMapCandidate(r *wasm.Reader) (bool, error) {
 		f.trapAlways(trapUnreachable)
 	}
 	f.ctrl[len(f.ctrl)-1].controlSite = f.a.Len()
+	f.emitInterruptCheck(gp[2])
 	f.integerMapActive = true
 	err := f.bodyLoop(r, depth)
 	f.integerMapActive = false
@@ -371,7 +372,7 @@ func (f *fn) tryIntegerMapCandidate(r *wasm.Reader) (bool, error) {
 				}
 			}
 		}
-		be.emit()
+		be.emit(f)
 		if integerMapWideUnroll && be.slpWide {
 			f.stats.peep("integer-map-slp-wide-unroll")
 		}

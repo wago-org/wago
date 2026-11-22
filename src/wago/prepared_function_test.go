@@ -458,10 +458,12 @@ func TestWasmFuncIsolatedEligibility(t *testing.T) {
 	}
 
 	in.globalCells = []*Global{nil}
+	in.c.GlobalExports = map[string]int{"value": 0}
 	if in.preparedIsolatedEligible() {
 		t.Fatal("instance with host-visible globals should not be isolated")
 	}
 	in.globalCells = nil
+	in.c.GlobalExports = nil
 	in.tableDescPtr = 1
 	if in.preparedIsolatedEligible() {
 		t.Fatal("instance with a native table should not be isolated")

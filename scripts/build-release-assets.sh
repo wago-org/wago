@@ -37,7 +37,8 @@ tinygo_build() {
   local output="$2"
   local package="$3"
   local -a args=(
-    build -scheduler="${TINYGO_SCHEDULER:-tasks}" -no-debug -opt=z -gc=conservative
+    build -scheduler="${TINYGO_SCHEDULER:-tasks}" -stack-size="${TINYGO_STACK_SIZE:-256KB}"
+    -no-debug -opt=z -gc=conservative
     -ldflags "-X main.version=${WAGO_VERSION}"
   )
   if [[ -n "$tags" ]]; then

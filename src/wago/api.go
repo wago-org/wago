@@ -1716,7 +1716,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err := compileModuleMetadata(c, constExprCtx, features, &requirements, unsafeDirectTailImports, gcArrayProduct, gcTypeSubtypingProduct, indexedFunctionRefOps); err != nil {
 		return nil, err
 	}
-	compiled := installCompilerCompiledFinalizer(c)
+	compiled := c
+	if goruntime.GOARCH == "amd64" && !wruntime.NativeCancellationSchedulerAvailable() &&
+		c.NumImports == 0 && cm.CodeImage == nil {
+		// There is no non-Go resource to reclaim until the code is mapped.
+		// TinyGo may allocate a scheduler stack on the first registration.
+		c.ensureCompileIndexes().pendingFinalizer = c
+	} else {
+		installCompilerCompiledFinalizer(c)
+	}
 	if len(cm.GCI31Inductions) != 0 {
 		compiled.ensureCompileIndexes().gcI31Inductions = cm.GCI31Inductions
 	}

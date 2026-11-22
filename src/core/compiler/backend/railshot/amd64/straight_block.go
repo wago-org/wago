@@ -47,6 +47,13 @@ func (f *fn) straightLineBlock(r *wasm.Reader, kind ctrlKind, params, results in
 	if f.makesCalls || f.inlineTargets.empty() {
 		return shared.IsStraightLineBlock(r, f.classifier)
 	}
+	return f.straightLineBlockWithSplicedCalls(r)
+}
+
+// Keep the callback allocation off the ordinary block scanner on TinyGo.
+//
+//go:noinline
+func (f *fn) straightLineBlockWithSplicedCalls(r *wasm.Reader) bool {
 	return shared.IsStraightLineBlockWithSplicedCalls(r, f.classifier, func(index uint32) bool {
 		t := f.selectedInlineTarget(index)
 		// The select class is a complete read-only condition and local-only

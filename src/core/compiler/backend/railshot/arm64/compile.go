@@ -1016,7 +1016,6 @@ func (sc *scratch) finishControlWorker() {
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
-// Standard Go keeps 64 entries; TinyGo keeps none to protect release size.
 // Signatures above the active bound allocate for that function only.
 const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
 
@@ -2707,7 +2706,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	}
 	localLastGets := make([]uint32, lastGetCount)
 	localEventMeta := make([]uint32, intervalFunctions*2)
-	residencyShadow := make([]shared.ResidencyShadowEntry, intervalFunctions)
+	var residencyShadow []shared.ResidencyShadowEntry
+	if detailedResidency {
+		residencyShadow = make([]shared.ResidencyShadowEntry, intervalFunctions)
+	}
 	var sparseGlobals []shared.GlobalHint
 	var loopIntConsts []loopIntConstHintEntry
 	var agg []int64
@@ -2734,7 +2736,10 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		scoreAt := 0
 		intervalAt := intervalFunctions * 2
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
-		localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
+		var localEvents shared.LocalEventTape
+		if detailedResidency {
+			localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+		}
 		intervalEventAt := 0
 		for i := range m.Code {
 			nLocals := int(allHints[i].localCount)
@@ -2759,7 +2764,11 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			h.localCount = uint16(nLocals)
 			h.localStart = uint32(scoreAt)
 			if intervalStorage {
-				localEvents.Reset(shared.LocalEventLimit)
+				if detailedResidency {
+					localEvents.Reset(shared.LocalEventLimit)
+				} else {
+					localEvents.ResetCountOnly(shared.LocalEventLimit)
+				}
 				h.localEvents = &localEvents
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
@@ -2774,10 +2783,12 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			h.directCallRefs = allHints[i].directCallRefs
 			h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
 			if intervalStorage {
-				h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+				h.setLocalEventSummary(localEvents.Count(), localEvents.Overflow)
 				localEventMeta[intervalEventAt*2] = h.localStart
 				localEventMeta[intervalEventAt*2+1] = h.localEventMeta
-				residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals, detailedResidency)}
+				if detailedResidency {
+					residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals, detailedResidency)}
+				}
 				intervalEventAt++
 			}
 			h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -2964,10 +2975,14 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 				h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
 			}
 			if base.flags.has(hintIntervalRegionStorage) {
-				if state.localEvents.Events == nil {
+				if detailedResidency && state.localEvents.Events == nil {
 					state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
 				}
-				state.localEvents.Reset(shared.LocalEventLimit)
+				if detailedResidency {
+					state.localEvents.Reset(shared.LocalEventLimit)
+				} else {
+					state.localEvents.ResetCountOnly(shared.LocalEventLimit)
+				}
 				h.localEvents = &state.localEvents
 			}
 			state.globals.Reset(nGlobals)
@@ -2979,10 +2994,12 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
 			if base.flags.has(hintIntervalRegionStorage) {
 				event := int(owners[i].event)
-				h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
+				h.setLocalEventSummary(state.localEvents.Count(), state.localEvents.Overflow)
 				localEventMeta[event*2] = h.localStart
 				localEventMeta[event*2+1] = h.localEventMeta
-				residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+				if detailedResidency {
+					residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+				}
 			}
 			allHints[i] = h.funcHints
 			if h.loopIntConstCount != 0 {

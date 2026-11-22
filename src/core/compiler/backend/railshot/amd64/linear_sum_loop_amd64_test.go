@@ -29,10 +29,15 @@ func linearSumLoopModuleAMD64(t testing.TB) *wasm.Module {
 }
 
 func TestLinearSumLoopBoundsHoistAndUnrollAMD64(t *testing.T) {
+	t.Run("async", func(t *testing.T) { testLinearSumLoopBoundsHoistAndUnroll(t, false) })
+	t.Run("polling", func(t *testing.T) { testLinearSumLoopBoundsHoistAndUnroll(t, true) })
+}
+
+func testLinearSumLoopBoundsHoistAndUnroll(t *testing.T, interruptible bool) {
 	requireCompilerDiagnostics(t)
 	m := linearSumLoopModuleAMD64(t)
 	var stats ModuleStats
-	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Interruptible: interruptible})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +54,9 @@ func TestLinearSumLoopBoundsHoistAndUnrollAMD64(t *testing.T) {
 			binary.LittleEndian.PutUint64(mem[i*8:], uint64(i+1))
 		}
 	}
+	opts := CompileOptions{Interruptible: interruptible}
 	for _, n := range []uint64{0, 1, 2, 3, 4, 5, 7, 8, 9, 31, 512, 8192} {
-		got, _, err := runMemAmd64(t, m, setup, n)
+		got, _, err := runMemAmd64WithOptions(t, m, opts, setup, n)
 		if err != nil {
 			t.Fatalf("n=%d: %v", n, err)
 		}
@@ -60,7 +66,7 @@ func TestLinearSumLoopBoundsHoistAndUnrollAMD64(t *testing.T) {
 		}
 	}
 	for _, n := range []uint64{8193, 1<<32 - 1} {
-		if _, _, err := runMemAmd64(t, m, nil, n); err == nil {
+		if _, _, err := runMemAmd64WithOptions(t, m, opts, nil, n); err == nil {
 			t.Fatalf("n=%d: expected out-of-bounds trap", n)
 		}
 	}

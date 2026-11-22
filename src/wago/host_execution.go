@@ -207,10 +207,10 @@ func registerHostControl(in *Instance) error {
 		binding := in.nativeScalarLeafAliases()
 		if binding != nil {
 			params := uint32(1)
-			var fn any = binding.typedI32
+			var fn any = (func(int32) int32)(binding.typedI32)
 			if binding.scalarKind == syncHostTypedI32x2 {
 				params = 2
-				fn = binding.typedI32x2
+				fn = (func(int32, int32) int32)(binding.typedI32x2)
 			}
 			admitted, err := coreruntime.RegisterNativeScalarLeaf(runtimebridge.GrantHostScalarCall(), in.ctrl, fn, params)
 			if err != nil {

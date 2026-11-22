@@ -854,7 +854,10 @@ func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstEx
 	fv.pushCtrl(ctrlFunc, nil, fv.constResult[:])
 	fv.rd.reset(e.body)
 	r := &fv.rd
-	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
+	if v.constDirectOp == nil {
+		v.constDirectOp = new(directOp)
+	}
+	op := v.constDirectOp
 	for {
 		if len(fv.ctrls) == 0 {
 			if r.has() {
@@ -862,13 +865,13 @@ func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstEx
 			}
 			return nil
 		}
-		if err := fv.decodeDirectOp(r, fixedMemargWidths(false), false, &op); err != nil {
+		if err := fv.decodeDirectOp(r, fixedMemargWidths(false), false, op); err != nil {
 			return err
 		}
 		if op.kind != directInstr && op.kind != directEnd {
 			return fv.verr(ErrConstExprRequired, "structured instruction")
 		}
-		if err := fv.stepDirectOp(&op); err != nil {
+		if err := fv.stepDirectOp(op); err != nil {
 			return err
 		}
 	}
@@ -944,7 +947,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts, op *directOp) error {
 	widths.multiMemory = multiMemory
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
@@ -966,7 +969,6 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)
 	r := &v.rd
-	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
 	facts := v.analysisFacts()
 	if facts != nil {
 		for {
@@ -1032,10 +1034,10 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 					continue
 				}
 			}
-			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+			if err := v.decodeDirectOp(r, widths, multiMemory, op); err != nil {
 				return err
 			}
-			if err := v.stepDirectOp(&op); err != nil {
+			if err := v.stepDirectOp(op); err != nil {
 				return err
 			}
 			if op.kind == directInstr {
@@ -1045,7 +1047,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 					v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
 				}
 			} else {
-				facts.observeStructuredDirect(&op)
+				facts.observeStructuredDirect(op)
 			}
 		}
 	}
@@ -1098,10 +1100,10 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				continue
 			}
 		}
-		if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+		if err := v.decodeDirectOp(r, widths, multiMemory, op); err != nil {
 			return err
 		}
-		if err := v.stepDirectOp(&op); err != nil {
+		if err := v.stepDirectOp(op); err != nil {
 			return err
 		}
 	}

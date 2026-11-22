@@ -386,7 +386,7 @@ func TestBoundedPinCandidateOrderingAMD64(t *testing.T) {
 		{idx: 2, score: 9},
 		{idx: 1, score: 1},
 	} {
-		top = insertGPCandidate(top, candidate, len(storage))
+		top = top[:insertGPCandidate(top, candidate, len(storage))]
 	}
 	want := []gpCand{{idx: 2, score: 9}, {global: true, idx: 1, score: 9}, {idx: 0, score: 5}}
 	for i := range want {
@@ -399,7 +399,7 @@ func TestBoundedPinCandidateOrderingAMD64(t *testing.T) {
 	var localsStorage [2]uint16
 	locals := localsStorage[:0]
 	for _, local := range []uint16{3, 2, 0, 1} {
-		locals = insertLocalCandidate(locals, local, scores, len(localsStorage))
+		locals = locals[:insertLocalCandidate(locals, local, scores, len(localsStorage))]
 	}
 	if len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
 		t.Fatalf("local candidates = %v, want [1 2]", locals)

@@ -592,6 +592,18 @@ func TestGCReferenceHintRequiresHelperAdmission(t *testing.T) {
 	}
 }
 
+func TestByteHintsMarkReferenceCallsAsDynamic(t *testing.T) {
+	for _, opcode := range []byte{0x14, 0x15} {
+		hints, err := scanBodyBytes([]byte{opcode, 0x00, 0x0b}, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hints.hasNonDirectCall() || !hints.hasUnsupportedDynamicCall() {
+			t.Fatalf("opcode %#x did not record a dynamic call", opcode)
+		}
+	}
+}
+
 func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 	ast := wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrTryTable},

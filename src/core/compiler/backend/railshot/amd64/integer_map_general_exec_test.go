@@ -45,11 +45,14 @@ func TestIntegerMapGeneralExpressions(t *testing.T) {
 				var expected []byte
 				var result uint64
 				var trap string
-				for _, on := range []bool{false, true} {
+				for _, mode := range []struct {
+					on, interruptible bool
+				}{{}, {on: true}, {on: true, interruptible: true}} {
+					on := mode.on
 					integerMapLoopEnabled = on
 					integerMapTestFast = on && tc.fast
 					var stats ModuleStats
-					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: shared.AMD64ModernBaseline, Optimizations: map[string]bool{"interval-region-pins": false}}, func(mem []byte) {
+					got, mem, err := runMemAmd64WithOptions(t, m, CompileOptions{Interruptible: mode.interruptible, Stats: optionalTestStats(&stats), AMD64FeaturesSet: true, AMD64Features: shared.AMD64ModernBaseline, Optimizations: map[string]bool{"interval-region-pins": false}}, func(mem []byte) {
 						for i := range mem {
 							mem[i] = byte(i*73 + 17)
 						}

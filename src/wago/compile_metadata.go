@@ -19,6 +19,24 @@ import (
 // matches the backends' exception record payload capacity.
 const maxStagedEHTagParams = 8
 
+type compiledFuncTypeKeyCache struct {
+	keys  [32]uint64
+	types [32]uint32
+}
+
+func (c *compiledFuncTypeKeyCache) key(m *wasm.Module, typeIndex uint32) (uint64, bool) {
+	slot := typeIndex % uint32(len(c.keys))
+	if key := c.keys[slot]; key != 0 && c.types[slot] == typeIndex {
+		return key, true
+	}
+	key, ok := m.StructuralTypeKeyChecked(typeIndex)
+	if ok {
+		c.keys[slot] = key
+		c.types[slot] = typeIndex
+	}
+	return key, ok
+}
+
 // Keep metadata construction separate from native compilation so its temporary
 // descriptors and validation paths do not inflate the native compile function.
 //
@@ -417,11 +435,12 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	// Function descriptors back every executable funcref table. Table 0 keeps the
 	// direct runtime slot; later table indexes use the bounded directory.
 	c.FuncTypeID = make([]uint64, importedFuncs+len(m.FuncTypes))
+	var typeKeys compiledFuncTypeKeyCache
 	funcTypeIDAt := 0
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
 			typeIndex := m.Imports[i].Type.FuncType().Index
-			key, ok := m.StructuralTypeKeyChecked(typeIndex)
+			key, ok := typeKeys.key(m, typeIndex)
 			if !ok {
 				return fmt.Errorf("import function type %d exceeds bounded native identity", typeIndex)
 			}
@@ -431,7 +450,7 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	}
 	for li := range m.FuncTypes {
 		typeIndex := m.FuncTypes[li].Index
-		key, ok := m.StructuralTypeKeyChecked(typeIndex)
+		key, ok := typeKeys.key(m, typeIndex)
 		if !ok {
 			return fmt.Errorf("function type %d exceeds bounded native identity", typeIndex)
 		}
