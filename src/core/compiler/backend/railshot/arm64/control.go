@@ -1002,6 +1002,10 @@ func (f *fn) dropFlushedSuffix(types []machineType, n int) {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	// An empty edge has no values or result roots to reconcile.
+	if a == 0 && !regallocCheckEnabled {
+		return
+	}
 	if fr.kind != cfLoop {
 		f.recordGCBranchResults(fr, a)
 	}

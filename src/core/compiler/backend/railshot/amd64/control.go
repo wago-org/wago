@@ -969,6 +969,10 @@ func frameGCRootFlags(base, suffix []bool) []bool {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	// An empty edge has no values or result roots to reconcile.
+	if a == 0 && !regallocCheckEnabled {
+		return
+	}
 	roots := f.rootsBottomToTop()
 	if fr.kind != cfLoop && a != 0 && f.s.hasGCRoots {
 		f.recordGCBranchResultRoots(fr, a, roots)
