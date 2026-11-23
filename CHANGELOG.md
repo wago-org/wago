@@ -8,6 +8,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve ARM64 execution with faster loop lowering, conditional arithmetic,
+  and SIMD splats. Enable guard-page bounds checks on Darwin ARM64 with TinyGo.
 - Improve TinyGo compilation and prepared-call latency on AMD64 and ARM64.
   Extend the AMD64 operand-storage and prepared integer-call optimizations
   to standard Go.
