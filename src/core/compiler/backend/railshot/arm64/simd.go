@@ -288,17 +288,19 @@ func (f *fn) preloadV128Consts(code []byte) {
 }
 
 // buildV128Const materializes the 128-bit constant (lo,hi) into V register x.
-// Lane splats use one scalar materialization plus DUP, avoiding the two full
-// 64-bit materializations needed by the generic FMOV+INS path. SIMD kernels use
-// byte/half/word splats heavily for masks and lookup tables, and AArch64's DUP
-// preserves the exact bits without relying on a floating-point immediate form.
+// Byte splats use a single NEON immediate. Wider splats use one scalar
+// materialization plus DUP, preserving the exact bits of the constant.
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
+	v, laneBytes := v128Splat(lo, hi)
+	if laneBytes == 1 {
+		f.a.NeonMoviB(x, uint8(v))
+		f.stats.peep("v128-const-splat")
+		return
+	}
 	t := f.allocReg(0)
-	if v, laneBytes := v128Splat(lo, hi); laneBytes != 0 {
+	if laneBytes != 0 {
 		f.a.MovImm64(t, v)
 		switch laneBytes {
-		case 1:
-			f.a.NeonDupGprB(x, t)
 		case 2:
 			f.a.NeonDupGprH(x, t)
 		case 4:

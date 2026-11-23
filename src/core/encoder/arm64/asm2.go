@@ -2191,6 +2191,15 @@ func (a *Asm) NeonDupGprD(dst, src Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 }
+
+// NeonMoviB broadcasts an eight-bit immediate to all sixteen byte lanes.
+func (a *Asm) NeonMoviB(dst Reg, imm uint8) {
+	a.word(0x4F00E400 | uint32(imm&0xe0)<<11 | uint32(imm&0x1f)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
 func (a *Asm) NeonDupLaneS(dst, src Reg, lane byte) {
 	a.word(0x4E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {
