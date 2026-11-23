@@ -250,6 +250,8 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 		{"str d0,[x1,#8]", func(a *Asm) { a.StrD(X1, 8, X0) }, 0xfd000420},
 		{"ldr q0,[x1,#16]", func(a *Asm) { a.LdrQ(X0, X1, 16) }, 0x3dc00420},
 		{"str q0,[x1,#16]", func(a *Asm) { a.StrQ(X1, 16, X0) }, 0x3d800420},
+		{"ldr q0,[x1],#64", func(a *Asm) { a.LdrQPost(X0, X1, 64) }, 0x3cc40420},
+		{"str q2,[x3],#64", func(a *Asm) { a.StrQPost(X3, 64, X2) }, 0x3c840462},
 		{"add x0,sp,#16", func(a *Asm) { a.LeaSP(X0, 16) }, 0x910043e0},
 	}
 	for _, c := range cases {
