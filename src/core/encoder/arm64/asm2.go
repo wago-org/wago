@@ -816,6 +816,34 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	a.ldStrQIndexed(0x3CA06800, src, base, disp)
 }
 
+// LdrQPost loads from base, then adds a signed byte displacement to base.
+func (a *Asm) LdrQPost(dst, base Reg, disp int32) {
+	if regallocCheckEnabled {
+		a.regallocLoad(dst, base, 0, true, 16)
+		a.regallocGPWrites(regallocGPMask(base, true))
+	}
+	a.ldStrQPost(0x3CC00400, dst, base, disp)
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
+// StrQPost stores to base, then adds a signed byte displacement to base.
+func (a *Asm) StrQPost(base Reg, disp int32, src Reg) {
+	if regallocCheckEnabled {
+		a.regallocStore(base, 0, src, true, 16)
+		a.regallocGPWrites(regallocGPMask(base, true))
+	}
+	a.ldStrQPost(0x3C800400, src, base, disp)
+}
+
+func (a *Asm) ldStrQPost(op uint32, rt, base Reg, disp int32) {
+	if disp < -256 || disp > 255 {
+		panic("arm64: Q-register post-index displacement out of range")
+	}
+	a.word(op | (uint32(disp)&0x1ff)<<12 | r(base)<<5 | r(rt))
+}
+
 func (a *Asm) ldStrQIndexed(indexed uint32, rt, base Reg, disp int32) {
 	scratch := X16
 	if base == X16 {
@@ -2163,6 +2191,15 @@ func (a *Asm) NeonDupGprD(dst, src Reg) {
 		a.regallocFPWrites(uint32(1) << r(dst))
 	}
 }
+
+// NeonMoviB broadcasts an eight-bit immediate to all sixteen byte lanes.
+func (a *Asm) NeonMoviB(dst Reg, imm uint8) {
+	a.word(0x4F00E400 | uint32(imm&0xe0)<<11 | uint32(imm&0x1f)<<5 | r(dst))
+	if regallocCheckEnabled {
+		a.regallocFPWrites(uint32(1) << r(dst))
+	}
+}
+
 func (a *Asm) NeonDupLaneS(dst, src Reg, lane byte) {
 	a.word(0x4E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
 	if regallocCheckEnabled {

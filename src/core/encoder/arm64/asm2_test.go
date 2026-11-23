@@ -250,6 +250,8 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 		{"str d0,[x1,#8]", func(a *Asm) { a.StrD(X1, 8, X0) }, 0xfd000420},
 		{"ldr q0,[x1,#16]", func(a *Asm) { a.LdrQ(X0, X1, 16) }, 0x3dc00420},
 		{"str q0,[x1,#16]", func(a *Asm) { a.StrQ(X1, 16, X0) }, 0x3d800420},
+		{"ldr q0,[x1],#64", func(a *Asm) { a.LdrQPost(X0, X1, 64) }, 0x3cc40420},
+		{"str q2,[x3],#64", func(a *Asm) { a.StrQPost(X3, 64, X2) }, 0x3c840462},
 		{"add x0,sp,#16", func(a *Asm) { a.LeaSP(X0, 16) }, 0x910043e0},
 	}
 	for _, c := range cases {
@@ -400,6 +402,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"dup v2.8h,w3", func(a *Asm) { a.NeonDupGprH(X2, X3) }, 0x4e020c62},
 		{"dup v4.4s,w5", func(a *Asm) { a.NeonDupGprS(X4, X5) }, 0x4e040ca4},
 		{"dup v6.2d,x7", func(a *Asm) { a.NeonDupGprD(X6, X7) }, 0x4e080ce6},
+		{"movi v31.16b,#0xff", func(a *Asm) { a.NeonMoviB(31, 0xff) }, 0x4f07e7ff},
 		{"dup v0.4s,v1.s[3]", func(a *Asm) { a.NeonDupLaneS(X0, X1, 3) }, 0x4e1c0420},
 		{"dup v2.2d,v3.d[1]", func(a *Asm) { a.NeonDupLaneD(X2, X3, 1) }, 0x4e180462},
 		{"ins v4.s[2],v5.s[0]", func(a *Asm) { a.NeonInsLaneS(X4, 2, X5) }, 0x6e1404a4},

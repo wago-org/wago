@@ -281,35 +281,25 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	guard(condA)
 	f.a.TstImm32(counter, 7)
 	guard(condNE)
-	// Check complete ranges in 64 bits, including the memory32 wrap boundary.
-	for _, base := range []Reg{d, s} {
-		f.a.MovImm64(X16, uint64(p.limit))
-		f.a.Add64(X16, base, X16)
-		f.cmpRR(X16, size, true)
-		guard(condA)
-		f.a.MovImm64(X17, 1<<32)
-		f.cmpRR(X16, X17, true)
-		guard(condA)
-	}
+	// A widened end within the live memory32 byte length cannot wrap.
+	// Both rows have the same extent, so check their larger start.
+	f.cmpRR(d, s, true)
+	f.a.Csel64(X17, d, s, condAE)
+	f.leaDisp(X16, X17, int32(p.limit), true)
+	f.cmpRR(X16, size, true)
+	guard(condA)
 	f.a.AddImm64(X16, pivot, 4)
 	f.cmpRR(X16, size, true)
 	guard(condA)
-	// Equal rows are safe. Partially overlapping rows must remain sequential.
-	f.cmpRR(d, s, true)
-	equal := f.a.Bcond(condE)
-	sourceHigh := f.a.Bcond(condB)
-	f.a.Sub64(X16, d, s)
-	f.a.MovImm64(X17, uint64(p.limit))
+	// Equal rows are safe. Subtracting one from the absolute distance
+	// wraps zero above the unsigned overlap range.
+	f.a.Subs64(X16, d, s)
+	f.a.Sub64(X17, s, d)
+	f.a.Csel64(X16, X16, X17, condAE)
+	f.a.SubImm64(X16, X16, 1)
+	f.a.MovImm64(X17, uint64(p.limit-1))
 	f.cmpRR(X16, X17, true)
 	guard(condB)
-	separate := f.a.Branch()
-	f.patchBranch19(sourceHigh, f.a.Len())
-	f.a.Sub64(X16, s, d)
-	f.a.MovImm64(X17, uint64(p.limit))
-	f.cmpRR(X16, X17, true)
-	guard(condB)
-	f.patchBranch19(equal, f.a.Len())
-	f.patchBranch26(separate, f.a.Len())
 	f.a.Add64(d, d, counter)
 	f.a.Add64(d, d, linMemReg)
 	f.a.Add64(s, s, counter)
@@ -320,28 +310,55 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	f.a.Load32(X16, pivot, 0)
 	f.a.NeonDupGprS(vp, X16)
 	loop := f.a.Len()
-	var scalar [2]int
-	nScalar := 0
+	// Leave the final eight bytes to the original scalar loop. Stop before
+	// the pivot unless its entire four-byte value lies behind the destination.
+	// Recompute this bound after a scalar pivot-overlap packet.
+	f.a.MovImm64(X16, uint64(p.limit-8))
+	f.a.Sub64(X16, X16, counter)
+	f.a.Add64(size, d, X16)
+	f.a.AddImm64(X16, pivot, 3)
+	f.cmpRR(X16, d, true)
+	pivotBehind := f.a.Bcond(condB)
+	f.cmpRR(pivot, size, true)
+	pivotAhead := f.a.Bcond(condAE)
+	// A word-aligned overlap can stay vectorized if the scalar signed-min
+	// update leaves the pivot unchanged. The row guards make its source word
+	// stable until that update, even when the two rows are identical.
+	f.a.Sub64(X16, pivot, d)
+	f.a.TstImm32(X16, 3)
+	partialPivot := f.a.Bcond(condNE)
+	f.a.LdrIdx(X16, s, X16, 4, false, false)
+	f.a.Load32(X17, pivot, 0)
+	f.a.Add32(X16, X16, X17)
+	f.cmpRR(X16, X17, false)
+	stablePivot := f.a.Bcond(condGE)
+	f.patchBranch19(partialPivot, f.a.Len())
+	f.a.MovReg64(size, pivot)
+	for _, branch := range []int{pivotBehind, pivotAhead, stablePivot} {
+		f.patchBranch19(branch, f.a.Len())
+	}
+	// Compare the destination directly against the last legal packet start.
+	// Materialize the bound once per packet width.
+	comparePacket := func() {
+		f.cmpRR(d, size, true)
+	}
 	emitVector := func(bytes uint32) {
-		// Pivot overlap must resume the original body: the source may cache
-		// both pivot loads before its first store. Until overlap, the hoisted
-		// broadcast remains unchanged by every destination packet.
-		f.a.Sub64(X16, pivot, d)
-		f.a.AddImm64(X16, X16, 3)
-		f.cmpImm(X16, bytes+3, true)
-		scalar[nScalar] = f.a.Bcond(condB)
-		nScalar++
-		for off := int32(0); off < int32(bytes); off += 16 {
+		packetStart := f.a.Len()
+		f.a.LdrQ(vd, d, 0)
+		f.a.LdrQPost(vs, s, int32(bytes))
+		f.a.NeonAddS(vs, vs, vp)
+		f.a.NeonSminS(vd, vd, vs)
+		f.a.StrQPost(d, int32(bytes), vd)
+		for off := 16 - int32(bytes); off < 0; off += 16 {
 			f.a.LdrQ(vd, d, off)
 			f.a.LdrQ(vs, s, off)
 			f.a.NeonAddS(vs, vs, vp)
 			f.a.NeonSminS(vd, vd, vs)
 			f.a.StrQ(d, off, vd)
 		}
-		f.a.AddImm64(d, d, bytes)
-		f.a.AddImm64(s, s, bytes)
 		f.a.AddImm32(counter, counter, bytes)
-		f.patchBranch26(f.a.Branch(), loop)
+		comparePacket()
+		f.patchBranch19(f.a.Bcond(condBE), packetStart)
 	}
 	// Require four wider iterations to amortize the extra code and tail dispatch.
 	packetBytes := uint32(32)
@@ -351,19 +368,24 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	if p.limit >= 4*packetBytes+8 {
 		// Amortize loop and alias checks over several SIMD blocks without adding
 		// registers. Keep one original packet for the observable scalar tail.
-		compare(p.limit - packetBytes - 8)
+		f.a.SubImm64(size, size, packetBytes)
+		comparePacket()
 		tail := f.a.Bcond(condA)
 		emitVector(packetBytes)
 		f.stats.peep("minplus-loop-unroll")
 		f.patchBranch19(tail, f.a.Len())
+		f.a.AddImm64(size, size, packetBytes-16)
+	} else {
+		f.a.SubImm64(size, size, 16)
 	}
-	compare(p.limit - 24)
-	done := f.a.Bcond(condA)
+	comparePacket()
+	noPacket := f.a.Bcond(condA)
 	emitVector(16)
-	for i := 0; i < nScalar; i++ {
-		f.patchBranch19(scalar[i], f.a.Len())
-	}
+	f.patchBranch19(noPacket, f.a.Len())
+	var done int
 	if p.scalarReloadPivot {
+		compare(p.limit - 24)
+		done = f.a.Bcond(condA)
 		// This packet is safe only when the source reloads the pivot between
 		// stores. Otherwise overlap resumes the original body below.
 		for off := uint32(0); off < 8; off += 4 {
@@ -383,7 +405,9 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 		f.patchBranch26(f.a.Branch(), loop)
 	}
 	// Both a completed prefix and pivot overlap resume at the current counter.
-	f.patchBranch19(done, f.a.Len())
+	if p.scalarReloadPivot {
+		f.patchBranch19(done, f.a.Len())
+	}
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 	} else {

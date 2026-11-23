@@ -75,7 +75,7 @@ func linearSpanExitWord(w uint32) (x guardedIntegerEffects, ok bool) {
 	return x, false
 }
 
-func spanExitClobbersDeadWith(b []byte, pc int, dirty uint32, relocs []callReloc, effects func(uint32) (guardedIntegerEffects, bool)) bool {
+func spanExitClobbersDeadWith(b []byte, pc int, dirty uint32, relocs []callReloc, effects func(uint32) (guardedIntegerEffects, bool), internalCallKillsScratch ...bool) bool {
 	type state struct {
 		pc    int
 		dirty uint32
@@ -91,12 +91,24 @@ func spanExitClobbersDeadWith(b []byte, pc int, dirty uint32, relocs []callReloc
 			if steps > 512 || s.pc < 0 || s.pc+4 > len(b) {
 				return false
 			}
+			w := rdWord(b, s.pc)
+			matchedCall := false
 			for _, r := range relocs {
 				if int(r.at) == s.pc {
-					return false
+					// Ordinary register-ABI callees may clobber X9–X15, which
+					// are neither argument carriers nor preserved registers.
+					if len(internalCallKillsScratch) == 0 || !internalCallKillsScratch[0] ||
+						!r.internal || r.tail || r.gcObject || w&0xfc000000 != 0x94000000 ||
+						s.dirty & ^uint32(0xfe00) != 0 {
+						return false
+					}
+					matchedCall = true
+					break
 				}
 			}
-			w := rdWord(b, s.pc)
+			if matchedCall {
+				break
+			}
 			if w == 0xd65f03c0 {
 				// These original scratch writes already belong to the callee's clobber
 				// surface. Result and fixed ABI registers cannot be discarded at RET.

@@ -365,7 +365,7 @@ func (f *fn) emitProvedAbsReduceLoop(source *wasm.Reader, p absReducePlan) {
 			available++
 		}
 	}
-	neededVectors := 2
+	neededVectors := 3 // one packet, the second input, and the running sum
 	if p.lanes > 4 {
 		neededVectors++
 	}
@@ -402,6 +402,15 @@ func (f *fn) emitProvedAbsReduceLoop(source *wasm.Reader, p absReducePlan) {
 	if p.lanes > 4 {
 		vc = f.allocFReg(0)
 		f.fpinned = f.fpinned.add(vc)
+	}
+	sum := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(sum)
+	// The eight-word packet can load each stream with one LDP if both
+	// halves fit without borrowing an occupied vector register.
+	vbHi := regNone
+	if p.lanes == 8 && available > neededVectors {
+		vbHi = f.allocFReg(0)
+		f.fpinned = f.fpinned.add(vbHi)
 	}
 	// Prove the complete stream before carrying native pointers. Failure leaves
 	// every source local unchanged and resumes the original checked loop.
@@ -440,34 +449,52 @@ func (f *fn) emitProvedAbsReduceLoop(source *wasm.Reader, p absReducePlan) {
 	nFallback++
 	f.a.Add64(a, a, linMemReg)
 	f.a.Add64(b, b, linMemReg)
-	loop := f.a.Len()
-	for off := int32(0); off < int32(4*p.lanes); off += 16 {
-		part := va
-		if off != 0 {
-			part = vc
-		}
-		f.a.LdrQ(part, a, off)
-		f.a.LdrQ(vb, b, off)
-		f.a.NeonSubS(part, part, vb)
-		f.a.NeonAbsS(part, part)
-		if off != 0 {
-			f.a.NeonAddS(va, va, part)
-		}
-	}
-	f.a.NeonAddvS(va, va)
-	f.a.FmovToGpr(X16, va, false)
-	f.a.Add32(acc, acc, X16)
+	// The stream stride is invariant. The vector packet uses only direct
+	// Q loads and NEON arithmetic, so it leaves the backend scratch live.
 	if p.stride.op == 0x20 {
 		read(p.stride.a, X16)
 	} else {
 		f.a.MovImm64(X16, uint64(p.stride.v))
 	}
+	// Reserve the original scalar tail. The source index is live only at
+	// that tail, so compute its wrapping advance for the entire prefix.
+	f.a.SubImm32(counter, counter, 1)
+	f.a.Madd32(index, counter, X16, index)
+	// Addition modulo 2^32 allows each lane to accumulate independently.
+	// Reduce once before resuming the checked scalar tail.
+	f.a.NeonEor16b(sum, sum, sum)
+	loop := f.a.Len()
+	if vbHi != regNone {
+		f.a.LdpQ(va, vc, a, 0)
+		f.a.LdpQ(vb, vbHi, b, 0)
+	}
+	for off := int32(0); off < int32(4*p.lanes); off += 16 {
+		part, input := va, vb
+		if off != 0 {
+			part = vc
+			if vbHi != regNone {
+				input = vbHi
+			}
+		}
+		if vbHi == regNone {
+			f.a.LdrQ(part, a, off)
+			f.a.LdrQ(input, b, off)
+		}
+		f.a.NeonSubS(part, part, input)
+		f.a.NeonAbsS(part, part)
+		if off != 0 {
+			f.a.NeonAddS(va, va, part)
+		}
+	}
+	f.a.NeonAddS(sum, sum, va)
 	f.a.Add64(a, a, X16)
 	f.a.Add64(b, b, X16)
-	f.a.Add32(index, index, X16)
-	f.a.SubImm32(counter, counter, 1)
-	f.cmpImm(counter, 1, false)
+	f.a.SubsImm32(counter, counter, 1)
 	f.patchBranch19(f.a.Bcond(condNE), loop)
+	f.a.NeonAddvS(sum, sum)
+	f.a.FmovToGpr(X16, sum, false)
+	f.a.Add32(acc, acc, X16)
+	f.a.MovImm32(counter, 1)
 	for _, site := range fallback[:nFallback] {
 		f.patchBranch19(site, f.a.Len())
 	}
@@ -484,6 +511,10 @@ func (f *fn) emitProvedAbsReduceLoop(source *wasm.Reader, p absReducePlan) {
 		}
 		f.setFactsForLocal(state.local, 0)
 	}
+	if vbHi != regNone {
+		f.releaseF(vbHi)
+	}
+	f.releaseF(sum)
 	f.releaseF(va)
 	f.releaseF(vb)
 	if vc != regNone {

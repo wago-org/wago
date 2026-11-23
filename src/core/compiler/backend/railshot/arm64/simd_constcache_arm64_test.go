@@ -15,7 +15,7 @@ func TestSIMDV128ConstSplatMaterialization(t *testing.T) {
 		v    [16]byte
 		base uint32
 	}{
-		{name: "byte", v: i8x16Bytes(-85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85), base: 0x4e010c00},
+		{name: "byte", v: i8x16Bytes(-85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85, -85), base: 0x4f05e400},
 		{name: "half", v: i16x8Bytes(0x1234, 0x1234, 0x1234, 0x1234, 0x1234, 0x1234, 0x1234, 0x1234), base: 0x4e020c00},
 		{name: "word", v: i32x4Bytes(0x12345678, 0x12345678, 0x12345678, 0x12345678), base: 0x4e040c00},
 		{name: "dword", v: i64x2Bytes(0x0123456789abcdef, 0x0123456789abcdef), base: 0x4e080c00},
@@ -39,7 +39,7 @@ func TestSIMDV128ConstSplatMaterialization(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Fatalf("compiled code does not contain expected DUP lane form %#08x", tc.base)
+				t.Fatalf("compiled code does not contain expected splat encoding %#08x", tc.base)
 			}
 			if got, want := runArm64u(t, m), binary.LittleEndian.Uint64(tc.v[:8]); got != want {
 				t.Fatalf("result %#016x, want %#016x", got, want)

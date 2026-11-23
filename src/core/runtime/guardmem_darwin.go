@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build darwin && ((arm64 && !tinygo && !wago_target_tinygo) || (amd64 && wago_guardpage))
+//go:build darwin && ((arm64 && ((!tinygo && !wago_target_tinygo) || (tinygo && wago_guardpage))) || (amd64 && wago_guardpage))
 
 package runtime
 
@@ -227,13 +227,17 @@ func unregisterGuardRegion(start uintptr) {
 	}
 }
 
+var (
+	guardMu        sync.Mutex
+	guardInstalled bool
+)
+
 func InstallGuardTrapHandler() error {
 	guardMu.Lock()
 	defer guardMu.Unlock()
 	if guardInstalled {
 		return nil
 	}
-	guardTrapExitHandlerJumpPC = addrNativeTrapExitHandlerJump()
 	if err := installDarwinSignalHandlers(); err != nil {
 		return err
 	}
