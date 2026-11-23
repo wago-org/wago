@@ -18,7 +18,9 @@ import "os"
 var conditionalBoundsEnabled = os.Getenv("WAGO_ARM64_NO_CONDITIONAL_BOUNDS") != "1"
 
 func (f *fn) conditionalBoundsEligible() bool {
-	return f.opt(optConditionalBounds) && f.conditionalBoundsSized && f.boundsFacts && !f.moduleEH && !f.threadedMemory0 && !f.interruptible && len(f.customInstructions) == 0
+	// A task-scheduler module that stays in native code still polls on
+	// entry, but its branch fallthroughs run without loop polls.
+	return f.opt(optConditionalBounds) && f.conditionalBoundsSized && f.boundsFacts && !f.moduleEH && !f.threadedMemory0 && !f.loopInterruptible() && len(f.customInstructions) == 0
 }
 
 func (f *fn) conditionalBoundsSnapshot(setLocal int) [8]boundsCert {
