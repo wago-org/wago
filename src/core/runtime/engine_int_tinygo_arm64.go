@@ -10,58 +10,71 @@
 package runtime
 
 import (
+	"errors"
 	"unsafe"
 
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
-// TinyGo passes the five explicit uintptr arguments in X0-X4 and the func-value
-// context in X5. This thunk shifts them into Wago's direct integer ABI, saves the
-// complete AAPCS64 Go context, and enters native code on the foreign stack.
-func tinygoARM64IntEntryCode(foreignStackTop uintptr) []byte {
+// TinyGo passes the linear memory and integer arguments in X0-X4, the
+// physical stack top in X5, and the native-code pointer in X6.
+func tinygoARM64IntEntryCode(light bool) []byte {
 	var a a64.Asm
 	a.MovReg64(a64.X9, a64.X0) // preserve linMem while shifting arguments
 	a.MovReg64(a64.X0, a64.X1)
 	a.MovReg64(a64.X1, a64.X2)
 	a.MovReg64(a64.X2, a64.X3)
 	a.MovReg64(a64.X3, a64.X4)
-	a.MovImm64(a64.X10, uint64(foreignStackTop))
-	tinygoARM64SaveGoContext(&a, a64.X10)
+	a.MovReg64(a64.X10, a64.X5)
+	if light {
+		a.SubImm64(a64.X10, a64.X10, 96)
+		a.AddImm64(a64.X11, a64.SP, 0)
+		a.StpOffset(a64.X11, a64.X26, a64.X10, 0)
+		a.StpOffset(a64.FP, a64.LR, a64.X10, 16)
+		// The light proof preserves callee-saved GPRs. Even an integer
+		// signature can use FP temporaries, so preserve the AAPCS64 lanes.
+		for reg, off := a64.Reg(8), int32(32); reg <= 14; reg, off = reg+2, off+16 {
+			a.FStpOffset64(reg, reg+1, a64.X10, off)
+		}
+	} else {
+		tinygoARM64SaveGoContext(&a, a64.X10)
+	}
 	a.MovReg64(a64.X26, a64.X9)
 	a.AddImm64(a64.SP, a64.X10, 0)
-	a.MovReg64(a64.X22, a64.ZR)
+	if !light {
+		a.MovReg64(a64.X22, a64.ZR)
+	}
 	a.MovReg64(a64.FP, a64.ZR)
 	a.Stur64(a64.X10, a64.X26, -offTrapStackReentry)
 	continuation := a.Adr(a64.X11)
 	a.Stur64(a64.X11, a64.X26, -arm64TrapHandlerPtrOffset)
-	a.Blr(a64.X5)
+	a.Blr(a64.X6)
 	epilogue := a.Len()
 	if !a.PatchAdr(continuation, epilogue) {
 		panic("wago: arm64 TinyGo integer trampoline continuation is out of range")
 	}
-	tinygoARM64RestoreGoContext(&a)
+	if light {
+		a.LdpOffset(a64.X11, a64.X26, a64.SP, 0)
+		a.LdpOffset(a64.FP, a64.LR, a64.SP, 16)
+		for reg, off := a64.Reg(8), int32(32); reg <= 14; reg, off = reg+2, off+16 {
+			a.FLdpOffset64(reg, reg+1, a64.SP, off)
+		}
+		a.AddImm64(a64.SP, a64.X11, 0)
+		a.Ret()
+	} else {
+		tinygoARM64RestoreGoContext(&a)
+	}
 	return a.B
 }
 
-func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	// NewEngine initializes the executable mapping and keeps its base in
-	// stackTop. Only an engine without a mapping needs the cold setup path.
-	if e.preparedInt.mem == nil {
-		if err := e.initNativeEntry(); err != nil {
-			return 0, err
-		}
-	}
-	return e.stackTop + tinygoARM64PreparedIntEntryOffset, nil
-}
-
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
-	entry, err := preparedIntThunkFor(e)
-	if err != nil {
-		return 0, err
+	entries := tinygoARM64Entries.Load()
+	if entries == nil || e.stackTop == 0 {
+		return 0, errors.New("tinygo prepared integer entry requires an open engine")
 	}
-	fv := tinygoARM64FuncValue{context: code, fnptr: entry}
-	call := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
-	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))), nil
+	fv := tinygoARM64FuncValue{context: code, fnptr: entries.fullInt}
+	call := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
+	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
 }
 
 func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
@@ -86,7 +99,14 @@ func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, 
 }
 
 func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
-	return e.EnterPreparedIntCallBounded(call, a0, a1, a2, a3)
+	entries := tinygoARM64Entries.Load()
+	if entries == nil || e.stackTop == 0 {
+		return 0
+	}
+	// Host re-entry can switch the active engine. Always pass its stack.
+	fv := tinygoARM64FuncValue{context: call.code, fnptr: entries.lightInt}
+	enter := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
+	return uint64(enter(call.linMem, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop))
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {

@@ -18,6 +18,11 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+const preparedEarlyI32LightSupported = goruntime.Compiler == "gc" && goruntime.GOARCH == "arm64" && goruntime.GOOS == "linux"
+
+const preparedEarlyZeroArgSupported = (goruntime.Compiler == "tinygo" && goruntime.GOARCH == "arm64") ||
+	((goruntime.Compiler == "gc" || goruntime.Compiler == "tinygo") && goruntime.GOARCH == "amd64")
+
 // WasmFunc is a resolved local Wasm export ready for repeated calls.
 // It caches export lookup, signature layout, and the native entry address. Like
 // Instance, it is not safe for concurrent calls: calls reuse the instance's
@@ -56,12 +61,15 @@ type WasmFunc struct {
 	scalarResultWide      bool
 	resultWide            []bool
 	boundedWrapper        bool
+	isolatedZeroArgResult bool
+	directI32LightOneArg  bool
 	boundedBulkLimit      uint32
 	boundedBulkArgument   uint8
 	privateFast           bool
 	isolatedFast          bool
 	directIsolated        bool
 	directIntFast         bool
+	directIntOneArg       bool
 	directFloatFast       bool
 	directMixedInfo       uint8
 	directIntLight        bool
@@ -370,15 +378,71 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.gcI31Induction = indexes.gcI31Inductions[ic.li>>6]&(uint64(1)<<uint(ic.li&63)) != 0
 		}
 	}
+	fn.directIntOneArg = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 1 &&
+		(!gcI31InductionSupported || !fn.gcI31Induction) && (!preparedDirectWideSupported || fn.resultSlots <= 2)
+	if preparedEarlyI32LightSupported {
+		fn.directIntOneArg = fn.directIntOneArg && fn.directIntFast
+		fn.directI32LightOneArg = fn.directIntOneArg && fn.directIsolated && fn.directIntLight &&
+			!fn.directIntBounded && fn.directIntMode == preparedIntCallNone &&
+			fn.scalarWideMask == 0 && fn.resultSlots == 1 && !fn.scalarResultWide
+	}
+	if preparedEarlyZeroArgSupported {
+		fn.isolatedZeroArgResult = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 0 &&
+			fn.resultSlots == 1 && fn.isolatedFast && fn.scalarFast && !fn.gcMaintenance &&
+			!in.syncMode && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && len(in.hostLog) == 0
+	}
 	return fn, nil
 }
 
 // Invoke calls the resolved export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
+//
+//go:inline
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
-	if fn != nil && fn.guardedMemoryGrow {
-		defer fn.in.commitGuardedGrowth()
+	if fn != nil {
+		if fn.directIntOneArg && (preparedEarlyI32LightSupported || fn.directIntFast) && len(args) == 1 {
+			return fn.invokeDirectIntFixed(args[0], 0, 0, 0)
+		}
+		if preparedEarlyZeroArgSupported && fn.isolatedZeroArgResult && len(args) == 0 {
+			return fn.invokeIsolatedZeroArg()
+		}
+		if fn.guardedMemoryGrow {
+			return fn.invokeGuardedMemoryGrow(args)
+		}
 	}
+	return fn.invoke(args)
+}
+
+// The resolved function has no arguments or host callbacks. Acquire the
+// same revocable reservation as the ordinary isolated async wrapper.
+func (fn *WasmFunc) invokeIsolatedZeroArg() ([]uint64, error) {
+	if !fn.tryBeginFastInvocation() {
+		return fn.invoke(nil)
+	}
+	in := fn.in
+	err := in.callPreparedIsolated(fn.entry, in.trap, true, fn.boundedWrapper || fn.boundedBulkArguments(nil))
+	if err != nil {
+		in.endFastInvocation(in.pluginState.Load())
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	if fn.scalarResultWide {
+		out[0] = binary.LittleEndian.Uint64(in.results)
+	} else {
+		out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	}
+	in.endFastInvocation(in.pluginState.Load())
+	return out, nil
+}
+
+func (fn *WasmFunc) invokeGuardedMemoryGrow(args []uint64) ([]uint64, error) {
+	defer fn.in.commitGuardedGrowth()
+	return fn.invoke(args)
+}
+
+func (fn *WasmFunc) invoke(args []uint64) ([]uint64, error) {
 	if codeProfileEnabled && fn != nil && fn.in.boundaryProfile() != nil {
 		return fn.invokeGeneral(args)
 	}

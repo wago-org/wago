@@ -107,11 +107,37 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {
+		if preparedEarlyI32LightSupported && fn.directI32LightOneArg {
+			out, err := fn.invokeUnboundedI32Light(a0)
+			in.endFastInvocation(nil)
+			return out, err
+		}
 		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
 		in.endFastInvocation(nil)
 		return out, err
 	}
 	return fn.invokeDirectIntFixedSlow(a0, a1, a2, a3)
+}
+
+// invokeUnboundedI32Light keeps the scheduler transition used by ordinary
+// unbounded entries while avoiding general register and result dispatch.
+func (fn *WasmFunc) invokeUnboundedI32Light(arg uint64) ([]uint64, error) {
+	in := fn.in
+	wruntime.PreparePreparedIntTrap(in.trap)
+	result, err := in.eng.EnterPreparedIntLight(fn.directEntry, fn.directLinMem, uint64(uint32(arg)), 0, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		err = in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		return nil, err
+	}
+	goruntime.KeepAlive(fn)
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	out[0] = uint64(uint32(result))
+	return out, nil
 }
 
 //go:noinline

@@ -102,6 +102,7 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }
 
+//go:inline
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {

@@ -512,6 +512,16 @@ func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 	}
 }
 
+// FStpOffset64 stores two low 64-bit FP lanes at [rn, #imm].
+func (a *Asm) FStpOffset64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// FLdpOffset64 loads two low 64-bit FP lanes from [rn, #imm].
+func (a *Asm) FLdpOffset64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LdpOffset32 loads wt,wt2 from [rn, #imm] without modifying rn.
 // imm is a BYTE offset, a signed multiple of 4 in [-256, 252].
 func (a *Asm) LdpOffset32(rt, rt2, rn Reg, imm int32) {
