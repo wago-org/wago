@@ -44,6 +44,9 @@ tinygo_build() {
   if [[ -n "$tags" ]]; then
     args+=(-tags "$tags")
   fi
+  if [[ "$GOOS/$GOARCH" == darwin/arm64 ]]; then
+    args+=(-llvm-features=+lse)
+  fi
   GOOS="$GOOS" GOARCH="$GOARCH" tinygo "${args[@]}" -o "$output" "$package"
 }
 

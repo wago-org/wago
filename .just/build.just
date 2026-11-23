@@ -19,7 +19,11 @@ runtime profile='standard' compiler='go' version=env('WAGO_VERSION', '0.0.0') sc
         CGO_ENABLED=0 go build -tags "$tags" -ldflags '-s -w -X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-normal' ./cli/wago
         ;;
       tinygo)
-      {{ tinygo }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt='{{ tinygo_opt }}' -gc=conservative -tags "$tags" -ldflags '-X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-tiny' ./cli/wago
+        build_args=(build)
+        if [[ "$(go env GOOS)/$(go env GOARCH)" == darwin/arm64 ]]; then
+          build_args+=(-llvm-features=+lse)
+        fi
+        {{ tinygo }} "${build_args[@]}" -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt='{{ tinygo_opt }}' -gc=conservative -tags "$tags" -ldflags '-X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-tiny' ./cli/wago
         ;;
       *) echo 'compiler must be go or tinygo' >&2; exit 2 ;;
     esac
@@ -32,7 +36,11 @@ release version=env('WAGO_VERSION', '0.0.0'):
 engine version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
     #!/usr/bin/env bash
     set -euo pipefail
-    {{ tinygo }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
+    build_args=(build)
+    if [[ "$(go env GOOS)/$(go env GOARCH)" == darwin/arm64 ]]; then
+      build_args+=(-llvm-features=+lse)
+    fi
+    {{ tinygo }} "${build_args[@]}" -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
     if [[ "$(go env GOOS)" == linux ]]; then
       strip -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment wago-engine
     fi

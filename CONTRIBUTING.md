@@ -150,7 +150,8 @@ default debug build. The release settings are
 `-scheduler=tasks -stack-size=256KB -no-debug -opt=z -gc=conservative`.
 The task stack accommodates recursive compiler scans of nested Wasm control
 flow. Use `TINYGO_OPT=2 just build runtime standard tinygo` to try a
-speed-optimized local build.
+speed-optimized local build. Darwin ARM64 runtime, release, and standalone
+builds also enable LSE with `-llvm-features=+lse`.
 Repeat `--version` and a real-module call in fresh processes; a single successful
 start does not clear an intermittent initialization failure. CI runs this check
 for the Minimal/Tiny CLI on its supported native targets. Shared ASCII name
