@@ -78,6 +78,11 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	var scratchReloadSites [64]uint32
 	scratchReloadN := 0
 	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4
+	swapHeadEligible := affineSwapForwardEnabled && f.guardMode && f.hasLoop && !f.threadedMemory0 && !f.memoryAddr64(0) &&
+		!f.opaqueFragments && !compact && !f.moduleEH && !f.tracksGCFrameRoots() && !f.loopInterruptible() && !f.a.ReserveBranch19 &&
+		!profileEnabled && !regallocCheckEnabled && len(f.customInstructions) == 0 && (f.stats == nil || !f.stats.RecordSources)
+	var swapHeadSites [8]int
+	swapHeadN := 0
 	branchPairCandidate, storeLoadCandidate := false, false
 	exitCompareCandidate, testCompareCandidate := false, false
 	branchFold := f.opt(optBranchFold)
@@ -87,6 +92,12 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		if swapHeadEligible && swapHeadN < len(swapHeadSites) && pc+32 <= n &&
+			w&0xffc0001f == 0x7100001f && rdWord(b, pc+4)&0xff00001f == 0x54000000|uint32(condAE) &&
+			rdWord(b, pc+8)&0xffe0fc00 == 0x0b000800 {
+			swapHeadSites[swapHeadN] = pc
+			swapHeadN++
+		}
 		// Earlier branch folds never introduce frame loads/stores. An absent
 		// adjacent pair therefore needs no separate forwarding walk later.
 		if storeLoad && !storeLoadCandidate && w&0xbfc003e0 == 0xb90003e0 && pc+8 <= n {
@@ -200,6 +211,9 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if f.opt(optRepeatedStoreRegion) {
 		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
+	}
+	if swapHeadN != 0 {
+		f.stats.peepN("affine-swap-head-forward", f.forwardAffineSwapHeads(b, swapHeadSites[:swapHeadN], targets, entryOffsets))
 	}
 	for _, site := range scratchReloadSites[:scratchReloadN] {
 		if scratchConstantReloadAt(b, int(site), targets, entryOffsets) {
