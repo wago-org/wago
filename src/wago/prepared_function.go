@@ -19,6 +19,8 @@ import (
 )
 
 const preparedEarlyI32LightSupported = goruntime.Compiler == "gc" && goruntime.GOARCH == "arm64" && goruntime.GOOS == "linux"
+const preparedTinyGoI32LightSupported = goruntime.Compiler == "tinygo" && goruntime.GOARCH == "arm64" &&
+	(goruntime.GOOS == "darwin" || goruntime.GOOS == "linux")
 
 const preparedEarlyZeroArgSupported = (goruntime.Compiler == "tinygo" && goruntime.GOARCH == "arm64") ||
 	((goruntime.Compiler == "gc" || goruntime.Compiler == "tinygo") && goruntime.GOARCH == "amd64")
@@ -380,11 +382,15 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 	}
 	fn.directIntOneArg = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 1 &&
 		(!gcI31InductionSupported || !fn.gcI31Induction) && (!preparedDirectWideSupported || fn.resultSlots <= 2)
-	if preparedEarlyI32LightSupported {
+	if preparedEarlyI32LightSupported || preparedTinyGoI32LightSupported {
 		fn.directIntOneArg = fn.directIntOneArg && fn.directIntFast
 		fn.directI32LightOneArg = fn.directIntOneArg && fn.directIsolated && fn.directIntLight &&
-			!fn.directIntBounded && fn.directIntMode == preparedIntCallNone &&
 			fn.scalarWideMask == 0 && fn.resultSlots == 1 && !fn.scalarResultWide
+		if preparedTinyGoI32LightSupported {
+			fn.directI32LightOneArg = fn.directI32LightOneArg && fn.directIntMode == preparedIntCallBlock
+		} else {
+			fn.directI32LightOneArg = fn.directI32LightOneArg && !fn.directIntBounded && fn.directIntMode == preparedIntCallNone
+		}
 	}
 	if preparedEarlyZeroArgSupported {
 		fn.isolatedZeroArgResult = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 0 &&
