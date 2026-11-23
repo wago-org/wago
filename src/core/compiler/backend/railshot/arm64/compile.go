@@ -5264,6 +5264,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	}
 	internalOff := a.Len()
 	f.beginNativeImportVariant()
+	recurrence, recurrenceEntry := f.additiveRecurrence(c), -1
+	if recurrence.cutoff != 0 {
+		recurrenceEntry = a.Branch()
+		f.recordPCRelative(recurrenceEntry)
+	}
 	if f.makesCalls {
 		a.StpPre(FP, LR, SP, -16) // save FP/LR frame record (BL clobbers LR)
 		a.AddImm64(FP, SP, 0)     // MOV X29, SP
@@ -5436,6 +5441,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	f.elideRegisterOnlyFrame()
 	if err := f.patchFrameAdjusts(); err != nil {
 		return 0, err
+	}
+	if recurrenceEntry >= 0 {
+		f.emitAdditiveRecurrence(recurrence, recurrenceEntry)
 	}
 	if hostAdapter {
 		if !cachedAdapter {
