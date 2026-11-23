@@ -32,6 +32,23 @@ env:
   JUST_VERSION: "1.58.0"
 
 jobs:
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    permissions: {}
+    steps:
+      - name: Validate PR title
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          title_pattern='^[[:alnum:]][[:alnum:]_.-]*(\([^()]*[^()[:space:]][^()]*\))?!?: [[:blank:]]*[^[:space:]].*$'
+          if [[ ! $PR_TITLE =~ $title_pattern ]]; then
+            echo '::error::Use "type: description" or "type(scope): description". Example: perf(arm64): Speed up compilation'
+            exit 1
+          fi
+
   # The planner owns lifecycle, path, and expected-job policy. A diff failure is
   # a failed preflight, so it cannot turn an empty selection into a green check.
   changes:
@@ -1332,9 +1349,14 @@ jobs:
   ci-ok:
     name: CI
     if: always() && !cancelled()
-    needs: [changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
+    needs: [pr-title, changes, smoke, docs, lint, regression-integrity, regression-rebuild, gc-hardening, race, current-go, platform-test, corpus-correctness, app-corpus, app-corpus-verify, spec-v1, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-26.04
     steps:
+      - name: Require a valid PR title
+        if: github.event_name == 'pull_request' && needs.pr-title.result != 'success'
+        run: |
+          echo '::error::See the PR title check for the expected format.'
+          exit 1
       - name: Identify qualification profile
         env:
           CI_PROFILE: ${{ needs.changes.outputs.profile || needs.smoke.outputs.profile }}
