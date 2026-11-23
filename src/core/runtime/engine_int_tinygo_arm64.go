@@ -16,18 +16,12 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
-// TinyGo passes the linear memory and integer arguments in X0-X4, the
-// physical stack top in X5, and the native-code pointer in X6.
+// The integer arguments arrive in their native registers X0-X3. TinyGo
+// passes the linear memory in X4, stack top in X5, and code pointer in X6.
 func tinygoARM64IntEntryCode(light bool) []byte {
 	var a a64.Asm
-	a.MovReg64(a64.X9, a64.X0) // preserve linMem while shifting arguments
-	a.MovReg64(a64.X0, a64.X1)
-	a.MovReg64(a64.X1, a64.X2)
-	a.MovReg64(a64.X2, a64.X3)
-	a.MovReg64(a64.X3, a64.X4)
-	a.MovReg64(a64.X10, a64.X5)
 	if light {
-		a.SubImm64(a64.X10, a64.X10, 96)
+		a.SubImm64(a64.X10, a64.X5, 96)
 		a.AddImm64(a64.X11, a64.SP, 0)
 		a.StpOffset(a64.X11, a64.X26, a64.X10, 0)
 		a.StpOffset(a64.FP, a64.LR, a64.X10, 16)
@@ -37,9 +31,10 @@ func tinygoARM64IntEntryCode(light bool) []byte {
 			a.FStpOffset64(reg, reg+1, a64.X10, off)
 		}
 	} else {
+		a.MovReg64(a64.X10, a64.X5)
 		tinygoARM64SaveGoContext(&a, a64.X10)
 	}
-	a.MovReg64(a64.X26, a64.X9)
+	a.MovReg64(a64.X26, a64.X4)
 	a.AddImm64(a64.SP, a64.X10, 0)
 	if !light {
 		a.MovReg64(a64.X22, a64.ZR)
@@ -74,7 +69,7 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	}
 	fv := tinygoARM64FuncValue{context: code, fnptr: entries.fullInt}
 	call := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
-	return uint64(call(linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+	return uint64(call(uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), linMemBase, e.stackTop)), nil
 }
 
 func (e *Engine) EnterPreparedIntLight(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
@@ -106,7 +101,7 @@ func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a
 	// Host re-entry can switch the active engine. Always pass its stack.
 	fv := tinygoARM64FuncValue{context: call.code, fnptr: entries.lightInt}
 	enter := *(*func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr)(unsafe.Pointer(&fv))
-	return uint64(enter(call.linMem, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop))
+	return uint64(enter(uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), call.linMem, e.stackTop))
 }
 
 func PreparedIntTrapCode(trap []byte) TrapCode {
