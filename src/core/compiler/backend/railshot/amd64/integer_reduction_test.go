@@ -42,13 +42,15 @@ func integerReductionFixture(t *testing.T, signed bool, result uint32) *wasm.Mod
 
 // Compile each scalar/vector configuration once; runtime inputs cannot change
 // lowering admission or statistics.
-func compileIntegerReductionPair(t *testing.T, m *wasm.Module, features shared.AMD64Features) [2]*encoderamd64.CompiledModule {
+func compileIntegerReductionPair(t *testing.T, m *wasm.Module, features shared.AMD64Features, interruptible bool) [2]*encoderamd64.CompiledModule {
 	t.Helper()
 	var pair [2]*encoderamd64.CompiledModule
 	for i, on := range []bool{false, true} {
 		integerReductionLoopEnabled = on
 		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{AMD64FeaturesSet: true, AMD64Features: features, Stats: optionalTestStats(&stats)})
+		cm, err := CompileModuleWith(m, CompileOptions{
+			AMD64FeaturesSet: true, AMD64Features: features, Interruptible: interruptible, Stats: optionalTestStats(&stats),
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +72,7 @@ func TestIntegerReductionMapsTailsOverflowAndExitLocals(t *testing.T) {
 		for result := uint32(0); result < 5; result++ {
 			m := integerReductionFixture(t, signed, result)
 			for _, features := range []shared.AMD64Features{0, shared.AMD64SSE41, shared.AMD64ModernBaseline} {
-				pair := compileIntegerReductionPair(t, m, features)
+				pair := compileIntegerReductionPair(t, m, features, false)
 				for _, start := range []uint64{0, 0x7ffffff0, 0xfffffff0, 0xdeadbeef80000000} {
 					for _, count := range []uint64{0, 1, 2, 3, 4, 7, 15, 16, 17, 31} {
 						want := runCompiledAmd64u(t, pair[0], count, start, ^uint64(0)-17)
@@ -86,6 +88,11 @@ func TestIntegerReductionMapsTailsOverflowAndExitLocals(t *testing.T) {
 }
 
 func TestIntegerReductionOriginalArtifact(t *testing.T) {
+	t.Run("async", func(t *testing.T) { testIntegerReductionOriginalArtifact(t, false) })
+	t.Run("polling", func(t *testing.T) { testIntegerReductionOriginalArtifact(t, true) })
+}
+
+func testIntegerReductionOriginalArtifact(t *testing.T, interruptible bool) {
 	saved := integerReductionLoopEnabled
 	defer func() { integerReductionLoopEnabled = saved }()
 	hash := sha256.Sum256(integerReductionOriginal)
@@ -97,7 +104,7 @@ func TestIntegerReductionOriginalArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, features := range []shared.AMD64Features{0, shared.AMD64SSE41, shared.AMD64ModernBaseline} {
-		pair := compileIntegerReductionPair(t, m, features)
+		pair := compileIntegerReductionPair(t, m, features, interruptible)
 		for _, count := range []uint64{2, 3, 4, 7, 15, 16, 17, 31, 4096} {
 			want := runCompiledAmd64u(t, pair[0], count)
 			got := runCompiledAmd64u(t, pair[1], count)

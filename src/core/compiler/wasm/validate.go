@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 // ValidationFeatures enables release-specific validation rules without making
@@ -176,6 +177,16 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 	return v.validateFunctionsParallel(workers)
 }
 
+const idleValidatorControlBytes = 64 << 10
+
+// A single serial validation can borrow the idle control stack. Concurrent
+// validations proceed with their own buffers. The idle frames hold no slices
+// into a previous module.
+var idleValidatorControl struct {
+	claimed atomic.Bool
+	frames  []ctrlFrame
+}
+
 func (v *moduleValidator) validateFunctionsSerial() error {
 	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
@@ -183,9 +194,22 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	if retainIdleValidatorControl && idleValidatorControl.claimed.CompareAndSwap(false, true) {
+		fv.ctrls = idleValidatorControl.frames
+		idleValidatorControl.frames = nil
+		defer func() {
+			capacity := cap(fv.ctrls)
+			if capacity > len(fv.ctrlBuf) && capacity <= idleValidatorControlBytes/int(unsafe.Sizeof(ctrlFrame{})) {
+				clear(fv.ctrls[:capacity])
+				idleValidatorControl.frames = fv.ctrls[:0]
+			}
+			idleValidatorControl.claimed.Store(false)
+		}()
+	}
+	var op directOp
 	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		counts, err := v.validateFunction(&fv, &op, i, importedFuncs, widths)
 		if err != nil {
 			return err
 		}
@@ -198,7 +222,7 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
+func (v *moduleValidator) validateFunction(fv *funcValidator, op *directOp, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	ft, ok := v.funcType(uint32(abs))
@@ -210,7 +234,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts, op)
 	} else {
 		err = fv.validateFunc(*fn, ft)
 	}
@@ -250,6 +274,7 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var op directOp
 			var summary validationSegmentCounts
 			defer func() {
 				results[worker].elemStateCount = summary.elem
@@ -260,7 +285,7 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 				if i >= len(v.m.Code) {
 					return
 				}
-				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				counts, err := v.validateFunction(&fv, &op, i, importedFuncs, widths)
 				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
@@ -340,7 +365,8 @@ type moduleValidator struct {
 	// constFV is serial module-validation scratch for global/table/data offsets
 	// and element initializer expressions. Function-body validation never reaches
 	// it: table.init reads the element type metadata validated in this phase.
-	constFV *funcValidator
+	constFV       *funcValidator
+	constDirectOp *directOp // allocated lazily and reused across byte-backed initializers
 }
 
 type compCacheEntry struct {
@@ -1078,8 +1104,9 @@ type funcValidator struct {
 	constGlobalLimit  int // globals below this absolute index are visible to a const expression
 	// branchTableEpoch is packed before constOnly. Each
 	// funcValidator owns its control frames, including under parallel validation.
-	branchTableEpoch uint32
-	constOnly        bool
+	branchTableEpoch  uint32
+	constOnly         bool
+	branchTableLabels []uint32 // transient labels for one streamed instruction
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader

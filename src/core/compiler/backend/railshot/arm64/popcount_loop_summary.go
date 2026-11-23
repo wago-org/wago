@@ -236,7 +236,7 @@ func (f *fn) readPopcountLoopLocal(index int, target Reg) {
 // fallback is needed because the candidate contains no effects other than its
 // local assignments.
 func (f *fn) emitPopcountLoopSummary(source *wasm.Reader) bool {
-	if !popcountLoopSummaryEnabled || profileEnabled || f.unreachable || f.interruptible || f.moduleEH || f.localBase != 0 || f.inlineDepth != 0 ||
+	if !popcountLoopSummaryEnabled || profileEnabled || f.unreachable || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || f.inlineDepth != 0 ||
 		f.nLocals > 64 || f.depth() != 0 || f.tracksGCFrameRoots() || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.popcountLoopWork >= popcountLoopWorkLimit {
 		return false
 	}

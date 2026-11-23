@@ -1581,13 +1581,14 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 }
 
 func (f *fn) emitNativeGCStubs() {
-
-	before := f.a.Len()
-	defer func() {
-		n := f.a.Len() - before
-		f.stats.addGCSharedStubBytes(n)
-		f.stats.addGCHandleResolutionBytes(n)
-	}()
+	if diagnosticsEnabled {
+		before := f.a.Len()
+		defer func() {
+			n := f.a.Len() - before
+			f.stats.addGCSharedStubBytes(n)
+			f.stats.addGCHandleResolutionBytes(n)
+		}()
+	}
 	for i, sites := range f.sc.gcCastArrayGetSites {
 		if len(sites) == 0 {
 			continue

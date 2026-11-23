@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"runtime"
 	"testing"
 	"unsafe"
 
@@ -41,6 +42,17 @@ func TestDeferredCompilerStagingLifecycle(t *testing.T) {
 		if len(c.code) == 0 || unsafe.SliceData(c.code) != unsafe.SliceData(snapshot.code) {
 			t.Fatal("published views do not share heap staging")
 		}
+		var stagedBase *byte
+		if compilerCodeStaging {
+			mapping := c.stagingCodeMapping()
+			if len(mapping) == 0 {
+				t.Fatal("large deferred image did not use non-executable staging")
+			}
+			stagedBase = unsafe.SliceData(mapping)
+			if unsafe.SliceData(c.code) != stagedBase {
+				t.Fatal("compiled bytes are outside their staging mapping")
+			}
+		}
 		if activate {
 			in, err := Instantiate(c, InstantiateOptions{})
 			if err != nil {
@@ -48,6 +60,14 @@ func TestDeferredCompilerStagingLifecycle(t *testing.T) {
 			}
 			if c.codeCache.mem == nil || c.codeCache.base == 0 || !c.codeCache.sealed {
 				t.Fatal("activation did not map and seal deferred code")
+			}
+			if stagedBase != nil {
+				if c.stagingCodeMapping() != nil {
+					t.Fatal("activation retained its staging mapping")
+				}
+				if reused := unsafe.SliceData(c.codeCache.mem) == stagedBase; reused != (runtime.GOOS == "linux") {
+					t.Fatal("activation used the wrong platform staging policy")
+				}
 			}
 			if unsafe.SliceData(c.code) != unsafe.SliceData(c.codeCache.mem) || unsafe.SliceData(snapshot.code) != unsafe.SliceData(c.codeCache.mem) {
 				t.Fatal("activation left a published view on heap staging")
@@ -62,6 +82,9 @@ func TestDeferredCompilerStagingLifecycle(t *testing.T) {
 		}
 		if err = c.Close(); err != nil {
 			t.Fatal(err)
+		}
+		if c.stagingCodeMapping() != nil {
+			t.Fatal("Close retained the non-executable staging mapping")
 		}
 		if c.codeCache.mem != nil || c.code != nil || snapshot.code != nil {
 			t.Fatal("Close retained compiler storage")

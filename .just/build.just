@@ -1,6 +1,8 @@
 set working-directory := '..'
 
 tinygo := env('TINYGO', 'tinygo')
+tinygo_opt := env('TINYGO_OPT', 'z')
+tinygo_stack_size := env('TINYGO_STACK_SIZE', '256KB')
 
 # Build the runtime-independent manager with Go.
 [default]
@@ -17,7 +19,7 @@ runtime profile='standard' compiler='go' version=env('WAGO_VERSION', '0.0.0') sc
         CGO_ENABLED=0 go build -tags "$tags" -ldflags '-s -w -X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-normal' ./cli/wago
         ;;
       tinygo)
-      {{ tinygo }} build -scheduler='{{ scheduler }}' -no-debug -opt=z -gc=conservative -tags "$tags" -ldflags '-X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-tiny' ./cli/wago
+      {{ tinygo }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt='{{ tinygo_opt }}' -gc=conservative -tags "$tags" -ldflags '-X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-tiny' ./cli/wago
         ;;
       *) echo 'compiler must be go or tinygo' >&2; exit 2 ;;
     esac
@@ -30,7 +32,7 @@ release version=env('WAGO_VERSION', '0.0.0'):
 engine version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
     #!/usr/bin/env bash
     set -euo pipefail
-    {{ tinygo }} build -scheduler='{{ scheduler }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
+    {{ tinygo }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
     if [[ "$(go env GOOS)" == linux ]]; then
       strip -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment wago-engine
     fi
@@ -38,4 +40,4 @@ engine version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 't
 
 # Build the debug Minimal/TinyGo runtime used by CI.
 tinygo compiler=env('TINYGO', 'tinygo') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
-    {{ compiler }} build -scheduler='{{ scheduler }}' -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
+    {{ compiler }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago

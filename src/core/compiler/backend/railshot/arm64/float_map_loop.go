@@ -87,9 +87,9 @@ func (p *floatMapPlan) localWritten(index int) bool {
 
 const floatMapScatterWorkLimit = 4096
 
-func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan) bool {
+func (f *fn) inspectFloatMapLoop(source *wasm.Reader, p *floatMapPlan, integer bool) bool {
 	*p = floatMapPlan{}
-	p.integer = f.integerLoadMapProbe
+	p.integer = integer
 	p.normalizedInduction = p.integer
 	p.spanScale = 1
 	p.counterScale = 1
@@ -486,18 +486,18 @@ func (p *floatMapPlan) sameMap(x, y int, step uint32, depth int) bool {
 }
 
 func (f *fn) emitFloatMapLoop(source *wasm.Reader) {
-	if !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !f.opt(optDotLoopVector) || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
-	if !f.hasFloatMapPrefix(source) {
+	if !f.hasFloatMapPrefix(source, false) {
 		return
 	}
-	f.emitFloatMapBody(source)
+	f.emitFloatMapBody(source, false)
 }
 
 // Maps need a typed producer and a matching output store. Screen that prefix
 // and unsupported carried locals before reserving the symbolic candidate frame.
-func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
+func (f *fn) hasFloatMapPrefix(source *wasm.Reader, integer bool) bool {
 	scan := *source
 	start := scan.Offset()
 	floating := false
@@ -552,7 +552,7 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 				return false
 			}
 		case 0x36, 0x38, 0x39:
-			return floating && f.integerLoadMapProbe == (op == 0x36)
+			return floating && integer == (op == 0x36)
 		case 0x6a, 0x47:
 			// These are also valid before the first floating producer.
 		case 0x6b, 0x6c, 0x71, 0x72, 0x73, 0x92, 0x93, 0x94, 0x95, 0xa0, 0xa1, 0xa2, 0xa3:
@@ -566,22 +566,30 @@ func (f *fn) hasFloatMapPrefix(source *wasm.Reader) bool {
 	return false
 }
 
-func (f *fn) emitFloatMapBody(source *wasm.Reader) {
-	var p floatMapPlan
-	ok := f.inspectFloatMapLoop(source, &p)
-	defer func() {
-		if p.scatterCandidate {
-			// Share the bounded integer-analysis budget without adding another
-			// field to every compiler function or changing ordinary map admission.
-			f.floatMapScatterWork = uint16(min(floatMapScatterWorkLimit, int(f.floatMapScatterWork)+p.work))
+func (f *fn) emitFloatMapBody(source *wasm.Reader, integer bool) {
+	var p *floatMapPlan
+	if sc := f.sc; sc != nil {
+		// A plan is complete before the next candidate begins. Allocate its
+		// fixed-size workspace on demand and keep it for this worker.
+		if sc.floatMapScratch == nil {
+			sc.floatMapScratch = new(floatMapPlan)
 		}
-		if p.integer {
-			f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
-		}
-	}()
-	if !ok || p.counterScale > 1 && f.a.Len() > 64<<10 {
-		return
+		p = sc.floatMapScratch
+	} else {
+		p = new(floatMapPlan)
 	}
+	if f.inspectFloatMapLoop(source, p, integer) && (p.counterScale <= 1 || f.a.Len() <= 64<<10) {
+		f.emitFloatMapPlan(p)
+	}
+	if p.scatterCandidate {
+		f.floatMapScatterWork = uint16(min(floatMapScatterWorkLimit, int(f.floatMapScatterWork)+p.work))
+	}
+	if p.integer {
+		f.integerLoadMapWork = uint16(min(integerLoadMapWorkLimit, int(f.integerLoadMapWork)+p.work))
+	}
+}
+
+func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 	// Deeply nested copy-only loops often move a handful of words, and even
 	// the cheap runtime admission check can dominate them. Keep their original
 	// scalar path until a lower-overhead entry recipe is available. Arithmetic

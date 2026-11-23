@@ -18,6 +18,11 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+const preparedEarlyI32LightSupported = goruntime.Compiler == "gc" && goruntime.GOARCH == "arm64" && goruntime.GOOS == "linux"
+
+const preparedEarlyZeroArgSupported = (goruntime.Compiler == "tinygo" && goruntime.GOARCH == "arm64") ||
+	((goruntime.Compiler == "gc" || goruntime.Compiler == "tinygo") && goruntime.GOARCH == "amd64")
+
 // WasmFunc is a resolved local Wasm export ready for repeated calls.
 // It caches export lookup, signature layout, and the native entry address. Like
 // Instance, it is not safe for concurrent calls: calls reuse the instance's
@@ -56,12 +61,15 @@ type WasmFunc struct {
 	scalarResultWide      bool
 	resultWide            []bool
 	boundedWrapper        bool
+	isolatedZeroArgResult bool
+	directI32LightOneArg  bool
 	boundedBulkLimit      uint32
 	boundedBulkArgument   uint8
 	privateFast           bool
 	isolatedFast          bool
 	directIsolated        bool
 	directIntFast         bool
+	directIntOneArg       bool
 	directFloatFast       bool
 	directMixedInfo       uint8
 	directIntLight        bool
@@ -370,15 +378,71 @@ func (in *Instance) WasmFunc(export string) (*WasmFunc, error) {
 			fn.gcI31Induction = indexes.gcI31Inductions[ic.li>>6]&(uint64(1)<<uint(ic.li&63)) != 0
 		}
 	}
+	fn.directIntOneArg = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 1 &&
+		(!gcI31InductionSupported || !fn.gcI31Induction) && (!preparedDirectWideSupported || fn.resultSlots <= 2)
+	if preparedEarlyI32LightSupported {
+		fn.directIntOneArg = fn.directIntOneArg && fn.directIntFast
+		fn.directI32LightOneArg = fn.directIntOneArg && fn.directIsolated && fn.directIntLight &&
+			!fn.directIntBounded && fn.directIntMode == preparedIntCallNone &&
+			fn.scalarWideMask == 0 && fn.resultSlots == 1 && !fn.scalarResultWide
+	}
+	if preparedEarlyZeroArgSupported {
+		fn.isolatedZeroArgResult = !codeProfileEnabled && !fn.guardedMemoryGrow && fn.paramSlots == 0 &&
+			fn.resultSlots == 1 && fn.isolatedFast && fn.scalarFast && !fn.gcMaintenance &&
+			!in.syncMode && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && len(in.hostLog) == 0
+	}
 	return fn, nil
 }
 
 // Invoke calls the resolved export. Arguments and results use the same raw slot
 // representation and lifetime rules as Instance.Invoke.
+//
+//go:inline
 func (fn *WasmFunc) Invoke(args ...uint64) ([]uint64, error) {
-	if fn != nil && fn.guardedMemoryGrow {
-		defer fn.in.commitGuardedGrowth()
+	if fn != nil {
+		if fn.directIntOneArg && (preparedEarlyI32LightSupported || fn.directIntFast) && len(args) == 1 {
+			return fn.invokeDirectIntFixed(args[0], 0, 0, 0)
+		}
+		if preparedEarlyZeroArgSupported && fn.isolatedZeroArgResult && len(args) == 0 {
+			return fn.invokeIsolatedZeroArg()
+		}
+		if fn.guardedMemoryGrow {
+			return fn.invokeGuardedMemoryGrow(args)
+		}
 	}
+	return fn.invoke(args)
+}
+
+// The resolved function has no arguments or host callbacks. Acquire the
+// same revocable reservation as the ordinary isolated async wrapper.
+func (fn *WasmFunc) invokeIsolatedZeroArg() ([]uint64, error) {
+	if !fn.tryBeginFastInvocation() {
+		return fn.invoke(nil)
+	}
+	in := fn.in
+	err := in.callPreparedIsolated(fn.entry, in.trap, true, fn.boundedWrapper || fn.boundedBulkArguments(nil))
+	if err != nil {
+		in.endFastInvocation(in.pluginState.Load())
+		return nil, err
+	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	if fn.scalarResultWide {
+		out[0] = binary.LittleEndian.Uint64(in.results)
+	} else {
+		out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+	}
+	in.endFastInvocation(in.pluginState.Load())
+	return out, nil
+}
+
+func (fn *WasmFunc) invokeGuardedMemoryGrow(args []uint64) ([]uint64, error) {
+	defer fn.in.commitGuardedGrowth()
+	return fn.invoke(args)
+}
+
+func (fn *WasmFunc) invoke(args []uint64) ([]uint64, error) {
 	if codeProfileEnabled && fn != nil && fn.in.boundaryProfile() != nil {
 		return fn.invokeGeneral(args)
 	}
@@ -864,7 +928,22 @@ func (fn *WasmFunc) callScalarHostPrepared() error {
 	return in.callPreparedHostSyncAdmitted(fn.hostPrepared, fn.hostFixed, &fn.hostActivation)
 }
 
-func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr error) {
+func (fn *WasmFunc) invokeScalar(args []uint64) ([]uint64, error) {
+	in := fn.in
+	if fn.isolatedFast && !in.syncMode && !fn.gcMaintenance && fn.tryBeginFastInvocation() {
+		// The fast gate already excludes ownership revocation and concurrent
+		// entries. The asynchronous isolated wrapper cannot enter the host.
+		out, err := fn.invokeScalarAdmittedState(args, true)
+		in.endFastInvocation(in.pluginState.Load())
+		return out, err
+	}
+	return fn.invokeScalarSlow(args)
+}
+
+// Keep the panic-safe cleanup closures off the isolated entry path.
+//
+//go:noinline
+func (fn *WasmFunc) invokeScalarSlow(args []uint64) (result []uint64, resultErr error) {
 	in := fn.in
 	var admissionErr error
 	if fn.isolatedFast {
@@ -932,30 +1011,27 @@ func (fn *WasmFunc) invokeScalar(args []uint64) (result []uint64, resultErr erro
 }
 
 func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
+	return fn.invokeScalarAdmittedState(args, false)
+}
+
+func (fn *WasmFunc) invokeScalarAdmittedState(args []uint64, reserved bool) ([]uint64, error) {
 	in := fn.in
-	if fn.gcMaintenance || !in.preparedFastStateValid() {
+	if !reserved && (fn.gcMaintenance || !in.preparedFastStateValid()) {
 		return fn.invokeGeneralAdmitted(args)
 	}
 	if len(args) <= 4 {
-		put := func(slot int) {
-			bits := args[slot]
-			if fn.scalarWideMask&(1<<slot) == 0 {
-				bits = uint64(uint32(bits))
-			}
-			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
-		}
 		switch len(args) {
 		case 4:
-			put(3)
+			putPreparedScalarArg(in.serArgs[24:], args[3], fn.scalarWideMask&8 != 0)
 			fallthrough
 		case 3:
-			put(2)
+			putPreparedScalarArg(in.serArgs[16:], args[2], fn.scalarWideMask&4 != 0)
 			fallthrough
 		case 2:
-			put(1)
+			putPreparedScalarArg(in.serArgs[8:], args[1], fn.scalarWideMask&2 != 0)
 			fallthrough
 		case 1:
-			put(0)
+			putPreparedScalarArg(in.serArgs, args[0], fn.scalarWideMask&1 != 0)
 		}
 	} else {
 		copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, fn.paramWide, fn.paramWidthClass)
@@ -986,7 +1062,7 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if fn.isolatedFast {
-			err = in.callPreparedIsolated(fn.entry, in.trap, false, fn.boundedWrapper || fn.boundedBulkArguments(args))
+			err = in.callPreparedIsolated(fn.entry, in.trap, reserved, fn.boundedWrapper || fn.boundedBulkArguments(args))
 		} else if fn.privateFast {
 			err = in.callPreparedPrivate(fn.entry, in.trap)
 		} else {
@@ -1007,6 +1083,13 @@ func (fn *WasmFunc) invokeScalarAdmitted(args []uint64) ([]uint64, error) {
 	out := in.resultVals[:fn.resultSlots]
 	copyPublicScalarSlotsByClass(out, nativeUint64Slots(in.results), fn.resultWide, fn.resultWidthClass)
 	return out, nil
+}
+
+func putPreparedScalarArg(dst []byte, bits uint64, wide bool) {
+	if !wide {
+		bits = uint64(uint32(bits))
+	}
+	binary.LittleEndian.PutUint64(dst, bits)
 }
 
 // invokeScalarHostReserved is the host-capable counterpart to

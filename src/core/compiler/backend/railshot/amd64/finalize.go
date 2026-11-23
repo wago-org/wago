@@ -187,12 +187,20 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		}
 	}
 	if !nativeFinalizerEnabled {
+		if err := f.resolveSelfEntryAdvance(internalOff, f.selfEntryAfterPoll); err != nil {
+			return 0, err
+		}
 		return internalOff, nil
 	}
 	if f.scratchState().fragmentOverflow {
 		return 0, fmt.Errorf("amd64 finalizer: jump-table fragment exceeds 32-bit function domain")
 	}
 	oldLen := len(f.a.B)
+	if !profileEnabled && !f.compactNative() && uint64(oldLen) <= uint64(^uint32(0)) && internalOff == 0 &&
+		len(f.relocs) == 0 && f.adapterReturnOff == 0 && f.trapBodyEnd == 0 && f.gcFrameRoots == nil {
+		// No offsets change and no function-relative metadata needs mapping.
+		return 0, nil
+	}
 	result, frameDeleted, holeDeleted, err := f.finalizeFrameAdjustments()
 	if err != nil {
 		return 0, err
@@ -244,6 +252,15 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	internalOff, err = mapAMD64FinalOffset(result.Offsets, internalOff, len(result.Code), "internal entry")
 	if err != nil {
 		return 0, err
+	}
+	if f.selfEntryAfterPoll != 0 {
+		after, err := mapAMD64FinalOffset(result.Offsets, f.selfEntryAfterPoll, len(result.Code), "recursive entry")
+		if err != nil {
+			return 0, err
+		}
+		if err := f.resolveSelfEntryAdvance(internalOff, after); err != nil {
+			return 0, err
+		}
 	}
 	for i := range f.relocs {
 		mapped, err := mapAMD64FinalOffset(result.Offsets, int(f.relocs[i].at), len(result.Code), "call relocation")
@@ -770,4 +787,20 @@ func mapAMD64FinalOffset(offsets *shared.WideOffsetMap, old, codeLen int, kind s
 		return 0, fmt.Errorf("amd64 finalizer: invalid %s offset %d", kind, old)
 	}
 	return mapped, nil
+}
+
+func (f *fn) resolveSelfEntryAdvance(internalOff, afterPoll int) error {
+	if f.selfEntryAfterPoll == 0 {
+		return nil
+	}
+	advance := afterPoll - internalOff
+	if advance < 1 || advance > 255 {
+		return fmt.Errorf("amd64: invalid recursive entry displacement %d", advance)
+	}
+	for i := range f.relocs {
+		if f.relocs[i].entryAdvance != 0 {
+			f.relocs[i].entryAdvance = uint8(advance)
+		}
+	}
+	return nil
 }

@@ -39,8 +39,9 @@ func (f *fn) body(code []byte) error {
 			return f.emitGCArrayReduction(typeIndex, length)
 		}
 	}
-	r := wasm.ReaderFrom(code)
-	return f.bodyLoop(&r, 0)
+	sc := f.scratchState()
+	sc.bodyReader = wasm.ReaderFrom(code)
+	return f.bodyLoop(&sc.bodyReader, 0)
 }
 
 func (f *fn) setRepresentationLimit(limit functionRepresentationLimit) {
@@ -259,7 +260,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if forwarded {
 			x = f.inlineForward[x32]
 		}
-		if !forwarded && f.opt(optCountedLoopLatch) && !f.interruptible && (!f.usesCalls || f.inCallFreeLoop()) && len(f.ctrl) >= 2 && f.s.back() == nil {
+		if !forwarded && f.opt(optCountedLoopLatch) && !f.loopInterruptible() && (!f.usesCalls || f.inCallFreeLoop()) && len(f.ctrl) >= 2 && f.s.back() == nil {
 			if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
 				return err
 			}

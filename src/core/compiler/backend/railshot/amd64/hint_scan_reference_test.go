@@ -141,11 +141,8 @@ func (s *byteBodyScanner) referenceScanExpr133(depth int, loopDepth int, curLoop
 			}
 			s.h.flags.set(hintHasCall)
 			s.h.markNonDirectCall()
-			if op == 0x14 || op == 0x15 {
-				s.h.markUnsupportedDynamicCall()
-			}
 			subHasCall = true
-			if op == 0x13 || op == 0x15 {
+			if op == 0x13 {
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
@@ -156,6 +153,9 @@ func (s *byteBodyScanner) referenceScanExpr133(depth int, loopDepth int, curLoop
 				return true, 0, err
 			}
 			s.h.flags.set(hintHasCall)
+			// Match the tree scanner's reference-call classification.
+			s.h.markNonDirectCall()
+			s.h.markUnsupportedDynamicCall()
 			subHasCall = true
 			if op == 0x15 {
 				s.h.flags.set(hintHasTailCall)

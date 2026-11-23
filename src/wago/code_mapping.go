@@ -77,6 +77,8 @@ type compiledCacheIndexes struct {
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
+	compilerCodeStage
+	pendingFinalizer *Compiled // canonical owner until mapping; guarded by codeCache.mu after publication
 	// Cold failure ownership only; guarded by codeCache.mu. New mappings are
 	// blocked until retry succeeds, bounding retained publication failures.
 	failedMappings [][]byte
@@ -118,16 +120,15 @@ func newCompilerCompiled() *Compiled {
 // installCompilerCompiledFinalizer installs ownership on a freshly allocated
 // compiler result whose zeroed cache and validation memo are already part of
 // compilerCompiledState.
-func installCompilerCompiledFinalizer(c *Compiled) *Compiled {
+func installCompilerCompiledFinalizer(c *Compiled) {
 	c.ensureCodeCache()
 	if c.validateMemo == nil {
 		c.validateMemo = &validateMemo{}
 	}
-	goruntime.SetFinalizer(c, func(c *Compiled) {
-		_ = c.Close()
-	})
-	return c
+	goruntime.SetFinalizer(c, finalizeCompiled)
 }
+
+func finalizeCompiled(c *Compiled) { _ = c.Close() }
 
 func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
 	cc := c.loadCodeCache()
@@ -698,25 +699,25 @@ func (c *Compiled) hasNoFunctionCode() bool {
 func (c *Compiled) mapCodeLocked() error {
 	cc := c.codeCache
 	if cc.mem != nil {
+		if compilerCodeStaging {
+			return c.releaseCodeStagingLocked()
+		}
 		return nil
 	}
 	if c.hasNoFunctionCode() {
 		return nil
 	}
 	codeLen := len(c.code)
-	image, err := coreruntime.NewCodeBuffer(codeLen)
-	if err != nil {
-		return err
-	}
-	defer image.Close()
-	if err := image.Append(c.code); err != nil {
-		return err
-	}
-	mem, base, err := image.Take()
+	mem, base, err := c.allocateCodeMappingLocked(codeLen)
 	if err != nil {
 		return err
 	}
 	cc.mem, cc.base = mem, base
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.pendingFinalizer != nil {
+		owner := indexes.pendingFinalizer
+		indexes.pendingFinalizer = nil
+		goruntime.SetFinalizer(owner, finalizeCompiled)
+	}
 	railshotRecordMappedCodeBytes(c, codeLen)
 	// The mapping can be page-rounded; code and artifact sizes must stay exact.
 	c.code = mem[:codeLen:codeLen]
@@ -729,7 +730,29 @@ func (c *Compiled) mapCodeLocked() error {
 			snapshot.code = c.code
 		}
 	}
+	if compilerCodeStaging {
+		return c.releaseCodeStagingLocked()
+	}
 	return nil
+}
+
+// allocateCodeMappingLocked transfers a Linux staging mapping in place. Darwin
+// uses MAP_JIT for executable code, so it copies into that mapping at activation.
+func (c *Compiled) allocateCodeMappingLocked(codeLen int) ([]byte, uintptr, error) {
+	if compilerCodeStaging && goruntime.GOOS == "linux" {
+		if mem := c.takeCodeStagingLocked(); mem != nil {
+			return mem, uintptr(unsafe.Pointer(unsafe.SliceData(mem))), nil
+		}
+	}
+	image, err := coreruntime.NewCodeBuffer(codeLen)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer image.Close()
+	if err := image.Append(c.code); err != nil {
+		return nil, 0, err
+	}
+	return image.Take()
 }
 
 // prepareCodeMapping maps the public compiler view before instantiation freezes
@@ -749,24 +772,35 @@ func (c *Compiled) prepareCodeMapping() error {
 	return c.mapCodeLocked()
 }
 
-// publishCompilerCompiled maps heap-backed parallel output before snapshotting.
-// Both published views share one RW image; activation seals and registers it.
-// Clear the embedded staging value:
-// its allocation remains live through pointers to the grouped private state.
+// publishCompilerCompiled freezes an execution view and transfers finalizer
+// ownership. Clear the embedded staging value so the grouped private state
+// cannot retain old views of the code and metadata.
 func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
 	// Exact-value interning is complete at publication. Its index is scratch,
 	// not runtime metadata; retaining it would duplicate the immutable pool.
-	if indexes := c.loadCompileIndexes(); indexes != nil {
+	indexes := c.loadCompileIndexes()
+	if indexes != nil {
 		indexes.valueTypeIndex = nil
 	}
-	goruntime.SetFinalizer(c, nil)
 	published := new(Compiled)
 	*published = *c
+	if indexes == nil || indexes.pendingFinalizer == nil {
+		goruntime.SetFinalizer(c, nil)
+		// Keep the finalizer outside the grouped private state.
+		goruntime.SetFinalizer(published, finalizeCompiled)
+	} else {
+		// Retain the canonical owner until a mapping requires a finalizer.
+		// Mapping through another view must register the same owner.
+		indexes.pendingFinalizer = published
+	}
 	*c = Compiled{}
-	// Keep the finalizer outside the cache/memo owner to avoid a finalizer cycle.
-	goruntime.SetFinalizer(published, func(c *Compiled) { _ = c.Close() })
-	if _, err := published.freezeExecution(0); err != nil {
+	snapshot, err := published.freezeExecutionWithNativeData(0, goruntime.GOARCH == "arm64")
+	if err != nil {
 		return nil, joinPrimary(err, published.Close())
+	}
+	if snapshot.compactData != nil && snapshot.compactData.arena != nil && indexes != nil && indexes.pendingFinalizer != nil {
+		indexes.pendingFinalizer = nil
+		goruntime.SetFinalizer(published, finalizeCompiled)
 	}
 	return published, nil
 }
@@ -826,6 +860,7 @@ func (c *Compiled) releaseCode() {
 		_ = c.releaseHostThunksLocked()
 		_ = c.releaseFailedMappingsLocked()
 		_ = railshotRetryNativeTail(c)
+		_ = c.executionView().closeNativeActiveData()
 		c.clearCodeViewsLocked()
 		if c.validateMemo != nil {
 			c.validateMemo.structuralCallIdentities.Store(nil)
@@ -977,7 +1012,11 @@ func (c *Compiled) Close() error {
 	defer cc.mu.Unlock()
 	cc.closed = true
 	c.code = nil
-	goruntime.SetFinalizer(c, nil)
+	if indexes := c.loadCompileIndexes(); indexes != nil && indexes.pendingFinalizer != nil {
+		indexes.pendingFinalizer = nil
+	} else {
+		goruntime.SetFinalizer(c, nil)
+	}
 	if cc.refs != 0 {
 		return nil
 	}
@@ -994,7 +1033,10 @@ func (c *Compiled) Close() error {
 			cc.mem = nil
 		}
 	}
-	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c))
+	if compilerCodeStaging {
+		err = errors.Join(err, c.releaseCodeStagingLocked())
+	}
+	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c), c.executionView().closeNativeActiveData())
 }
 
 func (c *Compiled) hasOpaqueExternFrames() bool {

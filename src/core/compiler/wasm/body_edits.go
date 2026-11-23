@@ -206,13 +206,14 @@ func applyValidatedBodyEdits(source *Module, sourceAnalysis ValidatedModuleAnaly
 		return nil, ValidatedModuleAnalysis{}, err
 	}
 	fv := funcValidator{moduleValidator: &v}
+	var op directOp
 	widths := moduleMemargWidths(&m)
 	for _, e := range order {
 		old, err := bodyEditSegmentCounts(source, source.Code[e.LocalFunction].BodyBytes)
 		if err != nil {
 			return nil, ValidatedModuleAnalysis{}, err
 		}
-		next, err := v.validateFunction(&fv, int(e.LocalFunction), v.analysisFuncBase, widths)
+		next, err := v.validateFunction(&fv, &op, int(e.LocalFunction), v.analysisFuncBase, widths)
 		if err != nil {
 			return nil, ValidatedModuleAnalysis{}, err
 		}

@@ -37,6 +37,20 @@ func TestLocalEventTapeIsCompactBoundedScratch(t *testing.T) {
 	if len(tape.Events) != 0 || tape.Overflow {
 		t.Fatalf("reset tape = len %d overflow %v", len(tape.Events), tape.Overflow)
 	}
+
+	var countOnly LocalEventTape
+	countOnly.ResetCountOnly(2)
+	countOnly.Append(LocalEventRead, 7, 3)
+	countOnly.Append(LocalEventDefine, 7, 300)
+	countOnly.Append(LocalEventCall, NoLocal, 0)
+	if countOnly.Count() != 2 || !countOnly.Overflow || countOnly.Events != nil {
+		t.Fatalf("count-only tape = count %d overflow %v events %v", countOnly.Count(), countOnly.Overflow, countOnly.Events)
+	}
+	countOnly.Reset(2)
+	countOnly.Append(LocalEventCall, NoLocal, 0)
+	if countOnly.Count() != 1 || countOnly.Overflow || len(countOnly.Events) != 1 {
+		t.Fatalf("recording after count-only reset = count %d overflow %v events %v", countOnly.Count(), countOnly.Overflow, countOnly.Events)
+	}
 }
 
 func TestFindLocalEventMeta(t *testing.T) {

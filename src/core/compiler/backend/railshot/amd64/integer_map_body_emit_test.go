@@ -78,7 +78,7 @@ func testIntegerMapNativeBody(t *testing.T, step byte, lanes uint8) {
 		fp[i] = Reg(i)
 	}
 	be := integerMapBodyEmitter{a: a, plan: &p, guard: &ge, recipe: &r, facts: &facts, induction: ind, gp: [4]Reg{R8, R9, R10, R11}, fp: fp, memoryBase: RSI, outputBase: outBase}
-	be.emit()
+	be.emit(nil)
 	for i, l := range p.locals[:p.localN] {
 		if l.written {
 			a.Load64(RAX, RSP, outBase+int32(i*8))

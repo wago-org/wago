@@ -107,10 +107,42 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {
+		if preparedEarlyI32LightSupported && fn.directI32LightOneArg {
+			out, err := fn.invokeUnboundedI32Light(a0)
+			in.endFastInvocation(nil)
+			return out, err
+		}
 		out, err := fn.invokeDirectIntSession(a0, a1, a2, a3)
-		in.endFastInvocation(in.pluginState.Load())
+		in.endFastInvocation(nil)
 		return out, err
 	}
+	return fn.invokeDirectIntFixedSlow(a0, a1, a2, a3)
+}
+
+// invokeUnboundedI32Light keeps the scheduler transition used by ordinary
+// unbounded entries while avoiding general register and result dispatch.
+func (fn *WasmFunc) invokeUnboundedI32Light(arg uint64) ([]uint64, error) {
+	in := fn.in
+	wruntime.PreparePreparedIntTrap(in.trap)
+	result, err := in.eng.EnterPreparedIntLight(fn.directEntry, fn.directLinMem, uint64(uint32(arg)), 0, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
+	}
+	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+		err = in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		return nil, err
+	}
+	goruntime.KeepAlive(fn)
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	out := in.resultVals[:1]
+	out[0] = uint64(uint32(result))
+	return out, nil
+}
+
+//go:noinline
+func (fn *WasmFunc) invokeDirectIntFixedSlow(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	in := fn.in
 	if !in.tryBeginDirectInvocation() {
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("wago: invoke Wasm function: %w", err)
@@ -308,25 +340,30 @@ func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, err
 		return fn.invokeDirectIntPairSession(a0, a1, a2, a3)
 	}
 	in := fn.in
-	switch fn.paramSlots {
-	case 4:
-		if fn.scalarWideMask&8 == 0 {
-			a3 = uint64(uint32(a3))
-		}
-		fallthrough
-	case 3:
-		if fn.scalarWideMask&4 == 0 {
-			a2 = uint64(uint32(a2))
-		}
-		fallthrough
-	case 2:
-		if fn.scalarWideMask&2 == 0 {
-			a1 = uint64(uint32(a1))
-		}
-		fallthrough
-	case 1:
-		if fn.scalarWideMask&1 == 0 {
-			a0 = uint64(uint32(a0))
+	if fn.scalarWideMask == 0 {
+		// The entry reads only the argument lanes present in its signature.
+		a0, a1, a2, a3 = uint64(uint32(a0)), uint64(uint32(a1)), uint64(uint32(a2)), uint64(uint32(a3))
+	} else {
+		switch fn.paramSlots {
+		case 4:
+			if fn.scalarWideMask&8 == 0 {
+				a3 = uint64(uint32(a3))
+			}
+			fallthrough
+		case 3:
+			if fn.scalarWideMask&4 == 0 {
+				a2 = uint64(uint32(a2))
+			}
+			fallthrough
+		case 2:
+			if fn.scalarWideMask&2 == 0 {
+				a1 = uint64(uint32(a1))
+			}
+			fallthrough
+		case 1:
+			if fn.scalarWideMask&1 == 0 {
+				a0 = uint64(uint32(a0))
+			}
 		}
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)

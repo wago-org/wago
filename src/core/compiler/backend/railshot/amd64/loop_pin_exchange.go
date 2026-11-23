@@ -114,6 +114,10 @@ func (f *fn) planLoopPinExchange(r *wasm.Reader) (uint64, uint64) {
 			// Leave the fixed-role registers and a working set of ordinary
 			// temporaries available to the existing allocator.
 			blocked := f.pinned.union(f.pinnedLocalMask).union(f.reserved).union(selectedRegs)
+			if f.interruptible {
+				// The loop-header poll uses RSI after loop locals are pinned.
+				blocked = blocked.add(RSI)
+			}
 			free := 0
 			for _, r := range gpAlloc {
 				if !blocked.has(r) && f.regUser[r] == nil {

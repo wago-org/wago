@@ -243,6 +243,7 @@ type RuntimeConfig struct {
 	features                 CoreFeatures
 	optimizations            map[string]bool
 	optimizationSnapshot     railshotOptimizationSnapshot
+	defaultSelection         optimization.Selection
 	optimizationDeltas       map[string]bool
 	trustedOptimizations     bool
 	maxMemoryPages           uint32
@@ -293,6 +294,7 @@ const (
 var defaultOptimizationCache struct {
 	sync.Mutex
 	snapshot   railshotOptimizationSnapshot
+	selection  optimization.Selection
 	values     map[string]bool
 	bmi2Values map[string]bool
 	bmi2Delta  map[string]bool
@@ -302,7 +304,7 @@ var defaultOptimizationCache struct {
 // The cache owns the maps: callers only read them, and WithOptimization clones
 // before mutation. A backend revision change rebuilds the snapshot from values
 // captured under the same lock as SetOptKnob.
-func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapshot railshotOptimizationSnapshot, deltas map[string]bool) {
+func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapshot railshotOptimizationSnapshot, deltas map[string]bool, selection optimization.Selection) {
 	defaultOptimizationCache.Lock()
 	defer defaultOptimizationCache.Unlock()
 
@@ -315,6 +317,11 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 		}
 		defaultOptimizationCache.snapshot = capturedSnapshot
 		defaultOptimizationCache.values = values
+		// ARM64 consumes a packed copy of the complete immutable map.
+		// Resolve only when the process defaults are first captured or change.
+		if runtime.GOARCH == "arm64" {
+			defaultOptimizationCache.selection, _ = capturedSnapshot.ResolveSelection(values)
+		}
 		defaultOptimizationCache.bmi2Values = nil
 		defaultOptimizationCache.bmi2Delta = nil
 		snapshot = capturedSnapshot
@@ -322,7 +329,7 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 	values = defaultOptimizationCache.values
 	snapshot = defaultOptimizationCache.snapshot
 	if !forceBMI2 || values["bmi2-rorx"] {
-		return values, snapshot, nil
+		return values, snapshot, nil, defaultOptimizationCache.selection
 	}
 	if defaultOptimizationCache.bmi2Values == nil {
 		bmi2Values := make(map[string]bool, len(values))
@@ -333,7 +340,7 @@ func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapsh
 		defaultOptimizationCache.bmi2Values = bmi2Values
 		defaultOptimizationCache.bmi2Delta = map[string]bool{"bmi2-rorx": true}
 	}
-	return defaultOptimizationCache.bmi2Values, snapshot, defaultOptimizationCache.bmi2Delta
+	return defaultOptimizationCache.bmi2Values, snapshot, defaultOptimizationCache.bmi2Delta, optimization.Selection{}
 }
 
 // NewRuntimeConfig returns the default configuration: wago's selected feature
@@ -354,11 +361,12 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksExplicit
 	}
 	forceBMI2 := runtime.GOARCH == "amd64" && hostSupportsBMI2() && os.Getenv("WAGO_AMD64_NO_BMI2_RORX") != "1"
-	optimizations, optimizationSnapshot, optimizationDeltas := defaultOptimizationSnapshot(forceBMI2)
+	optimizations, optimizationSnapshot, optimizationDeltas, defaultSelection := defaultOptimizationSnapshot(forceBMI2)
 	return &RuntimeConfig{
 		features:             defaultCoreFeatures(),
 		optimizations:        optimizations,
 		optimizationSnapshot: optimizationSnapshot,
+		defaultSelection:     defaultSelection,
 		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,

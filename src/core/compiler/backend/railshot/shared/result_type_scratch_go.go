@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !tinygo
-
 package shared
 
 // FunctionResultScratchCapacity bounds owner-local signature lowering storage.

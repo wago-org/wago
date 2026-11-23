@@ -445,17 +445,17 @@ func (f *fn) recordFloatLiteral(bits uint64, f64 bool, site int) {
 	if !f64 {
 		bits = uint64(uint32(bits))
 	}
-	for i := range f.floatPool {
-		c := &f.floatPool[i]
+	for i := range f.scratchState().floatPool {
+		c := &f.scratchState().floatPool[i]
 		if c.bits == bits && c.f64 == f64 {
-			f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site), next: c.head})
-			c.head = uint32(len(f.floatPoolSites))
+			f.scratchState().floatPoolSites = append(f.scratchState().floatPoolSites, floatPoolSite{off: uint32(site), next: c.head})
+			c.head = uint32(len(f.scratchState().floatPoolSites))
 			f.recordPCRelative(site)
 			return
 		}
 	}
-	f.floatPoolSites = append(f.floatPoolSites, floatPoolSite{off: uint32(site)})
-	f.floatPool = append(f.floatPool, floatPoolConst{bits: bits, head: uint32(len(f.floatPoolSites)), f64: f64})
+	f.scratchState().floatPoolSites = append(f.scratchState().floatPoolSites, floatPoolSite{off: uint32(site)})
+	f.scratchState().floatPool = append(f.scratchState().floatPool, floatPoolConst{bits: bits, head: uint32(len(f.scratchState().floatPoolSites)), f64: f64})
 	f.recordPCRelative(site)
 }
 
@@ -463,14 +463,14 @@ func (f *fn) recordFloatLiteral(bits uint64, f64 bool, site int) {
 // code and patches every LDR literal site. The pool is opaque to the native
 // finalizer, which still remaps each PC-relative load when it compacts code.
 func (f *fn) emitFloatConstPool() error {
-	if len(f.floatPool) == 0 {
+	if len(f.scratchState().floatPool) == 0 {
 		return nil
 	}
 	poolStart := f.a.Len()
 	if poolStart&7 != 0 {
 		f.a.B = append(f.a.B, 0, 0, 0, 0)
 	}
-	for _, c := range f.floatPool {
+	for _, c := range f.scratchState().floatPool {
 		off := f.a.Len()
 		var raw [8]byte
 		binary.LittleEndian.PutUint64(raw[:], c.bits)
@@ -480,7 +480,7 @@ func (f *fn) emitFloatConstPool() error {
 		}
 		f.a.B = append(f.a.B, raw[:size]...)
 		for head := c.head; head != 0; {
-			s := f.floatPoolSites[head-1]
+			s := f.scratchState().floatPoolSites[head-1]
 			if !f.a.PatchLiteral19(int(s.off), off) {
 				return fmt.Errorf("arm64: float literal at %d is out of range from load at %d", off, s.off)
 			}
@@ -491,8 +491,8 @@ func (f *fn) emitFloatConstPool() error {
 	if diagnosticsEnabled && f.stats != nil {
 		f.stats.NativeSize.LiteralPoolBytes += f.a.Len() - poolStart
 	}
-	f.floatPool = f.floatPool[:0]
-	f.floatPoolSites = f.floatPoolSites[:0]
+	f.scratchState().floatPool = f.scratchState().floatPool[:0]
+	f.scratchState().floatPoolSites = f.scratchState().floatPoolSites[:0]
 	return nil
 }
 

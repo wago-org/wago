@@ -23,6 +23,7 @@ type CodeBuffer struct {
 	mem        []byte
 	n          int
 	heap       bool
+	staging    bool
 	sealed     bool
 	registered bool
 	closed     bool
@@ -43,6 +44,9 @@ type codeBufferOps struct {
 func (b *CodeBuffer) mapRW(n int) ([]byte, error) {
 	if b.ops != nil && b.ops.mapRW != nil {
 		return b.ops.mapRW(n)
+	}
+	if b.staging {
+		return mmapRW(n)
 	}
 	return mmapCodeRW(n)
 }
@@ -73,6 +77,22 @@ func NewHeapCodeBuffer(capacity int) (*CodeBuffer, error) {
 	}
 	return &CodeBuffer{mem: make([]byte, capacity), heap: true}, nil
 }
+
+// NewStagingCodeBuffer reserves non-executable working storage for a deferred
+// code image. The caller must copy the completed bytes into executable storage.
+func NewStagingCodeBuffer(capacity int) (*CodeBuffer, error) {
+	if capacity < 0 {
+		return nil, fmt.Errorf("jit: negative code capacity %d", capacity)
+	}
+	mem, err := mmapRW(capacity)
+	if err != nil {
+		return nil, err
+	}
+	return &CodeBuffer{mem: mem, staging: true}, nil
+}
+
+// IsStaging reports whether the mapping owns deferred, non-executable code.
+func (b *CodeBuffer) IsStaging() bool { return b != nil && b.staging }
 
 // NewCodeBuffer allocates an RW code image with at least capacity bytes.
 func NewCodeBuffer(capacity int) (*CodeBuffer, error) {
@@ -245,8 +265,8 @@ func (b *CodeBuffer) Seal() error {
 	if b.sealed {
 		return nil
 	}
-	if b.heap {
-		return fmt.Errorf("jit: heap code buffer cannot be sealed")
+	if b.heap || b.staging {
+		return fmt.Errorf("jit: staging code buffer cannot be sealed")
 	}
 	if err := b.seal(b.mem); err != nil {
 		// Sealing may already have made this mapping RX. Never reopen it for

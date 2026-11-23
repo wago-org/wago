@@ -69,6 +69,15 @@ type Snapshot struct {
 	revision uint64
 }
 
+// ResolveSelection resolves overrides against the snapshot's catalog.
+// Complete overrides preserve their captured values across default revisions.
+func (s Snapshot) ResolveSelection(overrides map[string]bool) (Selection, error) {
+	if s.bindings == nil {
+		return Selection{}, nil
+	}
+	return s.bindings.ResolveSnapshot(overrides, s, nil)
+}
+
 // Selection is one immutable, architecture-specific optimization selection.
 // The bit index follows the owning Bindings' stable catalog order. It is safe to
 // copy into a compilation policy and read concurrently for the compilation's
@@ -112,6 +121,9 @@ func (s *Selection) EnabledResolvedOption(option Option) bool {
 
 // Valid reports whether the selection was resolved by a Bindings owner.
 func (s Selection) Valid() bool { return s.bindings != nil }
+
+// Owns reports whether the supplied selection was resolved by these bindings.
+func (b *Bindings) Owns(s Selection) bool { return s.bindings == b }
 
 // Option resolves name once for use on a backend's hot compile path. It panics
 // for an unknown name because backend option inventories are initialization

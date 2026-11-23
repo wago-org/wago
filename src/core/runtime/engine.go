@@ -68,6 +68,7 @@ func NewEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	preferSmallStackPages(st)
 	top := uintptr(unsafe.Pointer(&st[0])) + uintptr(len(st))
 	top &^= 15 // 16-byte align (page-aligned already, but be explicit)
 	e := &Engine{stack: st, stackTop: top}
@@ -203,10 +204,12 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	}
 	e.prepareNativeInvocation(serArgs, results)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
-	goruntime.KeepAlive(serArgs)
-	goruntime.KeepAlive(linMem)
-	goruntime.KeepAlive(trap)
-	goruntime.KeepAlive(results)
+	// Keep the backing stores alive across native entry without boxing slice
+	// headers into interfaces in TinyGo builds.
+	goruntime.KeepAlive(unsafe.SliceData(serArgs))
+	goruntime.KeepAlive(unsafe.SliceData(linMem))
+	goruntime.KeepAlive(unsafe.SliceData(trap))
+	goruntime.KeepAlive(unsafe.SliceData(results))
 	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		return trapErrorFromBuffer(tc, trap)
@@ -225,9 +228,9 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	}
 	e.prepareNativeInvocation(serArgs, results)
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-	goruntime.KeepAlive(serArgs)
-	goruntime.KeepAlive(trap)
-	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(unsafe.SliceData(serArgs))
+	goruntime.KeepAlive(unsafe.SliceData(trap))
+	goruntime.KeepAlive(unsafe.SliceData(results))
 	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		storeTrap(trap, 0)
@@ -244,9 +247,9 @@ func (e *Engine) CallPreparedBounded(code uintptr, serArgs []byte, linMemBase ui
 	}
 	e.prepareNativeInvocation(serArgs, results)
 	enterNativeBounded(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-	goruntime.KeepAlive(serArgs)
-	goruntime.KeepAlive(trap)
-	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(unsafe.SliceData(serArgs))
+	goruntime.KeepAlive(unsafe.SliceData(trap))
+	goruntime.KeepAlive(unsafe.SliceData(results))
 	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		storeTrap(trap, 0)

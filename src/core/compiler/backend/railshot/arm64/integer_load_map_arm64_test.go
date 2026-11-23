@@ -176,20 +176,20 @@ func TestIntegerLoadMapInvariantInputs(t *testing.T) {
 }
 
 func TestIntegerLoadMapBudgetLeavesReaderUnchanged(t *testing.T) {
-	f := fn{nLocals: 1, localType: []machineType{mtI32}, integerLoadMapProbe: true, integerLoadMapWork: integerLoadMapWorkLimit - 1}
+	f := fn{nLocals: 1, localType: []machineType{mtI32}, integerLoadMapWork: integerLoadMapWorkLimit - 1}
 	reader := wasm.NewReader([]byte{0x41, 0, 0x21, 0, 0x41, 1, 0x1a})
 	var p floatMapPlan
-	if ok := f.inspectFloatMapLoop(reader, &p); ok || p.work <= p.workLimit {
+	if ok := f.inspectFloatMapLoop(reader, &p, true); ok || p.work <= p.workLimit {
 		t.Fatal("exhausted integer analysis budget was not rejected")
 	}
 	if reader.Offset() != 0 {
 		t.Fatal("rejected probe advanced source reader")
 	}
 	want := p
-	if f.inspectFloatMapLoop(reader, &p) || p != want {
+	if f.inspectFloatMapLoop(reader, &p, true) || p != want {
 		t.Fatal("reused workspace changed the rejected proof")
 	}
-	if allocations := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(reader, &candidate) }); allocations != 0 {
+	if allocations := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(reader, &candidate, true) }); allocations != 0 {
 		t.Fatalf("rejected probe allocated %g objects", allocations)
 	}
 }
@@ -199,12 +199,12 @@ func TestIntegerLoadMapRejectedCandidateAllocatesZero(t *testing.T) {
 	reader := wasm.NewReader([]byte{0x1a}) // unsupported candidate, no emitter needed
 	allocations := testing.AllocsPerRun(100, func() {
 		f.integerLoadMapWork = 0
-		f.emitIntegerLoadMapCandidate(reader)
+		f.emitFloatMapBody(reader, true)
 	})
 	if allocations != 0 {
 		t.Fatalf("rejected candidate allocated %g objects", allocations)
 	}
-	if reader.Offset() != 0 || f.integerLoadMapProbe {
-		t.Fatal("rejected candidate leaked reader or admission state")
+	if reader.Offset() != 0 || f.integerLoadMapWork != 1 {
+		t.Fatal("rejected candidate changed the reader or miscounted the probe")
 	}
 }

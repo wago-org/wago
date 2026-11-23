@@ -162,6 +162,10 @@ func (f *fn) tryTailArgumentSelect(r *wasm.Reader) (bool, error) {
 	if free >= 2*target.paramCount()+3 && f.tailSelectFlagsCondition(condition) {
 		return f.emitTailSelectOnFlags(r, scan.Offset(), left, right, target, condition)
 	}
+	return f.emitTailSelectOnValue(r, scan.Offset(), left, right, target)
+}
+
+func (f *fn) emitTailSelectOnValue(r *wasm.Reader, end int, left, right [4]tailSelectExpr, target *inlineTarget) (bool, error) {
 	cond := f.materialize(f.popValue())
 	previousPins := f.pinned
 	f.pinned = f.pinned.add(cond)
@@ -219,7 +223,7 @@ func (f *fn) tryTailArgumentSelect(r *wasm.Reader) (bool, error) {
 	f.pinned = previousPins
 	f.release(cond)
 	held = false
-	if err := r.JumpTo(scan.Offset()); err != nil {
+	if err := r.JumpTo(end); err != nil {
 		return true, err
 	}
 	f.stats.peep("tail-branch-select")

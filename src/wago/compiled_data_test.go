@@ -105,6 +105,41 @@ func compactDataModule(emptyOutOfBounds bool) []byte {
 	)
 }
 
+func TestCompilerDecodeReuseKeepsPublishedData(t *testing.T) {
+	first, err := Compile(nil, compactDataModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	nextSource := compactDataModule(false)
+	nextSource[len(nextSource)-1] = 0xee
+	second, err := Compile(nil, nextSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	last := minCompactActiveData - 1
+	for i, item := range []struct {
+		module *Compiled
+		want   byte
+	}{{first, byte(last + 17)}, {second, 0xee}} {
+		if got := item.module.Data[last].Bytes[0]; got != item.want {
+			t.Fatalf("module %d published data = %x, want %x", i, got, item.want)
+		}
+		in, err := Instantiate(item.module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bytes, ok := in.Read(uint32(last), 1)
+		if !ok || bytes[0] != item.want {
+			in.Close()
+			t.Fatalf("module %d instantiated the wrong payload", i)
+		}
+		in.Close()
+	}
+}
+
 func TestCompactExecutionDataKeepsEmptySegmentBoundsCheck(t *testing.T) {
 	c, err := Compile(nil, compactDataModule(true))
 	if err != nil {
@@ -155,5 +190,29 @@ func TestCompactExecutionDataThreshold(t *testing.T) {
 	c.Data = c.Data[:minCompactActiveData-1]
 	if cloneCompiledExecutionMetadata(c).compactData != nil {
 		t.Fatal("below threshold unexpectedly compacted")
+	}
+}
+
+func TestCompactExecutionDataLargePayload(t *testing.T) {
+	c := compactDataFixture()
+	c.Data = c.Data[:minLargeActiveDataSegments]
+	c.Data[0].Bytes = make([]byte, minLargeActiveDataBytes-len(c.Data)+1)
+	c.Data[0].Bytes[0] = 42
+	view := cloneCompiledExecutionMetadata(c)
+	if view.compactData == nil {
+		t.Fatal("large payload did not use compact data")
+	}
+	c.Data[0].Bytes[0] = 0
+	if view.activeDataAt(0).Bytes[0] != 42 {
+		t.Fatal("public edit reached snapshot")
+	}
+	c.Data[0].Bytes = c.Data[0].Bytes[:len(c.Data[0].Bytes)-1]
+	if cloneCompiledExecutionMetadata(c).compactData != nil {
+		t.Fatal("payload below byte threshold unexpectedly compacted")
+	}
+	c.Data = c.Data[:len(c.Data)-1]
+	c.Data[0].Bytes = make([]byte, minLargeActiveDataBytes)
+	if cloneCompiledExecutionMetadata(c).compactData != nil {
+		t.Fatal("too few segments unexpectedly compacted")
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	goruntime "runtime"
+	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -106,8 +108,19 @@ func rv64RootedTypeDigest(c *Compiled) ([32]byte, bool) {
 // DataInit metadata remains unchanged and independently mutable. Common constant
 // offsets need neither a global index nor an expression slice in every record.
 type compactActiveData struct {
-	records []compactDataRecord
-	bytes   []byte
+	records           []compactDataRecord
+	bytes             []byte
+	arena             *coreruntime.Arena
+	nativePayloadSize int
+	denseOffset       uint32
+	dense             bool
+}
+
+func (d *compactActiveData) payloadSize() int {
+	if d.nativePayloadSize != 0 {
+		return d.nativePayloadSize
+	}
+	return len(d.bytes)
 }
 
 type compactDataRecord struct {
@@ -117,7 +130,11 @@ type compactDataRecord struct {
 	end         uint32
 }
 
-const minCompactActiveData = 1024
+const (
+	minCompactActiveData       = 1024
+	minLargeActiveDataSegments = 64
+	minLargeActiveDataBytes    = 128 << 10
+)
 
 // Validate packed spans before any reader forms a payload slice. Public
 // metadata copies can reach admission without the execution clone's proof.
@@ -125,11 +142,29 @@ func (c *Compiled) validateCompactData() error {
 	if c == nil || c.compactData == nil {
 		return nil
 	}
-	for _, record := range c.compactData.records {
-		if record.end < record.start || uint64(record.end) > uint64(len(c.compactData.bytes)) {
+	d := c.compactData
+	for _, record := range d.records {
+		if record.end < record.start || uint64(record.end) > uint64(d.payloadSize()) {
 			return fmt.Errorf("compiled metadata invalid: compact data payload range")
 		}
+		if d.dense && (record.memoryIndex != 0 || record.offset < d.denseOffset || record.start != record.offset-d.denseOffset) {
+			return fmt.Errorf("compiled metadata invalid: dense data placement")
+		}
 	}
+	return nil
+}
+
+// closeNativeActiveData runs under the shared code owner lock after the last
+// instance reference, or on a snapshot that failed before publication.
+func (c *Compiled) closeNativeActiveData() error {
+	if c.compactData == nil || c.compactData.arena == nil {
+		return nil
+	}
+	if err := c.compactData.arena.Close(); err != nil {
+		return err
+	}
+	c.compactData.arena = nil
+	c.compactData.bytes = nil
 	return nil
 }
 
@@ -138,6 +173,52 @@ func (c *Compiled) activeDataCount() int {
 		return len(c.compactData.records)
 	}
 	return len(c.Data)
+}
+
+// activeDataInfoAt reads bounds and offsets before an instance has acquired
+// a code reference. It never borrows the packed payload itself.
+func (c *Compiled) activeDataInfoAt(index int) (DataInit, int) {
+	if c.compactData == nil {
+		d := c.Data[index]
+		return d, len(d.Bytes)
+	}
+	d := c.compactData.records[index]
+	return DataInit{MemoryIndex: d.memoryIndex, Offset: OffsetInit{Base: d.offset}}, int(d.end - d.start)
+}
+
+// residentInitializerRange returns a bounded range using immutable offsets.
+// It is consulted only at physical release of a privately owned memory.
+func (c *Compiled) residentInitializerRange() (int, int) {
+	count := c.activeDataCount()
+	if count == 0 || c.memoryCount() != 1 {
+		return 0, 0
+	}
+	if data := c.compactData; data != nil {
+		if data.dense {
+			start := int(data.denseOffset)
+			return start, start + data.payloadSize()
+		}
+		if data.payloadSize() < 64<<10 {
+			return 0, 0
+		}
+	}
+	if count > 512 {
+		return 0, 0
+	}
+	low, high, payload := maxInt(), 0, uint64(0)
+	for i := 0; i < count; i++ {
+		d, size := c.activeDataInfoAt(i)
+		if size == 0 || d.Offset.HasGlobal || len(d.Offset.Expr) != 0 {
+			continue
+		}
+		start := int(d.Offset.Base)
+		low, high = min(low, start), max(high, start+size)
+		payload += uint64(size)
+	}
+	if high > low && uint64(high-low)/2 <= payload {
+		return low, high
+	}
+	return 0, 0
 }
 
 func (c *Compiled) activeDataAt(index int) DataInit {
@@ -877,36 +958,90 @@ func rv64RootedTableDigest(c *Compiled) ([32]byte, bool) {
 	return digest, true
 }
 
-// compactActiveDataSize also guards the uint32 byte-range representation. Rare
-// offset forms and nil-vs-empty metadata retain the ordinary exact deep copy.
-func compactActiveDataSize(c *Compiled) (int, bool) {
-	if c.compactData != nil {
-		return len(c.compactData.bytes), true
+// Dense initialization and resident page caching are enabled on Linux AMD64.
+const denseActiveDataEnabled = goruntime.GOOS == "linux" && goruntime.GOARCH == "amd64"
+
+type compactActiveDataPlan struct {
+	size   int
+	offset uint32
+	dense  bool
+}
+
+// A dense plan preserves each original segment and fills only small gaps in
+// the backing payload. The instance can then copy the complete initializer.
+func planCompactActiveData(c *Compiled) (compactActiveDataPlan, bool) {
+	if d := c.compactData; d != nil {
+		return compactActiveDataPlan{size: d.payloadSize(), offset: d.denseOffset, dense: d.dense}, true
 	}
-	if len(c.Data) < minCompactActiveData {
-		return 0, false
+	if len(c.Data) < minLargeActiveDataSegments {
+		return compactActiveDataPlan{}, false
 	}
+	dense := denseActiveDataEnabled && c.HasMemory && c.memoryImport == "" && c.memoryCount() == 1 && !c.threadedMemory0()
+	base := uint64(c.Data[0].Offset.Base)
+	last := base
 	var size uint64
 	for _, d := range c.Data {
 		if d.Offset.HasGlobal || d.Offset.Global != 0 || d.Offset.Expr != nil || d.Bytes == nil {
-			return 0, false
+			return compactActiveDataPlan{}, false
 		}
 		size += uint64(len(d.Bytes))
 		if size > uint64(^uint32(0)) || size > uint64(maxInt()) {
-			return 0, false
+			return compactActiveDataPlan{}, false
+		}
+		if dense {
+			start := uint64(d.Offset.Base)
+			if d.MemoryIndex != 0 || start < last {
+				dense = false
+			} else {
+				last = start + uint64(len(d.Bytes))
+			}
 		}
 	}
-	return int(size), true
+
+	span := last - base
+	// Gaps are capped both as a fraction of the payload (with a small
+	// absolute allowance) and by the space saved by packing the records.
+	recordSavings := uint64(len(c.Data)) * uint64(unsafe.Sizeof(DataInit{})-unsafe.Sizeof(compactDataRecord{}))
+	if dense && size != 0 && span <= uint64(^uint32(0)) && span <= uint64(maxInt()) &&
+		span-size <= min(size/8+4096, recordSavings) {
+		return compactActiveDataPlan{size: int(span), offset: uint32(base), dense: true}, true
+	}
+	if len(c.Data) < minCompactActiveData && size < minLargeActiveDataBytes {
+		return compactActiveDataPlan{}, false
+	}
+	return compactActiveDataPlan{size: int(size)}, true
 }
 
-func cloneCompactActiveData(out *compactActiveData, c *Compiled, payloadBytes int) {
-	*out = compactActiveData{records: make([]compactDataRecord, c.activeDataCount()), bytes: make([]byte, payloadBytes)}
+func cloneCompactActiveData(out *compactActiveData, c *Compiled, plan compactActiveDataPlan, native bool) {
+	records := make([]compactDataRecord, c.activeDataCount())
+	var data []byte
+	var arena *coreruntime.Arena
+	if native && plan.size >= minLargeActiveDataBytes {
+		if a, err := coreruntime.NewArena(plan.size); err == nil {
+			arena = a
+			data = a.AllocNoZero(plan.size)
+			if plan.dense {
+				clear(data)
+			}
+		}
+	}
+	if data == nil {
+		data = make([]byte, plan.size)
+	}
+	*out = compactActiveData{records: records, bytes: data, arena: arena, dense: plan.dense, denseOffset: plan.offset}
+	if arena != nil {
+		out.nativePayloadSize = plan.size
+	}
 	next := 0
 	for i := range out.records {
 		d := c.activeDataAt(i)
-		end := next + len(d.Bytes)
-		copy(out.bytes[next:end], d.Bytes)
-		out.records[i] = compactDataRecord{memoryIndex: d.MemoryIndex, offset: d.Offset.Base, start: uint32(next), end: uint32(end)}
+		start := next
+		if plan.dense {
+			start = int(d.Offset.Base - plan.offset)
+		}
+		end := start + len(d.Bytes)
+		copy(out.bytes[start:end], d.Bytes)
+		out.records[i] = compactDataRecord{memoryIndex: d.MemoryIndex, offset: d.Offset.Base, start: uint32(start), end: uint32(end)}
 		next = end
 	}
 }

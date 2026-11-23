@@ -451,12 +451,12 @@ func scanFuncBodyIntoMemory64WithModuleCalls(fn wasm.Func, nLocals, nGlobals int
 	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers, globalHints), nil
 }
 
-func scanFuncBodyWithLoopIntConsts(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
+func (s *byteBodyScanner) scanFuncBodyWithLoopIntConsts(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
 	if len(fn.BodyBytes) == 0 {
 		view := scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, m, gcTypeLayouts, gcStructHelpers, globalHints)
 		return view, [2]int64{}, 0, nil
 	}
-	return scanBodyBytesWithLoopIntConsts(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, nil, importedFuncs, globalHints, collect)
+	return s.scanBodyBytesWithLoopIntConsts(fn.BodyBytes, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, nil, importedFuncs, globalHints, collect)
 }
 
 func gcOrAtomicInstructionMayCall(kind wasm.InstrKind, gcStructHelpers bool) bool {
@@ -890,11 +890,12 @@ func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint3
 }
 
 func scanBodyBytesIntoMemory64WithModuleCalls(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collectLoopIntConsts ...bool) (funcHintView, error) {
-	view, _, _, err := scanBodyBytesWithLoopIntConsts(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, parallelCalls, importedFuncs, globalHints, len(collectLoopIntConsts) != 0 && collectLoopIntConsts[0])
+	var s byteBodyScanner
+	view, _, _, err := s.scanBodyBytesWithLoopIntConsts(body, nLocals, nGlobals, selfIdx, h, elig, memory64, m, classifier, gcTypeLayouts, gcStructHelpers, moduleHints, parallelCalls, importedFuncs, globalHints, len(collectLoopIntConsts) != 0 && collectLoopIntConsts[0])
 	return view, err
 }
 
-func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
+func (s *byteBodyScanner) scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, memory64 bool, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, moduleHints []funcHints, parallelCalls []parallelCalleeHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator, collect bool) (funcHintView, [2]int64, uint8, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
@@ -903,7 +904,7 @@ func scanBodyBytesWithLoopIntConsts(body []byte, nLocals int, nGlobals int, self
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, globalHints: globalHints, entryPrefix: true, memory64: memory64, m: m, classifier: cached, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, collectLoopIntConsts: collect}
+	*s = byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig, globalHints: globalHints, entryPrefix: true, memory64: memory64, m: m, classifier: cached, gcTypeLayouts: gcTypeLayouts, gcStructHelpers: gcStructHelpers, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, collectLoopIntConsts: collect}
 	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, s.selectedLoopIntConsts, s.selectedLoopIntConstN, err
@@ -1168,11 +1169,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.h.flags.set(hintHasCall)
 			s.h.markNonDirectCall()
-			if op == 0x14 || op == 0x15 {
-				s.h.markUnsupportedDynamicCall()
-			}
 			subHasCall = true
-			if op == 0x13 || op == 0x15 {
+			if op == 0x13 {
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
@@ -1183,6 +1181,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.h.flags.set(hintHasCall)
+			s.h.markNonDirectCall()
+			s.h.markUnsupportedDynamicCall()
 			subHasCall = true
 			if op == 0x15 {
 				s.h.flags.set(hintHasTailCall)

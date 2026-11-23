@@ -117,7 +117,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 	if want.Kind() == wasm.ValRef && m != nil && len(b) != 0 && b[0] == 0xfb {
 		return constExprResult{vtype: want, GlobalIndex: -1, FuncIndex: -1, Expr: append([]byte(nil), b...)}, nil
 	}
-	r := wasm.NewReader(b)
+	r := wasm.ReaderFrom(b)
 	op, err := r.Byte()
 	if err != nil {
 		return constExprResult{}, err
@@ -267,7 +267,7 @@ func evalConstExprBytesWithContext(b []byte, want wasm.ValType, ctx *constExprCo
 }
 
 func evalNullExternConversionConstExpr(b []byte, want wasm.ValType) (constExprResult, bool, error) {
-	r := wasm.NewReader(b)
+	r := wasm.ReaderFrom(b)
 	op, err := r.Byte()
 	if err != nil || op != 0xd0 {
 		return constExprResult{}, false, nil

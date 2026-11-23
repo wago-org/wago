@@ -122,11 +122,26 @@ type Asm struct {
 	IndexedBaseReuses             int
 	indexedReuseFence             int
 	indexedReuseWindows           []indexedReuseWindow
+	dominatedIndexedEntries       *[1024]uint16
 	DominatedIndexedCandidates    uint16
 }
 
 // word appends one 32-bit instruction little-endian.
 func (a *Asm) word(w uint32) {
+	end := len(a.B)
+	if cap(a.B)-end < 4 {
+		a.appendWordWithGrowth(w)
+		return
+	}
+	code := a.B[:end+4]
+	binary.LittleEndian.PutUint32(code[end:], w)
+	a.B = code
+}
+
+// Keep append's slow path out of inlined emitter bodies.
+//
+//go:noinline
+func (a *Asm) appendWordWithGrowth(w uint32) {
 	a.B = append(a.B, byte(w), byte(w>>8), byte(w>>16), byte(w>>24))
 }
 
@@ -495,6 +510,16 @@ func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 	if regallocCheckEnabled {
 		a.regallocGPWrites(regallocGPMask(rt, false) | regallocGPMask(rt2, false))
 	}
+}
+
+// FStpOffset64 stores two low 64-bit FP lanes at [rn, #imm].
+func (a *Asm) FStpOffset64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// FLdpOffset64 loads two low 64-bit FP lanes from [rn, #imm].
+func (a *Asm) FLdpOffset64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
 // LdpOffset32 loads wt,wt2 from [rn, #imm] without modifying rn.

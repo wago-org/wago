@@ -22,7 +22,7 @@ type loopLocalParamHomes struct {
 
 func (f *fn) planLoopLocalParams(r *wasm.Reader, fr *ctrlFrame, signature wasm.Reader) (loopLocalParamHomes, int, bool) {
 	var homes loopLocalParamHomes
-	if !f.opt(optLoopLocalParams) || profileEnabled || f.interruptible || f.makesCalls || f.usesCalls ||
+	if !f.opt(optLoopLocalParams) || profileEnabled || f.loopInterruptible() || f.makesCalls || f.usesCalls ||
 		f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
 		len(f.intervalLast) != 0 || f.loopLocalParams.depth != 0 ||
 		f.policy.CompactNative || fr.kind != cfLoop || fr.paramN < 1 || fr.paramN > len(homes.local) || f.depth() < fr.paramN ||

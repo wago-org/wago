@@ -47,7 +47,7 @@ func core1SegmentOffset(c *Compiled, globals []*Global, offset OffsetInit, conte
 
 func preflightCore1DataSegments(c *Compiled, globals []*Global, primary *runtime.JobMemory, memories []*Memory) error {
 	for seg := 0; seg < c.activeDataCount(); seg++ {
-		data := c.activeDataAt(seg)
+		data, payloadBytes := c.activeDataInfoAt(seg)
 		memory := primary
 		if data.MemoryIndex != 0 {
 			if int(data.MemoryIndex) >= len(memories) || memories[data.MemoryIndex] == nil {
@@ -63,8 +63,8 @@ func preflightCore1DataSegments(c *Compiled, globals []*Global, primary *runtime
 		if err != nil {
 			return fmt.Errorf("active data segment %d offset: %w", seg, err)
 		}
-		if offset > uint64(len(bytes)) || uint64(len(data.Bytes)) > uint64(len(bytes))-offset {
-			return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, data.MemoryIndex, offset, len(data.Bytes), len(bytes))
+		if offset > uint64(len(bytes)) || uint64(payloadBytes) > uint64(len(bytes))-offset {
+			return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, data.MemoryIndex, offset, payloadBytes, len(bytes))
 		}
 	}
 	return nil

@@ -74,7 +74,7 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	lineageEligible := f.opt(optCsetLineage) && n <= csetLineageFunctionLimit && !f.opaqueFragments && !f.moduleEH && len(f.customInstructions) == 0
 	lineageCandidate := false
 	firstLineageSet := -1
-	scratchReloadEligible := f.opt(optRepeatedStoreRegion) && f.hasLoop && !f.threadedMemory0 && !f.moduleEH && !f.interruptible && !f.opaqueFragments && !profileEnabled && len(f.customInstructions) == 0
+	scratchReloadEligible := f.opt(optRepeatedStoreRegion) && f.hasLoop && !f.threadedMemory0 && !f.moduleEH && !f.loopInterruptible() && !f.opaqueFragments && !profileEnabled && len(f.customInstructions) == 0
 	var scratchReloadSites [64]uint32
 	scratchReloadN := 0
 	lastScratchMove, lastScratchMoveAt := uint32(0), -maxScratchConstantReloadDistance-4

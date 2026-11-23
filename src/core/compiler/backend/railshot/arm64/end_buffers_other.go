@@ -5,12 +5,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build arm64 && tinygo
+//go:build arm64 && (!darwin || tinygo)
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
-
-func lowerFunctionResultTypes(_ *scratch, vals []wasm.ValType) []machineType {
-	return typesOfVals(vals)
-}
+// Bound the branch-offset backing retained by each worker.
+const (
+	maxRetainedEndsBufs     = maxWorkerInitialControlFrames
+	maxRetainedEndsBufSites = 256
+)

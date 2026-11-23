@@ -309,7 +309,7 @@ func (e *integerMapBodyEmitter) initialVectors() {
 	}
 }
 
-func (e *integerMapBodyEmitter) emit() {
+func (e *integerMapBodyEmitter) emit(f *fn) {
 	for i := uint8(0); i < e.addressN; i++ {
 		e.a.Load64(e.addressReg[i], RSP, e.guard.slot(e.guard.startSlot(e.addressBase[i])))
 	}
@@ -350,6 +350,9 @@ func (e *integerMapBodyEmitter) emit() {
 	}
 	e.a.AlignLoop()
 	top := e.a.Len()
+	if f != nil {
+		f.emitInterruptCheck(e.gp[2])
+	}
 	e.a.AluRI(7, e.gp[0], int32(e.guard.plan.lanes), false)
 	var scalarSites [integerMapMaxAliasPairs + 1]int
 	siteN := 0
@@ -417,6 +420,9 @@ func (e *integerMapBodyEmitter) emit() {
 		e.a.PatchRel32(unrolled, e.a.Len())
 		e.a.AlignLoop()
 		fastTop := e.a.Len()
+		if f != nil {
+			f.emitInterruptCheck(e.gp[2])
+		}
 		e.a.AluRI(7, e.gp[0], int32(lanes), false)
 		small := e.a.JccPlaceholder(condB)
 		e.a.PatchRel32(small, top)

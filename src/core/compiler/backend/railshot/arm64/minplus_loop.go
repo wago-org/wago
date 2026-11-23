@@ -28,34 +28,12 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 			return
 		}
 	}
-	var nodes [128]dotNode
-	var third [128]int
-	var values [32]int
-	var written, initialRead [32]bool
-	var stack [24]int
+	work := f.resetSymbolicLoop()
+	nodes, stack, values := &work.nodes, &work.stack, &work.values
+	third, written, initialRead := &work.third, &work.written, &work.initialRead
 	var stores [2][2]int
 	var storeAfter [2]int
-	n, depth, ns, loads := f.nLocals, 0, 0, 0
-	for i := 0; i < n; i++ {
-		nodes[i] = dotNode{op: 0x20, a: i}
-		values[i] = i
-	}
-	push := func(x int) bool {
-		if depth == len(stack) {
-			return false
-		}
-		stack[depth] = x
-		depth++
-		return true
-	}
-	node := func(v dotNode) int {
-		if n == len(nodes) {
-			return -1
-		}
-		nodes[n] = v
-		n++
-		return n - 1
-	}
+	ns, loads := 0, 0
 	scan := *r
 	start := scan.Offset()
 	for scan.Offset()-start < 384 {
@@ -73,17 +51,17 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				if values[x] == int(x) {
 					initialRead[x] = true
 				}
-				if !push(values[x]) {
+				if !work.push(values[x]) {
 					return p, false
 				}
 			} else {
-				if depth == 0 {
+				if work.depth == 0 {
 					return p, false
 				}
-				values[x] = stack[depth-1]
+				values[x] = stack[work.depth-1]
 				written[x] = true
 				if op == 0x21 {
-					depth--
+					work.depth--
 				}
 			}
 		case 0x41:
@@ -91,30 +69,30 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 			if e != nil {
 				return p, false
 			}
-			x := node(dotNode{op: op, v: uint32(v)})
-			if x < 0 || !push(x) {
+			x := work.node(dotNode{op: op, v: uint32(v)})
+			if x < 0 || !work.push(x) {
 				return p, false
 			}
 		case 0x6a, 0x47, 0x4a:
-			if depth < 2 {
+			if work.depth < 2 {
 				return p, false
 			}
-			depth -= 2
-			x := node(dotNode{op: op, a: stack[depth], b: stack[depth+1]})
-			if x < 0 || !push(x) {
+			work.depth -= 2
+			x := work.node(dotNode{op: op, a: stack[work.depth], b: stack[work.depth+1]})
+			if x < 0 || !work.push(x) {
 				return p, false
 			}
 		case 0x1b:
-			if depth < 3 {
+			if work.depth < 3 {
 				return p, false
 			}
-			depth -= 3
-			x := node(dotNode{op: op, a: stack[depth], b: stack[depth+1]})
+			work.depth -= 3
+			x := work.node(dotNode{op: op, a: stack[work.depth], b: stack[work.depth+1]})
 			if x < 0 {
 				return p, false
 			}
-			third[x] = stack[depth+2]
-			if !push(x) {
+			third[x] = stack[work.depth+2]
+			if !work.push(x) {
 				return p, false
 			}
 		case 0x28, 0x36:
@@ -123,27 +101,27 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				return p, false
 			}
 			if op == 0x28 {
-				if depth == 0 {
+				if work.depth == 0 {
 					return p, false
 				}
-				x := node(dotNode{op: op, a: stack[depth-1], v: uint32(off)})
+				x := work.node(dotNode{op: op, a: stack[work.depth-1], v: uint32(off)})
 				if x < 0 {
 					return p, false
 				}
-				stack[depth-1] = x
+				stack[work.depth-1] = x
 				loads++
 			} else {
-				if depth < 2 || ns == 2 || off != 0 {
+				if work.depth < 2 || ns == 2 || off != 0 {
 					return p, false
 				}
-				depth -= 2
-				stores[ns] = [2]int{stack[depth], stack[depth+1]}
-				storeAfter[ns] = n
+				work.depth -= 2
+				stores[ns] = [2]int{stack[work.depth], stack[work.depth+1]}
+				storeAfter[ns] = work.n
 				ns++
 			}
 		case 0x0d:
 			label, e := scan.U32()
-			if e != nil || label != 0 || depth != 1 || ns != 2 || loads != 6 {
+			if e != nil || label != 0 || work.depth != 1 || ns != 2 || loads != 6 {
 				return p, false
 			}
 			end, e := scan.Byte()
@@ -175,7 +153,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 			}
 			var usedLoads [128]bool
 			for i := 0; i < 2; i++ {
-				dst, off, yes := affineDotAddress(nodes[:n], stores[i][0], p.counter)
+				dst, off, yes := affineDotAddress(nodes[:work.n], stores[i][0], p.counter)
 				if !yes || off != uint32(i*4) {
 					return p, false
 				}
@@ -206,7 +184,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 				if srcLoad.op != 0x28 || pivotLoad.op != 0x28 || pivotLoad.v != 0 {
 					return p, false
 				}
-				src, off, yes := affineDotAddress(nodes[:n], srcLoad.a, p.counter)
+				src, off, yes := affineDotAddress(nodes[:work.n], srcLoad.a, p.counter)
 				if !yes || off+srcLoad.v != uint32(i*4) {
 					return p, false
 				}
@@ -245,7 +223,7 @@ func (f *fn) inspectMinPlusLoop(r *wasm.Reader) (p minPlusPlan, ok bool) {
 // tail restores every source temporary, including values observable after the
 // loop. Failed guards leave all locals and memory untouched.
 func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
-	if !f.opt(optDotLoopVector) || f.dotLoop != nil || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !f.opt(optDotLoopVector) || f.dotLoop != nil || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
 	p, ok := f.inspectMinPlusLoop(r)

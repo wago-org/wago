@@ -47,8 +47,7 @@ var tinygoIntThunkTemplate = []byte{
 	0x4d, 0x89, 0x72, 0x28, // mov r14, 40(r10)
 	0x4d, 0x89, 0x7a, 0x30, // mov r15, 48(r10)
 	0x41, 0x0f, 0xae, 0x5a, 0x38, // stmxcsr 56(r10)
-	0x41, 0xc7, 0x42, 0x3c, 0x80, 0x1f, 0x00, 0x00, // movl $0x1f80, 60(r10)
-	0x41, 0x0f, 0xae, 0x52, 0x3c, // ldmxcsr 60(r10)
+	0x0f, 0xae, 0x15, 0, 0, 0, 0, // ldmxcsr [rip+defaultMXCSR]
 	0x48, 0x89, 0xfb, // mov rdi, rbx (linMem)
 	0x49, 0x8d, 0x7a, 0xf8, // lea -8(r10), rdi
 	0x48, 0x89, 0x7b, 0xe8, // mov rdi, -24(rbx)
@@ -73,10 +72,14 @@ var tinygoIntThunkTemplate = []byte{
 const tinygoIntThunkStackTopOff = 2
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	if err := e.initNativeEntry(); err != nil {
-		return 0, err
+	// NewEngine initializes the executable mapping and keeps its base in
+	// stackTop. Only an engine without a mapping needs the cold setup path.
+	if e.preparedInt.mem == nil {
+		if err := e.initNativeEntry(); err != nil {
+			return 0, err
+		}
 	}
-	return uintptr(unsafe.Pointer(&e.preparedInt.mem[0])) + tinygoPreparedIntEntryOffset, nil
+	return e.stackTop + tinygoPreparedIntEntryOffset, nil
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {

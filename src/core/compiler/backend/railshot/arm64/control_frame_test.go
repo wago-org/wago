@@ -201,7 +201,7 @@ func TestFrameEndSitesInlinePairArm64(t *testing.T) {
 
 func TestBoundedPinCandidateOrderingArm64(t *testing.T) {
 	var storage [3]gpCand
-	top := storage[:0]
+	top := 0
 	for _, candidate := range []gpCand{
 		{global: true, idx: 0, score: 5},
 		{idx: 0, score: 5},
@@ -209,22 +209,25 @@ func TestBoundedPinCandidateOrderingArm64(t *testing.T) {
 		{idx: 2, score: 9},
 		{idx: 1, score: 1},
 	} {
-		top = insertGPCandidate(top, candidate, len(storage))
+		top = insertGPCandidate(storage[:], top, candidate)
 	}
 	want := []gpCand{{idx: 2, score: 9}, {global: true, idx: 1, score: 9}, {idx: 0, score: 5}}
+	if top != len(want) {
+		t.Fatalf("GP candidate count = %d, want %d", top, len(want))
+	}
 	for i := range want {
-		if top[i] != want[i] {
-			t.Fatalf("GP candidate %d = %+v, want %+v", i, top[i], want[i])
+		if storage[i] != want[i] {
+			t.Fatalf("GP candidate %d = %+v, want %+v", i, storage[i], want[i])
 		}
 	}
 
 	scores := []uint32{3, 9, 9, 1}
 	var localsStorage [2]uint16
-	locals := localsStorage[:0]
+	localCount := 0
 	for _, local := range []uint16{3, 2, 0, 1} {
-		locals = insertLocalCandidate(locals, local, scores, len(localsStorage))
+		localCount = insertLocalCandidate(localsStorage[:], localCount, local, scores)
 	}
-	if len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
+	if locals := localsStorage[:localCount]; len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
 		t.Fatalf("local candidates = %v, want [1 2]", locals)
 	}
 }
@@ -361,13 +364,13 @@ func TestEndSitePoolRetentionIsBoundedArm64(t *testing.T) {
 	for range maxRetainedEndsBufs + 3 {
 		f.freeEndsBuf(make([]uint32, 0, 1))
 	}
-	if got := len(f.endsPool); got != maxRetainedEndsBufs {
+	if got := len(f.scratchState().endsPool); got != maxRetainedEndsBufs {
 		t.Fatalf("retained end-site buffers = %d, want %d", got, maxRetainedEndsBufs)
 	}
 
-	f.endsPool = nil
+	f.scratchState().endsPool = nil
 	f.freeEndsBuf(make([]uint32, 0, maxRetainedEndsBufSites+1))
-	if f.endsPool != nil {
+	if f.scratchState().endsPool != nil {
 		t.Fatal("oversized end-site buffer was retained")
 	}
 }

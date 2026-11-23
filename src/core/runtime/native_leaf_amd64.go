@@ -5,20 +5,17 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin || windows) && amd64 && !tinygo
+//go:build amd64 && (linux || ((darwin || windows) && !tinygo))
 
 package runtime
 
 import (
-	"reflect"
-	goruntime "runtime"
-
 	"github.com/wago-org/wago/internal/runtimebridge"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // scalarLeafInstruction accepts only bounded register arithmetic. Registers
-// start undefined except Go's AX/BX arguments. No memory operand, stack/frame
+// start undefined except the input argument registers. No memory operand, stack/frame
 // register, flags input, branch, call, relocation or FP operation is copied.
 // LEA is address arithmetic only: its base/index must also be defined scratch.
 func scalarLeafInstruction(code []byte, defined *uint32) (int, bool) {
@@ -194,65 +191,19 @@ func scalarLeafInstruction(code []byte, defined *uint32) (int, bool) {
 	return finish((zero || read(dst) && read(src)) && write(dst))
 }
 
-func scalarLeafBody(fn any, params uint32) []byte {
-	if !scalarGoABI(goruntime.Version()) || params < 1 || params > 2 {
-		return nil
-	}
-	value := reflect.ValueOf(fn)
-	if value.Kind() != reflect.Func || value.IsNil() {
-		return nil
-	}
-	typ := value.Type()
-	if typ.IsVariadic() || typ.NumIn() != int(params) || typ.NumOut() != 1 || typ.Out(0).Kind() != reflect.Int32 {
-		return nil
-	}
-	for i := 0; i < typ.NumIn(); i++ {
-		if typ.In(i).Kind() != reflect.Int32 {
-			return nil
-		}
-	}
-	pc := value.Pointer()
-	f := goruntime.FuncForPC(pc)
-	if f == nil || f.Entry() != pc {
-		return nil
-	}
-	defined := uint32(1)
+func scalarLeafDefinedArgs(params uint32) uint32 {
+	defined := uint32(1 << scalarLeafArg0)
 	if params == 2 {
-		defined |= 1 << 3
-	} // ABIInternal: AX, BX
-	body := make([]byte, 0, 128)
-	for off := uintptr(0); off < 128; {
-		var bytes [15]byte
-		n := 0
-		for ; n < len(bytes) && off+uintptr(n) < 128; n++ {
-			at := pc + off + uintptr(n)
-			owner := goruntime.FuncForPC(at)
-			if owner == nil || owner.Entry() != pc {
-				break
-			}
-			bytes[n] = *(*byte)(offHeapPointer(at))
-		}
-		if n == 0 {
-			return nil
-		}
-		if bytes[0] == 0xc3 {
-			return body
-		}
-		size, ok := scalarLeafInstruction(bytes[:n], &defined)
-		if !ok || size == 0 {
-			return nil
-		}
-		body = append(body, bytes[:size]...)
-		off += uintptr(size)
+		defined |= 1 << scalarLeafArg1
 	}
-	return nil
+	return defined
 }
 
 // Copy only proven register arithmetic, never Go code that can allocate, trap,
 // inspect resources or reenter. The VM retains syscall scheduling for unbounded
 // native execution. Instance quiescence releases its retained code reference.
 func RegisterNativeScalarLeaf(access runtimebridge.HostScalarCallAccess, ctrl []byte, fn any, params uint32) (bool, error) {
-	if !access.Granted() || len(ctrl) != ctrlFrameSize {
+	if !access.Granted() || len(ctrl) != ctrlFrameSize || !scalarLeafCanRegister(fn, params) {
 		return false, nil
 	}
 	return registerSharedNativeScalarLeaf(ctrl, fn, params, buildNativeScalarLeaf)
@@ -263,11 +214,10 @@ func buildNativeScalarLeaf(fn any, params uint32) (nativeScalarLeaf, bool, error
 	if body == nil {
 		return nativeScalarLeaf{}, false, nil
 	}
-	defined := uint32(1)
-	if params == 2 {
-		defined |= 1 << 3
-	}
+	defined := scalarLeafDefinedArgs(params)
+	wide := false
 	for off := 0; off < len(body); {
+		wide = wide || body[off]&0xf8 == 0x48
 		n, ok := scalarLeafInstruction(body[off:], &defined)
 		if !ok {
 			return nativeScalarLeaf{}, false, nil
@@ -298,9 +248,9 @@ func buildNativeScalarLeaf(fn any, params uint32) (nativeScalarLeaf, bool, error
 	if saveBase {
 		a.Push(x64.RBX)
 	}
-	a.Load32(x64.RAX, scratch, hcArgs)
+	a.Load32(scalarLeafArg0, scratch, hcArgs)
 	if params == 2 {
-		a.Load32(x64.RBX, scratch, hcArgs+8)
+		a.Load32(scalarLeafArg1, scratch, hcArgs+8)
 	}
 	a.B = append(a.B, body...)
 	a.MovRegReg32(x64.RAX, x64.RAX)
@@ -312,18 +262,28 @@ func buildNativeScalarLeaf(fn any, params uint32) (nativeScalarLeaf, bool, error
 	a.PatchRel32(fallback, a.Len())
 	a.MovImm64(x64.RAX, uint64(stub))
 	a.JmpReg(x64.RAX)
+	compactDirect := !NativeCancellationSchedulerAvailable()
+	if compactDirect {
+		a.Align16()
+	}
 	directOff := a.Len()
 	if saveBase {
 		a.Push(x64.RBX)
 	}
-	a.MovReg64(scratch, x64.RCX)
-	if params == 2 {
-		a.Load32(x64.RBX, x64.RDI, 8)
+	directResults := x64.RCX
+	if !compactDirect || defined&(1<<x64.RCX) != 0 {
+		a.MovReg64(scratch, x64.RCX)
+		directResults = scratch
 	}
-	a.Load32(x64.RAX, x64.RDI, 0)
+	if params == 2 {
+		a.Load32(scalarLeafArg1, x64.RDI, 8)
+	}
+	a.Load32(scalarLeafArg0, x64.RDI, 0)
 	a.B = append(a.B, body...)
-	a.MovRegReg32(x64.RAX, x64.RAX)
-	a.Store64(scratch, 0, x64.RAX)
+	if !compactDirect || wide {
+		a.MovRegReg32(x64.RAX, x64.RAX)
+	}
+	a.Store64(directResults, 0, x64.RAX)
 	if saveBase {
 		a.Pop(x64.RBX)
 	}

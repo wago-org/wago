@@ -18,7 +18,7 @@ import "encoding/binary"
 // original owner's patch list. Each iteration retains all its tests and effects,
 // including early exits and branches to the body end.
 func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil ||
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil ||
 		len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.opaqueFragments ||
 		f.stats != nil && f.stats.RecordSources || len(f.ctrl) == 0 || &f.ctrl[len(f.ctrl)-1] != fr ||
 		fr.paramN != 0 || fr.resultN != 0 || f.depth() != fr.height {

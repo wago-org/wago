@@ -32,6 +32,8 @@ func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	opts.MapDeferredCode = compilerCodeStaging
+	opts.MapOperandScratch = compilerCodeStaging
 	return railshot.CompileModuleWith(m, opts)
 }
 
@@ -73,4 +75,10 @@ func railshotHostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int
 
 func railshotHostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
 	return railshot.HostIndirectOwnedSyncThunk(importIdx, paramSlots, resultSlots)
+}
+
+func setCapturedOptimizationSelection(opts *railshotCompileOptions, cfg *RuntimeConfig) {
+	if cfg.trustedOptimizations && len(cfg.optimizationDeltas) == 0 {
+		opts.Selection = cfg.defaultSelection
+	}
 }

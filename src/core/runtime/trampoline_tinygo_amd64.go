@@ -52,8 +52,7 @@ import (
 //	mov    %r14, 0x28(%r10)
 //	mov    %r15, 0x30(%r10)
 //	stmxcsr 0x38(%r10)        ; save caller floating-point control state
-//	movl   $0x1f80,0x3c(%r10) ; nearest-even, all exceptions masked
-//	ldmxcsr 0x3c(%r10)
+//	ldmxcsr defaultMXCSR(%rip) ; nearest-even, all exceptions masked
 //	mov    %r10, %rsp          ; switch to the foreign stack
 //	xor    %ebp, %ebp          ; zero RBP so any unwinder stops here
 //	lea    -0x8(%r10), %rax    ; handler-jump trap re-entry SP (post-call push)
@@ -79,8 +78,7 @@ var thunkTemplate = []byte{
 	0x4d, 0x89, 0x72, 0x28, // mov %r14, 0x28(%r10)
 	0x4d, 0x89, 0x7a, 0x30, // mov %r15, 0x30(%r10)
 	0x41, 0x0f, 0xae, 0x5a, 0x38, // stmxcsr 0x38(%r10)
-	0x41, 0xc7, 0x42, 0x3c, 0x80, 0x1f, 0x00, 0x00, // movl $0x1f80, 0x3c(%r10)
-	0x41, 0x0f, 0xae, 0x52, 0x3c, // ldmxcsr 0x3c(%r10)
+	0x0f, 0xae, 0x15, 0, 0, 0, 0, // ldmxcsr [rip+defaultMXCSR]
 	0x4c, 0x89, 0xd4, // mov %r10, %rsp
 	0x31, 0xed, // xor %ebp, %ebp
 	0x49, 0x8d, 0x42, 0xf8, // lea -0x8(%r10), %rax
@@ -97,10 +95,13 @@ var thunkTemplate = []byte{
 	0xc3, // ret
 }
 
-const thunkStackTopOff = 2
+const (
+	thunkStackTopOff  = 2
+	thunkMXCSRDispOff = 49 // both native entry templates have the same register save prefix
+)
 
 var (
-	tinygoPreparedIntEntryOffset = uintptr(len(thunkTemplate))
+	tinygoPreparedIntEntryOffset = (uintptr(len(thunkTemplate)) + 31) &^ 31
 	tinygoMmapExec               = mmapExec
 )
 
@@ -120,11 +121,16 @@ func (e *Engine) initNativeEntry() error {
 		return nil
 	}
 	stackTop := e.stackTop
-	code := make([]byte, len(thunkTemplate)+len(tinygoIntThunkTemplate))
+	intEntry := int(tinygoPreparedIntEntryOffset)
+	mxcsr := (intEntry + len(tinygoIntThunkTemplate) + 3) &^ 3
+	code := make([]byte, mxcsr+4)
 	copy(code, thunkTemplate)
-	copy(code[len(thunkTemplate):], tinygoIntThunkTemplate)
+	copy(code[intEntry:], tinygoIntThunkTemplate)
 	binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(stackTop))
-	binary.LittleEndian.PutUint64(code[len(thunkTemplate)+tinygoIntThunkStackTopOff:], uint64(stackTop))
+	binary.LittleEndian.PutUint64(code[intEntry+tinygoIntThunkStackTopOff:], uint64(stackTop))
+	binary.LittleEndian.PutUint32(code[thunkMXCSRDispOff:], uint32(mxcsr-(thunkMXCSRDispOff+4)))
+	binary.LittleEndian.PutUint32(code[intEntry+thunkMXCSRDispOff:], uint32(mxcsr-(intEntry+thunkMXCSRDispOff+4)))
+	binary.LittleEndian.PutUint32(code[mxcsr:], 0x1f80)
 	mem, err := tinygoMmapExec(code)
 	if err != nil {
 		return fmt.Errorf("tinygo entry trampoline: %w", err)

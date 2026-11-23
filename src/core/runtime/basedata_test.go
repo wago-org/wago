@@ -166,6 +166,52 @@ func TestAcquireJobMemoryGrowableReusesLargeReservation(t *testing.T) {
 	}
 }
 
+func TestAcquireJobMemoryGrowableZeroesResidentInitializer(t *testing.T) {
+	const (
+		initial = 896 << 10
+		start   = 256 << 10
+		end     = 512 << 10
+	)
+	for _, nextInitial := range []int{initial, linMemBytes} {
+		jm, err := AcquireJobMemoryGrowable(initial, initial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		base := jm.LinMemBase()
+		lin := jm.LinearMemory()
+		for i := range lin {
+			lin[i] = 0xa5
+		}
+		if err := ReleaseJobMemoryWithInitializedRange(jm, start, end); err != nil {
+			t.Fatal(err)
+		}
+		jobMemoryCache.Lock()
+		retained := jobMemoryCache.j == jm && jobMemoryCache.warmEnd > jobMemoryCache.warmStart
+		jobMemoryCache.Unlock()
+		if !retained {
+			t.Fatal("initializer range was not parked with the reservation")
+		}
+
+		reused, err := AcquireJobMemoryGrowable(nextInitial, initial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := reused.LinMemBase(); got != base {
+			_ = ReleaseJobMemory(reused)
+			t.Fatalf("LinMemBase = %#x, want reused base %#x", got, base)
+		}
+		for i, value := range reused.LinearMemory() {
+			if value != 0 {
+				_ = ReleaseJobMemory(reused)
+				t.Fatalf("initial %d, reused byte %d = %#x, want 0", nextInitial, i, value)
+			}
+		}
+		if err := ReleaseJobMemory(reused); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestAcquireJobMemoryGrowableReuseZeroesGrownPages verifies the reclaim covers
 // pages faulted in by memory.grow, not just the initial region: an instance that
 // grows and dirties a page beyond its initial size must not leak that data to a

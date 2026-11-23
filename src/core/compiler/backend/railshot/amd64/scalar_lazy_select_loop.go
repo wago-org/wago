@@ -112,9 +112,8 @@ func (f *fn) scalarLoopLiveRegisters() regMask {
 // either arm then defines the same result, including CMOV32's upper-half clear.
 // All checks, encoded lengths and branch distances precede output mutation.
 func scalarLazySelectBranchBody(body, out []byte, live regMask) (int, bool) {
-	var storage [16]scalarLoopSelect
-	sites := storage[:0]
-	if _, _, _, ok := scalarLoopBodyEffectsWithSelects(body, 0, &sites); !ok || len(sites) != 1 {
+	var storage scalarLoopSelectBuffer
+	if _, _, _, ok := scalarLoopBodyEffectsWithSelectBuffer(body, 0, &storage); !ok || storage.count != 1 {
 		return 0, false
 	}
 	first, ok := decodeScalarLoopLEA(body)
@@ -126,7 +125,7 @@ func scalarLazySelectBranchBody(body, out []byte, live regMask) (int, bool) {
 		return 0, false
 	}
 	prefixEnd := first.end + second.end
-	at := sites[0].at
+	at := storage.sites[0].at
 	op := at
 	if body[op]&0xf0 == 0x40 {
 		op++
@@ -154,11 +153,10 @@ func scalarLazySelectBranchBody(body, out []byte, live regMask) (int, bool) {
 	if prefixEnd >= at {
 		return 0, false
 	}
-	var conditionSites [16]scalarLoopSelect
-	empty := conditionSites[:0]
+	var conditionSites scalarLoopSelectBuffer
 	cond := body[prefixEnd:at]
-	reads, writes, flags, ok := scalarLoopBodyEffectsWithSelects(cond, 0, &empty)
-	if !ok || len(empty) != 0 || writes != 0 || !flags || reads&pair != 0 {
+	reads, writes, flags, ok := scalarLoopBodyEffectsWithSelectBuffer(cond, 0, &conditionSites)
+	if !ok || conditionSites.count != 0 || writes != 0 || !flags || reads&pair != 0 {
 		return 0, false
 	}
 	tail := body[op+3:]

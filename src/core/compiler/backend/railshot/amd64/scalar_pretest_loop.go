@@ -17,7 +17,7 @@ import (
 // register updates. Only the final copy takes a backward edge; earlier copies
 // fall through. The sole exit must be an unresolved, empty outer block edge.
 func (f *fn) tryScalarPretestLoop(fr *ctrlFrame) bool {
-	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || f.makesCalls || f.usesCalls || f.interruptible || profileEnabled ||
+	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || f.makesCalls || f.usesCalls || f.interruptible && !f.pollBeforeBodyOnly || profileEnabled ||
 		f.stats != nil && f.stats.RecordSources || f.moduleEH || f.gcFrameRoots != nil ||
 		compactNativePolicy(f.policy) || len(f.customInstructions) != 0 ||
 		fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || f.depth() != fr.height {

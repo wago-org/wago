@@ -134,10 +134,23 @@ func (f *fn) tryCompareAndChain(node *elem, dest Reg) Reg {
 	if !compareAndChainEnabled || !f.opt(optGuardedTestCCMP) || node.st.typ != mtI32 || node.deferredDepth() < 2 {
 		return regNone
 	}
-	var p compareAndPlan
-	if !p.collect(f.s, node) || p.n < 2 {
-		return regNone
+	sc := f.scratchState()
+	if sc.compareAndPlan == nil {
+		sc.compareAndPlan = new(compareAndPlan)
 	}
+	p := sc.compareAndPlan
+	if p.n != 0 {
+		p = new(compareAndPlan)
+	}
+	result := regNone
+	if p.collect(f.s, node) && p.n >= 2 {
+		result = f.emitCompareAndPlan(node, dest, p)
+	}
+	*p = compareAndPlan{}
+	return result
+}
+
+func (f *fn) emitCompareAndPlan(node *elem, dest Reg, p *compareAndPlan) Reg {
 	cc := f.emitCompareAndLeaf(p.leaves[0], 0, false)
 	for _, leaf := range p.leaves[1:p.n] {
 		cc = f.emitCompareAndLeaf(leaf, cc, true)

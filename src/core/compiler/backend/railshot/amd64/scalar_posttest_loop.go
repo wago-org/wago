@@ -35,16 +35,29 @@ func scalarLoopBodyRegisters(b []byte, pins regMask) (regMask, regMask, bool) {
 }
 
 func scalarLoopBodyEffects(b []byte, pins regMask) (regMask, regMask, bool, bool) {
-	return scalarLoopBodyEffectsWithSelects(b, pins, nil)
+	return scalarLoopBodyEffectsWithSelectBuffer(b, pins, nil)
 }
 
+// Keep the slice API for callers that accumulate selections across proofs.
+// The production matchers use the fixed buffer directly so append through a
+// slice pointer cannot make their bounded local scratch escape to the heap.
 func scalarLoopBodyEffectsWithSelects(b []byte, pins regMask, selects *[]scalarLoopSelect) (regMask, regMask, bool, bool) {
+	if selects == nil {
+		return scalarLoopBodyEffectsWithSelectBuffer(b, pins, nil)
+	}
+	var storage scalarLoopSelectBuffer
+	reads, writes, flags, ok := scalarLoopBodyEffectsWithSelectBuffer(b, pins, &storage)
+	*selects = append(*selects, storage.sites[:storage.count]...)
+	return reads, writes, flags, ok
+}
+
+func scalarLoopBodyEffectsWithSelectBuffer(b []byte, pins regMask, selects *scalarLoopSelectBuffer) (regMask, regMask, bool, bool) {
 	definesFlags, compareFlags := false, false
 	var reads, writes, clean32, constantSteps, otherWrites regMask
 	periodicTest := regNone
 	firstSelect := 0
 	if selects != nil {
-		firstSelect = len(*selects)
+		firstSelect = selects.count
 	}
 	if len(b) == 0 || len(b) > 48 {
 		return 0, 0, false, false
@@ -82,7 +95,13 @@ func scalarLoopBodyEffectsWithSelects(b []byte, pins regMask, selects *[]scalarL
 			}
 			dst = r
 			reads = reads.add(r).add(rm)
-			*selects = append(*selects, scalarLoopSelect{at: start, zero: rex&8 == 0 && !clean32.has(dst), periodicReg: periodicTest})
+			// Every selection occupies at least three of the at most 48
+			// admitted bytes, so the fixed buffer cannot fill on valid input.
+			if selects.count == len(selects.sites) {
+				return 0, 0, false, false
+			}
+			selects.sites[selects.count] = scalarLoopSelect{at: start, zero: rex&8 == 0 && !clean32.has(dst), periodicReg: periodicTest}
+			selects.count++
 		case 0x01, 0x09, 0x21, 0x29, 0x31, 0x89: // register destination r/m
 			if mod != 3 {
 				return 0, 0, false, false
@@ -198,8 +217,8 @@ func scalarLoopBodyEffectsWithSelects(b []byte, pins regMask, selects *[]scalarL
 		p += imm
 	}
 	if selects != nil {
-		for i := firstSelect; i < len(*selects); i++ {
-			site := &(*selects)[i]
+		for i := firstSelect; i < selects.count; i++ {
+			site := &selects.sites[i]
 			site.periodic = site.periodicReg != regNone && constantSteps.has(site.periodicReg) && !otherWrites.has(site.periodicReg)
 		}
 	}
@@ -211,7 +230,7 @@ func scalarLoopBodyEffectsWithSelects(b []byte, pins regMask, selects *[]scalarL
 // needed: zero bounds, signed comparisons and modular integer wrap keep their
 // original behavior. The bounded pure-register body has no relocation inventory.
 func (f *fn) tryScalarPosttestLoop(fr *ctrlFrame, fi, depth int, cc Cond) bool {
-	if !f.opt(optScalarLoopUnroll) || f.interruptible || profileEnabled ||
+	if !f.opt(optScalarLoopUnroll) || f.interruptible && !f.pollBeforeBodyOnly || profileEnabled ||
 		f.stats != nil && f.stats.RecordSources || f.moduleEH || f.gcFrameRoots != nil ||
 		f.policy.CompactNative || len(f.customInstructions) != 0 ||
 		fi != len(f.ctrl)-1 || fr.kind != cfLoop || fr.paramN != 0 || fr.resultN != 0 || fr.height != 0 || depth != 0 ||
@@ -235,13 +254,12 @@ func (f *fn) tryScalarPosttestLoop(fr *ctrlFrame, fi, depth int, cc Cond) bool {
 		if !pureSelectEnabled {
 			// Unrolling alone is not branch-probability evidence. Keep the original
 			// CMOVs; the same bounded decoder proves every flag read body-local.
-			var storage [16]scalarLoopSelect
-			selects := storage[:0]
-			if _, _, _, ok := scalarLoopBodyEffectsWithSelects(body, 0, &selects); !ok || len(selects) == 0 {
+			var storage scalarLoopSelectBuffer
+			if _, _, _, ok := scalarLoopBodyEffectsWithSelectBuffer(body, 0, &storage); !ok || storage.count == 0 {
 				return false
 			}
 			periodic = true
-			for _, site := range selects {
+			for _, site := range storage.sites[:storage.count] {
 				periodic = periodic && site.periodic
 			}
 			if !periodic {
@@ -301,12 +319,17 @@ type scalarLoopSelect struct {
 	periodic    bool
 }
 
+type scalarLoopSelectBuffer struct {
+	sites [16]scalarLoopSelect
+	count int
+}
+
 func scalarSelectBranchBody(body, out []byte) (int, bool) {
-	var storage [16]scalarLoopSelect
-	sites := storage[:0]
-	if _, _, _, ok := scalarLoopBodyEffectsWithSelects(body, 0, &sites); !ok || len(sites) == 0 {
+	var storage scalarLoopSelectBuffer
+	if _, _, _, ok := scalarLoopBodyEffectsWithSelectBuffer(body, 0, &storage); !ok || storage.count == 0 {
 		return 0, false
 	}
+	sites := storage.sites[:storage.count]
 	needed := len(body) + len(sites)
 	for _, site := range sites {
 		if site.zero {

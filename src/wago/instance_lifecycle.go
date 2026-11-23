@@ -747,7 +747,12 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 			if in.memory != nil {
 				in.memory.ownerClosed()
 			}
-			runtime.ReleaseJobMemory(in.jm)
+			if denseActiveDataEnabled {
+				low, high := in.c.residentInitializerRange()
+				_ = runtime.ReleaseJobMemoryWithInitializedRange(in.jm, low, high)
+				return
+			}
+			_ = runtime.ReleaseJobMemory(in.jm)
 		})
 	} else if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 		cleanup.run(in.memory.detachImporter)

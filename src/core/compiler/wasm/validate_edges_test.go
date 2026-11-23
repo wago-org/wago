@@ -253,6 +253,8 @@ func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
 		unknown bool
 	}{})
 	wantValidator -= 2 * (legacyValueBytes - unsafe.Sizeof(val{}))
+	// The streamed branch label buffer adds one bounded slice header.
+	wantValidator += unsafe.Sizeof([]uint32{})
 	var validator funcValidator
 	if unsafe.Offsetof(validator.constOnly) != unsafe.Offsetof(validator.branchTableEpoch)+unsafe.Sizeof(validator.branchTableEpoch) {
 		t.Fatal("branch-table epoch no longer packs immediately before constOnly")
@@ -262,6 +264,26 @@ func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
 	}
 	if got := unsafe.Sizeof(ctrlFrame{}); got != wantFrame {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, wantFrame)
+	}
+}
+
+func TestDirectBranchLabelScratchReusesSmallTables(t *testing.T) {
+	var v funcValidator
+	first, err := v.readDirectBranchLabels(newReader([]byte{3, 2, 1, 0}))
+	if err != nil || len(first) != 3 || first[0] != 2 || first[2] != 0 {
+		t.Fatalf("first labels = %v, err = %v", first, err)
+	}
+	second, err := v.readDirectBranchLabels(newReader([]byte{2, 0, 1}))
+	if err != nil || len(second) != 2 || &second[0] != &first[0] || second[1] != 1 {
+		t.Fatalf("reused labels = %v, err = %v", second, err)
+	}
+	if _, err := v.readDirectBranchLabels(newReader([]byte{2, 0})); err == nil {
+		t.Fatal("truncated table admitted using cached labels")
+	}
+	large := append([]byte{0x81, 0x20}, make([]byte, 4097)...)
+	labels, err := v.readDirectBranchLabels(newReader(large))
+	if err != nil || len(labels) != 4097 || cap(v.branchTableLabels) != cap(first) {
+		t.Fatalf("large table returned %d labels, retained %d, err = %v", len(labels), cap(v.branchTableLabels), err)
 	}
 }
 

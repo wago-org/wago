@@ -146,7 +146,11 @@ test or a small checked-in `.wasm` file under `tests/fixtures/wasm`. See
 provenance.
 
 For TinyGo startup changes, test optimized release settings as well as the
-default debug build: `-scheduler=tasks -no-debug -opt=z -gc=conservative`.
+default debug build. The release settings are
+`-scheduler=tasks -stack-size=256KB -no-debug -opt=z -gc=conservative`.
+The task stack accommodates recursive compiler scans of nested Wasm control
+flow. Use `TINYGO_OPT=2 just build runtime standard tinygo` to try a
+speed-optimized local build.
 Repeat `--version` and a real-module call in fresh processes; a single successful
 start does not clear an intermittent initialization failure. CI runs this check
 for the Minimal/Tiny CLI on its supported native targets. Shared ASCII name

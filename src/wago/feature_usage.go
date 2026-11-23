@@ -301,8 +301,9 @@ func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFea
 }
 
 func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool) {
-	r := wasm.NewReader(body)
+	r := wasm.ReaderFrom(body)
 	var out CoreFeatures
+	var imm wasm.InstructionImmediate
 	usesRefFunc := false
 	usesArithmetic, usesPriorLocal := false, false
 	for r.HasNext() {
@@ -311,13 +312,12 @@ func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool
 			return out, true
 		}
 		if op == 0xd0 {
-			probe := *r
+			probe := r
 			if _, heap, err := probe.RefHeapType(); err == nil {
 				out |= requiredFeaturesForHeapImmediate(heap)
 			}
 		}
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
-		if err != nil {
+		if err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
 			return out, true
 		}
 		out |= requiredFeaturesForInstructionKind(imm.Kind)
@@ -853,7 +853,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for i := 0; i < c.activeDataCount(); i++ {
-		data := c.activeDataAt(i)
+		data, _ := c.activeDataInfoAt(i)
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
 	}
 	if len(c.PassiveData) != 0 {

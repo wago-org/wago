@@ -5,12 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build amd64 && tinygo
+//go:build (tinygo || wago_test_input_staging) && arm64 && (darwin || linux)
 
-package amd64
+package wago
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
-
-func lowerFunctionResultTypes(_ *scratch, vals []wasm.ValType) []machineType {
-	return typesOfVals(vals)
-}
+const compilerInputStaging = true

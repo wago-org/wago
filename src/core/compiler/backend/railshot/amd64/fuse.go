@@ -403,13 +403,26 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 		}
 	}
 	loopHeader := false
+	headerSite := -1
 	counter := -1
-	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && top.deferredOp() == opEqz &&
+	if f.opt(optCountedLoopLatch) && !f.usesCalls && top.deferredOp() == opEqz &&
 		labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
 		loop := &f.ctrl[len(f.ctrl)-1]
 		counter, loopHeader = localAddressKey(top.arg0)
 		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
-			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+			fr.kind == cfBlock && fr.branchArity() == 0
+		headerSite = loop.controlSite
+		if loopHeader && f.interruptible && !f.pollBeforeBodyOnly {
+			headerSite = f.lastLoopPollEnd
+			loopHeader = f.opt(optLinearSumLoop) && !f.guardMode && !f.threadedMemory0 &&
+				!f.memoryAddr64(0) && f.memSizeReg != regNone && f.lastLoopPollStart == loop.controlSite &&
+				headerSite > loop.controlSite && f.a.Len() == headerSite
+			if loopHeader {
+				// Only the exact linear sum has polls on its specialized latch.
+				_, _, _, loopHeader = f.inspectLinearSumLoop(r, counter)
+			}
+		}
+		loopHeader = loopHeader && f.a.Len() == headerSite
 	}
 	k := f.flushBelow(top)
 	coldExit := f.callFreeLoopExit(fi)
@@ -420,7 +433,7 @@ func (f *fn) brIfFused(r *wasm.Reader, top *elem, labelIdx uint32) error {
 	if !coldExit {
 		f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	}
-	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
+	if loopHeader && f.a.Len() != headerSite {
 		loopHeader = false
 	}
 	cc := f.condenseToFlags(top)

@@ -1785,7 +1785,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		passiveDataDesc = desc
 	}
 
-	if initErr == nil && c.activeDataCount() > 0 {
+	if initErr == nil && c.activeDataCount() > 0 && ownsMem && !threadedControl && c.memoryCount() == 1 {
+		initErr = c.initializeOwnedActiveData(jm, globalCells)
+	} else if initErr == nil && c.activeDataCount() > 0 {
 		for seg := 0; seg < c.activeDataCount(); seg++ {
 			d := c.activeDataAt(seg)
 			initErr = func() error {
@@ -1813,35 +1815,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				if hostErr != nil {
 					return fmt.Errorf("active data segment %d memory %d host access: %w", seg, d.MemoryIndex, hostErr)
 				}
-				memory64 := c.memoryDef(int(d.MemoryIndex)).Addr64
-				off := uint64(d.Offset.Base)
-				if d.Offset.HasGlobal {
-					if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
-						return fmt.Errorf("data offset global %d out of range", d.Offset.Global)
-					}
-					off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
-				}
-				if len(d.Offset.Expr) != 0 {
-					want := ValI32
-					if memory64 {
-						want = ValI64
-					}
-					value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
-					if err != nil {
-						return wrapContextError("data offset extended expression", err)
-					}
-					off = value
-				}
-				length := uint64(len(d.Bytes))
-				if off > ^uint64(0)-length {
-					return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, len(d.Bytes))
-				}
-				end := off + length
-				if end > uint64(len(lin)) {
-					return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, len(d.Bytes), len(lin))
-				}
-				copy(lin[int(off):int(end)], d.Bytes)
-				return nil
+				return c.applyActiveData(lin, d, seg, c.memoryDef(int(d.MemoryIndex)).Addr64, globalCells)
 			}()
 			if initErr != nil {
 				break
@@ -2355,6 +2329,67 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 
 	b.success = true
 	return in, nil
+}
+
+// All segments in a privately owned, single-memory instance can use the
+// same host view. No guest runs while the initializer is being applied.
+func (c *Compiled) initializeOwnedActiveData(jm *runtime.JobMemory, globals []*Global) error {
+	lin, err := jm.HostBytesChecked()
+	if err != nil {
+		return fmt.Errorf("active data segment %d memory %d host access: %w", 0, 0, err)
+	}
+	if denseActiveDataEnabled {
+		if data := c.compactData; data != nil && data.dense {
+			start := uint64(data.denseOffset)
+			end := start + uint64(len(data.bytes))
+			if end <= uint64(len(lin)) {
+				copy(lin[int(start):int(end)], data.bytes)
+				return nil
+			}
+		}
+	}
+	memory64 := c.memoryDef(0).Addr64
+	for seg := 0; seg < c.activeDataCount(); seg++ {
+		d := c.activeDataAt(seg)
+		if d.MemoryIndex != 0 {
+			return fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
+		}
+		if err := c.applyActiveData(lin, d, seg, memory64, globals); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) applyActiveData(lin []byte, d DataInit, seg int, memory64 bool, globalCells []*Global) error {
+	off := uint64(d.Offset.Base)
+	if d.Offset.HasGlobal {
+		if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
+			return fmt.Errorf("data offset global %d out of range", d.Offset.Global)
+		}
+		off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
+	}
+	if len(d.Offset.Expr) != 0 {
+		want := ValI32
+		if memory64 {
+			want = ValI64
+		}
+		value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
+		if err != nil {
+			return wrapContextError("data offset extended expression", err)
+		}
+		off = value
+	}
+	length := uint64(len(d.Bytes))
+	if off > ^uint64(0)-length {
+		return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d overflows u64", seg, d.MemoryIndex, off, length)
+	}
+	end := off + length
+	if end > uint64(len(lin)) {
+		return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, d.MemoryIndex, off, length, len(lin))
+	}
+	copy(lin[int(off):int(end)], d.Bytes)
+	return nil
 }
 
 func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error) {

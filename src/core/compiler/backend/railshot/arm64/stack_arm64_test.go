@@ -65,17 +65,17 @@ func TestStackCustomSidecarIsLazyAndClearedArm64(t *testing.T) {
 	_, ordinaryReserved := s.nodeMemory()
 	e := s.pushValue(storage{kind: stReg, typ: mtCustom})
 	s.setElemCold(e, nil, []Reg{1, 2})
-	if e.st.cold == 0 || len(s.cold) != 1 {
-		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cold, len(s.cold))
+	if e.st.cold == 0 || len(s.coldValues()) != 1 {
+		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cold, len(s.coldValues()))
 	}
 	if _, reserved := s.nodeMemory(); reserved <= ordinaryReserved {
 		t.Fatalf("reserved node memory = %d, want more than ordinary %d", reserved, ordinaryReserved)
 	}
 	s.reset()
-	if len(s.cold) != 0 {
-		t.Fatalf("reset custom sidecars = %d, want 0", len(s.cold))
+	if len(s.coldValues()) != 0 {
+		t.Fatalf("reset custom sidecars = %d, want 0", len(s.coldValues()))
 	}
-	if stale := s.cold[:cap(s.cold)][0]; stale.custom != nil || stale.vregs != nil {
+	if stale := s.coldValues()[:cap(s.coldValues())][0]; stale.custom != nil || stale.vregs != nil {
 		t.Fatalf("reset retained custom sidecar pointers: %+v", stale)
 	}
 }

@@ -52,11 +52,12 @@ var noStackReg = os.Getenv("WAGO_Amd64_NOSTACKREG") == "1"
 // callReloc records a CallRel32 site whose rel32 must be patched to point at the
 // target local function's entry once the module is laid out.
 type callReloc struct {
-	at       uint32 // byte offset of the rel32 field within this function's code
-	target   uint32 // target local-function index (into m.Code)
-	internal bool   // target the callee's register-ABI internal entry (else offset 0)
-	gcStub   gcSharedStubKind
-	tailEdge uint8 // optional zero/nonzero edge into a proved frameless local entry
+	at           uint32 // byte offset of the rel32 field within this function's code
+	target       uint32 // target local-function index (into m.Code)
+	internal     bool   // target the callee's register-ABI internal entry (else offset 0)
+	gcStub       gcSharedStubKind
+	tailEdge     uint8 // optional zero/nonzero edge into a proved frameless local entry
+	entryAdvance uint8 // skip the entry poll on a proved local self-call
 }
 
 const invalidCallRelocField = ^uint32(0)
@@ -70,11 +71,15 @@ func (f *fn) compactCallRelocField(value int) uint32 {
 }
 
 func (f *fn) newCallReloc(at, target int, internal bool) callReloc {
-	return callReloc{
+	rl := callReloc{
 		at:       f.compactCallRelocField(at),
 		target:   f.compactCallRelocField(target),
 		internal: internal,
 	}
+	if internal && f.selfEntryAfterPoll > 0 && target+f.m.ImportedFuncCount() == f.globalIdx {
+		rl.entryAdvance = 1 // replaced with the final displacement after relaxation
+	}
+	return rl
 }
 
 func (f *fn) newGCStubCallReloc(at int, stub gcSharedStubKind) callReloc {
@@ -1963,6 +1968,34 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
 }
 
+func (f *fn) cacheNativeImportTarget(regABI bool, imports []ImportBinding) bool {
+	// The TinyGo task scheduler's entry thunk preserves R15. The bounded
+	// host-segment proof excludes local calls, arbitrary dispatch, and effects
+	// that could require R15 for another module role.
+	if !runtime.NativeScalarLeafSupported || runtime.NativeCancellationSchedulerAvailable() ||
+		!regABI || !f.hasLoop || !f.dynamicHostFast || !f.opt(optNativeLeafHost) || profileEnabled ||
+		f.m.ImportedFuncCount() != 1 || len(imports) != 1 || !imports[0].Dynamic || imports[0].ImportIndex != 0 ||
+		f.m.MemCount() != 0 || f.m.GlobalCount() != 0 || len(f.customInstructions) != 0 ||
+		f.gcFrameRoots != nil {
+		return false
+	}
+	ft, ok := f.m.ImportFuncType(0)
+	return ok && len(ft.Params) >= 1 && len(ft.Params) <= 2 && len(ft.Results) == 1 &&
+		ft.Results[0] == wasm.I32 && ft.Params[0] == wasm.I32 && (len(ft.Params) == 1 || ft.Params[1] == wasm.I32)
+}
+
+func (f *fn) emitCacheNativeImportTarget() {
+	f.a.Load64(RSI, RBX, -offImportDispatchPtr)
+	f.a.Load64(R15, RSI, runtime.ImportDispatchCallerContextOffset)
+	f.a.TestImm8(R15, byte(runtime.ImportDispatchCallerNativeLeafTag))
+	native := f.a.JccPlaceholder(condNE)
+	f.a.Xor32(R15, R15)
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(native, f.a.Len())
+	f.a.Load64(R15, RSI, runtime.ImportDispatchCodePtrOffset)
+	f.a.PatchRel32(done, f.a.Len())
+}
+
 // A bound ordinary Go thunk can use its known control-frame ABI directly.
 // The instance's tagged dispatch word proves this is not a same-context Wasm
 // target. Both alternatives join with canonical operands and homed locals.
@@ -1989,10 +2022,35 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 		return fmt.Errorf("import dispatch index overflows displacement")
 	}
 	disp := int32(b.ImportIndex * runtime.ImportDispatchEntryBytes)
+	cached := -1
+	if f.nativeImportTargetCached {
+		f.a.TestSelf(R15, true)
+		cached = f.a.JccPlaceholder(condNE)
+	}
 	f.a.Load64(RAX, RBX, -offImportDispatchPtr)
+	leaf := -1
+	p := len(ft.Params)
+	if cached < 0 && !runtime.NativeCancellationSchedulerAvailable() &&
+		runtime.NativeScalarLeafSupported && f.opt(optNativeLeafHost) &&
+		p >= 1 && p <= 2 && len(ft.Results) == 1 && ft.Results[0] == wasm.I32 &&
+		ft.Params[0] == wasm.I32 && (p == 1 || ft.Params[1] == wasm.I32) {
+		f.a.TestImm8Mem(RAX, disp+runtime.ImportDispatchCallerContextOffset, byte(runtime.ImportDispatchCallerNativeLeafTag))
+		leaf = f.a.JccPlaceholder(condNE)
+	}
 	f.a.Load64(RDX, RAX, disp+runtime.ImportDispatchCallerContextOffset)
-	f.a.TestImm(RDX, uint32(runtime.ImportDispatchCallerGoHostTag), true)
+	if leaf >= 0 {
+		f.a.TestImm8(RDX, byte(runtime.ImportDispatchCallerGoHostTag))
+	} else {
+		f.a.TestImm(RDX, uint32(runtime.ImportDispatchCallerGoHostTag), true)
+	}
 	slow := f.a.JccPlaceholder(condE)
+	// The verified AMD64 wrapper also leaves its zero-extended i32 in RAX.
+	// Only the fallback paths need to load the canonical slot at the join.
+	registerResult := leaf >= 0 && f.usesCalls && !regallocCheckEnabled
+	resultSlot := 0
+	if registerResult {
+		resultSlot = slotsOfTypes(types[:len(types)-p])
+	}
 	if err := f.callHostSync(int(b.ImportIndex), ft); err != nil {
 		return err
 	}
@@ -2000,6 +2058,9 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 	resultTypes := append([]machineType(nil), f.logicalTypes(f.rootsBottomToTop())...)
 	resultFlags := gcRootFlags(f.rootsBottomToTop())
 	fastLocals := append([]localDef(nil), f.locals...)
+	if registerResult {
+		f.a.Load32(RAX, RSP, f.spillOff(resultSlot))
+	}
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(slow, f.a.Len())
 	copy(f.locals, locals)
@@ -2013,8 +2074,47 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 			return fmt.Errorf("direct Go import local-state join differs at local %d", i)
 		}
 	}
+	if registerResult {
+		f.a.Load32(RAX, RSP, f.spillOff(resultSlot))
+	}
+	if cached >= 0 || leaf >= 0 {
+		crossDone := f.a.JmpPlaceholder()
+		if cached >= 0 {
+			f.a.PatchRel32(cached, f.a.Len())
+		} else {
+			f.a.PatchRel32(leaf, f.a.Len())
+		}
+		copy(f.locals, locals)
+		f.setDepthTypesWithGCRoots(types, rootFlags)
+		f.spillLocalsForCall()
+		argSlot := slotsOfTypes(types[:len(types)-len(ft.Params)])
+		// The verified leaf reads every argument before storing its result.
+		// Reuse the first consumed slot, the canonical home at the join.
+		f.a.LeaRsp(RDI, f.spillOff(argSlot))
+		f.a.MovReg64(RCX, RDI)
+		if regallocCheckEnabled {
+			f.checkCallClobber()
+		}
+		if cached >= 0 {
+			f.a.CallReg(R15)
+		} else {
+			f.a.CallMem(RAX, disp+runtime.ImportDispatchCodePtrOffset)
+		}
+		f.reloadLocalsForCall()
+		for i := range f.locals {
+			if f.locals[i].state != fastLocals[i].state {
+				return fmt.Errorf("cached native import local-state join differs at local %d", i)
+			}
+		}
+		f.a.PatchRel32(crossDone, f.a.Len())
+	}
 	f.a.PatchRel32(done, f.a.Len())
 	f.setDepthTypesWithGCRoots(resultTypes, resultFlags)
+	if registerResult {
+		result := f.s.back()
+		f.occupy(result, RAX)
+		result.st.setValueFacts(factUpper32Zero)
+	}
 	return nil
 }
 

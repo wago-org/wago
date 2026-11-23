@@ -78,6 +78,34 @@ func (w *machineWindow) flush() {
 	w.n = 0
 }
 
+// Emit the common empty and single-move cases before constructing callbacks.
+// The resolver can keep its full window for cycles and longer sequences.
+func (f *fn) emitGPParallelMoves(moves []regMove) int {
+	if len(moves) <= 1 {
+		if len(moves) == 1 && moves[0].dst != moves[0].src {
+			f.a.MovReg64(moves[0].dst, moves[0].src)
+		}
+		return 0
+	}
+	return f.emitGPParallelMoveWindow(moves)
+}
+
+func (f *fn) emitGPParallelMoveWindow(moves []regMove) int {
+	return resolveRegMovesWindow(moves,
+		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(x, y Reg) {
+			f.a.MovReg64(X16, x)
+			f.a.MovReg64(x, y)
+			f.a.MovReg64(y, X16)
+		},
+		func(a, b, c Reg) {
+			f.a.MovReg64(X16, a)
+			f.a.MovReg64(a, b)
+			f.a.MovReg64(b, c)
+			f.a.MovReg64(c, X16)
+		})
+}
+
 func resolveRegMovesWindow(moves []regMove, emitMove func(dst, src Reg), emitSwap func(a, b Reg), emitSwapChain func(a, b, c Reg)) int {
 
 	// No adjacent swap chain is possible with fewer than three requests. Avoid

@@ -100,7 +100,7 @@ func TestFloatMapCapturedIterationOverlap(t *testing.T) {
 					at := bytes.LastIndex(m.Code[0].BodyBytes, []byte{0x03, 0x40})
 					reader := wasm.ReaderFrom(m.Code[0].BodyBytes[at+2:])
 					var plan floatMapPlan
-					if !probe.inspectFloatMapLoop(&reader, &plan) || plan.orderedStoreLoads {
+					if !probe.inspectFloatMapLoop(&reader, &plan, false) || plan.orderedStoreLoads {
 						t.Fatal("captured iteration lost conservative disambiguation")
 					}
 
@@ -131,7 +131,7 @@ func TestFloatMapStoreLoadOrder(t *testing.T) {
 				r := wasm.ReaderFrom(m.Code[0].BodyBytes[at+2:])
 				probe := fn{nLocals: 5, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32}}
 				var plan floatMapPlan
-				if !probe.inspectFloatMapLoop(&r, &plan) || !plan.orderedStoreLoads {
+				if !probe.inspectFloatMapLoop(&r, &plan, false) || !plan.orderedStoreLoads {
 					t.Fatalf("wide%v count%d neighbor%d: lost ordered stores", wide, count, neighbor)
 				}
 				if r.Offset() != 0 {

@@ -126,6 +126,9 @@ func (in *Instance) endFastInvocation(state *instancePluginState) {
 
 //go:noinline
 func (in *Instance) endFastInvocationSlow(state *instancePluginState) {
+	if state == nil {
+		state = in.pluginState.Load()
+	}
 	state.invokeMu.Unlock()
 	in.endInvocation()
 }

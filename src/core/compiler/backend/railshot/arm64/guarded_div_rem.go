@@ -89,6 +89,10 @@ func (f *fn) tryGuardedDivRem(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 	ends[3] = rr.Offset()
+	return f.emitGuardedDivRem(r, branchEnd, ends)
+}
+
+func (f *fn) emitGuardedDivRem(r *wasm.Reader, branchEnd int, ends [4]int) (bool, error) {
 	if err := f.opBr(r, true); err != nil {
 		return true, err
 	}

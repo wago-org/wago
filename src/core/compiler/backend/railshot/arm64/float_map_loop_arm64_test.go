@@ -256,13 +256,13 @@ func TestFloatMapLocalBudgetLeavesReaderUnchanged(t *testing.T) {
 	}
 	r := wasm.NewReader(body)
 	var p floatMapPlan
-	if f.inspectFloatMapLoop(r, &p) {
+	if f.inspectFloatMapLoop(r, &p, false) {
 		t.Fatal("accepted exhausted relevant-local budget")
 	}
 	if r.Offset() != 0 {
 		t.Fatalf("probe advanced original reader to %d", r.Offset())
 	}
-	if allocs := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(r, &candidate) }); allocs != 0 {
+	if allocs := testing.AllocsPerRun(100, func() { var candidate floatMapPlan; f.inspectFloatMapLoop(r, &candidate, false) }); allocs != 0 {
 		t.Fatalf("rejected probe allocated %.0f objects", allocs)
 	}
 }
@@ -497,10 +497,10 @@ func TestFloatMapPrefixKeepsAcceptedRecipes(t *testing.T) {
 					f.localType[i] = mtI32
 				}
 				var plan floatMapPlan
-				if !f.inspectFloatMapLoop(&r, &plan) {
+				if !f.inspectFloatMapLoop(&r, &plan, false) {
 					t.Fatalf("unqualified fixture: wide%v count%d base%d", wide, count, base)
 				}
-				if !f.hasFloatMapPrefix(&r) || r.Offset() != 0 {
+				if !f.hasFloatMapPrefix(&r, false) || r.Offset() != 0 {
 					t.Fatalf("screen rejected accepted recipe: wide%v count%d base%d", wide, count, base)
 				}
 			}
@@ -515,12 +515,12 @@ func TestFloatMapPrefixKeepsIntegerProbeContext(t *testing.T) {
 	// An independent floating local copy does not change the integer store recipe.
 	loop := append([]byte{0x20, 6, 0x21, 7}, body[at+2:]...)
 	r := wasm.ReaderFrom(loop)
-	f := fn{integerLoadMapProbe: true, nLocals: 8, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtI32, mtF64, mtF64}}
+	f := fn{nLocals: 8, localType: []machineType{mtI32, mtI32, mtI32, mtI32, mtI32, mtI32, mtF64, mtF64}}
 	var plan floatMapPlan
-	if !f.inspectFloatMapLoop(&r, &plan) {
+	if !f.inspectFloatMapLoop(&r, &plan, true) {
 		t.Fatal("unqualified integer fixture")
 	}
-	if !f.hasFloatMapPrefix(&r) || r.Offset() != 0 {
+	if !f.hasFloatMapPrefix(&r, true) || r.Offset() != 0 {
 		t.Fatal("screen rejected matching integer-probe store")
 	}
 }

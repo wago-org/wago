@@ -313,7 +313,7 @@ func hasAffineBoundsLoopCandidate(b []byte, memSize Reg) bool {
 // Guards choose an exact scalar clone. They never trap and never reorder memory
 // effects; failure enters the original checked body with its original registers.
 func (f *fn) finalizeAffineBoundsLoops(entries ...int) {
-	if !f.opt(optAffineBoundsLoop) || !f.loopMemory || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.moduleEH || f.interruptible || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() || f.memSizeReg == regNone {
+	if !f.opt(optAffineBoundsLoop) || !f.loopMemory || f.guardMode || f.threadedMemory0 || f.memoryAddr64(0) || f.moduleEH || f.loopInterruptible() || f.opaqueFragments || len(f.customInstructions) != 0 || f.tracksGCFrameRoots() || f.memSizeReg == regNone {
 		return
 	}
 	n := len(f.a.B) &^ 3

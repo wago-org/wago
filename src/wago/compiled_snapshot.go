@@ -21,6 +21,10 @@ import (
 // the first use of a hand-built Compiled. Instances never read the public view.
 // Code ownership and validation are shared; public containers are deeply copied.
 func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
+	return c.freezeExecutionWithNativeData(limit, false)
+}
+
+func (c *Compiled) freezeExecutionWithNativeData(limit uint64, nativeData bool) (*Compiled, error) {
 	if c == nil {
 		return nil, fmt.Errorf("compiled module is nil")
 	}
@@ -49,9 +53,9 @@ func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
 	if err != nil {
 		return nil, err
 	}
-	snapshot := cloneCompiledExecutionMetadata(c)
+	snapshot := cloneCompiledMetadataWithDataPolicy(c, true, nativeData)
 	if err := railshotInitializeExecutionSnapshot(snapshot); err != nil {
-		return nil, err
+		return nil, joinPrimary(err, snapshot.closeNativeActiveData())
 	}
 	memo.snapshotBytes = size
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
@@ -73,15 +77,15 @@ func (c *Compiled) executionView() *Compiled {
 }
 
 func cloneCompiledMetadata(c *Compiled) *Compiled {
-	return cloneCompiledMetadataWithDataPolicy(c, false)
+	return cloneCompiledMetadataWithDataPolicy(c, false, false)
 }
 
 func cloneCompiledExecutionMetadata(c *Compiled) *Compiled {
-	return cloneCompiledMetadataWithDataPolicy(c, true)
+	return cloneCompiledMetadataWithDataPolicy(c, true, false)
 }
 
-func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution bool) *Compiled {
-	compactPayloadBytes, compactData := compactActiveDataSize(c)
+func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution, nativeData bool) *Compiled {
+	activeDataPlan, compactData := planCompactActiveData(c)
 	compactData = compactData && compactExecution
 	var valTypeCount, refInitCount, byteCount int
 	for i := range c.Funcs {
@@ -151,7 +155,7 @@ func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution bool) *Co
 	out.passiveElems = cloneCompiledElems(c.passiveElems, &elems, &refInits, &bytes)
 	if compactData {
 		out.Data = nil
-		cloneCompactActiveData(out.compactData, c, compactPayloadBytes)
+		cloneCompactActiveData(out.compactData, c, activeDataPlan, nativeData)
 	} else {
 		out.compactData = nil
 		if c.compactData != nil {

@@ -78,9 +78,12 @@ func (f *fn) hasIntegerWordMapPrefix(source *wasm.Reader) bool {
 
 func (f *fn) inspectIntegerWordMap(source *wasm.Reader, p *integerWordMapPlan) bool {
 	*p = integerWordMapPlan{}
-	defer func() {
-		f.integerWordMapWork = uint16(min(integerWordMapWorkLimit, int(f.integerWordMapWork)+p.proofWork))
-	}()
+	ok := f.scanIntegerWordMap(source, p)
+	f.integerWordMapWork = uint16(min(integerWordMapWorkLimit, int(f.integerWordMapWork)+p.proofWork))
+	return ok
+}
+
+func (f *fn) scanIntegerWordMap(source *wasm.Reader, p *integerWordMapPlan) bool {
 	r := *source
 	start := r.Offset()
 	var stack [24]int
@@ -431,7 +434,7 @@ func (p *integerWordMapPlan) finish(entryRead [32]bool) bool {
 }
 
 func (f *fn) emitIntegerWordMap(source *wasm.Reader) {
-	if !integerWordMapEnabled || !f.opt(optDotLoopVector) || f.interruptible || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
+	if !integerWordMapEnabled || !f.opt(optDotLoopVector) || f.loopInterruptible() || f.moduleEH || f.localBase != 0 || len(f.customInstructions) != 0 || f.memoryAddr64(0) || f.threadedMemory0 {
 		return
 	}
 	// The driver canonicalizes interval residents at the source loop boundary.
@@ -448,12 +451,20 @@ func (f *fn) emitIntegerWordMap(source *wasm.Reader) {
 }
 
 func (f *fn) emitIntegerWordMapBody(source *wasm.Reader) {
-	var p integerWordMapPlan
-	if !f.inspectIntegerWordMap(source, &p) {
+	var p *integerWordMapPlan
+	if sc := f.sc; sc != nil {
+		if sc.wordMapScratch == nil {
+			sc.wordMapScratch = new(integerWordMapPlan)
+		}
+		p = sc.wordMapScratch
+	} else {
+		p = new(integerWordMapPlan)
+	}
+	if !f.inspectIntegerWordMap(source, p) {
 		return
 	}
 	f.stats.peep("integer-word-map-recognized")
-	f.emitIntegerWordMapPlan(&p)
+	f.emitIntegerWordMapPlan(p)
 }
 
 func (f *fn) emitIntegerWordMapPlan(p *integerWordMapPlan) {

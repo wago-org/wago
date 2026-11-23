@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !tinygo || windows || (darwin && amd64)
+//go:build !tinygo || windows || darwin || (linux && arm64)
 
 package runtime
 

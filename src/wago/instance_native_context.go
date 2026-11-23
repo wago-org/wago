@@ -604,6 +604,9 @@ func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, active
 
 type preparedEntryMode uint8
 
+const preparedPrivateGlobalsSupported = goruntime.GOOS == "linux" && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") ||
+	goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"
+
 const (
 	preparedEntryGeneral preparedEntryMode = iota
 	preparedEntryPrivate
@@ -643,7 +646,11 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 	privateRefStore := in.refStore == nil || in.refStore.private
 	isolatedTables := privateRefStore && in.tableDescPtr != 0 && in.c.preparedIsolatedTables &&
 		!in.c.needsFuncRefContextHeader
-	if len(in.globalCells) == 0 && (in.tableDescPtr == 0 || isolatedTables) && in.gc == nil &&
+	// With no global imports or exports, every cell belongs solely to this
+	// instance. Publishing a callable still revokes isolated admission.
+	privateGlobals := len(in.globalCells) == 0 || preparedPrivateGlobalsSupported &&
+		len(in.c.GlobalImports) == 0 && len(in.c.GlobalExports) == 0 && len(in.c.customInstructions) == 0
+	if privateGlobals && (in.tableDescPtr == 0 || isolatedTables) && in.gc == nil &&
 		in.c.NumImports == 0 && (!in.c.needsFuncRefContext() || isolatedTables) {
 		if !memoryFree && in.c.boundsMode == BoundsChecksSignalsBased && in.tableDescPtr != 0 {
 			return preparedEntryGeneral

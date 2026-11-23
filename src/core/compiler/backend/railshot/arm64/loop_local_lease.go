@@ -38,7 +38,7 @@ func (f *fn) planLoopLocalLease(r *wasm.Reader) (loopLocalLease, bool) {
 	temporary := temporaryLoopLeaseEnabled && f.usesCalls && f.nLocals <= 64 && len(f.locals) == f.nLocals && f.intervalActive == 0 && f.depth() == 0
 	if !loopLocalLeaseEnabled || !callFreeLoopRegionEnabled || (!classic && !temporary) || f.loopLocalLease.depth != 0 ||
 		f.pureReduce != nil || f.dotLoop != nil || f.byteReduceLoop != nil ||
-		f.interruptible || f.threadedMemory0 || f.moduleEH || f.preserveCallerPins ||
+		f.loopInterruptible() || f.threadedMemory0 || f.moduleEH || f.preserveCallerPins ||
 		len(f.gcTypeLayouts) != 0 || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
 		f.inlineDepth != 0 || f.localBase != 0 ||
 		f.loopLocalLeaseWork >= loopLocalLeaseWorkLimit {

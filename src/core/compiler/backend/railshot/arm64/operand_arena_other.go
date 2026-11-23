@@ -5,9 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build tinygo
+//go:build arm64 && !darwin && !linux
 
-package shared
+package arm64
 
-// FunctionResultScratchCapacity is zero because TinyGo profiles prefer code size.
-const FunctionResultScratchCapacity = 0
+func shouldMapOperands(int) bool     { return false }
+func newOperandArena() *operandArena { return nil }
+func (*operandArena) close()         {}

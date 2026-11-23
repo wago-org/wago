@@ -1014,22 +1014,40 @@ func structuralLegacyValTypeByte(t ValType) byte {
 }
 
 func StructuralFuncTypeKey(ft *CompType) uint64 {
-	// Native call signatures have at most 256 parameters and 256 results.
-	// Each encoded value uses at most four bytes. Larger parser-side shapes
-	// keep the heap fallback without retaining scratch storage in module state.
-	var inline [16 + 4*512]byte
-	encoded := inline[:0]
-	if len(ft.Params)+len(ft.Results) > 512 {
-		encoded = make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
+	const smallSignatureValues = 16
+	const maxInlineValues = 512
+	count := len(ft.Params) + len(ft.Results)
+	if count <= smallSignatureValues {
+		// TinyGo can place buffers passed to SHA-256 in the heap.
+		// Keep the common native signatures small even on that path.
+		var encoded [9 + 4*smallSignatureValues]byte
+		return hashStructuralFuncType(ft, encoded[:])
 	}
-	mixU32 := func(v uint32) {
-		encoded = append(encoded, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	if count > maxInlineValues {
+		return hashStructuralFuncType(ft, make([]byte, 9+4*count))
 	}
-	writeValue := func(t ValType) {
-		encoded = append(encoded, byte(t.Kind()))
+	var encoded [9 + 4*maxInlineValues]byte
+	return hashStructuralFuncType(ft, encoded[:])
+}
+
+func hashStructuralFuncType(ft *CompType, encoded []byte) uint64 {
+	binary.LittleEndian.PutUint32(encoded, uint32(len(ft.Params)))
+	offset := encodeStructuralFuncValues(encoded, 4, ft.Params)
+	encoded[offset] = 0xfe
+	binary.LittleEndian.PutUint32(encoded[offset+1:], uint32(len(ft.Results)))
+	end := encodeStructuralFuncValues(encoded, offset+5, ft.Results)
+	sum := sha256.Sum256(encoded[:end])
+	return binary.LittleEndian.Uint64(sum[:8])
+}
+
+func encodeStructuralFuncValues(encoded []byte, offset int, types []ValType) int {
+	for _, t := range types {
+		encoded[offset] = byte(t.Kind())
+		offset++
 		switch t.Kind() {
 		case ValNum:
-			encoded = append(encoded, byte(t.Num()))
+			encoded[offset] = byte(t.Num())
+			offset++
 		case ValRef:
 			flags := byte(0)
 			rt := t.Ref()
@@ -1039,18 +1057,11 @@ func StructuralFuncTypeKey(ft *CompType) uint64 {
 			if rt.Exact() {
 				flags |= 2
 			}
-			encoded = append(encoded, flags, byte(rt.Heap().Kind()), byte(rt.Heap().Abs()))
+			encoded[offset] = flags
+			encoded[offset+1] = byte(rt.Heap().Kind())
+			encoded[offset+2] = byte(rt.Heap().Abs())
+			offset += 3
 		}
 	}
-	mixU32(uint32(len(ft.Params)))
-	for _, t := range ft.Params {
-		writeValue(t)
-	}
-	encoded = append(encoded, 0xfe)
-	mixU32(uint32(len(ft.Results)))
-	for _, t := range ft.Results {
-		writeValue(t)
-	}
-	sum := sha256.Sum256(encoded)
-	return binary.LittleEndian.Uint64(sum[:8])
+	return offset
 }

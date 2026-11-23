@@ -287,7 +287,7 @@ func TestFloatMapScatterBudgetKeepsOrdinaryMaps(t *testing.T) {
 			at := bytes.LastIndex(body, []byte{0x03, 0x40})
 			r := wasm.ReaderFrom(body[at+2:])
 			var p floatMapPlan
-			ok := probe.inspectFloatMapLoop(&r, &p)
+			ok := probe.inspectFloatMapLoop(&r, &p, false)
 			want := stride == 8 || !exhausted
 			if ok != want || r.Offset() != 0 {
 				t.Fatalf("stride%d exhausted%v accepted%v sourceOffset%d", stride, exhausted, ok, r.Offset())
@@ -297,7 +297,7 @@ func TestFloatMapScatterBudgetKeepsOrdinaryMaps(t *testing.T) {
 			}
 			if allocations := testing.AllocsPerRun(10, func() {
 				var candidate floatMapPlan
-				probe.inspectFloatMapLoop(&r, &candidate)
+				probe.inspectFloatMapLoop(&r, &candidate, false)
 			}); allocations != 0 {
 				t.Fatalf("probe allocated %g objects", allocations)
 			}

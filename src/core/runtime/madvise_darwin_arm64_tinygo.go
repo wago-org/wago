@@ -9,9 +9,19 @@
 
 package runtime
 
-// TinyGo's Darwin syscall surface does not expose madvise. Clearing preserves
-// the zero-on-reuse contract; it merely forgoes returning those pages to the OS.
+import "unsafe"
+
+//export madvise
+func libcMadvise(address unsafe.Pointer, length uintptr, advice int32) int32
+
 func madviseDontNeed(b []byte) error {
-	clear(b)
+	if len(b) == 0 {
+		return nil
+	}
+	const madvZero = 11
+	if libcMadvise(unsafe.Pointer(unsafe.SliceData(b)), uintptr(len(b)), madvZero) != 0 {
+		// Preserve zero-on-reuse when Darwin rejects MADV_ZERO after a fork.
+		clear(b)
+	}
 	return nil
 }

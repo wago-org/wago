@@ -412,7 +412,7 @@ func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
 	if f.intervalControl && f.intervalActive != 0 {
 		return false, nil
 	}
-	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls && !f.inCallFreeLoop() || len(f.ctrl) < 2 || f.s.back() != nil {
+	if !f.opt(optCountedLoopLatch) || f.loopInterruptible() || f.usesCalls && !f.inCallFreeLoop() || len(f.ctrl) < 2 || f.s.back() != nil {
 		return false, nil
 	}
 	loop := &f.ctrl[len(f.ctrl)-1]
@@ -769,7 +769,7 @@ func (f *fn) setFrameResultGCRoot(fr *ctrlFrame, index int) {
 func (f *fn) frameLoopSetLocals(fr *ctrlFrame) []uint16 {
 	if cold := f.ctrlMerge(fr); cold != nil && cold.hasLoopSet() {
 		start := int(cold.loopSetStart)
-		return f.loopSetLocals[start : start+cold.loopSetCount()]
+		return f.scratchState().loopSetLocals[start : start+cold.loopSetCount()]
 	}
 	return nil
 }
@@ -889,25 +889,25 @@ func (f *fn) depth() int {
 }
 
 // rootsBottomToTop returns the logical operands in bottom-to-top order.
-// The returned scratch slice is valid only until the next helper using f.tmpRoots.
+// The returned scratch slice is valid only until the next helper using f.scratchState().tmpRoots.
 func (f *fn) rootsBottomToTop() []*elem {
-	rs := f.tmpRoots[:0]
+	rs := f.scratchState().tmpRoots[:0]
 	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		rs = append(rs, cur)
 	}
 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
 		rs[i], rs[j] = rs[j], rs[i]
 	}
-	f.tmpRoots = rs
+	f.scratchState().tmpRoots = rs
 	return rs
 }
 
 func (f *fn) logicalTypes(roots []*elem) []machineType {
-	types := f.tmpTypes[:0]
+	types := f.scratchState().tmpTypes[:0]
 	for _, root := range roots {
 		types = append(types, rootMachineType(root))
 	}
-	f.tmpTypes = types
+	f.scratchState().tmpTypes = types
 	return types
 }
 
@@ -1002,6 +1002,10 @@ func (f *fn) dropFlushedSuffix(types []machineType, n int) {
 }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	// An empty edge has no values or result roots to reconcile.
+	if a == 0 && !regallocCheckEnabled {
+		return
+	}
 	if fr.kind != cfLoop {
 		f.recordGCBranchResults(fr, a)
 	}
@@ -1013,22 +1017,22 @@ func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 }
 
 func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
-	out := f.tmpTypes[:0]
+	out := f.scratchState().tmpTypes[:0]
 	out = append(out, base...)
 	out = append(out, suffix...)
-	f.tmpTypes = out
+	f.scratchState().tmpTypes = out
 	return out
 }
 
 func (f *fn) frameDepthTypesForFrame(fr *ctrlFrame, parameters bool) []machineType {
-	out := f.tmpTypes[:0]
+	out := f.scratchState().tmpTypes[:0]
 	out = append(out, f.frameBaseTypes(fr)...)
 	if parameters {
 		out = fr.appendParameterTypes(out)
 	} else {
 		out = fr.appendResultTypes(out)
 	}
-	f.tmpTypes = out
+	f.scratchState().tmpTypes = out
 	return out
 }
 
@@ -1046,11 +1050,11 @@ func (f *fn) flush() {
 	}
 	var gcRoots []bool
 	if f.tracksGCFrameRoots() {
-		gcRoots = f.tmpGCRoots[:0]
+		gcRoots = f.scratchState().tmpGCRoots[:0]
 		for _, root := range roots {
 			gcRoots = append(gcRoots, root.elemKind() == ekValue && root.st.hasGCRoot())
 		}
-		f.tmpGCRoots = gcRoots
+		f.scratchState().tmpGCRoots = gcRoots
 	}
 	if f.flushWideStack(roots, gcRoots) {
 		return
@@ -1058,8 +1062,8 @@ func (f *fn) flush() {
 	// New allocation spills must stay above the canonical destinations that
 	// this pass is still writing, including both halves of every v128.
 	oldFloor := f.spillFloor
-	f.spillFloor = max(oldFloor, slotsOfTypes(f.tmpFlushTypes))
-	types := f.tmpTypes[:0]
+	f.spillFloor = max(oldFloor, slotsOfTypes(f.scratchState().tmpFlushTypes))
+	types := f.scratchState().tmpTypes[:0]
 	slot := 0
 	for _, root := range roots {
 		typ := rootMachineType(root)
@@ -1101,7 +1105,7 @@ func (f *fn) flush() {
 		slot++
 	}
 	f.spillFloor = oldFloor
-	f.tmpTypes = types
+	f.scratchState().tmpTypes = types
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
@@ -1111,7 +1115,7 @@ func (f *fn) flush() {
 func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 	const wideFlushSlots = 64
 
-	types := f.tmpFlushTypes[:0]
+	types := f.scratchState().tmpFlushTypes[:0]
 	total := 0
 	needsStage := false
 	for _, root := range roots {
@@ -1123,7 +1127,7 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool) bool {
 		}
 		total += typ.stackSlots()
 	}
-	f.tmpFlushTypes = types
+	f.scratchState().tmpFlushTypes = types
 	if total <= wideFlushSlots && !needsStage {
 		return false
 	}
@@ -1190,10 +1194,10 @@ func (f *fn) setDepth(l int) {
 	if l < 0 || l > len(roots) {
 		panic("arm64: invalid operand depth")
 	}
-	types := f.tmpTypes[:0]
+	types := f.scratchState().tmpTypes[:0]
 	var gcRoots []bool
 	if f.tracksGCFrameRoots() {
-		gcRoots = f.tmpGCRoots[:0]
+		gcRoots = f.scratchState().tmpGCRoots[:0]
 	}
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
@@ -1201,9 +1205,9 @@ func (f *fn) setDepth(l int) {
 			gcRoots = append(gcRoots, root.elemKind() == ekValue && root.st.hasGCRoot())
 		}
 	}
-	f.tmpTypes = types
+	f.scratchState().tmpTypes = types
 	if gcRoots != nil {
-		f.tmpGCRoots = gcRoots
+		f.scratchState().tmpGCRoots = gcRoots
 	}
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
@@ -1577,9 +1581,10 @@ func (f *fn) alignLoopHeader() {
 // (the body start, just past the blocktype) to the matching `end`, recording the
 // locals it sets. The module-aware classifier keeps mixed memory-width
 // immediates synchronized. Any unexpected decode failure returns no proof.
-func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses) (setLocals []uint16, hasCall bool) {
+func scanLoopSetLocals(source *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16, uses *scopedLoopConstUses) (setLocals []uint16, hasCall bool) {
+	reader := *source
+	r := &reader
 	start := r.Offset()
-	defer func() { _ = r.JumpTo(start) }()
 	base := len(dst)
 	setLocals = dst
 	if setLocals == nil {
@@ -1824,7 +1829,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	wideConstContext := wideScopedLoopConstsEnabled && f.nLocals > 64 && f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0
 	wideConstProbe := kind == cfLoop && wideConstContext && f.hasWideScopedConstPrefix(r)
 	if kind == cfLoop && !f.unreachable && ((diagnosticsEnabled && f.stats != nil) || f.usesCalls && (f.pinnedLocalMask != 0 || f.fpinnedLocalMask != 0 || wideConstProbe)) {
-		base := len(f.loopSetLocals)
+		base := len(f.scratchState().loopSetLocals)
 		uses, collectConsts := f.scopedLoopConstUses()
 		if wideConstContext && !wideConstProbe {
 			collectConsts = false
@@ -1836,7 +1841,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			}
 			collect = &uses
 		}
-		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.loopSetLocals, collect)
+		setLocals, hasCall := scanLoopSetLocals(r, f.classifier, f.scratchState().loopSetLocals, collect)
 		if f.localBase != 0 && setLocals != nil {
 			for i := base; i < len(setLocals); i++ {
 				absolute := uint64(setLocals[i]) + uint64(f.localBase)
@@ -1851,7 +1856,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			fr.flags |= ctrlFlags(uses.mask) << 12
 		}
 		if setLocals != nil {
-			f.loopSetLocals = setLocals
+			f.scratchState().loopSetLocals = setLocals
 			cold := f.ensureCtrlMerge(&fr)
 			cold.setLoopSet(uint32(base), uint16(len(setLocals)-base))
 			callFree := !hasCall && !f.moduleEH && len(f.customInstructions) == 0
@@ -1980,7 +1985,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.alignLoopHeader()
 			}
 			fr.controlSite = f.a.Len()
-			f.emitInterruptCheck(true)
+			if f.loopInterruptible() {
+				f.emitInterruptCheck(true)
+			}
 		}
 	}
 	f.pushCtrl(&fr)
@@ -3240,13 +3247,13 @@ func (f *fn) opBrWithArithmeticFlags(r *wasm.Reader, conditional bool, arithmeti
 	}
 	// Non-empty edge: the edge is already emitted at [mark:]; insert the skip guard
 	// before it by relocating the (position-independent) edge bytes up one word.
-	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	f.scratchState().edgeScratch = append(f.scratchState().edgeScratch[:0], f.a.B[mark:]...)
 	if profileEnabled && f.stats != nil && f.stats.RecordSources {
 		f.rewindProfileEmission(mark)
 	}
 	f.truncateNativeCode(mark)
 	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
-	f.a.B = append(f.a.B, f.edgeScratch...)
+	f.a.B = append(f.a.B, f.scratchState().edgeScratch...)
 	f.branchJump(fr)
 	f.patchBranch19(over, f.a.Len()) // `over` is a B.cond (imm19)
 	return nil
@@ -3384,12 +3391,12 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
 	}
 	labelN := int(n)
-	labels := f.tmpLabels[:0]
+	labels := f.scratchState().tmpLabels[:0]
 	if cap(labels) < labelN {
 		labels = make([]uint32, 0, labelN)
 	}
 	labels = labels[:labelN]
-	f.tmpLabels = labels
+	f.scratchState().tmpLabels = labels
 	for i := range labels {
 		if labels[i], err = r.U32(); err != nil {
 			return err

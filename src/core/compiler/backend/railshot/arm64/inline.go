@@ -822,11 +822,11 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	}
 	f.inlineTargets = targets
 	if len(callees) <= maxRetainedInlineBases {
-		clear(f.inlineBasePool)
-		if f.inlineBasePool == nil {
-			f.inlineBasePool = make(map[int]int, len(callees))
+		clear(f.scratchState().inlineBasePool)
+		if f.scratchState().inlineBasePool == nil {
+			f.scratchState().inlineBasePool = make(map[int]int, len(callees))
 		}
-		f.inlineBase = f.inlineBasePool
+		f.inlineBase = f.scratchState().inlineBasePool
 	} else {
 		f.inlineBase = make(map[int]int, len(callees))
 	}

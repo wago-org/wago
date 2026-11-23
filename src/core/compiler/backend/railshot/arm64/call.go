@@ -1414,11 +1414,11 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	if !f.tracksGCFrameRoots() || n <= 0 {
 		return nil
 	}
-	flags := f.tmpGCRoots2[:0]
+	flags := f.scratchState().tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
 		flags = append(flags, root.elemKind() == ekValue && root.st.hasGCRoot())
 	}
-	f.tmpGCRoots2 = flags
+	f.scratchState().tmpGCRoots2 = flags
 	return flags
 }
 
@@ -1485,8 +1485,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	roots := f.rootsBottomToTop()
 	d := len(roots)
-	types := f.tmpTypes[:0]
-	slotOf := f.tmpStackSlots[:0]
+	types := f.scratchState().tmpTypes[:0]
+	slotOf := f.scratchState().tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -1497,8 +1497,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
-	f.tmpTypes = types
-	f.tmpStackSlots = slotOf
+	f.scratchState().tmpTypes = types
+	f.scratchState().tmpStackSlots = slotOf
 	// Dynamic wait mismatch can use any declared shared memory. Notify keeps
 	// its existing compact admission; other notify forms are already native
 	// after marshaling through notifyEmptyShortcut.
@@ -1528,12 +1528,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	// Keep the helper when the selected directory entry exceeds scaled LDR64.
 	growFast = growFast && uint64(growIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirBaseOffset <= 0xfff*8
-	belowTypes := f.tmpTypes2[:0]
+	belowTypes := f.scratchState().tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	f.scratchState().tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
@@ -2125,8 +2125,8 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
-	types := f.tmpTypes[:0]
-	slotOf := f.tmpStackSlots[:0]
+	types := f.scratchState().tmpTypes[:0]
+	slotOf := f.scratchState().tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -2137,14 +2137,14 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
-	f.tmpTypes = types
-	f.tmpStackSlots = slotOf
-	belowTypes := f.tmpTypes2[:0]
+	f.scratchState().tmpTypes = types
+	f.scratchState().tmpStackSlots = slotOf
+	belowTypes := f.scratchState().tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	f.scratchState().tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := funcTypeSlots(ft.Results)
@@ -2445,12 +2445,12 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := f.tmpGCOffsets[:0]
+	offsets := f.scratchState().tmpGCOffsets[:0]
 	defer func() {
 		if uint64(cap(offsets))*4 <= shared.MaxRetainedGCCallsiteOffsetBytes {
-			f.tmpGCOffsets = offsets[:0]
+			f.scratchState().tmpGCOffsets = offsets[:0]
 		} else {
-			f.tmpGCOffsets = nil
+			f.scratchState().tmpGCOffsets = nil
 		}
 	}()
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
@@ -2498,8 +2498,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
-	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	belowTypes := append(f.scratchState().tmpTypes2[:0], allTypes[:d-p]...)
+	f.scratchState().tmpTypes2 = belowTypes
 	belowSlots := slotsOfTypes(belowTypes)
 	belowGCRoots := f.gcFramePrefixRoots(allRoots, d-p)
 	if !preservesPins {
@@ -2510,8 +2510,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	argRoots := allRoots[d-p:]
 
 	// Capture register args and overlapping slots before the lower stack flush.
-	moves := f.tmpMoves[:0]
-	deferred := f.tmpDeferred[:0]
+	moves := f.scratchState().tmpMoves[:0]
+	deferred := f.scratchState().tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
 		if f.opt(optBorrowedRegisterArgs) && (ft.Params[i] == wasm.I32 || ft.Params[i] == wasm.I64) {
@@ -2574,24 +2574,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		checkMoves = f.checkBeginRegMoves(moves, false)
 		defer checkMoves()
 	}
-	swapChains := resolveRegMovesWindow(moves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
-		func(x, y Reg) {
-			f.a.MovReg64(X16, x)
-			f.a.MovReg64(x, y)
-			f.a.MovReg64(y, X16)
-		},
-		func(a, b, c Reg) {
-			f.a.MovReg64(X16, a)
-			f.a.MovReg64(a, b)
-			f.a.MovReg64(b, c)
-			f.a.MovReg64(c, X16)
-		})
+	swapChains := f.emitGPParallelMoves(moves)
 	if regallocCheckEnabled {
 		checkMoves()
 	}
 	f.stats.peepN("machine-swap-chain", swapChains)
-	f.tmpMoves = moves[:0]
+	f.scratchState().tmpMoves = moves[:0]
 	for _, da := range deferred {
 		if da.root.isDeferred() {
 			source, immediate, wide, ok := f.pinnedImmediateCallArgument(da.root)
@@ -2613,7 +2601,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 			f.ld64(da.target, SP, f.localOff(da.root.st.index()))
 		}
 	}
-	f.tmpDeferred = deferred[:0]
+	f.scratchState().tmpDeferred = deferred[:0]
 
 	// Consume the args while preserving v128 slot widths and collector identity.
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
@@ -2851,8 +2839,8 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	allRoots := f.rootsBottomToTop()
 	d := len(allRoots)
 	allTypes := f.logicalTypes(allRoots)
-	belowTypes := append(f.tmpTypes2[:0], allTypes[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	belowTypes := append(f.scratchState().tmpTypes2[:0], allTypes[:d-p]...)
+	f.scratchState().tmpTypes2 = belowTypes
 	// Existing and new spills must stay above slots written by flushBelow.
 	oldSpillFloor := f.spillFloor
 	belowSlots := 0
@@ -2939,19 +2927,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		checkGPMoves = f.checkBeginRegMoves(gpMoves, false)
 		defer checkGPMoves()
 	}
-	gpSwapChains := resolveRegMovesWindow(gpMoves,
-		func(dst, src Reg) { f.a.MovReg64(dst, src) },
-		func(x, y Reg) {
-			f.a.MovReg64(X16, x)
-			f.a.MovReg64(x, y)
-			f.a.MovReg64(y, X16)
-		},
-		func(a, b, c Reg) {
-			f.a.MovReg64(X16, a)
-			f.a.MovReg64(a, b)
-			f.a.MovReg64(b, c)
-			f.a.MovReg64(c, X16)
-		})
+	gpSwapChains := f.emitGPParallelMoves(gpMoves)
 	if regallocCheckEnabled {
 		checkGPMoves()
 	}
@@ -3452,8 +3428,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
-	types := f.tmpTypes[:0]
-	slotOf := f.tmpStackSlots[:0]
+	types := f.scratchState().tmpTypes[:0]
+	slotOf := f.scratchState().tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -3464,14 +3440,14 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
-	f.tmpTypes = types
-	f.tmpStackSlots = slotOf
-	belowTypes := f.tmpTypes2[:0]
+	f.scratchState().tmpTypes = types
+	f.scratchState().tmpStackSlots = slotOf
+	belowTypes := f.scratchState().tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	f.scratchState().tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := 0
@@ -3588,8 +3564,8 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
-	types := f.tmpTypes[:0]
-	slotOf := f.tmpStackSlots[:0]
+	types := f.scratchState().tmpTypes[:0]
+	slotOf := f.scratchState().tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -3600,14 +3576,14 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
-	f.tmpTypes = types
-	f.tmpStackSlots = slotOf
-	belowTypes := f.tmpTypes2[:0]
+	f.scratchState().tmpTypes = types
+	f.scratchState().tmpStackSlots = slotOf
+	belowTypes := f.scratchState().tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
 	}
 	belowTypes = append(belowTypes, types[:d-p]...)
-	f.tmpTypes2 = belowTypes
+	f.scratchState().tmpTypes2 = belowTypes
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 	resultSlot := slotTop
 	resultSlots := 0
@@ -3663,18 +3639,18 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 	resultN := len(results)
-	regs := f.tmpRegs[:0]
+	regs := f.scratchState().tmpRegs[:0]
 	if cap(regs) < resultN {
 		regs = make([]Reg, 0, resultN)
 	}
 	regs = regs[:resultN]
-	f.tmpRegs = regs
-	types := f.tmpTypes[:0]
+	f.scratchState().tmpRegs = regs
+	types := f.scratchState().tmpTypes[:0]
 	if cap(types) < resultN {
 		types = make([]machineType, 0, resultN)
 	}
 	types = types[:resultN]
-	f.tmpTypes = types
+	f.scratchState().tmpTypes = types
 	resultSlotCursor := resultSlot
 	for i, result := range results {
 		typ := mtOf(result)
@@ -3762,7 +3738,7 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	resultSlots := funcTypeSlots(results)
 	f.moveSlots(resultSlot, dstSlot, resultSlots)
 
-	types := f.tmpTypes[:0]
+	types := f.scratchState().tmpTypes[:0]
 	if need := len(belowTypes) + len(results); cap(types) < need {
 		types = make([]machineType, 0, need)
 	}
@@ -3770,17 +3746,17 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 	for _, result := range results {
 		types = append(types, mtOf(result))
 	}
-	f.tmpTypes = types
+	f.scratchState().tmpTypes = types
 	if !f.tracksGCFrameRoots() {
 		f.setDepthTypes(types)
 		return
 	}
-	gcRoots := f.tmpGCRoots[:0]
+	gcRoots := f.scratchState().tmpGCRoots[:0]
 	gcRoots = append(gcRoots, belowGCRoots...)
 	for _, result := range results {
 		gcRoots = append(gcRoots, arm64GCFrameRefType(f.m, result))
 	}
-	f.tmpGCRoots = gcRoots
+	f.scratchState().tmpGCRoots = gcRoots
 	f.setDepthTypesWithGCRoots(types, gcRoots)
 }
 
