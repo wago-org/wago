@@ -294,22 +294,15 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	f.a.AddImm64(X16, pivot, 4)
 	f.cmpRR(X16, size, true)
 	guard(condA)
-	// Equal rows are safe. Partially overlapping rows must remain sequential.
-	f.cmpRR(d, s, true)
-	equal := f.a.Bcond(condE)
-	sourceHigh := f.a.Bcond(condB)
-	f.a.Sub64(X16, d, s)
-	f.a.MovImm64(X17, uint64(p.limit))
+	// Equal rows are safe. Subtracting one from the absolute distance
+	// wraps zero above the unsigned overlap range.
+	f.a.Subs64(X16, d, s)
+	f.a.Sub64(X17, s, d)
+	f.a.Csel64(X16, X16, X17, condAE)
+	f.a.SubImm64(X16, X16, 1)
+	f.a.MovImm64(X17, uint64(p.limit-1))
 	f.cmpRR(X16, X17, true)
 	guard(condB)
-	separate := f.a.Branch()
-	f.patchBranch19(sourceHigh, f.a.Len())
-	f.a.Sub64(X16, s, d)
-	f.a.MovImm64(X17, uint64(p.limit))
-	f.cmpRR(X16, X17, true)
-	guard(condB)
-	f.patchBranch19(equal, f.a.Len())
-	f.patchBranch26(separate, f.a.Len())
 	f.a.Add64(d, d, counter)
 	f.a.Add64(d, d, linMemReg)
 	f.a.Add64(s, s, counter)
@@ -323,6 +316,7 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	var scalar [2]int
 	nScalar := 0
 	emitVector := func(bytes uint32) {
+		packetStart := f.a.Len()
 		// Pivot overlap must resume the original body: the source may cache
 		// both pivot loads before its first store. Until overlap, the hoisted
 		// broadcast remains unchanged by every destination packet.
@@ -341,7 +335,8 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 		f.a.AddImm64(d, d, bytes)
 		f.a.AddImm64(s, s, bytes)
 		f.a.AddImm32(counter, counter, bytes)
-		f.patchBranch26(f.a.Branch(), loop)
+		compare(p.limit - bytes - 8)
+		f.patchBranch19(f.a.Bcond(condBE), packetStart)
 	}
 	// Require four wider iterations to amortize the extra code and tail dispatch.
 	packetBytes := uint32(32)
@@ -360,6 +355,10 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	compare(p.limit - 24)
 	done := f.a.Bcond(condA)
 	emitVector(16)
+	var complete int
+	if p.scalarReloadPivot {
+		complete = f.a.Branch()
+	}
 	for i := 0; i < nScalar; i++ {
 		f.patchBranch19(scalar[i], f.a.Len())
 	}
@@ -384,6 +383,9 @@ func (f *fn) emitMinPlusLoop(r *wasm.Reader) {
 	}
 	// Both a completed prefix and pivot overlap resume at the current counter.
 	f.patchBranch19(done, f.a.Len())
+	if p.scalarReloadPivot {
+		f.patchBranch26(complete, f.a.Len())
+	}
 	if reg, _, pin := f.pinReg(p.counter); pin {
 		f.a.MovReg32(reg, counter)
 	} else {
