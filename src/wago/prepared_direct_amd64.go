@@ -192,7 +192,7 @@ func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, err
 		return fn.invokeDirectIntPairSession(a0, a1, a2, a3)
 	}
 	in := fn.in
-	if goruntime.Compiler == "tinygo" && fn.scalarWideMask == 0 {
+	if fn.scalarWideMask == 0 {
 		// Normalize the whole argument bank in the common all-i32 case.
 		// The entry only reads the signature's argument prefix.
 		a0, a1, a2, a3 = uint64(uint32(a0)), uint64(uint32(a1)), uint64(uint32(a2)), uint64(uint32(a3))

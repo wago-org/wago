@@ -22,8 +22,8 @@ import (
 type operandArena = coreruntime.CodeBuffer
 
 func shouldMapOperands(bodyBytes int) bool {
-	// Mapping avoids repeatedly tracing large pointer-bearing chunks in TinyGo.
-	return bodyBytes >= minParallelHintBodyBytes || runtime.Compiler == "tinygo" && bodyBytes >= 8<<10
+	// Mapping keeps the pointer-bearing node chunks out of the Go heap.
+	return bodyBytes >= 8<<10
 }
 
 func closeOperandArena(arena *operandArena) {
