@@ -1969,6 +1969,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				}
 				f.emitPureReduce(r)
 				if f.loopMemory {
+					f.emitMaxSumLoop(r)
 					f.emitByteReduceLoop(r)
 					f.emitDotLoop(r)
 					f.emitMinPlusLoop(r)

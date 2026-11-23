@@ -203,6 +203,7 @@ type fn struct {
 	loopLocalLeaseWork      uint16
 	integerWordMapWork      uint16
 	integerLoadMapWork      uint16
+	maxSumWork              uint16
 	pureReduce              *pureReduceJoin
 	// Physical frame access emitted by the shared lowerer, not logical state.
 	scalarFrameUsed bool
