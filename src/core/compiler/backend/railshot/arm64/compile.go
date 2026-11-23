@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -351,6 +352,7 @@ type fn struct {
 	conditionalBoundsSized  bool   // Avoid changing short, layout-sensitive source bodies.
 	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool   // emit context-cancellation polls at entries and loop headers
+	skipEntryInterrupt      bool   // the task scheduler cannot resume inside a private native call graph
 	hasLoop                 bool   // finalizer preserves emission-time loop layout until alignment fragments are relaxable
 	loopMemory              bool   // at least one source loop contains a memory operation
 	opaqueFragments         bool   // jump-table or plugin bytes require explicit fragment-aware scans
@@ -770,8 +772,8 @@ const (
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
 	mappedOperands   bool
-	nativeImportFast bool // isolated guarded variant compilation only
-	taskDirectCalls  bool // the local call graph stays in native code
+	nativeImportFast bool   // isolated guarded variant compilation only
+	taskEntryPolls   []bool // externally addressable functions in a proven native-only call graph
 	attemptStage     compileAttemptStage
 	scalar           shared.ScalarState
 
@@ -1965,6 +1967,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: host adapter analysis: %w", err)
 	}
+	// Capture host-reachable entries before adding wrappers that are only
+	// reached by other local functions.
+	var taskEntryPolls []bool
+	if taskDirectCallModule(m, opts, allHints, immutableTable) {
+		taskEntryPolls = slices.Clone(hostAdapters)
+	}
 	// A wrapper-ABI caller tail-enters a register-ABI target through its
 	// offset-zero adapter. When that target tails back to a wrapper, it discards
 	// the adapter record, so mixed register/wrapper tail cycles stay stack
@@ -2065,7 +2073,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		owner := takeSerialCompileScratch()
 		defer releaseSerialCompileScratch(owner)
 		sc := owner.prepare(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
-		sc.taskDirectCalls = taskDirectCallModule(m, opts, allHints, immutableTable)
+		sc.taskEntryPolls = taskEntryPolls
+		defer func() { sc.taskEntryPolls = nil }()
 		sc.mappedOperands = mapOperands
 		if sc.mappedOperands {
 			defer sc.finishStackWorker()
@@ -2275,7 +2284,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs, mapOperands)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, taskEntryPolls, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs, mapOperands)
 }
 
 // taskDirectCallModule proves that the task scheduler cannot run another Go
@@ -2313,7 +2322,7 @@ func taskModuleCallsStayNative(m *wasm.Module, hints []funcHints, table immutabl
 }
 
 func (f *fn) loopInterruptible() bool {
-	return f.interruptible && (f.sc == nil || !f.sc.taskDirectCalls)
+	return f.interruptible && (f.sc == nil || f.sc.taskEntryPolls == nil)
 }
 
 // Keep the full proof workspace out of the ordinary module compiler's stack.
@@ -2344,7 +2353,7 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, mappedOperands bool) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters, taskEntryPolls []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, mappedOperands bool) (*a64.CompiledModule, error) {
 	requiresLSE := false
 	n := len(m.Code)
 	if diagnosticsEnabled && ms != nil {
@@ -2362,7 +2371,6 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64
 	var pressureOnce sync.Once
-	taskDirectCalls := taskDirectCallModule(m, opts, allHints, immutableTable)
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.mappedOperands = mappedOperands
@@ -2370,7 +2378,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
 		}
 		states[i].scratch.classifier = classifier
-		states[i].scratch.taskDirectCalls = taskDirectCalls
+		states[i].scratch.taskEntryPolls = taskEntryPolls
 		states[i].scratch.moduleTypes = moduleTypes
 		states[i].scratch.reserveLocalScratch(localCap)
 		if ctrlCap != 0 {
@@ -3678,6 +3686,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.guardMode, f.boundsFacts = guardMode, boundsFacts
 	f.conditionalBoundsSized = len(c.BodyBytes) >= 1024
 	f.interruptible = interruptible
+	f.skipEntryInterrupt = sc.taskEntryPolls != nil && !sc.taskEntryPolls[funcIdx]
 	f.hasLoop = hints.flags.has(hintHasLoop)
 	f.loopMemory = hints.hasLoopMemory()
 	f.gcStructHelpers, f.gcArrayHelpers, f.gcFrameRoots = gcStructHelpers, gcArrayHelpers, gcFrameRoots
@@ -4900,7 +4909,7 @@ func (f *fn) prologue(localScores []uint32) {
 		}
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
-	f.emitInterruptCheck(false)
+	f.emitEntryInterruptCheck()
 	f.entryTrapEnd = a.Len()
 	if f.cacheImportDispatch {
 		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))
@@ -5284,7 +5293,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	if f.trapCellReg != regNone {
 		f.ld64(f.trapCellReg, linMemReg, -int32(offTrapCellPtr))
 	}
-	f.emitInterruptCheck(false)
+	f.emitEntryInterruptCheck()
 	f.entryTrapEnd = a.Len()
 	if f.cacheImportDispatch {
 		f.ld64(X25, linMemReg, -int32(offImportDispatchPtr))

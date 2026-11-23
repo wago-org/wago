@@ -147,6 +147,15 @@ func (f *fn) emitTrapUnwind() {
 	f.a.Ret()
 }
 
+// Task scheduling cannot enter Go again in a proved native-only module. Its
+// branch targets reached exclusively from other local functions have already
+// passed an externally reachable entry poll.
+func (f *fn) emitEntryInterruptCheck() {
+	if !f.skipEntryInterrupt {
+		f.emitInterruptCheck(false)
+	}
+}
+
 // emitInterruptCheck polls the invocation trap cell at bounded native safe
 // points. A context watcher writes TrapInterrupted there; the ordinary cold trap
 // path then unwinds the complete wasm call tree.
