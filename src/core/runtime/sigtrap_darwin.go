@@ -11,7 +11,6 @@ package runtime
 
 import (
 	"fmt"
-	"sync"
 	"syscall"
 	"unsafe"
 
@@ -49,9 +48,6 @@ var (
 	guardTrapExitHandlerJumpPC uintptr
 	guardOldSEGVHandler        uintptr
 	guardOldBUSHandler         uintptr
-
-	guardMu        sync.Mutex
-	guardInstalled bool
 )
 
 // installDarwinSignalHandlers installs one process-wide handler for the two
@@ -59,6 +55,7 @@ var (
 // Go/runtime handlers. A default or ignored prior disposition cannot be safely
 // tail-called, so reject it rather than turning an unrelated fault into a loop.
 func installDarwinSignalHandlers() error {
+	guardTrapExitHandlerJumpPC = addrNativeTrapExitHandlerJump()
 	act := darwinSigaction{
 		Handler: addrGuardSigHandler(),
 		Mask:    ^uint32(0),
