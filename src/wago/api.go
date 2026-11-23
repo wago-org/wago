@@ -1096,7 +1096,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			copy(source, wasmBytes)
 		}
 	}
-	m, deferredSyntax, err := decodeCompilerSource(source, decodeFeatures)
+	var decodeScratch *wasm.CompilerDecodeScratch
+	if retainCompilerDecodeScratch && goruntime.GOARCH == "arm64" &&
+		cfg.codeProfile == nil && !codegen.SourceChecks && len(instructions) == 0 {
+		decodeScratch = borrowCompilerDecodeScratch()
+		defer returnCompilerDecodeScratch(decodeScratch)
+	}
+	m, deferredSyntax, err := decodeCompilerSource(source, decodeFeatures, decodeScratch)
 	if err != nil {
 		return nil, wrapContextError("decode", err)
 	}
@@ -1751,10 +1757,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if err != nil {
 			return nil, wrapContextError("compile: transfer code image", err)
 		}
-		compiled.codeCache.mem = mapping
-		compiled.codeCache.base = base
-		railshotRecordMappedCodeBytes(compiled, len(compiled.code))
-		compiled.codeCache.flags |= compiledCacheWritableCode
+		if image, ok := cm.CodeImage.(*wruntime.CodeBuffer); compilerCodeStaging && ok && image.IsStaging() {
+			compiled.retainCodeStaging(mapping)
+		} else {
+			compiled.codeCache.mem = mapping
+			compiled.codeCache.base = base
+			railshotRecordMappedCodeBytes(compiled, len(compiled.code))
+			compiled.codeCache.flags |= compiledCacheWritableCode
+		}
 	}
 	keepCodeImage = true
 	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {

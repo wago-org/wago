@@ -7,7 +7,10 @@
 
 package wasm
 
-import "runtime"
+import (
+	"runtime"
+	"unsafe"
+)
 
 // directCodeBody is the part of a code-section function body the byte-backed
 // validator keeps: compact local runs plus raw expression bytes. This matches
@@ -197,10 +200,10 @@ func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits 
 }
 
 func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
-	return decodeDirectModuleInnerLimitsMode(data, features, limits, false)
+	return decodeDirectModuleInnerLimitsMode(data, features, limits, false, nil)
 }
 
-func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies bool) (*directModule, error) {
+func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures, limits DecodeLimits, deferCodeBodies bool, storage *CompilerDecodeScratch) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
@@ -266,13 +269,20 @@ func decodeDirectModuleInnerLimitsMode(data []byte, features ValidationFeatures,
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
 			if deferCodeBodies {
-				dm.m.Code, err = decodePendingCodeSection(&sub)
+				var reuse []Func
+				if storage != nil {
+					reuse = storage.code
+				}
+				dm.m.Code, err = decodePendingCodeSection(&sub, reuse)
+				if err == nil && storage != nil {
+					storage.code = dm.m.Code
+				}
 			} else {
 				dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
 			}
 			dm.seenCode = true
 		case secData:
-			err = decodeDirectDataSection(dm, &sub)
+			err = decodeDirectDataSectionInto(dm, &sub, storage)
 		default:
 			err = decodeSection(&dm.m, &sub, id)
 		}
@@ -426,6 +436,10 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 }
 
 func decodeDirectDataSection(dm *directModule, r *reader) error {
+	return decodeDirectDataSectionInto(dm, r, nil)
+}
+
+func decodeDirectDataSectionInto(dm *directModule, r *reader, storage *CompilerDecodeScratch) error {
 	n, err := r.u32()
 	if err != nil {
 		return err
@@ -440,7 +454,14 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if uint64(n) > uint64(r.left()/2) {
 		return &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 	}
-	dm.m.Data = make([]Data, n)
+	if storage != nil && storage.data != nil && uint64(cap(storage.data)) >= uint64(n) {
+		dm.m.Data = storage.data[:n]
+	} else {
+		dm.m.Data = make([]Data, n)
+	}
+	if storage != nil {
+		storage.data = dm.m.Data
+	}
 	for i := range dm.m.Data {
 		d, off, err := decodeDirectData(r)
 		if err != nil {
@@ -1135,6 +1156,35 @@ type directOp struct {
 	catches   []Catch
 }
 
+// readDirectBranchLabels keeps the AST decoder's count, budget and error
+// rules. The streamed validation step consumes the labels before the next
+// instruction, so ordinary tables can share one worker-owned buffer.
+func (v *funcValidator) readDirectBranchLabels(r *reader) ([]uint32, error) {
+	count, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	if err := reserveDecodedSlice[uint32](r, count); err != nil {
+		return nil, err
+	}
+	labels := v.branchTableLabels[:0]
+	if capacity := boundedVecCap(count, r.left()); labels == nil || cap(labels) < capacity {
+		labels = make([]uint32, 0, capacity)
+	}
+	for range count {
+		label, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		labels = append(labels, label)
+	}
+	const maxRetainedLabels = 4096
+	if cap(labels) <= maxRetainedLabels {
+		v.branchTableLabels = labels[:0]
+	}
+	return labels, nil
+}
+
 func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemory bool, out *directOp) error {
 	widths.multiMemory = multiMemory
 	op, err := r.byte()
@@ -1180,7 +1230,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x0e:
-		labels, err := readVec(r, func(r *reader) (uint32, error) { return r.u32() })
+		labels, err := v.readDirectBranchLabels(r)
 		if err != nil {
 			*out = directOp{}
 			return err
@@ -1576,7 +1626,40 @@ func (v *funcValidator) stepDirectMemory(kind InstrKind, arg MemArg) error {
 // ValidateModule call. Unlike DecodeModule, this is not a standalone syntax
 // checker. It is the first half of the compiler's fused decode/validate path.
 func DecodeModuleForValidationWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
-	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true)
+	return (*CompilerDecodeScratch)(nil).DecodeForValidation(data, features)
+}
+
+// CompilerDecodeScratch owns the descriptor arrays borrowed by one compiler
+// decode. The returned module may use them until Reset. Callers must finish
+// every use of the module before releasing or reusing this scratch.
+type CompilerDecodeScratch struct {
+	code []Func
+	data []Data
+}
+
+// Reset severs references to the previous input and drops unusual capacities.
+func (s *CompilerDecodeScratch) Reset() {
+	remaining := 64 << 10
+	s.code = retainDecodeDescriptors(s.code, &remaining)
+	s.data = retainDecodeDescriptors(s.data, &remaining)
+}
+
+func retainDecodeDescriptors[T Func | Data](values []T, remaining *int) []T {
+	var record T
+	width := int(unsafe.Sizeof(record))
+	if cap(values) > *remaining/width {
+		return nil
+	}
+	*remaining -= cap(values) * width
+	clear(values[:cap(values)])
+	return values[:0]
+}
+
+// DecodeForValidation borrows storage, with the same syntax and validation
+// contract as DecodeModuleForValidationWithFeatures. A nil receiver uses
+// ordinary owned allocations.
+func (s *CompilerDecodeScratch) DecodeForValidation(data []byte, features ValidationFeatures) (*Module, error) {
+	dm, err := decodeDirectModuleInnerLimitsMode(data, features, DecodeLimits{}, true, s)
 	runtime.KeepAlive(data)
 	if err != nil {
 		return nil, err
@@ -1588,7 +1671,7 @@ func DecodeModuleForValidationWithFeatures(data []byte, features ValidationFeatu
 	return &dm.m, nil
 }
 
-func decodePendingCodeSection(r *reader) ([]Func, error) {
+func decodePendingCodeSection(r *reader, reuse []Func) ([]Func, error) {
 	count, err := r.u32()
 	if err != nil {
 		return nil, err
@@ -1604,7 +1687,10 @@ func decodePendingCodeSection(r *reader) ([]Func, error) {
 	if uint64(count) <= uint64(r.left()/3) {
 		capacity = int(count)
 	}
-	out := make([]Func, 0, capacity)
+	out := reuse[:0]
+	if out == nil || cap(out) < capacity {
+		out = make([]Func, 0, capacity)
+	}
 	// Keep the same decode-budget reservation as the syntax-only path, even
 	// though the validation control stack replaces its structural scratch.
 	if err = r.reserve(uint64(min(r.left(), maxInstructionNestingDepth)), 32); err != nil {

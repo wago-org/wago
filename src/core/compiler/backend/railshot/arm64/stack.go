@@ -26,8 +26,8 @@ func (s *stack) nodeMemory() (used, reserved uint64) {
 	}
 	size := uint64(unsafe.Sizeof(elem{}))
 	coldSize := uint64(unsafe.Sizeof(elemCold{}))
-	return used*size + uint64(len(s.cold))*coldSize,
-		reserved*size + uint64(cap(s.cold))*coldSize
+	return used*size + uint64(len(s.coldValues()))*coldSize,
+		reserved*size + uint64(cap(s.coldValues()))*coldSize
 }
 
 // The operand stack and its element model — ported from WARP's Stack /
@@ -152,7 +152,7 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 type storage struct {
 	cval int64  // constant value/bits for stConst
 	slot uint32 // spill-slot index, or int32 displacement bits for stMemRef
-	cold uint32 // index+1 into stack.cold for custom plugin values
+	cold uint32 // index+1 into the stack sidecar for custom plugin values
 	idx  uint32 // local/global/function index, or packed stMemRef metadata
 	kind storageKind
 	typ  machineType
@@ -270,7 +270,7 @@ func (e *elem) isDeferred() bool { return e.elemKind() == ekDeferred }
 // resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
 	chunks           [][]elem
-	cold             []elemCold
+	sidecar          *stackSidecar
 	head             *elem
 	freeHead         nodeID
 	cur              uint16
@@ -278,6 +278,26 @@ type stack struct {
 	nextGeometricCap uint16
 	pendingDeferred  uint8
 	maxPending       uint8
+}
+
+// stackSidecar holds state needed only by mapped arenas and plugin operands.
+type stackSidecar struct {
+	arena *operandArena
+	cold  []elemCold
+}
+
+func (s *stack) mappedArena() *operandArena {
+	if s.sidecar == nil {
+		return nil
+	}
+	return s.sidecar.arena
+}
+
+func (s *stack) coldValues() []elemCold {
+	if s.sidecar == nil {
+		return nil
+	}
+	return s.sidecar.cold
 }
 
 const (
@@ -303,17 +323,21 @@ func newStackWithCap(capHint int) *stack {
 // initWithCap initializes an empty stack without replacing its address. The
 // function compiler may already hold an alias when fallback first needs it.
 func (s *stack) initWithCap(capHint int) {
+	s.initWithArena(capHint, nil)
+}
+
+func (s *stack) initWithArena(capHint int, arena *operandArena) {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
 	var first []elem
-	if capHint == defaultStackArenaCap {
+	if capHint == defaultStackArenaCap && arena == nil {
 		if cached := idleInitialStackChunk.Swap(nil); cached != nil {
 			first = cached[:0]
 		}
 	}
 	if first == nil {
-		first = make([]elem, 0, capHint)
+		first = operandArenaChunk(arena, capHint)
 	}
 	next, geometric := stackArenaGrowthCaps(capHint)
 	*s = stack{
@@ -321,13 +345,16 @@ func (s *stack) initWithCap(capHint int) {
 		nextChunkCap:     uint16(next),
 		nextGeometricCap: uint16(geometric),
 	}
+	if arena != nil {
+		s.sidecar = &stackSidecar{arena: arena}
+	}
 	s.initSentinel()
 }
 
 // cacheInitialChunk ends this stack's ownership before publishing its buffer.
 // Call only after the compiler has finished and severed pending node references.
 func (s *stack) cacheInitialChunk() {
-	if len(s.chunks) == 0 || cap(s.chunks[0]) != defaultStackArenaCap {
+	if s.mappedArena() != nil || len(s.chunks) == 0 || cap(s.chunks[0]) != defaultStackArenaCap {
 		return
 	}
 	chunk := (*initialStackChunk)(s.chunks[0][:defaultStackArenaCap])
@@ -386,8 +413,10 @@ func (s *stack) initSentinel() {
 // called (its code is already emitted). alloc rezeroes every reused chunk slot,
 // so no stale fields survive.
 func (s *stack) reset() {
-	clear(s.cold[:cap(s.cold)])
-	s.cold = s.cold[:0]
+	if s.sidecar != nil {
+		clear(s.sidecar.cold[:cap(s.sidecar.cold)])
+		s.sidecar.cold = s.sidecar.cold[:0]
+	}
 	s.initSentinel()
 }
 
@@ -395,13 +424,16 @@ func (s *stack) elemCold(e *elem) *elemCold {
 	if e.st.cold == 0 {
 		return nil
 	}
-	return &s.cold[e.st.cold-1]
+	return &s.sidecar.cold[e.st.cold-1]
 }
 
 func (s *stack) setElemCold(e *elem, custom *coreplugins.CustomType, vregs []Reg) {
 	if e.st.cold == 0 {
-		s.cold = append(s.cold, elemCold{})
-		e.st.cold = uint32(len(s.cold))
+		if s.sidecar == nil {
+			s.sidecar = &stackSidecar{}
+		}
+		s.sidecar.cold = append(s.sidecar.cold, elemCold{})
+		e.st.cold = uint32(len(s.sidecar.cold))
 	}
 	*s.elemCold(e) = elemCold{custom: custom, vregs: vregs}
 }
@@ -500,7 +532,7 @@ func (s *stack) alloc() (nodeID, *elem) {
 		}
 		s.cur++
 		if int(s.cur) == len(s.chunks) {
-			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
+			s.chunks = append(s.chunks, operandArenaChunk(s.mappedArena(), int(s.nextChunkCap)))
 			s.nextChunkCap = s.nextGeometricCap
 			if s.nextGeometricCap < maxStackChunkCap {
 				s.nextGeometricCap *= 2

@@ -768,6 +768,7 @@ const (
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
+	mappedOperands   bool
 	nativeImportFast bool // isolated guarded variant compilation only
 	taskDirectCalls  bool // the local call graph stays in native code
 	attemptStage     compileAttemptStage
@@ -783,6 +784,8 @@ type scratch struct {
 	floatMapScratch       *floatMapPlan
 	wordMapScratch        *integerWordMapPlan
 	symbolicLoop          *symbolicLoopScratch
+	linearTreePlan        *linearIntegerTree
+	compareAndPlan        *compareAndPlan
 	classifier            wasm.ModuleInstructionClassifier
 	moduleTypes           moduleTypeCache
 	directPrepared        bool
@@ -796,6 +799,7 @@ type scratch struct {
 	ctrlRoots               []ctrlFrameRoots
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
+	trapArena               *operandArena
 	branchTargets           []uint64
 	branchTargetInline      [64]uint64 // one bit per instruction; covers 16 KiB of native code
 	repeatedStoreOrigins    [64]uint64 // bounded Wasm-store origin bits for one candidate function
@@ -805,7 +809,6 @@ type scratch struct {
 	brTableStubAt           []int        // duplicate-heavy jump-table target positions by control depth
 	finalFragments          []finalizerFragment
 	reuseData               []reuseDataRange
-	reuseTargets            []int
 	noIndexedReuse          bool
 	deadHoleSites           [maxFinalizerDeletions]int
 	branchNextSites         [maxFinalizerDeletions]int
@@ -976,8 +979,10 @@ func newCompileScratch(stackCap int) *scratch {
 	return new(compileScratchOwner).prepare(stackCap)
 }
 
-// Idle storage holds at most one zeroed scratch object. Every slice, map and
-// module pointer is released before publishing the object.
+// One idle compiler can retain bounded, cleared control storage. No entry
+// in the idle buffers can reference the previous module or its scratch.
+const idleControlBufferBytes = 64 << 10
+
 var idleSerialCompileScratch atomic.Pointer[compileScratchOwner]
 
 func takeSerialCompileScratch() *compileScratchOwner {
@@ -988,7 +993,42 @@ func takeSerialCompileScratch() *compileScratchOwner {
 }
 
 func releaseSerialCompileScratch(owner *compileScratchOwner) {
-	*owner = compileScratchOwner{}
+	if !retainIdleControlStorage {
+		*owner = compileScratchOwner{}
+		idleSerialCompileScratch.CompareAndSwap(nil, owner)
+		return
+	}
+	var frames []ctrlFrame
+	var merges []ctrlFrameMerge
+	if capacity := cap(owner.scratch.ctrl); capacity <= idleControlBufferBytes/int(unsafe.Sizeof(ctrlFrame{})) {
+		frames = owner.scratch.ctrl[:0]
+		clear(frames[:capacity])
+	}
+	if capacity := cap(owner.scratch.ctrlMerges); capacity <= idleControlBufferBytes/int(unsafe.Sizeof(ctrlFrameMerge{})) {
+		merges = owner.scratch.ctrlMerges[:0]
+		clear(merges[:capacity])
+	}
+	var endsPool [][]uint32
+	var floatPlan *floatMapPlan
+	var wordPlan *integerWordMapPlan
+	var symbolicPlan *symbolicLoopScratch
+	if runtime.GOOS == "darwin" {
+		// Keep only fixed-size numeric workspaces in the idle owner. Each
+		// recognizer resets its plan before inspecting another function.
+		// Each entry owns at most maxRetainedEndsBufSites branch offsets.
+		endsPool = owner.scratch.endsPool
+		floatPlan = owner.scratch.floatMapScratch
+		wordPlan = owner.scratch.wordMapScratch
+		symbolicPlan = owner.scratch.symbolicLoop
+	}
+	*owner = compileScratchOwner{scratch: scratch{
+		ctrl:            frames,
+		transient:       transient{endsPool: endsPool},
+		ctrlMerges:      merges,
+		floatMapScratch: floatPlan,
+		wordMapScratch:  wordPlan,
+		symbolicLoop:    symbolicPlan,
+	}}
 	idleSerialCompileScratch.CompareAndSwap(nil, owner)
 }
 
@@ -996,7 +1036,11 @@ func (sc *scratch) ensureTargetStack() {
 	if len(sc.stack.chunks) != 0 {
 		return
 	}
-	sc.stack.initWithCap(sc.stackCap)
+	var arena *operandArena
+	if sc.mappedOperands {
+		arena = newOperandArena()
+	}
+	sc.stack.initWithArena(sc.stackCap, arena)
 	_, reserved := sc.stack.nodeMemory()
 	sc.nodeScratchReserved = reserved
 	sc.nodeScratchPeak = reserved
@@ -1012,9 +1056,11 @@ func (sc *scratch) reserveControlFrames(capacity int) {
 		sc.controlCap = capacity
 		return
 	}
-	sc.ctrl = make([]ctrlFrame, 0, capacity)
-	sc.controlScratchReserved = capacity
-	sc.controlScratchPeak = capacity
+	if !retainIdleControlStorage || cap(sc.ctrl) < capacity {
+		sc.ctrl = make([]ctrlFrame, 0, capacity)
+	}
+	sc.controlScratchReserved = cap(sc.ctrl)
+	sc.controlScratchPeak = cap(sc.ctrl)
 }
 
 func (sc *scratch) reserveLocalScratch(capacity int) {
@@ -1128,14 +1174,6 @@ const maxHintedControlFrames = 64
 // receives them; append remains the correctness fallback.
 const maxWorkerInitialControlFrames = 8
 
-// Forward-edge overflow starts only after the inline sites. Bound both the
-// number and size of recycled buffers so a deeply branched function cannot set
-// persistent worker high-water for the rest of module compilation.
-const (
-	maxRetainedEndsBufs     = maxWorkerInitialControlFrames
-	maxRetainedEndsBufSites = 256
-)
-
 // moduleControlFrameCap sizes the serial compiler's reusable control stack from
 // the same one-pass bytecode hints. Zero preserves lazy allocation for
 // straight-line, incomplete, AST-only, or unusually deep modules.
@@ -1164,6 +1202,14 @@ func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
 }
 
 func (sc *scratch) reset() {
+	// A recovered lowering failure can leave one of the plans borrowed.
+	// No previous attempt's operand references are valid in the new attempt.
+	if sc.linearTreePlan != nil && sc.linearTreePlan.f != nil {
+		*sc.linearTreePlan = linearIntegerTree{}
+	}
+	if sc.compareAndPlan != nil && sc.compareAndPlan.n != 0 {
+		*sc.compareAndPlan = compareAndPlan{}
+	}
 	sc.repeatedStoreOriginsN = 0
 	if sc.repeatedStoreOriginsSet {
 		clear(sc.repeatedStoreOrigins[:])
@@ -1211,6 +1257,7 @@ func (sc *scratch) reset() {
 func (sc *scratch) clearNodeReferences() {
 	clear(sc.fnState.regUser[:])
 	clear(sc.fnState.fregUser[:])
+	sc.fnState.guardedNonzeroDivisor = nil
 	clear(sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)])
 	clear(sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)])
 }
@@ -1246,12 +1293,18 @@ func (sc *scratch) finishStackWorker() {
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
-	clear(sc.stack.cold[:cap(sc.stack.cold)])
-	sc.stack.cold = nil
+	clear(sc.stack.coldValues()[:cap(sc.stack.coldValues())])
 	sc.stack.cacheInitialChunk()
 	sc.stack.chunks = nil
 	sc.stack.head = nil
 	sc.stack.cur = 0
+	sc.stack.mappedArena().close()
+	sc.stack.sidecar = nil
+	if sc.trapArena != nil {
+		sc.trapSites[trapMemOOB] = nil
+		sc.trapArena.close()
+		sc.trapArena = nil
+	}
 }
 
 // workerState owns every mutable buffer used by one parallel compiler worker.
@@ -1710,6 +1763,12 @@ type CompileOptions struct {
 	// instance needs executable code. Public compilation uses this to avoid an
 	// executable mapping for modules that are cached, serialized, or discarded.
 	DeferCodeMapping bool
+	// MapDeferredCode opts into non-executable serial staging. The caller owns
+	// the returned CodeImage and must activate or close it when finished.
+	MapDeferredCode bool
+	// MapOperandScratch gives the compiler worker a native arena for its
+	// pointer-free operand nodes. Platform hooks own and release the mapping.
+	MapOperandScratch bool
 
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_arm64.go).
@@ -1995,6 +2054,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// another allocation and copy of esbuild's entire code buffer.
 	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
 	moduleTypes := buildModuleTypeCache(m, totalBody)
+	mapOperands := opts.MapOperandScratch && shouldMapOperands(totalBody)
 	requiresLSE := false
 	if workers <= 1 {
 		relocs := newCallRelocTable(n, relocCap)
@@ -2005,7 +2065,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		defer releaseSerialCompileScratch(owner)
 		sc := owner.prepare(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.taskDirectCalls = taskDirectCallModule(m, opts, allHints, immutableTable)
-		if sc.stackCap == defaultStackArenaCap {
+		sc.mappedOperands = mapOperands
+		if sc.mappedOperands {
+			defer sc.finishStackWorker()
+		} else if sc.stackCap == defaultStackArenaCap {
 			defer sc.cacheInitialStackChunk()
 		}
 		sc.classifier = classifier
@@ -2017,7 +2080,27 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		var codeBuffer *coreruntime.CodeBuffer
 		var err error
 		if opts.DeferCodeMapping {
-			codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+			// Ordinary mappings avoid TinyGo heap growth for medium images and
+			// for output reservations large enough to dominate the working set.
+			stagingMin := 256 << 10
+			if n >= 16 {
+				// More function bodies amortize the mapping cost, even when
+				// their combined code estimate is modest.
+				stagingMin = 64 << 10
+			}
+			if opts.MapDeferredCode && ((codeCap >= stagingMin && codeCap <= 8<<20) || codeCap >= 64<<20) {
+				stagingCap := codeCap
+				if codeCap >= 64<<20 {
+					// Anonymous pages are committed on write. Leave virtual space
+					// for a large underestimate and avoid copying the whole image.
+					const maxInt = int(^uint(0) >> 1)
+					stagingCap += min(codeCap/4, maxInt-codeCap)
+				}
+				codeBuffer, _ = coreruntime.NewStagingCodeBuffer(stagingCap)
+			}
+			if codeBuffer == nil {
+				codeBuffer, err = coreruntime.NewHeapCodeBuffer(codeCap)
+			}
 		} else {
 			codeBuffer, err = coreruntime.NewCodeBuffer(codeCap)
 		}
@@ -2180,7 +2263,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if diagnosticsEnabled && explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		if opts.DeferCodeMapping {
+		if opts.DeferCodeMapping && !codeBuffer.IsStaging() {
 			code, err = codeBuffer.TakeHeap()
 			if err != nil {
 				return nil, fmt.Errorf("arm64: transfer heap code image: %w", err)
@@ -2191,7 +2274,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs, mapOperands)
 }
 
 // taskDirectCallModule proves that the task scheduler cannot run another Go
@@ -2260,7 +2343,7 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int, mappedOperands bool) (*a64.CompiledModule, error) {
 	requiresLSE := false
 	n := len(m.Code)
 	if diagnosticsEnabled && ms != nil {
@@ -2281,6 +2364,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	taskDirectCalls := taskDirectCallModule(m, opts, allHints, immutableTable)
 	for i := range states {
 		states[i] = workerState{scratch: newCompileScratch(stackCap), arena: make([]byte, 0, arenaCap)}
+		states[i].scratch.mappedOperands = mappedOperands
 		if regallocCheckEnabled {
 			shared.PrepareSourceWorker(&states[i].scratch.scalar, i, workers)
 		}

@@ -77,7 +77,8 @@ type compiledCacheIndexes struct {
 	valueTypeIndex     map[ValueTypeDescriptor]uint32
 	gcTypeMapping      *gcTypeMappingCacheEntry
 	funcrefImportState atomic.Uint32 // 0 unknown, 1 no imported funcref containers, 2 at least one
-	pendingFinalizer   *Compiled     // canonical owner until mapping; guarded by codeCache.mu after publication
+	compilerCodeStage
+	pendingFinalizer *Compiled // canonical owner until mapping; guarded by codeCache.mu after publication
 	// Cold failure ownership only; guarded by codeCache.mu. New mappings are
 	// blocked until retry succeeds, bounding retained publication failures.
 	failedMappings [][]byte
@@ -698,21 +699,16 @@ func (c *Compiled) hasNoFunctionCode() bool {
 func (c *Compiled) mapCodeLocked() error {
 	cc := c.codeCache
 	if cc.mem != nil {
+		if compilerCodeStaging {
+			return c.releaseCodeStagingLocked()
+		}
 		return nil
 	}
 	if c.hasNoFunctionCode() {
 		return nil
 	}
 	codeLen := len(c.code)
-	image, err := coreruntime.NewCodeBuffer(codeLen)
-	if err != nil {
-		return err
-	}
-	defer image.Close()
-	if err := image.Append(c.code); err != nil {
-		return err
-	}
-	mem, base, err := image.Take()
+	mem, base, err := c.allocateCodeMappingLocked(codeLen)
 	if err != nil {
 		return err
 	}
@@ -734,7 +730,29 @@ func (c *Compiled) mapCodeLocked() error {
 			snapshot.code = c.code
 		}
 	}
+	if compilerCodeStaging {
+		return c.releaseCodeStagingLocked()
+	}
 	return nil
+}
+
+// allocateCodeMappingLocked transfers a Linux staging mapping in place. Darwin
+// uses MAP_JIT for executable code, so it copies into that mapping at activation.
+func (c *Compiled) allocateCodeMappingLocked(codeLen int) ([]byte, uintptr, error) {
+	if compilerCodeStaging && goruntime.GOOS == "linux" {
+		if mem := c.takeCodeStagingLocked(); mem != nil {
+			return mem, uintptr(unsafe.Pointer(unsafe.SliceData(mem))), nil
+		}
+	}
+	image, err := coreruntime.NewCodeBuffer(codeLen)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer image.Close()
+	if err := image.Append(c.code); err != nil {
+		return nil, 0, err
+	}
+	return image.Take()
 }
 
 // prepareCodeMapping maps the public compiler view before instantiation freezes
@@ -1014,6 +1032,9 @@ func (c *Compiled) Close() error {
 		} else {
 			cc.mem = nil
 		}
+	}
+	if compilerCodeStaging {
+		err = errors.Join(err, c.releaseCodeStagingLocked())
 	}
 	return errors.Join(err, c.releaseHostThunksLocked(), c.releaseFailedMappingsLocked(), railshotRetryNativeTail(c), c.executionView().closeNativeActiveData())
 }

@@ -42,19 +42,20 @@ func (f *fn) validateIndexedReuse(entries ...int) error {
 		return nil
 	}
 	sc := f.scratchState()
-	targets := append(sc.reuseTargets[:0], entries...)
 	b := f.a.B
 	for _, r := range sc.reuseData {
 		if !r.jump {
 			continue
 		}
 		for pc := r.start; pc+4 <= r.end && pc+4 <= len(b); pc += 4 {
-			targets = append(targets, r.start+int(int32(binary.LittleEndian.Uint32(b[pc:]))))
+			target := r.start + int(int32(binary.LittleEndian.Uint32(b[pc:])))
+			if !f.a.IndexedReuseAcceptsTarget(target) {
+				return errIndexedReuseTarget
+			}
 		}
 	}
-	sc.reuseTargets = targets
 	if len(sc.reuseData) == 0 {
-		if !f.a.ValidateIndexedReuse(targets, nil) {
+		if !f.a.ValidateIndexedReuse(entries, nil) {
 			return errIndexedReuseTarget
 		}
 		return nil
@@ -73,7 +74,7 @@ func (f *fn) validateIndexedReuse(entries ...int) error {
 		}
 		return false
 	}
-	if !f.a.ValidateIndexedReuse(targets, opaque) {
+	if !f.a.ValidateIndexedReuse(entries, opaque) {
 		return errIndexedReuseTarget
 	}
 	return nil

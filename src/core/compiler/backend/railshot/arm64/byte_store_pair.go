@@ -100,8 +100,7 @@ func (f *fn) inspectByteStorePair(r *wasm.Reader, offset uint64) (int, bool) {
 	if e != nil || memory != 0 || off != offset {
 		return 0, false
 	}
-	budget := 32
-	maximum := f.unsignedAddressMaximum(address, false, &budget)
+	maximum, _ := f.unsignedAddressMaximum(address, false, 32)
 	if !shared.ProvenMinimumAccess(mt, maximum, offset, 2) {
 		return 0, false
 	}

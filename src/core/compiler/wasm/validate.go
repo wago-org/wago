@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
 // ValidationFeatures enables release-specific validation rules without making
@@ -176,6 +177,16 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 	return v.validateFunctionsParallel(workers)
 }
 
+const idleValidatorControlBytes = 64 << 10
+
+// A single serial validation can borrow the idle control stack. Concurrent
+// validations proceed with their own buffers. The idle frames hold no slices
+// into a previous module.
+var idleValidatorControl struct {
+	claimed atomic.Bool
+	frames  []ctrlFrame
+}
+
 func (v *moduleValidator) validateFunctionsSerial() error {
 	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
@@ -183,6 +194,18 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	if retainIdleValidatorControl && idleValidatorControl.claimed.CompareAndSwap(false, true) {
+		fv.ctrls = idleValidatorControl.frames
+		idleValidatorControl.frames = nil
+		defer func() {
+			capacity := cap(fv.ctrls)
+			if capacity > len(fv.ctrlBuf) && capacity <= idleValidatorControlBytes/int(unsafe.Sizeof(ctrlFrame{})) {
+				clear(fv.ctrls[:capacity])
+				idleValidatorControl.frames = fv.ctrls[:0]
+			}
+			idleValidatorControl.claimed.Store(false)
+		}()
+	}
 	var op directOp
 	var summary validationSegmentCounts
 	for i := range v.m.Code {
@@ -1081,8 +1104,9 @@ type funcValidator struct {
 	constGlobalLimit  int // globals below this absolute index are visible to a const expression
 	// branchTableEpoch is packed before constOnly. Each
 	// funcValidator owns its control frames, including under parallel validation.
-	branchTableEpoch uint32
-	constOnly        bool
+	branchTableEpoch  uint32
+	constOnly         bool
+	branchTableLabels []uint32 // transient labels for one streamed instruction
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader

@@ -96,6 +96,7 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	if err != nil {
 		return nil, err
 	}
+	preferSmallLinearPages(mem, initialBytes)
 	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)
 	if err := j.registerInterruptLinearMemory(); err != nil {
@@ -169,6 +170,7 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 		jobMemoryCache.j = nil
 		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
+		prepareReusedLinearPages(j.mem, initialBytes)
 		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
@@ -208,6 +210,9 @@ func (j *JobMemory) reclaimForReuse() error {
 	}
 	if used <= jobMemoryReclaimThreshold {
 		clear(j.mem[:used])
+		return nil
+	}
+	if reclaimSparseLinearPages(j.mem[:used], j.curBytes()) {
 		return nil
 	}
 	return madviseDontNeed(j.mem[:used])

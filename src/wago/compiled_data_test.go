@@ -105,6 +105,41 @@ func compactDataModule(emptyOutOfBounds bool) []byte {
 	)
 }
 
+func TestCompilerDecodeReuseKeepsPublishedData(t *testing.T) {
+	first, err := Compile(nil, compactDataModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	nextSource := compactDataModule(false)
+	nextSource[len(nextSource)-1] = 0xee
+	second, err := Compile(nil, nextSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	last := minCompactActiveData - 1
+	for i, item := range []struct {
+		module *Compiled
+		want   byte
+	}{{first, byte(last + 17)}, {second, 0xee}} {
+		if got := item.module.Data[last].Bytes[0]; got != item.want {
+			t.Fatalf("module %d published data = %x, want %x", i, got, item.want)
+		}
+		in, err := Instantiate(item.module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bytes, ok := in.Read(uint32(last), 1)
+		if !ok || bytes[0] != item.want {
+			in.Close()
+			t.Fatalf("module %d instantiated the wrong payload", i)
+		}
+		in.Close()
+	}
+}
+
 func TestCompactExecutionDataKeepsEmptySegmentBoundsCheck(t *testing.T) {
 	c, err := Compile(nil, compactDataModule(true))
 	if err != nil {

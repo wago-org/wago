@@ -183,7 +183,7 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	// A B.cond site (imm19, ±1 MiB); bit0 of the site offset is 0 (4-aligned), so
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Bcond(cc)))
+	sc.appendTrapSite(code, f.trapSite(f.a.Bcond(cc)))
 	if profileEnabled && code == trapMemOOB {
 		f.recordProfileCodeSite(before, "memory-bounds-branch")
 	}
@@ -217,7 +217,7 @@ func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
 	}
 	f.stats.peep("direct-zero-branch")
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
+	sc.appendTrapSite(code, f.trapSite(f.emitZeroBranch(reg, wide, onZero)))
 	if profileEnabled && code == trapMemOOB {
 		f.recordProfileCodeSite(before, "memory-bounds-branch")
 	}
@@ -229,7 +229,22 @@ func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
 // PatchBranch19 range a B.cond site uses.
 func (f *fn) trapAlways(code uint32) {
 	sc := f.scratchState()
-	sc.trapSites[code] = append(sc.trapSites[code], f.trapSite(f.a.Branch()|1))
+	sc.appendTrapSite(code, f.trapSite(f.a.Branch()|1))
+}
+
+func (sc *scratch) appendTrapSite(code uint32, site trapSite) {
+	sites := sc.trapSites[code]
+	if len(sites) == cap(sites) && len(sites) >= 256 && len(sites) < nativeTrapSiteCapacity && code == trapMemOOB && sc.mappedOperands && sc.trapArena == nil {
+		// Large bodies can retain multiple generations of these pointer-free
+		// records in TinyGo's heap. Reserve their native capacity lazily.
+		if arena := newOperandArena(); arena != nil {
+			native := arena.trapSiteStorage()
+			copy(native, sites)
+			sites = native[:len(sites)]
+			sc.trapArena = arena
+		}
+	}
+	sc.trapSites[code] = append(sites, site)
 }
 
 func (f *fn) trapSite(branch int) trapSite {

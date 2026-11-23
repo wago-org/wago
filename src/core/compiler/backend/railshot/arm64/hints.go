@@ -998,8 +998,8 @@ func (s *byteBodyScanner) scanBodyBytesIntoModule(body []byte, localDeclBytes ui
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	*s = byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts, collectLoopMemoryBases: collectLoopMemoryBases}
-	called, term, err := s.scanExpr(0, 0, -1, false, 1)
+	*s = byteBodyScanner{r: byteScanReader{Reader: r}, exprParents: s.exprParents[:0], h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, parallelCalls: parallelCalls, importedFuncs: importedFuncs, entryPrefix: true, collectLoopIntConsts: collectLoopIntConsts, collectLoopMemoryBases: collectLoopMemoryBases}
+	called, term, err := s.scanExpr()
 	if err != nil {
 		return s.h, err
 	}
@@ -1042,6 +1042,7 @@ func (c *loopIntConstCandidate) addScore(score uint64) {
 }
 
 type byteBodyScanner struct {
+	exprParents            []hintExprParent
 	r                      byteScanReader
 	h                      funcHintView
 	nLocals                int
@@ -1236,11 +1237,21 @@ func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
 	s.h.noteBoundaryEvent(kind, depth)
 }
 
-func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool, pathWeight int64) (bool, byte, error) {
-	if depth > 20000 {
-		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
-	}
-	hotnessWeight := pathWeight * loopWeight(loopDepth)
+// hintExprParent holds the state needed to resume an expression after a nested
+// block, loop or conditional. Deep Wasm nesting must not grow the host stack.
+type hintExprParent struct {
+	pathWeight  uint32 // weightedBranchPath caps path weights at 1 << 20
+	elseWeight  uint32
+	prevIndex   uint32
+	prevOp      byte
+	op          byte
+	hasCall     bool
+	elsePending bool
+}
+
+func (s *byteBodyScanner) scanExpr() (bool, byte, error) {
+	depth, loopDepth := 0, 0
+	pathWeight, hotnessWeight := int64(1), loopWeight(0)
 	subHasCall := false
 	var prevOp, prevPrevOp byte
 	var prevIndex, prevPrevIndex uint32
@@ -1263,83 +1274,88 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 		case 0x0b: // end
-			return subHasCall, op, nil
+			if depth == 0 {
+				return subHasCall, op, nil
+			}
+			parent := s.exprParents[depth-1]
+			if parent.op == 0x03 {
+				if !subHasCall {
+					for _, g := range s.elig.globalsIn(loopDepth - 1) {
+						markGlobalEligible(s.globalHints, g)
+					}
+				}
+				s.elig.pop(loopDepth - 1)
+				loopDepth--
+			}
+			depth--
+			s.exprParents = s.exprParents[:depth]
+			pathWeight = int64(parent.pathWeight)
+			hotnessWeight = pathWeight * loopWeight(loopDepth)
+			subHasCall = subHasCall || parent.hasCall
+			prevPrevOp, prevPrevIndex = parent.prevOp, parent.prevIndex
+			prevOp, prevIndex = parent.op, ^uint32(0)
+			continue
 		case 0x05: // else
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
-			if stopAtElse {
-				return subHasCall, op, nil
+			if depth == 0 || !s.exprParents[depth-1].elsePending {
+				return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
-			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-		case 0x02, 0x03, 0x04: // block, loop, if
+			parent := &s.exprParents[depth-1]
+			parent.elsePending = false
+			parent.hasCall = parent.hasCall || subHasCall
+			pathWeight = int64(parent.elseWeight)
+			hotnessWeight = pathWeight * loopWeight(loopDepth)
+			subHasCall = false
+			prevOp, prevPrevOp, prevIndex, prevPrevIndex = 0, 0, 0, 0
+			continue
+		case 0x02, 0x03, 0x04, 0x1f: // block, loop, if, try_table
 			s.h.flags.set(hintHasControlFlow)
-			// Entering a block cannot skip its initial source instructions.
-			// Keep first-write facts through this unconditional prefix only;
-			// an actual branch, loop or conditional still ends it permanently.
+			// An unconditional block may preserve the entry initialization prefix.
 			if op != 0x02 || !blockEntryInitEnabled {
 				s.entryPrefix = false
 			}
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.noteControlDepth(depth + 1)
-			if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
+			if op == 0x1f {
+				s.h.flags.set(hintModuleEH)
+			} else if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
 				s.h.addScalarMergeWeight(pathWeight * loopWeight(loopDepth))
 			}
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
+			parent := hintExprParent{
+				pathWeight: uint32(pathWeight),
+				prevOp:     prevOp, prevIndex: prevIndex, op: op, hasCall: subHasCall,
+			}
 			switch op {
-			case 0x02: // block
-				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
-				if err != nil {
-					return true, 0, err
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				subHasCall = subHasCall || calls
-			case 0x03: // loop
+			case 0x03:
 				s.h.flags.set(hintHasLoop)
-				loop := s.elig.push()
-				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false, pathWeight)
-				if err != nil {
-					return true, 0, err
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				if calls {
-					subHasCall = true
-				} else {
-					for _, g := range s.elig.globalsIn(loop) {
-						markGlobalEligible(s.globalHints, g)
-					}
-				}
-				s.elig.pop(loop)
-			case 0x04: // if
-				thenWeight, elseWeight := pathWeight, pathWeight
+				// Eligibility frames and byte-scanner loop depth grow
+				// and shrink together, so the active frame is depth-1.
+				s.elig.push()
+				loopDepth++
+			case 0x04:
+				parent.elsePending = true
+				parent.elseWeight = uint32(pathWeight)
 				if likely, ok := s.branchHintAt(opOffset); ok {
 					if likely {
-						thenWeight = weightedBranchPath(thenWeight)
+						pathWeight = weightedBranchPath(pathWeight)
 					} else {
-						elseWeight = weightedBranchPath(elseWeight)
+						parent.elseWeight = uint32(weightedBranchPath(pathWeight))
 					}
 				}
-				callsThen, term, err := s.scanExpr(depth+1, loopDepth, curLoop, true, thenWeight)
-				if err != nil {
-					return true, 0, err
-				}
-				callsElse := false
-				if term == 0x05 {
-					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false, elseWeight)
-					if err != nil {
-						return true, 0, err
-					}
-				}
-				if term != 0x0b {
-					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-				}
-				subHasCall = subHasCall || callsThen || callsElse
 			}
+			if depth == 20000 {
+				return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
+			}
+			s.exprParents = append(s.exprParents, parent)
+			depth++
+			hotnessWeight = pathWeight * loopWeight(loopDepth)
+			subHasCall = false
+			prevOp, prevPrevOp, prevIndex, prevPrevIndex = 0, 0, 0, 0
+			continue
 		case 0x10, 0x12: // call, return_call
 			if op == 0x12 {
 				s.h.immediateFreeOps |= tailTransferHintMask
@@ -1435,7 +1451,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				} else {
 					addGlobalHotness(s.globalHints, idx, hotnessWeight)
 				}
-				s.elig.add(curLoop, idx)
+				s.elig.add(loopDepth-1, idx)
 			}
 		case 0x41, 0x42: // i32.const, i64.const
 			var bits int64
@@ -1512,22 +1528,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			calls, err := s.noteMemoryInstructionHints(op, prevOp, prevIndex, loopDepth, depth, pathWeight)
 			if err != nil {
 				return true, 0, err
-			}
-			subHasCall = subHasCall || calls
-		case 0x1f: // try_table: blocktype, catch vector, body
-			s.h.flags.set(hintHasControlFlow)
-			s.entryPrefix = false
-			s.h.flags.set(hintModuleEH)
-			s.h.noteControlDepth(depth + 1)
-			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
-				return true, 0, err
-			}
-			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false, pathWeight)
-			if err != nil {
-				return true, 0, err
-			}
-			if term != 0x0b {
-				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			subHasCall = subHasCall || calls
 		case 0x08: // throw

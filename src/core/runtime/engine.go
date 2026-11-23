@@ -68,6 +68,7 @@ func NewEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	preferSmallStackPages(st)
 	top := uintptr(unsafe.Pointer(&st[0])) + uintptr(len(st))
 	top &^= 15 // 16-byte align (page-aligned already, but be explicit)
 	e := &Engine{stack: st, stackTop: top}

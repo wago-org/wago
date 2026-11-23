@@ -20,13 +20,17 @@ func (a *Asm) FoldDominatedIndexedBasesByKey(entryOffsets ...int) int {
 	}
 	b := a.B[:n:n]
 	// One exact register-pair key and three control flags per instruction.
-	// No heap backing; equal addresses merge even from different seed sites.
+	// Equal addresses merge even from different seed sites.
 	const target, backward, seen uint16 = 1 << 15, 1 << 14, 1 << 13
 	const seedMask uint16 = 0x7ff
 	// The size guard and aligned PC checks prove all table indexes are in
 	// range. Extract the ten instruction-index bits to make that proof
 	// explicit to Go's bounds-check eliminator.
-	var entries [1024]uint16
+	if a.dominatedIndexedEntries == nil {
+		a.dominatedIndexedEntries = new([1024]uint16)
+	}
+	entries := a.dominatedIndexedEntries
+	clear(entries[:n/4])
 	branches := 0
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := binary.LittleEndian.Uint32(b[pc : pc+4])

@@ -442,6 +442,25 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 	}
 }
 
+func TestByteHintsDeeplyNestedBlocks(t *testing.T) {
+	const depth = 8192
+	body := make([]byte, 0, 3*depth+3)
+	for range depth {
+		body = append(body, 0x02, 0x40) // block with no result
+	}
+	body = append(body, 0x10, 0x01) // call 1
+	for range depth + 1 {
+		body = append(body, 0x0b) // end
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
+		t.Fatalf("nested control flow or call was lost from the hints: %v", h.flags)
+	}
+}
+
 func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	h, err := scanBodyBytes([]byte{0x03, 0x40, 0x0b, 0x0b}, 0, 0, 0)
 	if err != nil {

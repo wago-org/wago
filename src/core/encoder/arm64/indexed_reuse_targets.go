@@ -44,38 +44,42 @@ func (a *Asm) admitIndexedReuse(start int) bool {
 // IndexedReuseCount reports how many omitted X16 computations await validation.
 func (a *Asm) IndexedReuseCount() int { return len(a.indexedReuseWindows) }
 
+// IndexedReuseAcceptsTarget checks an entry or branch target against the
+// recorded reuse windows. Callers can validate jump-table words as they are
+// decoded, without staging a temporary list of target offsets.
+func (a *Asm) IndexedReuseAcceptsTarget(t int) bool {
+	w := a.indexedReuseWindows
+	// Windows are recorded in emission order, so starts are non-decreasing.
+	lo, hi := 0, len(w)
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if w[mid].start < t {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	// Only windows starting before t can contain it; they are w[:lo]. Each
+	// window spans at most a few words, so scan back while still in reach.
+	for i := lo - 1; i >= 0 && t-w[i].start <= 64; i-- {
+		if t <= w[i].at {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidateIndexedReuse reports whether every recorded indexed-base reuse is
 // still straight-line: no direct branch, ADR landing pad, or extra target
 // (jump-table entries, internal entries) lands inside a proof window. Call it
 // once the function body is complete and before any pass moves code. Opaque
 // data ranges are skipped; their words are not instructions.
 func (a *Asm) ValidateIndexedReuse(extraTargets []int, opaque func(pc int) bool) bool {
-	w := a.indexedReuseWindows
-	if len(w) == 0 {
+	if len(a.indexedReuseWindows) == 0 {
 		return true
 	}
-	inside := func(t int) bool {
-		// Windows are recorded in emission order, so starts are non-decreasing.
-		lo, hi := 0, len(w)
-		for lo < hi {
-			mid := (lo + hi) / 2
-			if w[mid].start < t {
-				lo = mid + 1
-			} else {
-				hi = mid
-			}
-		}
-		// Only windows starting before t can contain it; they are w[:lo]. Each
-		// window spans at most a few words, so scan back while still in reach.
-		for i := lo - 1; i >= 0 && t-w[i].start <= 64; i-- {
-			if t <= w[i].at {
-				return true
-			}
-		}
-		return false
-	}
 	for _, t := range extraTargets {
-		if inside(t) {
+		if !a.IndexedReuseAcceptsTarget(t) {
 			return false
 		}
 	}
@@ -85,12 +89,12 @@ func (a *Asm) ValidateIndexedReuse(extraTargets []int, opaque func(pc int) bool)
 			continue
 		}
 		word := binary.LittleEndian.Uint32(b[pc:])
-		if t, ok := dominatedDirectBranchTarget(pc, word); ok && inside(t) {
+		if t, ok := dominatedDirectBranchTarget(pc, word); ok && !a.IndexedReuseAcceptsTarget(t) {
 			return false
 		}
 		if word&0x9F000000 == 0x10000000 { // ADR
 			imm := int32((word>>5&0x7FFFF)<<2|word>>29&3) << 11 >> 11
-			if inside(pc + int(imm)) {
+			if !a.IndexedReuseAcceptsTarget(pc + int(imm)) {
 				return false
 			}
 		}

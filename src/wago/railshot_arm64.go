@@ -32,6 +32,8 @@ func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
 func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
+	opts.MapDeferredCode = compilerCodeStaging
+	opts.MapOperandScratch = compilerCodeStaging
 	return railshot.CompileModuleWith(m, opts)
 }
 

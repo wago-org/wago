@@ -90,7 +90,23 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 	if !f.opt(optLinearIntegerTree) || !f.hasLoop || node.st.typ != mtI32 || node.deferredDepth() < 2 || (node.deferredOp() != opAdd && node.deferredOp() != opSub) || len(f.customInstructions) != 0 {
 		return regNone
 	}
-	w := linearIntegerTree{f: f, budget: 64}
+	sc := f.scratchState()
+	if sc.linearTreePlan == nil {
+		sc.linearTreePlan = new(linearIntegerTree)
+	}
+	w := sc.linearTreePlan
+	if w.f != nil {
+		// Register allocation during an accepted cover can condense another
+		// tree. A nested attempt must not replace the active plan.
+		w = new(linearIntegerTree)
+	}
+	*w = linearIntegerTree{f: f, budget: 64}
+	result := f.tryLinearIntegerPlan(node, dest, w)
+	*w = linearIntegerTree{}
+	return result
+}
+
+func (f *fn) tryLinearIntegerPlan(node *elem, dest Reg, w *linearIntegerTree) Reg {
 	if !w.collect(node, 1) {
 		return regNone
 	}
@@ -102,7 +118,7 @@ func (f *fn) tryLinearIntegerTree(node *elem, dest Reg) Reg {
 		duplicate = duplicate || t.reads > 1
 	}
 	if duplicate && nonzero == 2 && w.operations >= 3 && w.constant == 0 {
-		if result := f.emitLinearIntegerPair(node, dest, &w); result != regNone {
+		if result := f.emitLinearIntegerPair(node, dest, w); result != regNone {
 			return result
 		}
 	}
