@@ -20,6 +20,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   active-data initialization for privately owned instances. Reuse resident
   initializer pages on Linux AMD64.
   ([#1073](https://github.com/wago-org/wago/pull/1073))
+- Avoid copying entire GC struct field lists for each access or construction
+  during validation, preventing allocation amplification from repeated accesses.
 
 ### Fixed
 
