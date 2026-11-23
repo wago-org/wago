@@ -9,6 +9,7 @@ package run
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
@@ -19,14 +20,35 @@ const deferredBoundsCheckingFlag = "deferred-bounds-checking"
 // DeferredBoundsCheckingFlags exposes the runtime-configured bounds-check
 // optimization with the same paired boolean surface as backend knobs.
 func DeferredBoundsCheckingFlags() []command.Flag {
-	state := "on"
-	if config, configured, err := settings.LoadConfigured(); err == nil && configured && !config.Runtime.DeferredBoundsChecking {
-		state = "off"
-	}
 	return []command.Flag{
-		{Name: deferredBoundsCheckingFlag, Bool: true, Help: fmt.Sprintf("(default: %s) skip provably redundant explicit bounds checks", state)},
+		{Name: deferredBoundsCheckingFlag, Bool: true, HelpFunc: func() string {
+			state := "on"
+			if config, configured, err := configuredSettings(); err == nil && configured && !config.Runtime.DeferredBoundsChecking {
+				state = "off"
+			}
+			return fmt.Sprintf("(default: %s) skip provably redundant explicit bounds checks", state)
+		}},
 		{Name: "no-" + deferredBoundsCheckingFlag, Bool: true},
 	}
+}
+
+// configuredSettings loads the effective settings for help text at most once
+// per process. Flag help reads it lazily: building the run command must not
+// touch the filesystem, since every `wago run` builds the registry.
+var loadConfiguredOnce = sync.OnceValue(func() loadedSettings {
+	config, configured, err := settings.LoadConfigured()
+	return loadedSettings{config, configured, err}
+})
+
+type loadedSettings struct {
+	config     settings.Config
+	configured bool
+	err        error
+}
+
+func configuredSettings() (settings.Config, bool, error) {
+	loaded := loadConfiguredOnce()
+	return loaded.config, loaded.configured, loaded.err
 }
 
 // DeferredBoundsChecking resolves the paired CLI flags. The optimization is on
@@ -53,19 +75,20 @@ func DeferredBoundsOverride(ctx *command.Ctx) (*bool, error) {
 // OptimizationFlags exposes every backend knob as --<name>/--no-<name>.
 func OptimizationFlags() []command.Flag {
 	knobs := settings.Optimizations()
-	configured, hasConfig, _ := settings.LoadConfigured()
 	flags := make([]command.Flag, 0, len(knobs)*2)
 	for _, knob := range knobs {
-		state := "off"
-		on := knob.Default
-		if hasConfig {
-			on = knob.Value(configured)
-		}
-		if on {
-			state = "on"
-		}
 		flags = append(flags,
-			command.Flag{Name: knob.Name(), Bool: true, Help: fmt.Sprintf("(default: %s) %s", state, knob.Description)},
+			command.Flag{Name: knob.Name(), Bool: true, HelpFunc: func() string {
+				on := knob.Default
+				if configured, hasConfig, _ := configuredSettings(); hasConfig {
+					on = knob.Value(configured)
+				}
+				state := "off"
+				if on {
+					state = "on"
+				}
+				return fmt.Sprintf("(default: %s) %s", state, knob.Description)
+			}},
 			command.Flag{Name: "no-" + knob.Name(), Bool: true},
 		)
 	}

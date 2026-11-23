@@ -27,7 +27,7 @@ func WantsHelp(args []string, _ bool, flags []Flag) bool {
 			return true
 		}
 		name, inline := splitFlag(arg)
-		if flag := lookup[name]; flag != nil && !flag.Bool && !inline && index+1 < len(args) {
+		if flag := lookup.get(name); flag != nil && !flag.Bool && !inline && index+1 < len(args) {
 			index++
 		}
 	}
@@ -57,7 +57,7 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 			continue
 		}
 		name, inlineValue, inline := splitFlagValue(arg)
-		flag := lookup[name]
+		flag := lookup.get(name)
 		if flag == nil {
 			if c.PassThrough && positional {
 				ctx.Args = append(ctx.Args, arg)
@@ -118,7 +118,7 @@ func ConfigureAutomation(c *Cmd, args []string) {
 			continue
 		}
 		name, _, inline := splitFlagValue(arg)
-		flag := lookup[name]
+		flag := lookup.get(name)
 		if flag == nil {
 			if c.PassThrough && positional {
 				continue
@@ -148,9 +148,16 @@ func ConfigureAutomation(c *Cmd, args []string) {
 //
 //go:noinline
 func (c *Cmd) AllFlags() []Flag {
-	flags := append([]Flag(nil), c.Flags...)
-	flags = append(flags, c.automationFlags()...)
-	return append(flags, c.Knobs...)
+	// Dispatch consults the full flag set several times per invocation; build
+	// it once. Commands are assembled before dispatch, but recompute if a
+	// caller appended flags afterwards.
+	if c.allFlags == nil || c.allFlagsFor != [2]int{len(c.Flags), len(c.Knobs)} {
+		flags := append([]Flag(nil), c.Flags...)
+		flags = append(flags, c.automationFlags()...)
+		c.allFlags = append(flags, c.Knobs...)
+		c.allFlagsFor = [2]int{len(c.Flags), len(c.Knobs)}
+	}
+	return c.allFlags[:len(c.allFlags):len(c.allFlags)]
 }
 
 func (c *Cmd) automationFlags() []Flag {
@@ -170,16 +177,30 @@ func (c *Cmd) automationFlags() []Flag {
 	)
 }
 
-func flagLookup(flags []Flag) map[string]*Flag {
-	lookup := make(map[string]*Flag, len(flags)*2)
-	for index := range flags {
-		flag := &flags[index]
-		lookup["--"+flag.Name] = flag
-		if flag.Short != "" {
-			lookup["-"+flag.Short] = flag
+// flagTable finds a flag by its spelled form ("--name" or "-s"). A linear scan
+// beats building a map: commands declare ~100 flags, invocations pass a few,
+// and parsing runs on every `wago run`, where allocation is startup latency.
+type flagTable []Flag
+
+func flagLookup(flags []Flag) flagTable { return flagTable(flags) }
+
+func (table flagTable) get(arg string) *Flag {
+	if long, ok := strings.CutPrefix(arg, "--"); ok {
+		for index := range table {
+			if table[index].Name == long {
+				return &table[index]
+			}
+		}
+		return nil
+	}
+	if short, ok := strings.CutPrefix(arg, "-"); ok && short != "" {
+		for index := range table {
+			if table[index].Short == short {
+				return &table[index]
+			}
 		}
 	}
-	return lookup
+	return nil
 }
 
 func splitFlag(arg string) (name string, inline bool) {

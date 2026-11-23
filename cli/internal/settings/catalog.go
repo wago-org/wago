@@ -72,12 +72,28 @@ func Features() []BoolSetting {
 func Optimizations() []BoolSetting { return OptimizationsForArch(runtime.GOARCH) }
 
 func OptimizationsForArch(arch string) []BoolSetting {
-	infos := wago.OptimizationInfosForArch(arch)
-	result := make([]BoolSetting, len(infos))
-	for index, info := range infos {
-		result[index] = optimizationSetting(info)
+	optimizationsByArch.Lock()
+	defer optimizationsByArch.Unlock()
+	cached, ok := optimizationsByArch.m[arch]
+	if !ok {
+		infos := wago.OptimizationInfosForArch(arch)
+		cached = make([]BoolSetting, len(infos))
+		for index, info := range infos {
+			cached[index] = optimizationSetting(info)
+		}
+		if optimizationsByArch.m == nil {
+			optimizationsByArch.m = map[string][]BoolSetting{}
+		}
+		optimizationsByArch.m[arch] = cached
 	}
-	return result
+	// One `wago run` resolves the catalog several times (flags, settings,
+	// overrides). Build it once per architecture; callers get their own copy.
+	return append([]BoolSetting(nil), cached...)
+}
+
+var optimizationsByArch struct {
+	sync.Mutex
+	m map[string][]BoolSetting
 }
 
 // OptimizationCatalog returns every registered optimization once. It is used

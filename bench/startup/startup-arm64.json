@@ -1,15 +1,15 @@
 {
-  "generated": "2026-11-11",
-  "sourceCommit": "b2c2f572e3ff623a309b15cea070272858fafaf2",
+  "generated": "2026-11-19",
+  "sourceCommit": "918664c13c2e874e03feb535517c0c14da36618f",
   "machine": "Apple M4 Max, darwin/arm64",
-  "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn\u2192exit)",
+  "method": "hyperfine -N --warmup 5 --min-runs 30; fresh process per run (spawn→exit)",
   "unit": "ms",
   "architecture": "arm64",
   "runtimes": {
     "wago": {
       "label": "wago",
       "tag": "single-pass",
-      "version": "release      0.0.0"
+      "version": "release      startup-525b9b469"
     },
     "wazy": {
       "label": "wazy",
@@ -31,111 +31,100 @@
       "tag": "turboshaft",
       "version": "V8 version 15.2.20"
     },
-    "wasm3": {
-      "label": "wasm3",
-      "tag": "interpreter",
-      "version": "Wasm3 v0.9.0 on arm64-v8a"
+    "wasmer": {
+      "label": "wasmer",
+      "tag": "cranelift",
+      "version": "wasmer 7.3.0"
     },
-    "wasmi": {
-      "label": "wasmi",
-      "tag": "interpreter",
-      "version": "wasmi_cli 1.1.0"
-    },
-    "wavm": {
-      "label": "wavm",
-      "tag": "llvm",
-      "version": "WAVM version 0.0.0-prerelease"
+    "wasmer-singlepass": {
+      "label": "wasmer",
+      "tag": "singlepass",
+      "version": "wasmer 7.3.0"
     }
   },
   "workloads": [
     {
-      "id": "nbody",
-      "label": "nbody",
-      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
+      "id": "pcre2",
+      "label": "pcre2",
+      "desc": "PCRE2: compile regular expressions and match them over text (303 KB module)",
       "results": {
-        "wago": 21.13,
-        "wazy": 16.603,
-        "wazero": 18.622,
-        "wasmtime": 19.692,
-        "v8": 38.257,
-        "wasm3": 114.351,
-        "wasmi": 227.797,
-        "wavm": 33.349
+        "wago": 12.368,
+        "wazy": 130.586,
+        "wazero": 104.213,
+        "wasmtime": 101.904,
+        "v8": 105.887,
+        "wasmer": 109.111,
+        "wasmer-singlepass": 16.798
       }
     },
     {
-      "id": "fib",
-      "label": "fib",
-      "desc": "recursive Fibonacci",
+      "id": "yyjson",
+      "label": "yyjson",
+      "desc": "yyjson: parse, edit and re-serialize JSON documents",
       "results": {
-        "wago": 11.207,
-        "wazy": 10.787,
-        "wazero": 25.36,
-        "wasmtime": 9.116,
-        "v8": 41.562,
-        "wasm3": 48.383,
-        "wasmi": 57.486,
-        "wavm": 10.28
+        "wago": 9.489,
+        "wazy": 49.712,
+        "wazero": 39.492,
+        "wasmtime": 50.813,
+        "v8": 14.612,
+        "wasmer": 57.722,
+        "wasmer-singlepass": 13.101
       }
     },
     {
-      "id": "spectralnorm",
-      "label": "spectralnorm",
-      "desc": "Benchmarks-Game power iteration (f64)",
+      "id": "utf8proc",
+      "label": "utf8proc",
+      "desc": "utf8proc: Unicode normalization and case folding (324 KB module)",
       "results": {
-        "wago": 9.649,
-        "wazy": 4.5,
-        "wazero": 4.833,
-        "wasmtime": 6.642,
-        "v8": 19.919,
-        "wasm3": 13.374,
-        "wasmi": 18.849,
-        "wavm": 21.727
+        "wago": 3.613,
+        "wazy": 7.214,
+        "wazero": 6.808,
+        "wasmtime": 7.503,
+        "v8": 13.16,
+        "wasmer": 15.606,
+        "wasmer-singlepass": 9.465
       }
     },
     {
-      "id": "quicksort",
-      "label": "quicksort",
-      "desc": "recursive in-place int sort",
+      "id": "nanosvg",
+      "label": "nanosvg",
+      "desc": "NanoSVG: parse SVG documents into shapes and paths",
       "results": {
-        "wago": 13.184,
-        "wazy": 10.997,
-        "wazero": 11.232,
-        "wasmtime": 11.954,
-        "v8": 21.147,
-        "wasm3": 24.864,
-        "wasmi": 27.46,
-        "wavm": 46.323
+        "wago": 6.195,
+        "wazy": 20.13,
+        "wazero": 16.22,
+        "wasmtime": 10.475,
+        "v8": 13.697,
+        "wasmer": 25.638,
+        "wasmer-singlepass": 11.583
       }
     },
     {
-      "id": "raytrace",
-      "label": "raytrace",
-      "desc": "recursive Whitted ray tracer (f64)",
+      "id": "libtommath",
+      "label": "libtommath",
+      "desc": "LibTomMath: big-integer modular arithmetic",
       "results": {
-        "wago": 11.369,
-        "wazy": 7.459,
-        "wazero": 7.578,
-        "wasmtime": 10.005,
-        "v8": 19.116,
-        "wasm3": 19.579,
-        "wasmi": 35.169,
-        "wavm": 31.199
+        "wago": 5.16,
+        "wazy": 14.404,
+        "wazero": 11.64,
+        "wasmtime": 8.783,
+        "v8": 13.654,
+        "wasmer": 25.751,
+        "wasmer-singlepass": 11.124
       }
     },
     {
-      "id": "sha256",
-      "label": "sha256",
-      "desc": "64-round SHA-256, integer rotate/xor",
+      "id": "coremark",
+      "label": "coremark",
+      "desc": "CoreMark 2K performance run",
       "results": {
-        "wago": 7.668,
-        "wazy": 3.721,
-        "wazero": 3.482,
-        "wasmtime": 6.169,
-        "v8": 16.394,
-        "wasm3": 4.658,
-        "wasmi": 6.471,
-        "wavm": 22.112
+        "wago": 23.189,
+        "wazy": 31.411,
+        "wazero": 43.684,
+        "wasmtime": 25.793,
+        "v8": 32.515,
+        "wasmer": 32.003,
+        "wasmer-singlepass": 51.971
       }
     }
   ]

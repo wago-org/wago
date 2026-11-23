@@ -24,12 +24,21 @@ the current captures with
 
 - `runtimes.json` lists runtimes, their command shape, engine `tag`, and
   workloads. Each runtime's binary is `bin` on `PATH`. Set the named `env`
-  variable to override it, such as `WASM3_BIN=/path/to/wasm3`.
+  variable to override it, such as `WASMER_BIN=/path/to/wasmer`.
 - `twins/*.wasm` are committed work twins. Each runs its full workload from
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
-- `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
-  appended to the matching `corpus/sources/rust/*.rs` kernel.
+- The twins are [wasm.fyi](https://wasm.fyi) workloads built from real C
+  libraries (PCRE2, yyjson, utf8proc, NanoSVG, LibTomMath) plus CoreMark, so
+  each run exercises compiling a 8–324 KB module as well as executing it.
+  Workloads that need input bytes written into memory first (such as zstd)
+  can't be driven from a plain `_start` and are left out. `make-twins.py` takes
+  each wasm.fyi artifact unchanged and adds a `_start` that calls the workload
+  export with wasm.fyi's arguments and traps unless the result matches
+  wasm.fyi's oracle, so the run.mjs preflight also checks correctness.
+  `twins/wasmfyi.json` records each twin's wasm.fyi id, artifact SHA-256,
+  arguments, and expected result. Rebuild with
+  `bench/startup/make-twins.py <wasm.fyi corpus-cache> bench/startup/twins`.
 - `run.mjs` performs one host sweep and writes `startup-arm64.json` or
   `startup-amd64.json`.
 - Both architecture-specific JSON files are committed inputs to the website
