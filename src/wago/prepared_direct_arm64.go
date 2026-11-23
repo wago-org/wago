@@ -107,8 +107,8 @@ func (fn *WasmFunc) invokeDirectInt(args []uint64) ([]uint64, error) {
 func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {
-		if (preparedEarlyI32LightSupported || preparedTinyGoI32LightSupported) && fn.directI32LightOneArg {
-			out, err := fn.invokeI32Light(a0)
+		if preparedEarlyI32LightSupported && fn.directI32LightOneArg {
+			out, err := fn.invokeUnboundedI32Light(a0)
 			in.endFastInvocation(nil)
 			return out, err
 		}
@@ -119,25 +119,18 @@ func (fn *WasmFunc) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error
 	return fn.invokeDirectIntFixedSlow(a0, a1, a2, a3)
 }
 
-// invokeI32Light enters with one normalized argument and returns one result.
-// Standard Go keeps its scheduler transition for unbounded entries. TinyGo
-// uses the prebound call block only for entries already proved bounded.
-func (fn *WasmFunc) invokeI32Light(arg uint64) ([]uint64, error) {
+// invokeUnboundedI32Light keeps the scheduler transition used by ordinary
+// unbounded entries while avoiding general register and result dispatch.
+func (fn *WasmFunc) invokeUnboundedI32Light(arg uint64) ([]uint64, error) {
 	in := fn.in
 	wruntime.PreparePreparedIntTrap(in.trap)
-	arg = uint64(uint32(arg))
-	var result uint64
-	if preparedTinyGoI32LightSupported {
-		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, arg, 0, 0, 0)
-	} else {
-		var err error
-		result, err = in.eng.EnterPreparedIntLight(fn.directEntry, fn.directLinMem, arg, 0, 0, 0)
-		if err != nil {
-			return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
-		}
+	result, err := in.eng.EnterPreparedIntLight(fn.directEntry, fn.directLinMem, uint64(uint32(arg)), 0, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		err = in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		return nil, err
 	}
 	goruntime.KeepAlive(fn)
 	goruntime.KeepAlive(in)
