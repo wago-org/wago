@@ -83,6 +83,11 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 		!profileEnabled && !regallocCheckEnabled && len(f.customInstructions) == 0 && (f.stats == nil || !f.stats.RecordSources)
 	var swapHeadSites [8]int
 	swapHeadN := 0
+	condNegEligible := conditionalNegationEnabled && f.hasLoop && n <= 16<<10 && !f.opaqueFragments && !f.moduleEH &&
+		!f.tracksGCFrameRoots() && !compact && !profileEnabled && !regallocCheckEnabled &&
+		len(f.customInstructions) == 0 && (f.stats == nil || !f.stats.RecordSources)
+	var condNegSites [16]int
+	condNegN := 0
 	branchPairCandidate, storeLoadCandidate := false, false
 	exitCompareCandidate, testCompareCandidate := false, false
 	branchFold := f.opt(optBranchFold)
@@ -92,6 +97,12 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	b = b[:n:n]
 	for pc := 0; pc <= len(b)-4; pc += 4 {
 		w := rdWord(b, pc)
+		if condNegEligible && condNegN < len(condNegSites) && pc+12 <= n &&
+			(w&0xffffffe0 == 0xd2800000 && rdWord(b, pc+4)&0xffe0fc00 == 0x4b000000 ||
+				w&0xfffffc00 == 0x131f7c00) {
+			condNegSites[condNegN] = pc
+			condNegN++
+		}
 		if swapHeadEligible && swapHeadN < len(swapHeadSites) && pc+32 <= n &&
 			w&0xffc0001f == 0x7100001f && rdWord(b, pc+4)&0xff00001f == 0x54000000|uint32(condAE) &&
 			rdWord(b, pc+8)&0xffe0fc00 == 0x0b000800 {
@@ -211,6 +222,19 @@ func (f *fn) finalizePeepholes(entryOffsets ...int) {
 	}
 	if f.opt(optRepeatedStoreRegion) {
 		f.foldRepeatedStoreRegions(b, targets, entryOffsets...)
+	}
+
+	if condNegN != 0 {
+		// The flag-lineage pass runs first so it can remove compare/result
+		// round trips while the original select encodings are still present.
+		if threadCandidate || branchPairCandidate {
+			for pc := 0; pc < n; pc += 4 {
+				if target, ok := branchTarget(pc, rdWord(b, pc)); ok {
+					branchTargetAdd(targets, target, n)
+				}
+			}
+		}
+		f.foldConditionalNegation(b, condNegSites[:condNegN], targets, entryOffsets)
 	}
 	if swapHeadN != 0 {
 		f.stats.peepN("affine-swap-head-forward", f.forwardAffineSwapHeads(b, swapHeadSites[:swapHeadN], targets, entryOffsets))
