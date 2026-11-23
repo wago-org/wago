@@ -72,7 +72,7 @@ func Generate(compiled any, factory string) ([]byte, error) {
 		out.WriteString(")\n")
 	}
 	fmt.Fprintf(&out, "func %s() *Compiled {\nc := %s\n", factory, literal)
-	out.WriteString("for i := range c.GCTypeDescs { c.GCTypeDescs[i].PrepareScanPlan() }\nreturn installCompilerCompiledFinalizer(c)\n}\n")
+	out.WriteString("for i := range c.GCTypeDescs { c.GCTypeDescs[i].PrepareScanPlan() }\ninstallCompilerCompiledFinalizer(c)\nreturn c\n}\n")
 	result, err := format.Source(out.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("format standalone initializer: %w", err)
