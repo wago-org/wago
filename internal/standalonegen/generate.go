@@ -115,7 +115,9 @@ func omit(t reflect.Type, field string) bool {
 		case "validateMemo":
 			return field == "execution" || field == "once" || field == "err" || field == "hostThunks" || field == "structuralCallIdentities"
 		case "compiledCacheIndexes":
-			return field == "valueTypeIndex" || field == "gcTypeMapping" || field == "funcrefImportState" || field == "failedMappings" || field == "unmapCode" || field == "mapThunkCode" || field == "sealCode"
+			// The generated factory installs its own finalizer. Carrying this
+			// owner pointer would also serialize a cycle back to the input.
+			return field == "pendingFinalizer" || field == "valueTypeIndex" || field == "gcTypeMapping" || field == "funcrefImportState" || field == "failedMappings" || field == "unmapCode" || field == "mapThunkCode" || field == "sealCode"
 		case "rv64ExecutionContract":
 			return field == "verified" || field == "rooted"
 		}
