@@ -77,7 +77,8 @@ func snapshotMetadataBytes(c *Compiled, limit uint64) (uint64, error) {
 	snapshotSlice(&b, c.FuncTypeID)
 	snapshotSlice(&b, c.Elems)
 	snapshotSlice(&b, c.passiveElems)
-	if _, compact := compactActiveDataSize(c); compact {
+	activeDataPlan, compact := planCompactActiveData(c)
+	if compact {
 		b.add(1, unsafe.Sizeof(compactActiveData{}))
 		b.add(c.activeDataCount(), unsafe.Sizeof(compactDataRecord{}))
 	} else {
@@ -129,12 +130,16 @@ func snapshotMetadataBytes(c *Compiled, limit uint64) (uint64, error) {
 			}
 		}
 	}
-	for i := 0; i < c.activeDataCount(); i++ {
-		data, payloadBytes := c.activeDataInfoAt(i)
-		b.add(payloadBytes, 1)
-		snapshotSlice(&b, data.Offset.Expr)
-		if b.err != nil {
-			return 0, b.err
+	if activeDataPlan.dense {
+		b.add(activeDataPlan.size, 1)
+	} else {
+		for i := 0; i < c.activeDataCount(); i++ {
+			data, payloadBytes := c.activeDataInfoAt(i)
+			b.add(payloadBytes, 1)
+			snapshotSlice(&b, data.Offset.Expr)
+			if b.err != nil {
+				return 0, b.err
+			}
 		}
 	}
 	for _, data := range c.PassiveData {

@@ -75,7 +75,8 @@ const (
 
 var jobMemoryCache struct {
 	sync.Mutex
-	j *JobMemory
+	j                  *JobMemory
+	warmStart, warmEnd int // byte offsets in the parked reservation
 }
 
 // NewJobMemory lays out basedata immediately before a fixed-size (non-growable)
@@ -168,9 +169,13 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
 		jobMemoryCache.j = nil
+		warmStart, warmEnd := jobMemoryCache.warmStart, jobMemoryCache.warmEnd
 		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		prepareReusedLinearPages(j.mem, initialBytes)
+		if warmEnd != 0 && warmEnd > roundUpPage(basedataSize+initialBytes) {
+			_ = madviseDontNeed(j.mem[warmStart:warmEnd])
+		}
 		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
@@ -203,7 +208,7 @@ const jobMemoryReclaimThreshold = 384 << 10
 // platform's zero-reclamation operation or its correctness-preserving explicit
 // clear fallback (mirrors the guard-page path's decommitGuarded, minus the
 // PROT_NONE re-arm — explicit bounds never fault, so the mapping stays RW).
-func (j *JobMemory) reclaimForReuse() error {
+func (j *JobMemory) reclaimForReuse(warmStart, warmEnd int) error {
 	used := roundUpPage(basedataSize + j.curBytes())
 	if used > len(j.mem) {
 		used = len(j.mem)
@@ -211,6 +216,13 @@ func (j *JobMemory) reclaimForReuse() error {
 	if used <= jobMemoryReclaimThreshold {
 		clear(j.mem[:used])
 		return nil
+	}
+	if warmEnd != 0 {
+		clear(j.mem[warmStart:warmEnd])
+		if err := madviseDontNeed(j.mem[:warmStart]); err != nil {
+			return err
+		}
+		return madviseDontNeed(j.mem[warmEnd:used])
 	}
 	if reclaimSparseLinearPages(j.mem[:used], j.curBytes()) {
 		return nil
@@ -584,6 +596,13 @@ func (j *JobMemory) Close() error {
 // mappings use the small non-guarded cache. Anything the caches decline is
 // unmapped.
 func ReleaseJobMemory(j *JobMemory) error {
+	return ReleaseJobMemoryWithInitializedRange(j, 0, 0)
+}
+
+// ReleaseJobMemoryWithInitializedRange keeps a bounded, zeroed initializer
+// span resident in the one-slot cache. Live JobMemory objects need no cache
+// metadata, and a later smaller instance can release the extra pages.
+func ReleaseJobMemoryWithInitializedRange(j *JobMemory, low, high int) error {
 	if j == nil {
 		return nil
 	}
@@ -598,12 +617,21 @@ func ReleaseJobMemory(j *JobMemory) error {
 	// Any size fits the slot now. A successfully decommitted reservation costs
 	// address space rather than RAM; platform clear fallbacks can retain resident
 	// pages, but still preserve correctness while avoiding fresh mmap churn.
-	if err := j.reclaimForReuse(); err != nil {
+	var warmStart, warmEnd int
+	if low >= 0 && high > low && high-low >= 128<<10 && high-low <= 512<<10 && high <= j.curBytes() {
+		start := (j.linOff + low) &^ (pageSize - 1)
+		end := roundUpPage(j.linOff + high)
+		if end <= len(j.mem) && end-start <= 512<<10 {
+			warmStart, warmEnd = start, end
+		}
+	}
+	if err := j.reclaimForReuse(warmStart, warmEnd); err != nil {
 		return j.Close()
 	}
 	jobMemoryCache.Lock()
 	if jobMemoryCache.j == nil {
 		jobMemoryCache.j = j
+		jobMemoryCache.warmStart, jobMemoryCache.warmEnd = warmStart, warmEnd
 		changeInterruptLinearMemoryCache(1)
 		jobMemoryCache.Unlock()
 		return nil

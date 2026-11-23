@@ -85,7 +85,7 @@ func cloneCompiledExecutionMetadata(c *Compiled) *Compiled {
 }
 
 func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution, nativeData bool) *Compiled {
-	compactPayloadBytes, compactData := compactActiveDataSize(c)
+	activeDataPlan, compactData := planCompactActiveData(c)
 	compactData = compactData && compactExecution
 	var valTypeCount, refInitCount, byteCount int
 	for i := range c.Funcs {
@@ -155,7 +155,7 @@ func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution, nativeDa
 	out.passiveElems = cloneCompiledElems(c.passiveElems, &elems, &refInits, &bytes)
 	if compactData {
 		out.Data = nil
-		cloneCompactActiveData(out.compactData, c, compactPayloadBytes, nativeData)
+		cloneCompactActiveData(out.compactData, c, activeDataPlan, nativeData)
 	} else {
 		out.compactData = nil
 		if c.compactData != nil {
