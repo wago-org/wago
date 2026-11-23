@@ -6,6 +6,17 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ## [Unreleased]
 
+### Changed
+
+- Improve TinyGo compilation and prepared-call latency on AMD64 and ARM64.
+  Extend the AMD64 operand-storage and prepared integer-call optimizations
+  to standard Go.
+  ([#1073](https://github.com/wago-org/wago/pull/1073))
+- Reduce peak process memory on ARM64 with compact operand storage, reusable
+  compiler scratch, and deferred native-code mapping. Reclaim sparse
+  linear-memory pages more selectively on Linux ARM64.
+  ([#1073](https://github.com/wago-org/wago/pull/1073))
+
 ### Fixed
 
 - Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
