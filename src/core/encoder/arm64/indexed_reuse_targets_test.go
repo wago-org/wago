@@ -56,3 +56,15 @@ func TestValidateIndexedReuseRejectsTargetInsideWindow(t *testing.T) {
 		t.Fatal("target at the proving ADD was rejected")
 	}
 }
+
+func TestIndexedReuseTargetOpcode(t *testing.T) {
+	for opcode := range 256 {
+		// Only B.cond also restricts a bit below the top byte.
+		word := uint32(opcode) << 24
+		_, branch := dominatedDirectBranchTarget(0, word)
+		adr := word&0x9f000000 == 0x10000000
+		if got, want := indexedReuseTargetOpcode[opcode], branch || adr; got != want {
+			t.Errorf("first byte %#02x: got %t, want %t", opcode, got, want)
+		}
+	}
+}

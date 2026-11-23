@@ -7,7 +7,10 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"runtime"
+)
 
 // indexedReuseWindow records one omitted X16 address computation. The proof
 // examined the straight-line bytes in [start, at); the reusing access is
@@ -69,6 +72,17 @@ func (a *Asm) IndexedReuseAcceptsTarget(t int) bool {
 	return true
 }
 
+// indexedReuseTargetOpcode is a first-byte filter over B, BL, B.cond,
+// CBZ/CBNZ, TBZ/TBNZ and ADR. Exact decoding still checks the remaining bits.
+var indexedReuseTargetOpcode = [256]bool{
+	0x14: true, 0x15: true, 0x16: true, 0x17: true, // B
+	0x94: true, 0x95: true, 0x96: true, 0x97: true, // BL
+	0x54: true,                                     // B.cond
+	0x34: true, 0x35: true, 0xb4: true, 0xb5: true, // CBZ/CBNZ
+	0x36: true, 0x37: true, 0xb6: true, 0xb7: true, // TBZ/TBNZ
+	0x10: true, 0x30: true, 0x50: true, 0x70: true, // ADR
+}
+
 // ValidateIndexedReuse reports whether every recorded indexed-base reuse is
 // still straight-line: no direct branch, ADR landing pad, or extra target
 // (jump-table entries, internal entries) lands inside a proof window. Call it
@@ -85,6 +99,9 @@ func (a *Asm) ValidateIndexedReuse(extraTargets []int, opaque func(pc int) bool)
 	}
 	b := a.B
 	for pc := 0; pc+4 <= len(b); pc += 4 {
+		if runtime.Compiler == "tinygo" && !indexedReuseTargetOpcode[b[pc+3]] {
+			continue
+		}
 		if opaque != nil && opaque(pc) {
 			continue
 		}
