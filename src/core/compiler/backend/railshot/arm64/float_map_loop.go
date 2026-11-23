@@ -10,9 +10,11 @@
 package arm64
 
 import (
+	"os"
+	"runtime"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"os"
 )
 
 // Nonzero-immediate maps retain a same-binary scalar control for qualification.
@@ -1366,6 +1368,11 @@ func (f *fn) emitFloatMapPlan(p *floatMapPlan) {
 		f.patchBranch19(short, f.a.Len())
 		f.cmpImm(span, p.packet+p.step, false)
 		done := f.a.Bcond(condB)
+		if runtime.GOOS == "darwin" && p.wide && !p.integer && !f.policy.CompactNative {
+			// Place the short double-precision packet at a 64-byte offset
+			// within the function. The backedge skips the padding.
+			f.alignCode(6)
+		}
 		compactLoop := f.a.Len()
 		packet(p.packet)
 		f.cmpImm(span, p.packet+p.step, false)
