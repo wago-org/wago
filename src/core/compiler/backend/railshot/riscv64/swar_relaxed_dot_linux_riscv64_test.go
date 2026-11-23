@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSWARRV64RelaxedDotSaturatedPairsAndWrappedAccumulators(t *testing.T) {
+func TestSWARRV64RelaxedDotFullPairsAndWrappedAccumulators(t *testing.T) {
 	previous := goruntime.GOMAXPROCS(1)
 	defer goruntime.GOMAXPROCS(previous)
 	e, j, args, results, trap, _ := thunkFixtureRV64(t, 6)
@@ -31,7 +31,7 @@ func TestSWARRV64RelaxedDotSaturatedPairsAndWrappedAccumulators(t *testing.T) {
 				results[i] = 0xa5
 			}
 			if err := e.CallPrepared(entry, args, j.LinMemBase(), trap, results); err != nil || !bytes.Equal(results[:16], want[:]) || !bytes.Equal(args[:48], input[:]) {
-				t.Fatal("relaxed signed dot/saturated intermediate/wrap", kind, label, input, results[:16], want, err)
+				t.Fatal("relaxed signed dot/full intermediate/wrap", kind, label, input, results[:16], want, err)
 			}
 			for i := 16; i < 32; i++ {
 				if results[i] != 0xa5 {
@@ -39,6 +39,7 @@ func TestSWARRV64RelaxedDotSaturatedPairsAndWrappedAccumulators(t *testing.T) {
 				}
 			}
 		}
+		check(swarRelaxedDotUpstreamCorner(), -1)
 		for sample := 0; sample < 128; sample++ {
 			var input [48]byte
 			_, _ = rng.Read(input[:])
