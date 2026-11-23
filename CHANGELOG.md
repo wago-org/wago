@@ -16,6 +16,10 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
   compiler scratch, and deferred native-code mapping. Reclaim sparse
   linear-memory pages more selectively on Linux ARM64.
   ([#1073](https://github.com/wago-org/wago/pull/1073))
+- Share TinyGo ARM64 entry thunks, shorten prepared calls, and batch
+  active-data initialization for privately owned instances. Reuse resident
+  initializer pages on Linux AMD64.
+  ([#1073](https://github.com/wago-org/wago/pull/1073))
 
 ### Fixed
 
