@@ -55,20 +55,20 @@ func tinygoARM64SaveGoContext(a *a64.Asm, top a64.Reg) {
 	a.SubImm64(top, top, 176)
 	a.AddImm64(a64.X11, a64.SP, 0)
 	tinygoARM64Store(a, a64.X11, top, 0)
-	for reg, off := a64.X19, uint32(8); reg <= a64.LR; reg, off = reg+1, off+8 {
-		tinygoARM64Store(a, reg, top, off)
+	for reg, off := a64.X19, int32(8); reg < a64.LR; reg, off = reg+2, off+16 {
+		a.StpOffset(reg, reg+1, top, off)
 	}
-	for reg, off := a64.Reg(8), int32(104); reg <= a64.Reg(15); reg, off = reg+1, off+8 {
-		a.FStoreDisp(top, off, reg, true)
+	for reg, off := a64.Reg(8), int32(104); reg < 15; reg, off = reg+2, off+16 {
+		a.FStpOffset64(reg, reg+1, top, off)
 	}
 }
 
 func tinygoARM64RestoreGoContext(a *a64.Asm) {
-	for reg, off := a64.X19, uint32(8); reg <= a64.LR; reg, off = reg+1, off+8 {
-		tinygoARM64Load(a, reg, a64.SP, off)
+	for reg, off := a64.X19, int32(8); reg < a64.LR; reg, off = reg+2, off+16 {
+		a.LdpOffset(reg, reg+1, a64.SP, off)
 	}
-	for reg, off := a64.Reg(8), int32(104); reg <= a64.Reg(15); reg, off = reg+1, off+8 {
-		a.FLoadDisp(reg, a64.SP, off, true)
+	for reg, off := a64.Reg(8), int32(104); reg < 15; reg, off = reg+2, off+16 {
+		a.FLdpOffset64(reg, reg+1, a64.SP, off)
 	}
 	tinygoARM64Load(a, a64.X11, a64.SP, 0)
 	a.AddImm64(a64.SP, a64.X11, 0)

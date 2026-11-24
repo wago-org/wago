@@ -22,6 +22,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/automation"
 	managerplugin "github.com/wago-org/wago/cli/manager/internal/plugin"
+	"github.com/wago-org/wago/internal/wagopaths"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -207,6 +208,7 @@ func Build(request Request) (Result, error) {
 	}
 	if request.TinyGo {
 		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_standalone"}
+		args = append(args, wagopaths.TinyGoTargetFlags(request.Target.OS, request.Target.Arch)...)
 		if !request.KeepSymbols {
 			args = append(args, "-no-debug")
 		}

@@ -26,7 +26,7 @@ type additiveRecurrence struct {
 // stepping below zero from a nonnegative recursive case.
 func (f *fn) additiveRecurrence(c *wasm.Func) additiveRecurrence {
 	if !additiveRecurrenceEnabled || !f.makesCalls || !f.opt(optStackFence) || f.skipFence ||
-		f.compactNative() || f.a.ReserveBranch19 || f.interruptible || f.moduleEH ||
+		f.compactNative() || f.a.ReserveBranch19 || f.moduleEH ||
 		f.tracksGCFrameRoots() || len(f.customInstructions) != 0 || profileEnabled || regallocCheckEnabled ||
 		f.stats != nil && f.stats.RecordSources || f.nLocals != 1 || f.nParams != 1 || len(f.ft.Results) != 1 ||
 		f.localType[0] != mtI32 || mtOf(f.ft.Results[0]) != mtI64 || len(c.BodyBytes) > 64 {
@@ -90,6 +90,15 @@ func (f *fn) emitAdditiveRecurrence(p additiveRecurrence, entry int) {
 	for _, site := range [...]int{small, large, overflow, low} {
 		f.recordPCRelative(site)
 		f.patchBranch19(site, entry+4)
+	}
+	if f.interruptible {
+		// The bounded recurrence skips recursive entries and their polls. Use
+		// the normal entry to handle a pending interruption before running it.
+		f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
+		f.ld32(X17, X16, 0)
+		pending := f.zeroBranch(X17, false, false)
+		f.recordPCRelative(pending)
+		f.patchBranch19(pending, entry+4)
 	}
 	history := [...]Reg{X9, X10, X11, X12}
 	for i := range p.far {

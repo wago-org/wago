@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Improve TinyGo execution on ARM64 with shorter call trampolines, bounded
+  recurrence lowering, and bounds-check reuse in task-native loops. Enable
+  LSE atomics in managed Darwin ARM64 TinyGo builds.
 - Improve ARM64 execution with faster loop lowering, conditional arithmetic,
   and SIMD splats. Enable guard-page bounds checks on Darwin ARM64 with TinyGo.
 - Improve TinyGo compilation and prepared-call latency on AMD64 and ARM64.
@@ -27,6 +30,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Generate standalone modules with their own compiled-code finalizer.
 - Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
   `exn` hierarchies (including `noextern`, `nofunc`, and `noexn`) instead of
   trapping or rejecting the module at compile time.

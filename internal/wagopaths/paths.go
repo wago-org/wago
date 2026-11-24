@@ -70,6 +70,14 @@ func (b Build) ValidatePlatform(goos, goarch string) error {
 	return nil
 }
 
+// TinyGoTargetFlags selects instructions guaranteed by the deployment target.
+func TinyGoTargetFlags(goos, goarch string) []string {
+	if goos == "darwin" && goarch == "arm64" {
+		return []string{"-llvm-features=+lse"}
+	}
+	return nil
+}
+
 func (b Build) Description() string {
 	switch b {
 	case BuildNormal:

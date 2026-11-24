@@ -88,6 +88,7 @@ func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagop
 			"build", "-scheduler=tasks", "-no-debug", "-opt=z", "-gc=conservative",
 			"-ldflags", "-X main.version=" + stamp,
 		}
+		args = append(args, wagopaths.TinyGoTargetFlags(runtime.GOOS, runtime.GOARCH)...)
 		if tags := sourceBuildTag(profile); tags != "" {
 			args = append(args, "-tags", tags)
 		}
