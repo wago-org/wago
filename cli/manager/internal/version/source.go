@@ -11,12 +11,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	goversion "go/version"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -34,6 +36,7 @@ var (
 	buildRunnerSource    = buildRunnerFromSourceContext
 	buildManagerSource   = buildManagerFromSourceContext
 	sourceArchiveMaximum = sourceArchiveLimit
+	tinyGoVersionRange   = regexp.MustCompile(`(?m)^requires go version [0-9]+\.[0-9]+ through ([0-9]+\.[0-9]+), got (go[0-9]+\.[0-9]+)\r?$`)
 )
 
 func sourceRepository() string {
@@ -94,6 +97,20 @@ func buildRunnerFromSourceContext(ctx context.Context, ref string, profile wagop
 		}
 		args = append(args, "-o", tempRunner, "./cli/wago")
 		output, buildErr := runSourceCommand(ctx, source, nil, "tinygo", args...)
+		if buildErr != nil && ctx.Err() == nil {
+			// Read the ceiling from TinyGo so newer releases work without Wago changes.
+			if match := tinyGoVersionRange.FindSubmatch(output); match != nil && goversion.Compare(string(match[2]), "go"+string(match[1])) > 0 {
+				toolchain := "go" + string(match[1]) + ".0"
+				if progress != nil {
+					progress.Begin("retrying TinyGo build with " + toolchain)
+				}
+				env := append(os.Environ(), "GOTOOLCHAIN="+toolchain)
+				output, buildErr = runSourceCommand(ctx, source, env, "tinygo", args...)
+				if buildErr != nil {
+					buildErr = fmt.Errorf("retry with %s: %w", toolchain, buildErr)
+				}
+			}
+		}
 		if buildErr != nil {
 			if progress != nil {
 				progress.Fail("TinyGo source build failed")

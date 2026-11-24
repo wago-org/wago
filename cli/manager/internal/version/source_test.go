@@ -447,6 +447,74 @@ func TestBuildRunnerFromSourceUsesProfileTag(t *testing.T) {
 	}
 }
 
+func TestBuildTinyRunnerFromSourceGoVersion(t *testing.T) {
+	if err := wagopaths.BuildTiny.ValidatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
+		t.Skip(err)
+	}
+	bin := t.TempDir()
+	tinygo := "tinygo"
+	if runtime.GOOS == "windows" {
+		tinygo += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(bin, tinygo), nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("GOTOOLCHAIN", "go1.27.1")
+
+	old := runSourceCommand
+	t.Cleanup(func() { runSourceCommand = old })
+	for _, test := range []struct {
+		name, diagnostic, retry string
+	}{
+		{name: "supported"},
+		{name: "newer", diagnostic: "requires go version 1.19 through 1.26, got go1.27", retry: "go1.26.0"},
+		{name: "future", diagnostic: "requires go version 1.25 through 1.39, got go1.40", retry: "go1.39.0"},
+		{name: "older", diagnostic: "requires go version 1.27 through 1.28, got go1.26"},
+		{name: "unrelated", diagnostic: "compile failed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var builds int
+			runSourceCommand = func(_ context.Context, _ string, env []string, name string, args ...string) ([]byte, error) {
+				switch name {
+				case "git":
+					return nil, os.MkdirAll(args[len(args)-1], 0o755)
+				case "tinygo":
+					builds++
+					if builds == 1 && test.diagnostic != "" {
+						return []byte(test.diagnostic + "\n"), errors.New("exit status 1")
+					}
+					if builds > 1 && (test.retry == "" || !slices.Contains(env, "GOTOOLCHAIN="+test.retry)) {
+						t.Fatalf("unexpected TinyGo retry environment for %q", test.name)
+					}
+					output := args[slices.Index(args, "-o")+1]
+					return nil, os.WriteFile(output, []byte("built"), 0o755)
+				default:
+					return nil, fmt.Errorf("unexpected command %s", name)
+				}
+			}
+			dest := filepath.Join(t.TempDir(), "runner")
+			err := buildRunnerFromSource("v1.2.3", wagopaths.ProfileStandard, wagopaths.BuildTiny, dest, nil)
+			if test.diagnostic != "" && test.retry == "" {
+				if err == nil || !strings.Contains(err.Error(), test.diagnostic) || builds != 1 {
+					t.Fatalf("got error %v after %d builds", err, builds)
+				}
+				return
+			}
+			wantBuilds := 1
+			if test.retry != "" {
+				wantBuilds = 2
+			}
+			if err != nil || builds != wantBuilds {
+				t.Fatalf("got error %v after %d builds", err, builds)
+			}
+			if body, err := os.ReadFile(dest); err != nil || string(body) != "built" {
+				t.Fatalf("built runner = %q, %v", body, err)
+			}
+		})
+	}
+}
+
 func TestFinishSourceBuildReplacesExisting(t *testing.T) {
 	directory := t.TempDir()
 	destination := filepath.Join(directory, "wago")
