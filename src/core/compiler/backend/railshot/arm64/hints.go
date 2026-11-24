@@ -1591,7 +1591,8 @@ func (s *byteBodyScanner) noteMemoryInstructionHints(op, previous byte, local ui
 	if err != nil {
 		return false, err
 	}
-	if imm.Kind == wasm.InstrV128Const || imm.Kind == wasm.InstrI8x16Shuffle {
+	// The classifier records the SIMD subopcode for these immediates.
+	if op == 0xfd && (imm.Subopcode == 12 || imm.Subopcode == 13) { // v128.const or i8x16.shuffle
 		s.h.immediateFreeOps |= vectorConstHintMask
 	}
 	if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
