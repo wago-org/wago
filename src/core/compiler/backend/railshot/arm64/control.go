@@ -1494,7 +1494,7 @@ func (f *fn) branchJump(fr *ctrlFrame, after ...*wasm.Reader) {
 func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	switch fr.kind {
 	case cfLoop:
-		if f.unrollScalarLatch(fr, cc) {
+		if f.unrollScalarLatch(fr, cc) || f.unrollScalarLoopGraph(fr, cc) {
 			return true
 		}
 		site := f.a.Bcond(cc)

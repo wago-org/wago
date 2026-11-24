@@ -242,3 +242,60 @@ func TestScalarBranchLoopCopiesPreserveInternalBackedgePhase(t *testing.T) {
 		t.Fatalf("copy stride=%d, want 48", stride)
 	}
 }
+
+func TestGuardedScalarBranchLoopPreservesConditionalLatch(t *testing.T) {
+	if profileEnabled {
+		t.Skip("unrolling is disabled with source profiling")
+	}
+	const bodySize = 40
+	loads := [2]uint32{
+		0xb8606800 | uint32(linMemReg)<<5 | 2<<16 | 9,
+		0xb8604800 | uint32(linMemReg)<<5 | 3<<16 | 10,
+	}
+	for _, guarded := range []bool{false, true} {
+		f := branchLoopProofFixture()
+		f.guardMode = guarded
+		for i, load := range loads {
+			wrWord(f.a.B, 32+4*i, load)
+		}
+		if admitted := f.unrollScalarLoopGraph(&f.ctrl[1], condNE); admitted != guarded {
+			t.Fatalf("guarded=%t: loop admission = %t", guarded, admitted)
+		}
+		if !guarded {
+			if len(f.a.B) != bodySize {
+				t.Fatal("rejected loop changed the native body")
+			}
+			continue
+		}
+		end := len(f.a.B)
+		if end != 4*(bodySize+4) {
+			t.Fatalf("unrolled code size = %d", end)
+		}
+		first, second, overflow := f.frameEndSites(&f.ctrl[0])
+		f.patchFrameEndSites(first, second, overflow)
+		for phase := range 4 {
+			start := phase * (bodySize + 4)
+			for i, load := range loads {
+				if got := rdWord(f.a.B, start+32+4*i); got != load {
+					t.Fatalf("copy %d load %d = %08x, want %08x", phase, i, got, load)
+				}
+			}
+			for _, edge := range []struct {
+				at, target int
+				cond       Cond
+			}{
+				{start + 4, end, condAE},
+				{start + bodySize, end, condE},
+			} {
+				if phase == 3 && edge.at == start+bodySize {
+					edge.target, edge.cond = 0, condNE
+				}
+				word := rdWord(f.a.B, edge.at)
+				target, ok := branchTarget(edge.at, word)
+				if !ok || target != edge.target || Cond(word&15) != edge.cond {
+					t.Fatalf("copy %d branch at %d = %08x to %d, want condition %d to %d", phase, edge.at, word, target, edge.cond, edge.target)
+				}
+			}
+		}
+	}
+}

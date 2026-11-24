@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Speed up eligible ARM64 search loops with guard-page bounds checks by
+  unrolling conditional backedges.
+
 - Reduce AMD64 compile overhead by reusing established control merge state.
 - Improve TinyGo execution on ARM64 with shorter call trampolines, bounded
   recurrence lowering, and bounds-check reuse in task-native loops. Enable
