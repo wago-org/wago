@@ -9,15 +9,27 @@
 
 package arm64
 
-import "encoding/binary"
+import (
+	"encoding/binary"
 
-// unrollScalarBranches copies a bounded register-only control-flow graph. Every
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
+
+func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
+	return f.unrollScalarLoopGraph(fr, a64.CondAL)
+}
+
+// unrollScalarLoopGraph copies a bounded control-flow graph. Every
 // branch must stay inside the copied body or name a pending, empty outer-block
 // exit, or a proved conditional division-by-zero trap. Internal relative
 // displacements remain identical in each copy; copied outer exits join their
 // original owner's patch list. Each iteration retains all its tests and effects,
 // including early exits and branches to the body end.
-func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
+func (f *fn) unrollScalarLoopGraph(fr *ctrlFrame, latch Cond) bool {
+	conditionalLatch := latch != a64.CondAL
+	if conditionalLatch && (latch != condNE || !f.guardMode || f.threadedMemory0 || f.memoryAddr64(0)) {
+		return false
+	}
 	if !f.opt(optScalarLoopUnroll) || !f.hasLoop || profileEnabled || f.loopInterruptible() || f.moduleEH || f.gcFrameRoots != nil ||
 		len(f.customInstructions) != 0 || f.policy.CompactNative || f.a.ReserveBranch19 || f.opaqueFragments ||
 		f.stats != nil && f.stats.RecordSources || len(f.ctrl) == 0 || &f.ctrl[len(f.ctrl)-1] != fr ||
@@ -75,7 +87,7 @@ func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
 	var owners [64]*ctrlFrame
 	var conditional [64]bool
 	n := (end - start) / 4
-	internal, exits := 0, 0
+	internal, exits, loads := 0, 0, 0
 	hasInternalBackedge := false
 	for i := 0; i < n; i++ {
 		word := binary.LittleEndian.Uint32(f.a.B[start+4*i:])
@@ -158,14 +170,26 @@ func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
 				rd = regNone
 			}
 		}
+		if !ok && conditionalLatch && Reg(word>>5&31) == linMemReg {
+			switch word & 0xffe0fc00 {
+			case 0xb8606800, 0xb8604800: // LDR Wt,[Xn,Xm] or [Xn,Wm,UXTW]
+				// The guard handler uses the memory reservation. The clone keeps
+				// the same effective address and fault order.
+				rd, ok = Reg(word&31), true
+				if rd == 31 {
+					rd = regNone
+				}
+				loads++
+			}
+		}
 		if !ok || rd != regNone && (f.reserved.has(rd) || rd == X18 || rd == X26 || rd == X28 || rd == Reg(29) || rd == Reg(30)) {
 			return false
 		}
 	}
-	if internal < 1 || exits == 0 {
+	if internal < 1 || exits == 0 || conditionalLatch && (loads != 2 || hasInternalBackedge || divisionTrapMask != 0) {
 		return false
 	}
-	base := f.prepareLoopCounterBase(fr, words[:n], owners[:n], divisionTrapMask)
+	base := !conditionalLatch && f.prepareLoopCounterBase(fr, words[:n], owners[:n], divisionTrapMask)
 	// Preserve inner-loop fetch alignment in every outer copy. Padding only
 	// separates complete copies, so original body-end edges enter these NOPs
 	// before reaching the next copy or final backedge. Internal offsets stay fixed.
@@ -178,9 +202,13 @@ func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
 			f.a.B = binary.LittleEndian.AppendUint32(f.a.B, nopWord)
 		}
 	}
+	var latchExits [3]int
 	pad()
 	// Keep the source body's offsets and pending sites intact.
 	for phase := 1; phase < 4; phase++ {
+		if conditionalLatch {
+			latchExits[phase-1] = f.a.Bcond(invertCond(latch))
+		}
 		for i, word := range words[:n] {
 			if base && i == n-1 {
 				// The proved unit ADD uses base+1; later copies use base+2..4.
@@ -201,7 +229,14 @@ func (f *fn) unrollScalarBranches(fr *ctrlFrame) bool {
 	if base {
 		start -= 4
 	}
-	f.patchBranch26(f.a.Branch(), start)
+	if conditionalLatch {
+		f.patchBranch19(f.a.Bcond(latch), start)
+		for _, exit := range latchExits {
+			f.patchBranch19(exit, f.a.Len())
+		}
+	} else {
+		f.patchBranch26(f.a.Branch(), start)
+	}
 	if divisionTrapMask != 0 {
 		f.stats.peep("scalar-loop-unroll-div-trap")
 	}
