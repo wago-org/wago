@@ -127,6 +127,10 @@ func TestSourceContextRetainedPluginCannotRetainFacts(t *testing.T) {
 			}
 			for ctx := range retained {
 				native := (*pluginARM64Context)(ctx.(*managedPluginARM64Context))
+				// A released scratch owner clears the function state in place.
+				if native.f.sc == nil {
+					continue
+				}
 				token := shared.BeginSourceAttempt(&native.f.sc.scalar, m, 0)
 				if token != nil {
 					shared.EndSourceAttempt(token)
