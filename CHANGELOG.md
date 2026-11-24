@@ -8,6 +8,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Reduce AMD64 compile overhead by reusing established control merge state.
 - Improve TinyGo execution on ARM64 with shorter call trampolines, bounded
   recurrence lowering, and bounds-check reuse in task-native loops. Enable
   LSE atomics in managed Darwin ARM64 TinyGo builds.

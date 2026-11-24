@@ -493,20 +493,21 @@ func (f *fn) ensureFrameEH(fr *ctrlFrame) *ctrlFrameEH {
 	return cold.eh
 }
 
+// ctrlMerge reads the sidecar. Use ensureCtrlMerge before changing a slot
+// so the next function reset clears its references.
 func (f *fn) ctrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
 	if fr.mergeIndex == 0 {
 		return nil
 	}
-	sc := f.scratchState()
-	sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
-	return &sc.ctrlMerges[fr.mergeIndex-1]
+	return &f.scratchState().ctrlMerges[fr.mergeIndex-1]
 }
 
 func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
-	if merge := f.ctrlMerge(fr); merge != nil {
-		return merge
-	}
 	sc := f.scratchState()
+	if fr.mergeIndex != 0 {
+		sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
+		return &sc.ctrlMerges[fr.mergeIndex-1]
+	}
 	if sc.ctrlMerges == nil {
 		sc.ctrlMerges = make([]ctrlFrameMerge, 0, initialCtrlMergeCapacity)
 	}
@@ -522,7 +523,6 @@ func (f *fn) ctrlRoots(fr *ctrlFrame) *ctrlFrameRoots {
 	}
 	sc := f.scratchState()
 	if int(fr.mergeIndex) <= len(sc.ctrlRoots) {
-		sc.ctrlMergeTouched = max(sc.ctrlMergeTouched, int(fr.mergeIndex))
 		return &sc.ctrlRoots[fr.mergeIndex-1]
 	}
 	return nil
@@ -797,15 +797,29 @@ func (f *fn) setFrameResultGCRoot(fr *ctrlFrame, index int) {
 }
 
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
+	if !f.usesCalls {
+		f.reconcileLocals()
+		return
+	}
 	state := f.frameBranchState(fr)
+	established := state != nil
 	f.convergeEdgeTo(&state)
-	f.setFrameBranchState(fr, state)
+	if !established {
+		f.setFrameBranchState(fr, state)
+	}
 }
 
 func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
+	if !f.usesCalls {
+		f.reconcileLocals()
+		return
+	}
 	state := f.frameEntryState(fr)
+	established := state != nil
 	f.convergeEdgeTo(&state)
-	f.setFrameEntryState(fr, state)
+	if !established {
+		f.setFrameEntryState(fr, state)
+	}
 }
 
 type ehCatchClause struct {
