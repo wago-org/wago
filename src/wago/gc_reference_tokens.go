@@ -527,5 +527,5 @@ func (in *Instance) ReleaseGCRef(ref GCRef) error {
 // ReleaseExnRef releases an owned exception token issued by this instance.
 // It has the same lifetime and ownership checks as ReleaseGCRef.
 func (in *Instance) ReleaseExnRef(ref ExnRef) error {
-	return in.ReleaseGCRef(GCRef{token: ref.token})
+	return in.ReleaseGCRef(GCRef(ref))
 }

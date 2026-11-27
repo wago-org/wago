@@ -57,43 +57,32 @@ func rv64GCTypeSubtypingRuntimeTypedTableCallExecutionCode(*Compiled) bool { ret
 func rv64GCTypeSubtypingRefTestSingle(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingRefTestSingleExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingFinalityLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingFinalityLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingStructLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingStructLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingStructProjectionLink(*Compiled) bool { return false }
 func rv64GCTypeSubtypingStructProjectionLinkExecutionCode(*Compiled) bool {
 	return false
 }
 
-func rv64GCTypeSubtypingStructMismatchLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingStructMismatchLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingIndependentStructLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingIndependentStructLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingExtendedProjectionLink(*Compiled) bool { return false }
 func rv64GCTypeSubtypingExtendedProjectionLinkExecutionCode(*Compiled) bool {
 	return false
 }
 
-func rv64GCTypeSubtypingDuplicateRecursiveLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingDuplicateRecursiveLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingExtendedRecursiveLink(*Compiled) bool              { return false }
 func rv64GCTypeSubtypingExtendedRecursiveLinkExecutionCode(*Compiled) bool { return false }
 
-func rv64GCTypeSubtypingCrossGroupMismatchLink(*Compiled) bool { return false }
 func rv64GCTypeSubtypingCrossGroupMismatchLinkExecutionCode(*Compiled) bool {
 	return false
 }
 
-func rv64GCTypeSubtypingTransitiveMismatchLink(*Compiled) bool { return false }
 func rv64GCTypeSubtypingTransitiveMismatchLinkExecutionCode(*Compiled) bool {
 	return false
 }

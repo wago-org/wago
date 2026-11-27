@@ -7,6 +7,7 @@
 
 package wago
 
+//lint:ignore U1000 Used by RISC-V admission and the standalone generator.
 type standaloneNativeTailProfile struct {
 	directImports           bool
 	indirect                bool

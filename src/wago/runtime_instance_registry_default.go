@@ -9,6 +9,7 @@
 
 package wago
 
+//lint:ignore U1000 The ordinary runtime keeps this field empty.
 type runtimeInstanceRegistryBridge struct{}
 
 func (*Runtime) initInstanceRegistry() {}

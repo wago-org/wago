@@ -13,14 +13,7 @@ import "github.com/wago-org/wago/internal/buildfeatures"
 
 const standaloneBareImage = false
 const nativeTailForImage = buildfeatures.TailCall != 0
-const rv64NativeTailMetadataForImage = buildfeatures.TailCall != 0
-const nativeTailPlansForImage = nativeTailForImage
-const directNativeTailPlansForImage = nativeTailForImage
-const indirectNativeTailPlansForImage = nativeTailForImage
-const referenceNativeTailPlansForImage = nativeTailForImage
-const staticNativeTailForImage = nativeTailPlansForImage
 const dynamicNativeTailForImage = nativeTailForImage
-const legacyNativeTailReferenceCarriersForImage = nativeTailPlansForImage && referenceSignaturesBuilt
 const functionCodeForImage = true
 const retainedNativeContextForImage = true
 const jobMemoryForImage = true
@@ -29,8 +22,6 @@ const hostFunctionImportsBuilt = true
 const guestGlobalStoreForImage = true
 const nameSectionForImage = true
 const syncHostControlForImage = true
-const rv64NativeOwnerScopeForImage = true
-const rv64CallableTableRowsForImage = true
 const functionReexportsForImage = true
 const exportReferenceInvocationForImage = referenceSignaturesBuilt
 const invocationTypesForImage = ^uint16(0)
@@ -82,7 +73,6 @@ const directFloatOctForImage = preparedDirectFloatSupported
 const directMixedForImage = preparedDirectFloatSupported
 const structuralCallKeysForImage = true
 const funcRefContextHeaderForImage = true
-const typedCallKeysForImage = true
 const referenceTypeDescriptorsForImage = true
 const typeLinksForImage = true
 const detailedGCTypeDescsForImage = true
@@ -123,11 +113,8 @@ const compactExternElementsForImage = rv64CollectorBuilt
 const compactExternConstructionForImage = rv64CollectorBuilt && nativeCollectorFrameRootsBuilt
 const managedFunctionConstructionForImage = rv64CollectorBuilt && nativeCollectorFrameRootsBuilt
 const managedFunctionGraphForImage = true
-const rv64RootedReceiptsForImage = rv64RootedReceiptsBuilt
 const rv64LegacyGCProductsForImage = wasmGCBuilt
 const i31ExecutionForImage = wasmGCBuilt
-const rv64LegacyI31ProductMaskForImage = ^uint16(0)
-const rv64LegacyI31ProductsForImage = i31ExecutionForImage && rv64LegacyI31ProductMaskForImage != 0
 const managedAggregateHelpersForImage = managedStructAggregateHelpers | managedArrayAggregateHelpers
 const referenceStoreForImage = true
 const multiMemoryRuntimeBuilt = buildfeatures.MultiMemory != 0
@@ -138,15 +125,11 @@ const tablesForImage = true
 const rv64TableCapacitiesForImage = true
 const multiTableForImage = true
 const legacyTable32InstructionsForImage = true
-const stateOnlyTable32ForImage = true
 const table64ForImage = buildfeatures.Table64 != 0
 const legacyTable64ForImage = table64ForImage
 const tableImportsForImage = true
 const tableInitializersForImage = true
 const globalsForImage = true
-const rv64MutableFuncrefGlobalsForImage = true
-const rv64ReferenceFunctionsForImage = true
-const rv64ReferenceCallsForImage = true
 const globalImportsForImage = true
 const activeElementsForImage = true
 const passiveElementsForImage = true

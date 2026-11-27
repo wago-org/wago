@@ -9,20 +9,20 @@
 
 package wago
 
-import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
-
 const managedFunctionLifetimeBuilt = false
 
 func managedFunctionRegisteredLocked(*referenceStore, *Instance)     {}
 func managedFunctionLifetimeLocked(*referenceStore, *Instance, bool) {}
 func managedFunctionPrepareRegistration(*referenceStore, *Instance)  {}
-func managedFunctionRootEpochLocked(*Instance)                       {}
-func managedFunctionRetainAllowedLocked(*Instance) bool              { return true }
+
+//lint:ignore U1000 Used by the RISC-V root ledger with the collector disabled.
+func managedFunctionRootEpochLocked(*Instance) {}
+
+//lint:ignore U1000 Used by the RISC-V root ledger with the collector disabled.
+func managedFunctionRetainAllowedLocked(*Instance) bool { return true }
 
 func managedFunctionBindInvocationState(*Instance, *instancePluginState)      {}
 func managedFunctionAfterInvocationUnlock(*instancePluginState, invocationID) {}
 func managedFunctionAfterClose(*Instance)                                     {}
 func managedFunctionDeferFinalization(*Instance) bool                         { return false }
-func managedFunctionInvocationActive(*referenceStore) bool                    { return false }
 func drainManagedFunctionStoreReclaims(*referenceStore)                       {}
-func drainManagedFunctionReclaims(*gc.Collector)                              {}

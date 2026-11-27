@@ -13,6 +13,7 @@ func (in *Instance) lockManagedFunctionCollectionInvocation(id invocationID) gcI
 	return in.lockGCInvocation(id)
 }
 
+//lint:ignore U1000 Used by compact externref cleanup on RISC-V without collector invocation state.
 func compactExternTryCloseInvocation(*referenceStore) (gcInvocationLease, bool) {
 	return gcInvocationLease{}, false
 }

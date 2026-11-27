@@ -40,6 +40,7 @@ func (r *gcNativeFrameRoots) clearPhysicalStack() {
 	r.physicalStack = nil
 }
 
+//lint:ignore U1000 Used by the RISC-V managed-function collector.
 func (r *gcNativeFrameRoots) omitDomainHostRoots() {
 	r.domainHostRoots = false
 }

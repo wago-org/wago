@@ -17,8 +17,8 @@ import (
 
 type managedFunctionConstruction struct{}
 
-func managedFunctionConstructionNeeded(*Compiled) bool { return false }
-func managedAggregateHelperFamilies(*Compiled) uint64  { return 0 }
+//lint:ignore U1000 Used by the standalone generator.
+func managedAggregateHelperFamilies(*Compiled) uint64 { return 0 }
 
 func newManagedFunctionConstruction(*Compiled, *gc.Collector, *gc.Slots) *managedFunctionConstruction {
 	return nil

@@ -209,14 +209,6 @@ func useBoundedDirectInt(bounded bool) bool {
 	return directIntBoundedForImage && (!directIntUnboundedForImage || bounded)
 }
 
-func useBoundedLightDirectInt(light bool) bool {
-	return directIntBoundedLightForImage && (!directIntBoundedFullForImage || light)
-}
-
-func useUnboundedLightDirectInt(light bool) bool {
-	return directIntUnboundedLightForImage && (!directIntUnboundedFullForImage || light)
-}
-
 // A pair-only image can select its return ABI at link time.
 func (fn *WasmFunc) usesDirectIntPairABI() bool {
 	return directPairResultsForImage && (!directIntFixedForImage || fn.resultSlots == 2)

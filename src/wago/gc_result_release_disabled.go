@@ -16,11 +16,3 @@ func (*gcResultReleaseBatch) claimGCResultRootsLocked(*referenceStore) {}
 func (*gcResultReleaseBatch) releaseGCResultRoots(*resourceCleanup, func(gcResultRoot)) {}
 
 func gcResultRootMetadataReleaser() func(gcResultRoot) { return nil }
-
-type compactExternResultRoot struct{}
-
-func claimCompactExternResultRoot(any) compactExternResultRoot { return compactExternResultRoot{} }
-
-func (compactExternResultRoot) appendTo(*gcResultReleaseBatch) bool { return false }
-
-func (compactExternResultRoot) release() {}

@@ -1519,6 +1519,7 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 // the wasm global-index space.
 func (c *Compiled) ImportedGlobalCount() int { return len(c.executionView().GlobalImports) }
 
+//lint:ignore U1000 Used by RISC-V admission and the standalone generator.
 func (c *Compiled) hasMutableFuncrefGlobals() bool {
 	for _, global := range c.Globals {
 		if global.Mutable && global.Type == ValFuncRef {

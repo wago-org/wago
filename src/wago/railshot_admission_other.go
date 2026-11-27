@@ -15,9 +15,13 @@ import (
 )
 
 func railshotPrimitiveReferenceDeclarations(*Compiled) bool { return false }
-func railshotNeedsLegacyGCProducts(*Compiled) bool          { return false }
-func railshotLegacyI31ProductMask(*Compiled) uint16         { return 0 }
-func railshotPrimitiveReferenceContract(*Compiled) bool     { return false }
+
+//lint:ignore U1000 Used by the standalone generator outside RISC-V.
+func railshotNeedsLegacyGCProducts(*Compiled) bool { return false }
+
+//lint:ignore U1000 Used by the standalone generator outside RISC-V.
+func railshotLegacyI31ProductMask(*Compiled) uint16     { return 0 }
+func railshotPrimitiveReferenceContract(*Compiled) bool { return false }
 
 func railshotAdmitSource([]byte, *wasm.Module) error                                    { return nil }
 func railshotI31CoreSource([]byte) bool                                                 { return false }

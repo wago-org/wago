@@ -89,7 +89,7 @@ func (g *invocationGate) lockAfterFastAttempt() {
 	if g.state.Load() == invocationGateRevoked && g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
 		return
 	}
-	_ = g.lockContext(nil)
+	_ = g.lockContext(context.Background())
 }
 
 func (g *invocationGate) lockContext(ctx context.Context) error {

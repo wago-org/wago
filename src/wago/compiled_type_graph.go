@@ -53,6 +53,7 @@ func compiledFunctionOnlyTypeGraph(c *Compiled) bool {
 	return true
 }
 
+//lint:ignore U1000 Used by RISC-V admission and the standalone generator.
 func compiledUsesTypedSignatures(c *Compiled) bool {
 	for _, typ := range c.Types {
 		if !typ.Final || len(typ.Supers) != 0 {

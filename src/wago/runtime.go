@@ -60,6 +60,7 @@ type Runtime struct {
 	overridePolicy           ImportOverridePolicy
 	managedActive            atomic.Bool
 	callerResolverActive     atomic.Bool
+	//lint:ignore U1000 The generated standalone build uses this embedded runtime registry.
 	runtimeInstanceRegistryBridge
 	runtimePluginHooks
 	runtimeReferenceStore

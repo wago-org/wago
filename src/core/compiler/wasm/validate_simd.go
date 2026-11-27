@@ -179,11 +179,11 @@ type simdEffect struct {
 var simdEffects [InstrI8x16RelaxedSwizzle - InstrV128Load]simdEffect
 var simdEffectsOnce sync.Once
 var relaxedSIMDEffects = [InstrI32x4RelaxedDotI8x16I7x16AddS - InstrI8x16RelaxedSwizzle + 1]simdEffect{
-	InstrI32x4RelaxedTruncF32x4S - InstrI8x16RelaxedSwizzle:       {cat: simdEffUnary},
-	InstrI32x4RelaxedTruncF32x4U - InstrI8x16RelaxedSwizzle:       {cat: simdEffUnary},
-	InstrI32x4RelaxedTruncZeroF64x2S - InstrI8x16RelaxedSwizzle:   {cat: simdEffUnary},
-	InstrI32x4RelaxedTruncZeroF64x2U - InstrI8x16RelaxedSwizzle:   {cat: simdEffUnary},
-	InstrI8x16RelaxedSwizzle - InstrI8x16RelaxedSwizzle:           {cat: simdEffBinary},
+	InstrI32x4RelaxedTruncF32x4S - InstrI8x16RelaxedSwizzle:     {cat: simdEffUnary},
+	InstrI32x4RelaxedTruncF32x4U - InstrI8x16RelaxedSwizzle:     {cat: simdEffUnary},
+	InstrI32x4RelaxedTruncZeroF64x2S - InstrI8x16RelaxedSwizzle: {cat: simdEffUnary},
+	InstrI32x4RelaxedTruncZeroF64x2U - InstrI8x16RelaxedSwizzle: {cat: simdEffUnary},
+	0: {cat: simdEffBinary},
 	InstrF32x4RelaxedMin - InstrI8x16RelaxedSwizzle:               {cat: simdEffBinary},
 	InstrF32x4RelaxedMax - InstrI8x16RelaxedSwizzle:               {cat: simdEffBinary},
 	InstrF64x2RelaxedMin - InstrI8x16RelaxedSwizzle:               {cat: simdEffBinary},

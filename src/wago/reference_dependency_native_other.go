@@ -76,10 +76,7 @@ func railshotDependencyComponentCollectionPrepared(*Instance) bool              
 func railshotTerminalClosedDependencyCollectionEnabled(*Instance, *instanceCloseState) bool {
 	return false
 }
-func railshotCollectClosingDependencyComponent(*Instance, *instanceCloseState) {}
 func railshotCollectTerminalClosedDependencyComponent(*Instance, *instanceCloseState) {
-}
-func railshotCompleteClosingDependencyCollection(*Instance, *instanceCloseState) {
 }
 func railshotRetryClosedDependencyComponent(*Instance) error     { return nil }
 func railshotRequestClosedContainerDependencyAdoption(*Instance) {}

@@ -10,6 +10,8 @@
 package wago
 
 func railshotNativeTailSource() bool { return false }
+
+//lint:ignore U1000 Used by the standalone generator outside RISC-V.
 func railshotStandaloneNativeTail(*Compiled) standaloneNativeTailProfile {
 	return standaloneNativeTailProfile{}
 }
