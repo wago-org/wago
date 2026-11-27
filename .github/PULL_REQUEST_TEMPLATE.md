@@ -27,4 +27,4 @@ If this has changed any deltas, please include any performance metrics or benchm
 - [ ] I've updated the [CHANGELOG](https://github.com/wago-org/wago/blob/main/CHANGELOG.md)
 - [ ] I use a LLM to assist with this PR
 
-Thanks for the PR!
+<!--Thanks for the PR!-->
