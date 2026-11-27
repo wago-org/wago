@@ -506,6 +506,9 @@ jobs:
 
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
+        env:
+          # Standalone integration tests compile many executables on the Intel runner.
+          GOFLAGS: ${{ matrix.goos == 'darwin' && matrix.goarch == 'amd64' && '-timeout=20m' || '' }}
         run: just test unit
 
       # Preserve per-case PASS/SKIP evidence for the publication regressions;
