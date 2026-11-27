@@ -1147,8 +1147,10 @@ func assertNoReferenceStoreRuntime(t *testing.T, names string) {
 		"referenceStore).",
 		".marshalPublicReferenceArgs", ".translatePublicReferenceResults",
 	} {
-		if strings.Contains(names, symbol) {
-			t.Errorf("standalone without references retained %s", symbol)
+		for _, line := range strings.Split(names, "\n") {
+			if strings.Contains(line, symbol) {
+				t.Errorf("standalone without references retained %s", line)
+			}
 		}
 	}
 }
