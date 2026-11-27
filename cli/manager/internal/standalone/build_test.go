@@ -56,13 +56,13 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 	request := Request{
 		Invoke: "fib", Core: 3, FunctionWorkers: 4, Optimizations: map[string]bool{"inline": false},
 	}
-	source := string(mainSource(nil, nil, request, true))
+	source := string(mainSource(nil, nil, request, generateModule))
 	if !strings.Contains(source, `Invoke: "fib", Core: 3, DeferBoundsChecks: false, FunctionWorkers: 4`) ||
 		!strings.Contains(source, `"inline": false`) ||
 		!strings.Contains(source, `standalone.GenerateModule(module, wago.PluginSet{}, options)`) {
 		t.Fatalf("generated main does not invoke fib:\n%s", source)
 	}
-	bare := string(mainSource(nil, nil, request, false))
+	bare := string(mainSource(nil, nil, request, launchWithoutPlugins))
 	if strings.Contains(bare, "OptimizationKnobs") || !strings.Contains(bare, "standalone.RunCompiledWithoutPlugins") {
 		t.Fatalf("bare launcher contains codegen settings or uses the wrong entry point:\n%s", bare)
 	}
@@ -70,15 +70,21 @@ func TestMainSourceBakesInvokeExport(t *testing.T) {
 
 func TestMainSourceUsesRuntimeGeneratedLauncher(t *testing.T) {
 	request := Request{Invoke: "run"}
-	fallback := string(mainSource(nil, nil, request, false))
+	fallback := string(mainSource(nil, nil, request, launchWithoutPlugins))
+	legacy := string(mainSource(nil, nil, request, launchCompiled))
+	if !strings.Contains(legacy, "standalone.RunCompiled(wago.StandaloneCompiled(), wago.PluginSet{}") {
+		t.Fatalf("legacy launcher does not use the original entry point:\n%s", legacy)
+	}
 	for _, tc := range []struct {
 		name        string
 		generated   string
 		marker      bool
+		legacy      bool
 		wantOneShot bool
 		want        string
 	}{
-		{name: "legacy runtime", want: fallback},
+		{name: "legacy runtime", legacy: true, marker: true, want: legacy},
+		{name: "profile without launcher", want: fallback},
 		{name: "orphaned marker", marker: true, want: fallback},
 		{name: "current runtime", generated: "package main\n", want: "package main\n"},
 		{name: "one-shot runtime", generated: "package main\n", marker: true, wantOneShot: true, want: "package main\n"},
@@ -91,8 +97,12 @@ func TestMainSourceUsesRuntimeGeneratedLauncher(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, file := range []string{"standalone_module.go.txt", "standalone_profile.go.txt"} {
-				if err := os.WriteFile(filepath.Join(dir, file), []byte("generated"), 0o644); err != nil {
+			companion := "standalone_profile.go"
+			if tc.legacy {
+				companion = "standalone_dispatcher.go"
+			}
+			for _, file := range []string{"standalone_module.go", companion} {
+				if err := os.WriteFile(filepath.Join(dir, file+".txt"), []byte("generated"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -111,14 +121,52 @@ func TestMainSourceUsesRuntimeGeneratedLauncher(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Contains(tags, "wago_standalone_generated") || slices.Contains(tags, "wago_standalone_one_shot") != tc.wantOneShot {
-				t.Fatalf("unexpected launcher tags %v", tags)
+			wantTags := []string{"wago_standalone"}
+			if !tc.legacy {
+				wantTags = append(wantTags, "wago_standalone_no_plugins", "wago_standalone_generated")
+			}
+			if tc.wantOneShot {
+				wantTags = append(wantTags, "wago_standalone_one_shot")
+			}
+			if !slices.Equal(tags, wantTags) {
+				t.Fatalf("launcher tags = %v, want %v", tags, wantTags)
+			}
+			if tc.legacy {
+				if _, err := os.Stat(filepath.Join(runtime, "src/wago", companion)); err != nil {
+					t.Fatalf("legacy dispatcher was not linked: %v", err)
+				}
 			}
 			source, err := os.ReadFile(main)
 			if err != nil || string(source) != tc.want {
 				t.Fatalf("launcher = %q, %v, want %q", source, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildAgainstLegacyRuntimeSource(t *testing.T) {
+	source := os.Getenv("WAGO_TEST_LEGACY_SRC")
+	if source == "" {
+		t.Skip("set WAGO_TEST_LEGACY_SRC to a runtime checkout whose generator predates standalone profiles")
+	}
+	input, err := filepath.Abs("../../../../tests/fixtures/wasm/fib.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SRC", source)
+	t.Setenv("WAGO_HOME", t.TempDir())
+	t.Setenv("WAGO_BARE", "1")
+	host := Target{OS: runtime.GOOS, Arch: runtime.GOARCH}
+	result, err := Build(Request{
+		Input: input, Output: filepath.Join(t.TempDir(), DefaultOutput("fib.wasm", host)),
+		Target: host, Invoke: "fib",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(result.Output, "20").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "6765" {
+		t.Fatalf("legacy standalone fib(20) = %q, %v, want 6765", output, err)
 	}
 }
 
@@ -868,8 +916,8 @@ func assertRegisterBridgeLoads(t *testing.T, executable, arch, symbol string, la
 
 func TestGeneratedSourcesBakeFeatures(t *testing.T) {
 	request := Request{DeferredBoundsChecking: true, FeaturesSet: true}
-	for _, generate := range []bool{true, false} {
-		source := mainSource(nil, nil, request, generate)
+	for _, mode := range []mainMode{generateModule, launchCompiled, launchWithoutPlugins} {
+		source := mainSource(nil, nil, request, mode)
 		if !strings.Contains(string(source), "Features: 0, FeaturesSet: true") {
 			t.Fatalf("generated source lost explicit empty feature mask:\n%s", source)
 		}
@@ -877,12 +925,12 @@ func TestGeneratedSourcesBakeFeatures(t *testing.T) {
 }
 
 func TestNativeLauncherSelectsPluginEntryPoint(t *testing.T) {
-	bare := string(mainSource(nil, nil, Request{}, false))
+	bare := string(mainSource(nil, nil, Request{}, launchWithoutPlugins))
 	if !strings.Contains(bare, "standalone.RunCompiledWithoutPlugins(") || strings.Contains(bare, "encoding/json") {
 		t.Fatalf("bare launcher has unexpected dependencies:\n%s", bare)
 	}
-	withImports := string(mainSource([]string{"example.com/plugin/register"}, []byte("null"), Request{}, false))
-	withSelections := string(mainSource(nil, []byte(`[{"id":"example.com/plugin"}]`), Request{}, false))
+	withImports := string(mainSource([]string{"example.com/plugin/register"}, []byte("null"), Request{}, launchCompiled))
+	withSelections := string(mainSource(nil, []byte(`[{"id":"example.com/plugin"}]`), Request{}, launchCompiled))
 	for _, source := range []string{withImports, withSelections} {
 		if !strings.Contains(source, "standalone.RunCompiled(wago.StandaloneCompiled(), pluginSet()") ||
 			!strings.Contains(source, "json.Unmarshal") {
