@@ -165,8 +165,8 @@ func TestHostFuncRefPreservesIndexedScalarSignature(t *testing.T) {
 		t.Fatalf("scalar owned host call = %v, %v; want [9], nil", got, err)
 	}
 	owner.mu.Lock()
-	bindings := len(owner.gc.dispatchBindings)
-	if owner.gc.inlineDispatchBinding != nil {
+	bindings := len(owner.binding.dispatchBindings)
+	if owner.binding.inlineDispatchBinding != nil {
 		bindings++
 	}
 	owner.mu.Unlock()
@@ -177,8 +177,8 @@ func TestHostFuncRefPreservesIndexedScalarSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.mu.Lock()
-	bindings = len(owner.gc.dispatchBindings)
-	if owner.gc.inlineDispatchBinding != nil {
+	bindings = len(owner.binding.dispatchBindings)
+	if owner.binding.inlineDispatchBinding != nil {
 		bindings++
 	}
 	owner.mu.Unlock()

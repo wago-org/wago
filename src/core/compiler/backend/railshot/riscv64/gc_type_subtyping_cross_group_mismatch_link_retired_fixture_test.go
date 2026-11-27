@@ -14,18 +14,6 @@ var rv64GCTypeSubtypingCrossGroupMismatchLinkWires = [][]byte{
 	mustDecodeGCTypeSubtypingCrossGroupMismatchLinkWire("0061736d01000000018e80808000014e02500060000050010060000002898080800001034d313001660000"),
 }
 
-var rv64GCTypeSubtypingCrossGroupMismatchLinkModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingCrossGroupMismatchLinkWires))
-	for i, wire := range rv64GCTypeSubtypingCrossGroupMismatchLinkWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingCrossGroupMismatchLinkWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

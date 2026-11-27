@@ -11,6 +11,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -134,7 +135,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		forward, forwardReader, forwardOK := f.tryForwardGCConstructorGet(r, typeIndex, st)
 		_, native := f.nativeGCStructAllocLayout(typeIndex)
-		canReplace := native && f.opt(optDeadGCNew)
+		canReplace := native && buildfeatures.GC != 0 && f.opt(optDeadGCNew)
 		var selection [3]storage
 		var selectionReader wasm.Reader
 		selectionOK := false
@@ -1272,6 +1273,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
 		return err
 	}
+	f.gcHelperUses |= shared.GCHelperUseBit(helper)
 	if len(results) == 1 {
 		f.setPendingGCReference(results[0])
 	}

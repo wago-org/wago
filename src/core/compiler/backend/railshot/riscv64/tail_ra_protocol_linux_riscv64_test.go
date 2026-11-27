@@ -161,7 +161,7 @@ func tailRANativeFrameInvocationLocals(t *testing.T, sig *wasm.CompType, job *co
 	if info.FrameBytes != frame {
 		t.Fatal("frame preflight drift", frame, info.FrameBytes)
 	}
-	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: bytes.Clone(code), info: info, signature: sig, job: job, context: ctx, directory: dir}
+	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: bytes.Clone(code), info: info.tailInfo(), signature: sig, job: job, context: ctx, directory: dir}
 }
 func tailRANativeSerialize(f *integerEmitter, types []wasm.ValType, start int) {
 	f.restoreCallTransport()
@@ -389,7 +389,7 @@ func TestTailRAProofRV64ForeignChainConstantStackAndMixedTransport(t *testing.T)
 							// Observe recurring incoming SP only after first record creation (count
 							// <=2048). All later frames must have the same fixed incoming record SP.
 							e.a.Constant64(enc.X28, int64(tailRAPointer(f.witness)))
-							tailRAAddress(&e.a, enc.X29, enc.SP, e.frameBytes)
+							emitBaseOffsetAddress(&e.a, enc.X29, enc.SP, e.frameBytes)
 							e.a.Ld(enc.X7, enc.X28, 0)
 							first := e.a.BranchLong(enc.EQ, enc.X7, enc.Zero)
 							e.a.Sub(enc.X7, enc.X7, enc.X29)
@@ -512,7 +512,10 @@ func TestTailRAProofRV64RecordFenceBeforeAnyExchangeWrite(t *testing.T) {
 	f := tailRANativeFixtureNew(t, false, 1, 1)
 	sig := &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I64}}
 	// First measure the real caller incoming SP using identical production frame.
-	probe := tailRANativeFrame(t, sig, f.a, f.ca, f.da, 0, func(e *integerEmitter) { tailRAAddress(&e.a, enc.X5, enc.SP, e.frameBytes); e.a.Sd(enc.X5, enc.X13, 0) })
+	probe := tailRANativeFrame(t, sig, f.a, f.ca, f.da, 0, func(e *integerEmitter) {
+		emitBaseOffsetAddress(&e.a, enc.X5, enc.SP, e.frameBytes)
+		e.a.Sd(enc.X5, enc.X13, 0)
+	})
 	rootProbe := tailRANativeRoot(t, probe, f.witness)
 	if err := probe.code.Seal(); err != nil {
 		t.Fatal(err)
@@ -848,7 +851,7 @@ func TestTailRAProofRV64ExitNormalizesEveryMaskWordAndOlderFramedTarget(t *testi
 		if len(compiled.functions) != 1 || compiled.functions[0].FrameHeaderBytes != 16 {
 			t.Fatal("ordinary framed target metadata")
 		}
-		b := tailRAFunction{code: tailRAProofBuffer(t, compiled.code), snapshot: bytes.Clone(compiled.code), info: compiled.functions[0], signature: sig, job: f.b, context: f.cb[:coreruntime.InstanceContextBytes], directory: f.db}
+		b := tailRAFunction{code: tailRAProofBuffer(t, compiled.code), snapshot: bytes.Clone(compiled.code), info: compiled.functions[0].tailInfo(), signature: sig, job: f.b, context: f.cb[:coreruntime.InstanceContextBytes], directory: f.db}
 		root := tailRANativeRoot(t, a, f.witness)
 		o := tailRANativeOwner(t, f, []tailRAOwnerSite{{caller: a, target: b, sourcePC: 37, sourceBase: 48, sourceStride: 16}}, root, f.e.StackLimit())
 		binary.LittleEndian.PutUint64(f.args, 0x4008000000000000)

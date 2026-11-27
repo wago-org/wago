@@ -28,35 +28,34 @@ func offHeapPtr(addr uintptr) unsafe.Pointer {
 
 // Instance is ready for repeated Invoke calls.
 type Instance struct {
-	c                       *Compiled
-	eng                     *runtime.Engine
-	jm                      *runtime.JobMemory
-	memory                  *Memory // the memory object (owned or host-imported)
-	ar                      *runtime.Arena
-	base                    uintptr
-	hostEvents              *hostEventBindings // nil outside deferred event mode
-	imports                 resolvedImports    // immutable bindings captured for this instance
-	hostLog                 []byte
-	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
-	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings
-	hostCall                resolvedHostCall                    // optional specialized/injected host dispatcher
-	pluginState             atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
-	closeState              atomic.Pointer[instanceCloseState]  // allocated on first Close; independent of privileged services
-	globals                 []byte                              // pointer table handed to JIT code
-	globalCells             []*Global
-	table                   *Table        // lazily created importer-owned local export-handle chain
-	tableDescPtr            uintptr       // local/imported descriptor address; arena/table ownership keeps it live
-	tableDescLen            int           // descriptor byte length for safe slice reconstruction
-	funcRefDescs            []byte        // canonical funcref descriptor handles for this instance's function index space
-	passiveDataDesc         []byte        // per-instance data-segment descriptors; active slots start dropped
-	thunkMem                []byte        // instance-specific executable HostFuncRef thunks (nil for ordinary host imports)
-	gc                      *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
-	gcTypeMap               *gcTypeMapping
-	gcNativeView            *gc.NativeInstanceView
+	c               *Compiled
+	eng             *runtime.Engine
+	jm              *runtime.JobMemory
+	memory          *Memory // the memory object (owned or host-imported)
+	ar              *runtime.Arena
+	base            uintptr
+	hostEvents      *hostEventBindings // nil outside deferred event mode
+	imports         resolvedImports    // immutable bindings captured for this instance
+	hostLog         []byte
+	ctrl            []byte                              // sync host-call control frame (nil in async mode)
+	syncHosts       []syncHostBinding                   // immutable per-import sync host bindings
+	hostCall        resolvedHostCall                    // optional specialized/injected host dispatcher
+	pluginState     atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	closeState      atomic.Pointer[instanceCloseState]  // allocated on first Close; independent of privileged services
+	globals         []byte                              // pointer table handed to JIT code
+	globalCells     []*Global
+	table           *Table        // lazily created importer-owned local export-handle chain
+	tableDescPtr    uintptr       // local/imported descriptor address; arena/table ownership keeps it live
+	tableDescLen    int           // descriptor byte length for safe slice reconstruction
+	funcRefDescs    []byte        // canonical funcref descriptor handles for this instance's function index space
+	passiveDataDesc []byte        // per-instance data-segment descriptors; active slots start dropped
+	thunkMem        []byte        // instance-specific executable HostFuncRef thunks (nil for ordinary host imports)
+	gc              *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
+	instanceCollectorMetadata
 	serArgs, results, trap  []byte
-	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
-	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
-	ic                      [4]invokeCache // tiny fixed export resolution cache
+	resultVals              []uint64          // reusable Invoke result buffer (valid until the next call)
+	resultInline            [2]uint64         // small results stay with their instance, not in adjacent tiny heap objects
+	ic                      inlineInvokeCache // tiny fixed export resolution cache
 	importState             atomic.Pointer[instanceImportState]
 	refStore                *referenceStore
 	lifeMu                  sync.Mutex
@@ -75,7 +74,7 @@ type Instance struct {
 	constructionActive      bool                     // registration through terminal instantiation observation
 	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
-	constructionReservation *pluginOperationReservation
+	constructionReservation pluginReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
 	nativeContext           uintptr       // arena-backed context bytes rebound before every native entry
 	instructionState        instructionState
@@ -97,7 +96,7 @@ type Instance struct {
 // its Go-side committed view. Failures keep the old watermark and fall back to
 // the ordinary guard fault on access.
 func (in *Instance) commitGuardedGrowthLocked() {
-	if in == nil || in.guardCommitPages == 0 || in.jm == nil {
+	if !guardedGrowthForImage || in == nil || in.guardCommitPages == 0 || in.jm == nil {
 		return
 	}
 	pages := in.jm.CurrentPages()
@@ -110,7 +109,7 @@ func (in *Instance) commitGuardedGrowthLocked() {
 }
 
 func (in *Instance) commitGuardedGrowth() {
-	if in == nil || in.guardCommitPages == 0 || in.jm == nil {
+	if !guardedGrowthForImage || in == nil || in.guardCommitPages == 0 || in.jm == nil {
 		return
 	}
 	if in.jm.CurrentPages()+1 <= in.guardCommitPages {
@@ -124,7 +123,7 @@ func (in *Instance) commitGuardedGrowth() {
 // instanceImportState shares the existing Instance import-state pointer
 // between Runtime plugin policy and cold funcref-owner indexes.
 type instanceImportState struct {
-	pluginGCImports  map[uint32]struct{}
+	pluginGCImportState
 	rootAccounting   referenceRootAccounting // RV64 lazy ownership shadow; empty on existing targets
 	funcrefImports   atomic.Pointer[funcrefImportContainers]
 	importRefEntries []importReferenceEntry  // RV64 immutable wrappers and native attachments

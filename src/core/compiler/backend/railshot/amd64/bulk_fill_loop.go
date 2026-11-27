@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+)
 
 var bulkMemoryLoopsEnabled = true
 var bulkCopyVectorEnabled = true
@@ -17,7 +20,7 @@ var bulkCopyVectorEnabled = true
 // RDI/RCX are the checked destination/count; RAX holds the replicated low byte.
 // CPUs without AVX2 retain the byte string-store path.
 func (f *fn) emitBulkFill(vec Reg) {
-	if f.opt(optBulkMemoryLoops) && f.cpuHas(shared.AMD64AVX2) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) && f.cpuHas(shared.AMD64AVX2) {
 		f.emitVectorBulkFill(vec)
 		return
 	}

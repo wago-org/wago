@@ -27,7 +27,7 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		*remaining -= n
 		return true
 	}
-	if rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+	if tablesForImage && rv64LegacyGCProductsForImage && rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
 		// The exact retained classifier pins the indexed table type, typed active
 		// element, two private targets, capacities, and absence of public escape.
 		if !consume(64) {
@@ -35,7 +35,7 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		}
 		return nil
 	}
-	hasTable := c.tableCount() != 0
+	hasTable := tablesForImage && c.tableCount() != 0
 	if hasTable {
 		plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
 		if c.tableCount() != 1 || c.tableImportCount() != 0 || !c.hasTableExportMetadata || len(c.tableExports) != 0 || c.TableAddr64 || c.TableType != ValFuncRef || !c.TableHasValueType || uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) || c.ValueTypes[c.TableValueTypeIndex] != plain || !c.HasTableInitFunc && c.TableInitFunc != 0 || !consume(21) {
@@ -72,7 +72,8 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 		return uint64(v.FuncIndex) < uint64(c.NumImports+len(c.Funcs)) && !railshotNonCallableFunction(c, int(v.FuncIndex))
 	}
 	values := railshot.MaxOwnedTableEntries
-	for _, e := range c.Elems {
+	for i := 0; activeElementsForImage && i < len(c.Elems); i++ {
+		e := c.Elems[i]
 		if !hasTable || e.Mode != ElemModeActive || e.TableIndex != 0 || !elementType(e, true) || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 || len(e.Values) > values || !consume(20) || e.HasValueType && !consume(4) || !consume(4*len(e.Values)) {
 			return reject("bounded active numeric literal elements required")
 		}
@@ -83,7 +84,8 @@ func rv64ValidateReferenceFunctionTable(c *Compiled, remaining *int) error {
 			}
 		}
 	}
-	for _, e := range c.passiveElems {
+	for i := 0; passiveElementsForImage && i < len(c.passiveElems); i++ {
+		e := c.passiveElems[i]
 		modeOK := e.Mode == ElemModeDeclarative || e.Mode == ElemModePassive || hasTable && e.Mode == ElemModeActive
 		tableFreePassive := !hasTable && e.Mode == ElemModePassive
 		if !modeOK || tableFreePassive && (e.HasValueType || len(e.Values) == 0) || e.TableIndex != 0 || !elementType(e, false) || e.Mode != ElemModePassive && len(e.Values) != 0 || len(e.Values) > values || e.Offset.Base != 0 || e.Offset.HasGlobal || e.Offset.Global != 0 || len(e.Offset.Expr) != 0 {

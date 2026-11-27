@@ -54,11 +54,16 @@ type ManagedInstance struct {
 }
 
 var (
-	voidFuncType         = wasm.CompType{Kind: wasm.CompFunc}
-	voidFuncTypeKeyValue = wasm.StructuralFuncTypeKey(&voidFuncType)
+	voidFuncTypeKeyOnce  sync.Once
+	voidFuncTypeKeyValue uint64
 )
 
-func voidFuncTypeKey() uint64 { return voidFuncTypeKeyValue }
+func voidFuncTypeKey() uint64 {
+	voidFuncTypeKeyOnce.Do(func() {
+		voidFuncTypeKeyValue = wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc})
+	})
+	return voidFuncTypeKeyValue
+}
 
 func newPendingInstanceManager(owner string, budget AuthorityScope) *InstanceManager {
 	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}, byInstance: map[*Instance]*ManagedInstance{}}
@@ -368,7 +373,7 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		if err != nil {
 			return err
 		}
-		return in.invokeVoidEntry(ctx, entry, nil)
+		return in.invokeVoidEntry(ctx, entry, noPluginReservation())
 	}
 	base, err := manager.ensureVoidDispatcher()
 	if err != nil {
@@ -381,7 +386,7 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		return fmt.Errorf("wago: managed invocation argument buffer is unavailable")
 	}
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(index))
-	return in.invokeVoidEntry(ctx, base, nil)
+	return in.invokeVoidEntry(ctx, base, noPluginReservation())
 }
 
 func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {

@@ -39,7 +39,7 @@ func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer c.Close()
-			if got := len(c.memoryDir.gcStructGlobals); got != 2 {
+			if got := len(c.memoryDir.gcStructGlobals()); got != 2 {
 				t.Fatalf("compiled GC globals = %d, want 2", got)
 			}
 			in, err := instantiateCore(c, InstantiateOptions{GC: tc.cfg})
@@ -51,11 +51,10 @@ func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 				t.Fatal("GC global product has nil collector")
 			}
 			state := in.pluginState.Load()
-			if state == nil || state.gcGlobalRootCount != 2 {
+			if state == nil || len(state.stagedGlobalRoots()) != 2 {
 				t.Fatalf("GC global root mapping = %#v", state)
 			}
-			for i := uint32(0); i < state.gcGlobalRootCount; i++ {
-				mapping := state.gcGlobalRoots[i]
+			for i, mapping := range state.stagedGlobalRoots() {
 				want := gc.Ref(uint32(readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)))
 				got, err := collector.CheckedGlobalSlot(mapping.SlotIndex)
 				if err != nil || got != want || !got.IsObj() {

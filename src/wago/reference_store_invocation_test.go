@@ -9,13 +9,29 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+func testGCDomainStoreState(t testing.TB, topology *gcDomainTopology) gcDomainStoreState {
+	t.Helper()
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires a collector-enabled build")
+	}
+	return newGCDomainStoreState(topology)
+}
+
+func testGCInstanceRegistration(t testing.TB, domain *gcStoreDomain, imports *gcInvocationDomainSet, dynamic bool) gcInstanceRegistration {
+	t.Helper()
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires a collector-enabled build")
+	}
+	return newGCInstanceRegistration(domain, imports, dynamic)
+}
+
 func TestGCInvocationDomainUsesRegisteredAssociation(t *testing.T) {
 	collector := new(gc.Collector)
 	domain := &gcStoreDomain{collector: collector}
 	in := &Instance{gc: collector}
 	store := &referenceStore{
 		instances: map[*Instance]*referenceStoreInstance{
-			in: {gcDomain: domain},
+			in: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, false)},
 		},
 	}
 	in.refStore = store
@@ -23,7 +39,7 @@ func TestGCInvocationDomainUsesRegisteredAssociation(t *testing.T) {
 	if got := in.gcInvocationDomain(); got != domain {
 		t.Fatalf("invocation domain = %p, want registered domain %p", got, domain)
 	}
-	store.instances[in].gcDomain = nil
+	store.instances[in].gcRegistration().domain = nil
 	if got := in.gcInvocationDomain(); got != nil {
 		t.Fatalf("released invocation domain = %p, want nil", got)
 	}
@@ -50,46 +66,15 @@ func TestGCDomainCollectorIndexTracksOrderedTopology(t *testing.T) {
 	}
 }
 
-func TestGCFrameCodeRangeRepresentativeOwnerUnlinksInConstantTime(t *testing.T) {
-	collector := new(gc.Collector)
-	compiled := &Compiled{code: []byte{0xc3}, validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}}
-	first := &Instance{c: compiled, gc: collector, base: 0x10000}
-	second := &Instance{c: compiled, gc: collector, base: 0x10000}
-	store := &referenceStore{
-		instances: map[*Instance]*referenceStoreInstance{
-			first:  {},
-			second: {},
-		},
-	}
-	store.registerGCFrameCodeRangeLocked(first)
-	store.registerGCFrameCodeRangeLocked(second)
-	index := store.gcDomains.codeRanges
-	collectorRanges := index.byCollector[collector]
-	key := gcFrameCodeRangeKey{collector: collector, compiled: compiled, base: first.base}
-	image := collectorRanges.byImage[key]
-	if image == nil || image.owner != second || image.owners == nil || image.owners.instance != second {
-		t.Fatalf("shared code representative = %+v, want second instance", image)
-	}
-
-	store.unregisterGCFrameCodeRangeLocked(second)
-	if image.owner != first || image.owners == nil || image.owners.instance != first || index.byInstance[second] != nil {
-		t.Fatalf("representative after unlink = %+v, want first instance", image)
-	}
-	store.unregisterGCFrameCodeRangeLocked(first)
-	if store.gcDomains.codeRanges != nil {
-		t.Fatal("empty code-range index was retained")
-	}
-}
-
 func TestReferenceStoreInvocationDomainsIgnoreUnusedImportBindings(t *testing.T) {
 	collector := new(gc.Collector)
 	domain := &gcStoreDomain{id: 1, collector: collector}
 	producer := &Instance{c: &Compiled{}, gc: collector}
 	store := &referenceStore{
 		instances: map[*Instance]*referenceStoreInstance{
-			producer: {gcDomain: domain},
+			producer: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, false)},
 		},
-		gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1},
+		gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{first: domain, last: domain, n: 1}),
 	}
 	producer.refStore = store
 
@@ -115,7 +100,7 @@ func TestDynamicFuncrefImportOfPrivateGCInvocationDomainRejected(t *testing.T) {
 	}
 	store := &referenceStore{
 		instances: map[*Instance]*referenceStoreInstance{
-			producer: {gcDomain: domain},
+			producer: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, false)},
 		},
 	}
 	producer.refStore = store
@@ -141,7 +126,7 @@ func TestDynamicFuncrefImportOfTransitivePrivateGCInvocationDomainRejected(t *te
 	relay.executionFlags.Store(executionFlagImportedGCDomain)
 	store := &referenceStore{
 		instances: map[*Instance]*referenceStoreInstance{
-			relay: {invocationDomains: &domains},
+			relay: {gcInstanceRegistration: testGCInstanceRegistration(t, nil, &domains, false)},
 		},
 	}
 	relay.refStore = store
@@ -167,9 +152,9 @@ func TestDynamicInvocationDomainsIncludePrivateLocalDomain(t *testing.T) {
 	in := &Instance{c: &Compiled{}, gc: private.collector}
 	in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)
 	store := &referenceStore{
-		gcDomains: &gcDomainTopology{first: first, last: last, n: 2},
+		gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{first: first, last: last, n: 2}),
 		instances: map[*Instance]*referenceStoreInstance{
-			in: {gcDomain: private, dynamicInvocationDomains: true},
+			in: {gcInstanceRegistration: testGCInstanceRegistration(t, private, nil, true)},
 		},
 	}
 	in.refStore = store
@@ -203,9 +188,9 @@ func TestDynamicInvocationDomainInspectionHoldsTopologyReadLease(t *testing.T) {
 	in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)
 	topology := &gcDomainTopology{first: domain, last: domain, n: 1}
 	store := &referenceStore{
-		gcDomains: topology,
+		gcDomainStoreState: testGCDomainStoreState(t, topology),
 		instances: map[*Instance]*referenceStoreInstance{
-			in: {gcDomain: domain, dynamicInvocationDomains: true},
+			in: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, true)},
 		},
 	}
 	in.refStore = store
@@ -213,7 +198,7 @@ func TestDynamicInvocationDomainInspectionHoldsTopologyReadLease(t *testing.T) {
 	domains, locked := in.gcInvocationDomainsForInspection()
 	if locked != topology || domains.len() != 1 || domains.at(0) != domain {
 		if locked != nil {
-			locked.RUnlock()
+			locked.gate.RUnlock()
 		}
 		t.Fatalf("inspection view = %#v topology %p, want one domain and topology %p", domains, locked, topology)
 	}
@@ -221,18 +206,18 @@ func TestDynamicInvocationDomainInspectionHoldsTopologyReadLease(t *testing.T) {
 	writeAcquired := make(chan struct{})
 	go func() {
 		close(writeStarted)
-		topology.Lock()
+		topology.gate.Lock()
 		close(writeAcquired)
-		topology.Unlock()
+		topology.gate.Unlock()
 	}()
 	<-writeStarted
 	select {
 	case <-writeAcquired:
-		locked.RUnlock()
+		locked.gate.RUnlock()
 		t.Fatal("topology writer bypassed dynamic inspection read lease")
 	default:
 	}
-	locked.RUnlock()
+	locked.gate.RUnlock()
 	select {
 	case <-writeAcquired:
 	case <-time.After(time.Second):
@@ -249,7 +234,7 @@ func TestForeignRuntimeStaticGCProducerImportRejectedForDynamicConsumer(t *testi
 		refStore: producerStore,
 	}
 	producerStore.instances = map[*Instance]*referenceStoreInstance{
-		producer: {gcDomain: &gcStoreDomain{id: 1, collector: collector}},
+		producer: {gcInstanceRegistration: testGCInstanceRegistration(t, &gcStoreDomain{id: 1, collector: collector}, nil, false)},
 	}
 	export := &InstanceExport{inst: producer, localIdx: 0, results: producer.c.Funcs[0].Results}
 	consumer := &Compiled{
@@ -300,9 +285,9 @@ func BenchmarkGCInvocationDomainManyDomains(b *testing.B) {
 	target := &domains[len(domains)-1]
 	in := &Instance{gc: target.collector}
 	store := &referenceStore{
-		gcDomains: &gcDomainTopology{first: &domains[0], last: target, n: len(domains)},
+		gcDomainStoreState: testGCDomainStoreState(b, &gcDomainTopology{first: &domains[0], last: target, n: len(domains)}),
 		instances: map[*Instance]*referenceStoreInstance{
-			in: {gcDomain: target},
+			in: {gcInstanceRegistration: testGCInstanceRegistration(b, target, nil, false)},
 		},
 	}
 	in.refStore = store

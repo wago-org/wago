@@ -14,6 +14,7 @@ import (
 	"slices"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -36,13 +37,13 @@ type rv64HostThunkRecord struct {
 }
 
 func railshotInitHostThunkConstruction(s *railshotHostThunkConstruction, c *Compiled) {
-	if c.needsFuncRefDescs() {
+	if buildfeatures.TailCall != 0 && c.needsFuncRefDescs() {
 		s.records = make([]rv64HostThunkRecord, c.NumImports)
 	}
 }
 
 func railshotCertifiedHostThunk(s *railshotHostThunkConstruction, index int, dispatch uint32, params, results int, owned bool) ([]byte, error) {
-	if len(s.records) == 0 || params > 64 || results > 64 {
+	if buildfeatures.TailCall == 0 || len(s.records) == 0 || params > 64 || results > 64 {
 		if owned {
 			return railshotHostIndirectOwnedSyncThunk(dispatch, params, results), nil
 		}
@@ -60,13 +61,13 @@ func railshotOwnedHostThunk(s *railshotNativeImportConstruction, index int, disp
 }
 
 func railshotRecordHostThunkSpan(s *railshotHostThunkConstruction, index, offset int) {
-	if len(s.records) != 0 && s.records[index].certificate != nil {
+	if buildfeatures.TailCall != 0 && len(s.records) != 0 && s.records[index].certificate != nil {
 		s.records[index].offset = offset
 	}
 }
 
 func railshotFinishHostThunkConstruction(s *railshotHostThunkConstruction, size int) {
-	if len(s.records) != 0 {
+	if buildfeatures.TailCall != 0 && len(s.records) != 0 {
 		s.codeBytes = size
 	}
 }
@@ -117,7 +118,7 @@ type rv64HostTailAttachment struct {
 // checks. Authenticate a particular physical instance before touching any of its
 // off-heap state; never substitute a sibling instance's shared cache reference.
 func rv64HostTailAttached(in *Instance, index int) (a rv64HostTailAttachment, err error) {
-	if _, err = (rv64TailCodeOwner{in}).nativeOwnerCodeView(true); err != nil {
+	if _, err = rv64PublishedCodeView(in, true); err != nil {
 		return a, err
 	}
 	if !in.syncMode || in.hostEvents != nil || index < 0 || index >= in.c.NumImports || index >= len(in.c.importFuncSigs) || index >= len(in.syncHosts) || index >= len(in.importReferenceEntries()) {

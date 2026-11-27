@@ -12,19 +12,16 @@ package riscv64
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 )
 
 // NativeFrameBodyEnd returns the first cold guard destination after the main
 // framed function path. Helper stubs emitted later in a module are not its body.
 func NativeFrameBodyEnd(code []byte, entry int) (int, error) {
-	if _, err := NativeFrameBytes(code, entry); err != nil {
-		return 0, err
-	}
-	b := code[entry:]
-	hi := int64(int32(binary.LittleEndian.Uint32(b[8:]) & 0xfffff000))
-	lo := int64(int32(binary.LittleEndian.Uint32(b[12:])) >> 20)
-	return entry + int(8+hi+lo), nil
+	_, end, err := NativeFrameLayout(code, entry)
+	return end, err
 }
 
 // NativeNonCollectingGCCall accepts only an image-local owned synchronous GC
@@ -89,10 +86,13 @@ func NativeNonCollectingGCCall(code []byte, returnOffset uint32, slots uint16) b
 	if safepoint != 0 {
 		return false
 	}
-	switch helper {
-	case gcFunctionSubtypeTest, gcStructGet, gcStructSet, gcStructGetS, gcStructGetU, gcStructRefTest, gcStructTableSet, gcStructRefCast,
-		gcArrayGet, gcArrayGetS, gcArrayGetU, gcArraySet, gcArrayLen, gcArrayDropElem, gcArrayFill, gcArrayCopy, gcArrayInitData, gcArrayInitElem,
-		gcTableFill, gcTableCopy, gcTableInit, gcTableElemDrop, gcExceptionPayload:
+	switch {
+	case buildfeatures.ReferenceSignatures && helper == gcFunctionSubtypeTest,
+		buildfeatures.RISCV64CollectorFrameRoots && helper == gcStructTableSet,
+		buildfeatures.ExceptionHandling != 0 && helper == gcExceptionPayload,
+		referenceTableBridgesBuilt && helper == gcTableFill,
+		bulkTableHelpersBuilt && (helper == gcTableCopy || helper == gcTableInit || helper == gcTableElemDrop),
+		buildfeatures.GC != 0 && gcObjectBridgeIsNonCollecting(helper):
 	default:
 		return false
 	}

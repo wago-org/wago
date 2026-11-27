@@ -26,11 +26,6 @@ type gcStructGlobalInit struct {
 	Bits        []uint64
 }
 
-type gcGlobalRootMapping struct {
-	GlobalIndex uint32
-	SlotIndex   uint32
-}
-
 type gcStructConstValue struct {
 	typ  wasm.ValType
 	bits uint64
@@ -142,7 +137,7 @@ func decodeStagedGCStructGlobalInit(m *wasm.Module, globalIndex uint32, g wasm.G
 						want = wasm.I32
 					}
 					if want.Kind() == wasm.ValRef || !wasm.EqualValType(values[i].typ, want) {
-						return gcStructGlobalInit{}, fmt.Errorf("field %d operand type %s, want numeric %s", i, values[i].typ, want)
+						return gcStructGlobalInit{}, fmt.Errorf("field %d operand type %s, want numeric %s", i, values[i].typ.String(), want.String())
 					}
 					init.Bits[i] = values[i].bits
 				}
@@ -173,7 +168,7 @@ func (c *Compiled) gcStructGlobalInit(globalIndex int) (gcStructGlobalInit, bool
 	if c == nil || c.memoryDir == nil {
 		return gcStructGlobalInit{}, false
 	}
-	for _, init := range c.memoryDir.gcStructGlobals {
+	for _, init := range c.memoryDir.gcStructGlobals() {
 		if int(init.GlobalIndex) == globalIndex {
 			return init, true
 		}

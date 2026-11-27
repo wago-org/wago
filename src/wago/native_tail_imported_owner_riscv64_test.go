@@ -49,7 +49,7 @@ func TestRV64PrivateTailImportedOwnerGeneration(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, limits := range []rv64NativeTailGenerationLimits{{exact.code - 1, exact.metadata}, {exact.code, exact.metadata - 1}} {
-					if err := create(limits); !errors.Is(err, railshot.ErrUnsupported) || g != nil || scope.tailBudget.count != 0 {
+					if err := create(limits); !errors.Is(err, railshot.ErrUnsupported) || g != nil || scope.tailForTest().budget.count != 0 {
 						t.Fatal("below complete charge admitted", err)
 					}
 				}
@@ -61,7 +61,7 @@ func TestRV64PrivateTailImportedOwnerGeneration(t *testing.T) {
 				if !errors.Is(err, railshot.ErrUnsupported) || g == nil || !g.reserved {
 					t.Fatal("failed certified snapshot lost partial ownership", err)
 				}
-				if err := rv64GenerationLockedForTest(g.Close); err != nil || scope.tailBudget.count != 0 {
+				if err := rv64GenerationLockedForTest(g.Close); err != nil || scope.tailForTest().budget.count != 0 {
 					t.Fatal("failed certified snapshot retained quota", err)
 				}
 				if err := create(exact); err != nil {

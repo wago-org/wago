@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !(linux && amd64) && !((linux || darwin) && arm64) && !(linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build wago_standalone_no_collector || (!(linux && amd64 && !wago_no_gc) && !((linux || darwin) && arm64 && !wago_no_gc) && !(linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)))
 
 package wago
 
@@ -13,15 +13,8 @@ import coreruntime "github.com/wago-org/wago/src/core/runtime"
 
 type gcHostSavedControl [0]uint64
 
-// Keep the token shape uniform across platforms so shared root-management code
-// compiles unchanged. Unsupported platforms always return the zero token.
-type gcHostActivationToken struct {
-	state *gcPublicState
-	index uint8
-}
-
 func (*Instance) pushGCHostActivation(uintptr, uint32, *coreruntime.Engine) gcHostActivationToken {
 	return gcHostActivationToken{}
 }
 
-func (*Instance) popGCHostActivation(gcHostActivationToken) {}
+func popGCHostActivation(gcHostActivationToken) {}

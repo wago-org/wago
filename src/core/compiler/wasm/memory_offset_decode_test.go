@@ -2,23 +2,46 @@ package wasm
 
 import (
 	"errors"
+	"reflect"
 	"testing"
+	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
+
+var parityMemargWidths = func() [3]memargWidths {
+	m := Module{Memories: make([]MemType, 65)}
+	m.Memories[1].Limits.Addr64 = true
+	m.Memories[64].Limits.Addr64 = true
+	return [3]memargWidths{{}, fixedMemargWidths(true), moduleMemargWidths(&m)}
+}()
 
 func TestModuleMemargWidthsScansImportedAndLocalMemories(t *testing.T) {
 	memory32 := NewMemExternType(MemType{Limits: Limits{Min: 1}})
 	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
 	uniform := &Module{Imports: []Import{{Type: memory64}, {Type: memory64}}}
-	if got := moduleMemargWidths(uniform); len(got.indexed64) != 0 || !got.fixed64 {
+	if buildfeatures.Memory64 == 0 {
+		widths := moduleMemargWidths(uniform)
+		if widths.offset64(0) || unsafe.Sizeof(widths.memargIndexedWidths) != 0 {
+			t.Fatalf("width scan ran in no-memory64 build: %+v", widths)
+		}
+		t.Logf("module memarg widths=%d bytes", unsafe.Sizeof(widths))
+		return
+	}
+	if got := moduleMemargWidths(uniform); !reflect.DeepEqual(got, fixedMemargWidths(true)) {
 		t.Fatalf("uniform imported memory64 widths = %+v", got)
 	}
 	mixed := &Module{Imports: []Import{{Type: memory32}}, Memories: []MemType{{Limits: Limits{Min: 1, Addr64: true}}}}
-	if got := moduleMemargWidths(mixed); len(got.indexed64) != 1 || got.offset64(0) || !got.offset64(1) {
+	if got := moduleMemargWidths(mixed); got.fixed64 || got.offset64(0) || !got.offset64(1) {
 		t.Fatalf("mixed imported/local widths = %+v, want [memory32,memory64]", got)
 	}
+	t.Logf("module memarg widths=%d bytes", unsafe.Sizeof(memargWidths{}))
 }
 
 func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
+	if buildfeatures.Memory64 == 0 {
+		b.Skip("requires Memory64")
+	}
 	const memoryCount = 10000
 	m := &Module{Imports: make([]Import, memoryCount)}
 	memory64 := NewMemExternType(MemType{Limits: Limits{Min: 1, Addr64: true}})
@@ -27,7 +50,7 @@ func BenchmarkModuleMemargWidthsManyImports(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if got := moduleMemargWidths(m); len(got.indexed64) != 0 || !got.fixed64 {
+		if got := moduleMemargWidths(m); !got.fixed64 {
 			b.Fatal(got)
 		}
 	}

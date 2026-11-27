@@ -427,7 +427,7 @@ func TestInstantiateOptionHelpers(t *testing.T) {
 		}
 		rest = append(rest, bindings)
 	}
-	imports, _, err := rt.resolveInstanceImports(nil, nil, first, c.exactImports, rest...)
+	imports, _, err := rt.resolveInstanceImports(nil, first, c.exactImports, rest...)
 	if err != nil {
 		t.Fatal(err)
 	}

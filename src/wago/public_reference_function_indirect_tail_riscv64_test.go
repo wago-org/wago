@@ -68,7 +68,7 @@ func TestRV64PublicReferenceFunctionProperIndirectTailBare(t *testing.T) {
 						}
 					}
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
+					if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("indirect root leaked generation")
 					}
 				}
@@ -92,7 +92,7 @@ func TestRV64PublicReferenceFunctionProperIndirectTailBare(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.unlockNativeEntry(entry)
-					generations := entry.tables.targets.tailActive
+					generations := entry.tables.targets.tailForTest().active
 					if len(generations) != 1 {
 						t.Fatal("private indirect generation")
 					}

@@ -7,9 +7,60 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestBuildProfileRV64NativeTailCodeStorage(t *testing.T) {
+	var state railshotTailCompiledState
+	var want uintptr
+	if buildfeatures.TailCall != 0 {
+		want = unsafe.Sizeof(rv64NativeTailCode{})
+	}
+	if got := unsafe.Sizeof(state.tailCode); got != want || (state.tailCode.get() != nil) != (want != 0) {
+		t.Fatalf("native tail code storage uses %d bytes, want %d", got, want)
+	}
+	t.Logf("native tail code storage=%d bytes; RV64 compiled state=%d bytes", want, unsafe.Sizeof(state))
+}
+
+func (s *railshotInvocationState) tailForTest() *rv64NativeTailInvocation {
+	if tail := s.tail.get(); tail != nil {
+		return tail
+	}
+	return new(rv64NativeTailInvocation)
+}
+
+func TestBuildProfileRV64NativeTailInvocationStorage(t *testing.T) {
+	var state railshotInvocationState
+	var want uintptr
+	if buildfeatures.TailCall != 0 {
+		want = unsafe.Sizeof(rv64NativeTailInvocation{})
+	}
+	if got := unsafe.Sizeof(state.tail); got != want || (state.tail.get() != nil) != (want != 0) {
+		t.Fatalf("native tail invocation storage uses %d bytes, want %d", got, want)
+	}
+	t.Logf("native tail invocation storage=%d bytes; RV64 invocation state=%d bytes", want, unsafe.Sizeof(state))
+}
+
+func (s *rv64NativeTableTargets) tailForTest() *rv64NativeTailTableState {
+	if tail := s.tail.get(); tail != nil {
+		return tail
+	}
+	return new(rv64NativeTailTableState)
+}
+
+func TestBuildProfileRV64NativeTailTableStorage(t *testing.T) {
+	var state rv64NativeTableTargets
+	var want uintptr
+	if buildfeatures.TailCall != 0 {
+		want = unsafe.Sizeof(rv64NativeTailTableState{})
+	}
+	if got := unsafe.Sizeof(state.tail); got != want || (state.tail.get() != nil) != (want != 0) {
+		t.Fatalf("native tail table storage uses %d bytes, want %d", got, want)
+	}
+	t.Logf("native tail table storage=%d bytes; RV64 table scope=%d bytes", want, unsafe.Sizeof(state))
+}
 
 func TestRV64StorageFreeCallableAfterDependencyTransfer(t *testing.T) {
 	for _, artifact := range []bool{false, true} {

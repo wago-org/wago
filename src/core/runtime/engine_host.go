@@ -15,6 +15,7 @@ import (
 	goruntime "runtime"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -272,8 +273,12 @@ func InitHostCtrlFrame(ctrl []byte) error {
 	if err != nil {
 		return fmt.Errorf("jit: host-call stub: %w", err)
 	}
-	if _, err := initHostCtrlExtension(ctrl); err != nil {
-		return err
+	if wideHostControlForImage {
+		if _, err := initHostCtrlExtension(ctrl); err != nil {
+			return err
+		}
+	} else if len(ctrl) != ctrlFrameSize {
+		return fmt.Errorf("jit: host control frame has %d bytes, want %d", len(ctrl), ctrlFrameSize)
 	}
 	if leaf := nativeScalarLeafPtr(ctrl); leaf != 0 {
 		stub = leaf
@@ -292,13 +297,16 @@ func hostCtrlFrame(ptr uintptr) []byte {
 // parkedHostCtrlFrame authenticates unknown architecture-owned stack frames
 // before any unsafe control-frame view is constructed.
 func (e *Engine) parkedHostCtrlFrame(ptr uintptr) ([]byte, error) {
-	if registerFixedHostCtrlFrames {
+	if registerFixedHostCtrlFrames && (buildfeatures.StandaloneNativeStackHostControl || buildfeatures.StandaloneForeignHostControl) {
 		if frame := e.NativeStackRange(ptr, ctrlFrameSize); frame != nil && e.validateUnregisteredHostCtrl(ptr) == nil {
 			raw := binary.LittleEndian.Uint32(frame[hcNArgs:])
 			if raw&0xffff <= maxHostArity && raw>>16 <= maxHostArity {
 				return frame, nil
 			}
 		}
+	}
+	if !buildfeatures.StandaloneForeignHostControl {
+		return nil, fmt.Errorf("jit: parked host control frame %#x is outside the standalone control profile", ptr)
 	}
 	if _, known := registeredHostCtrlFrames.Load(ptr); !known {
 		if err := e.validateUnregisteredHostCtrl(ptr); err != nil {
@@ -343,17 +351,17 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			n := int(raw & 0xffff)
 			nres := int(raw >> 16)
 			if n > maxHostArity || nres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
+				if !wideHostControlForImage {
+					return hostCtrlFixedArityError(n, nres)
+				}
+				args, wideResults, err := prepareWideHostCall(ctrl, n, nres)
 				if err != nil {
 					return err
 				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
-				clear(wideResults[:nres])
-				host(ctrlPtr, imp, args[:n], wideResults[:nres])
+				host(ctrlPtr, imp, args, wideResults)
 				continue
 			}
-			if scalar != nil && n <= 2 && nres == 1 {
+			if buildfeatures.StandaloneForeignHostControl && scalar != nil && n <= 2 && nres == 1 {
 				var a0, a1 uint64
 				if n != 0 {
 					a0 = binary.LittleEndian.Uint64(ctrl[hcArgs:])
@@ -435,14 +443,14 @@ func (e *Engine) callWithHostLoopExpanded(code uintptr, serArgs []byte, linMemBa
 			n := int(raw & 0xffff)
 			nres := int(raw >> 16)
 			if n > maxHostArity || nres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
+				if !wideHostControlForImage {
+					return hostCtrlFixedArityError(n, nres)
+				}
+				args, wideResults, err := prepareWideHostCall(ctrl, n, nres)
 				if err != nil {
 					return err
 				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
-				clear(wideResults[:nres])
-				host(ctrlPtr, imp, args[:n], wideResults[:nres])
+				host(ctrlPtr, imp, args, wideResults)
 				continue
 			}
 			if scalar != nil && n <= 2 && nres == 1 {

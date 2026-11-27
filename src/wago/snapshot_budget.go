@@ -154,7 +154,7 @@ func snapshotMetadataBytes(c *Compiled, limit uint64) (uint64, error) {
 			return 0, b.err
 		}
 	}
-	if ns := c.Names; ns != nil {
+	if ns := c.Names; nameSectionForImage && ns != nil {
 		b.add(1, unsafe.Sizeof(*ns))
 		if ns.ModuleName != nil {
 			b.add(1, unsafe.Sizeof(*ns.ModuleName))

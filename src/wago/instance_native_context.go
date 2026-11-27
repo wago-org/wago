@@ -61,14 +61,12 @@ type instanceActivations struct {
 	// entries restore the previous ID; generic shared activations retain counts
 	// below. Atomic publication lets cross-instance reentry observe the owner
 	// after a callback publishes its native context to another instance.
-	boundedID     atomic.Uint64
-	mu            sync.Mutex
-	id            invocationID
-	count         uint64
-	other         map[invocationID]uint64
-	reservationID invocationID
-	reservation   *pluginOperationReservation
-	reservations  map[invocationID]*pluginOperationReservation
+	boundedID atomic.Uint64
+	mu        sync.Mutex
+	id        invocationID
+	count     uint64
+	invocationReservations
+	other map[invocationID]uint64
 }
 
 func markNativeActiveID(in *Instance, id invocationID) {
@@ -134,60 +132,6 @@ func isNativeActive(in *Instance, id invocationID) bool {
 	active := (a.id == id && a.count != 0) || a.other[id] != 0
 	a.mu.Unlock()
 	return active
-}
-
-func (in *Instance) swapInvocationReservation(next *pluginOperationReservation) *pluginOperationReservation {
-	if in == nil {
-		return nil
-	}
-	id := in.currentInvocationID()
-	if id == 0 {
-		return nil
-	}
-	a := &in.ensurePluginState().activations
-	a.mu.Lock()
-	if (a.reservation != nil && a.reservationID == id) || (a.reservation == nil && a.reservations[id] == nil) {
-		previous := a.reservation
-		a.reservationID, a.reservation = id, next
-		a.mu.Unlock()
-		return previous
-	}
-	previous := a.reservations[id]
-	if next == nil {
-		delete(a.reservations, id)
-		if len(a.reservations) == 0 {
-			a.reservations = nil
-		}
-	} else {
-		if a.reservations == nil {
-			a.reservations = make(map[invocationID]*pluginOperationReservation)
-		}
-		a.reservations[id] = next
-	}
-	a.mu.Unlock()
-	return previous
-}
-
-func currentInvocationReservation(in *Instance) *pluginOperationReservation {
-	if in == nil {
-		return nil
-	}
-	id := in.currentInvocationID()
-	if id == 0 {
-		return nil
-	}
-	a := &in.ensurePluginState().activations
-	a.mu.Lock()
-	var reservation *pluginOperationReservation
-	// The inline capability belongs only to this exact invocation. A different
-	// active chain must still resolve its own fallback entry.
-	if a.reservationID == id && a.reservation != nil {
-		reservation = a.reservation
-	} else {
-		reservation = a.reservations[id]
-	}
-	a.mu.Unlock()
-	return reservation
 }
 
 func (l executionLease) memoryBase(in *Instance) uintptr {
@@ -260,7 +204,7 @@ func (in *Instance) beginCachedBoundedViewEntry() (executionLease, bool, error) 
 			return privateNumericExecutionLease(), true, nil
 		}
 	}
-	if in.memoryDir == nil && in.gc == nil && !in.threadedMemoryZero && !railshotRequiresNativeOwnerScope(in.c) && in.usesIndependentExecution() {
+	if in.memoryDir == nil && !in.hasNativeCollector() && !in.threadedMemoryZero && !railshotRequiresNativeOwnerScope(in.c) && in.usesIndependentExecution() {
 		state := in.ensurePluginState()
 		mu := &state.nativeExecutionMu
 		mu.Lock()
@@ -302,8 +246,8 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 			// Indexed-memory metadata needs per-entry refresh. For ordinary
 			// memory, a changed base also forces a full bind and re-preparation.
 			reuse := version != 0 && in.memoryDir == nil &&
-				in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0 &&
-				(in.canReuseParkedNativeContextWithState(version, state) || fn.gcPrivateContext && version != ^uint64(0) && !in.threadedMemoryZero) &&
+				(!nativeCollectorBuilt || in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0) &&
+				(in.canReuseParkedNativeContextWithState(version, state) || fn.hasPrivateGCContext() && version != ^uint64(0) && !in.threadedMemoryZero) &&
 				fn.hostContextVersion == version &&
 				fn.hostMemBase == in.jm.LinMemBase()
 			if !reuse {
@@ -313,7 +257,7 @@ func (fn *WasmFunc) beginNativeEntry() (executionLease, bool, error) {
 				}
 			}
 			railshotBindNativeInvocation(in)
-			if reuse && fn.gcPrivateContext {
+			if reuse && fn.hasPrivateGCContext() {
 				// Reuse only the binding, never the mutable collector validation.
 				if err := validateNativeGCEntry(in); err != nil {
 					mu.Unlock()
@@ -343,17 +287,33 @@ func (in *Instance) bindAndValidateNativeContext() error {
 	return validateNativeGCEntry(in)
 }
 
+// These images retain the native context ABI for entry control. Every other
+// pointer slot is zero for the lifetime of their private basedata.
+const controlOnlyNativeContextForImage = standaloneBareImage &&
+	!memoriesForImage && !tablesForImage && !globalsForImage && !passiveDataForImage &&
+	!passiveElementsForImage && !exceptionTagsForImage && !hostFunctionImportsBuilt &&
+	!foreignHostControlForImage && !referenceStoreForImage && !structuralCallKeysForImage &&
+	!funcRefContextHeaderForImage && !nativeCollectorFrameRootsBuilt
+
 func (in *Instance) bindNativeContext() error {
 	in.invalidateNativeContext()
 	ctx := nativeInstanceContextView(in)
 	if len(ctx) != wruntime.InstanceContextBytes {
 		return fmt.Errorf("native instance context is outside its retained arena")
 	}
-	in.jm.BindInstanceContextBytes(ctx)
+	if controlOnlyNativeContextForImage {
+		in.jm.SetCustomCtx(uintptr(binary.LittleEndian.Uint64(ctx)))
+	} else {
+		in.jm.BindInstanceContextBytes(ctx)
+	}
 	railshotSetNativeContextIdentity(in.jm, in.nativeContext)
-	primary := in.jm.LinMemBase()
-	in.jm.SetGuardOwner(primary)
-	return in.refreshMemoryDirectory()
+	if guardedMemoryForImage || memoryImportsForImage {
+		in.jm.SetGuardOwner(in.jm.LinMemBase())
+	}
+	if memoriesForImage {
+		return in.refreshMemoryDirectory()
+	}
+	return nil
 }
 
 // A saturated version permanently disables reuse. Nested entries and guarded
@@ -371,7 +331,7 @@ func (in *Instance) invalidateNativeContext() {
 // Host return can reuse private control while refreshing shared-memory entries.
 // Collector-owned context still needs the full bind after every callback.
 func (in *Instance) parkedHostControlReusable() bool {
-	return in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+	return !in.hostCallNeedsGCSuspension()
 }
 
 func (in *Instance) canReuseParkedNativeContext(version uint64) bool {
@@ -383,7 +343,7 @@ func (in *Instance) canReuseParkedNativeContextWithState(version uint64, state *
 	// or native function revokes it. GC and threaded memory remain conservative:
 	// their shared owners can change native state outside this instance's entry.
 	return version != ^uint64(0) && in.usesIndependentExecution() &&
-		in.gc == nil && !in.threadedMemoryZero &&
+		!in.hasNativeCollector() && !in.threadedMemoryZero &&
 		state.nativeContextVersion.Load() == version
 }
 
@@ -415,7 +375,7 @@ func (in *Instance) refreshMemoryDirectory() error {
 			return fmt.Errorf("indexed memory %d owner is closed", i)
 		}
 		entry := dir.native[i*abi.MemoryDirEntryBytes:]
-		if !shared {
+		if (guardedMemoryForImage || memoryImportsForImage) && !shared {
 			jm.SetGuardOwner(in.jm.LinMemBase())
 		}
 		pages := jm.CurrentPages()
@@ -483,11 +443,42 @@ func (in *Instance) usesIndependentExecution() bool {
 // importing native callables also shares basedata and parked control frames;
 // those graphs use the process-wide lease until native contexts are isolated.
 func (in *Instance) usesPrivateThreadedExecution() bool {
-	if in == nil {
+	if !sharedMemoryRuntimeBuilt || in == nil {
 		return false
 	}
 	flags := in.executionFlags.Load()
 	return (in.threadedMemoryZero || flags&executionFlagThreadedMemory != 0) && flags&(executionFlagNativeControlShared|executionFlagForeignNativeCalls) == 0
+}
+
+func (in *Instance) prepareThreadedExecution(threadedControl, collectorShared bool) {
+	c := in.c
+	memoryCount := c.memoryCount()
+	sharedMemory := threadedControl
+	for i := 1; !sharedMemory && i < memoryCount; i++ {
+		sharedMemory = c.memoryDef(i).Shared
+	}
+	if !sharedMemory {
+		return
+	}
+	flags := in.executionFlags.Load() | executionFlagThreadedMemory
+	foreign := collectorShared || c.needsFuncRefContext() || tableImportsForImage && c.tableImportCount() != 0
+	for _, global := range c.GlobalImports {
+		// A private memory backing does not make an imported cell private.
+		foreign = foreign || global.Mutable
+	}
+	for i := 0; !foreign && i < memoryCount; i++ {
+		def := c.memoryDef(i)
+		// Ordinary imported backing can alias a host accessor or another
+		// instance. Its non-atomic accesses need the shared lease.
+		foreign = def.ImportKey != "" && !def.Shared
+	}
+	for i := 0; !foreign && i < len(c.Imports); i++ {
+		_, foreign = in.imports[c.functionImportBindingKey(i)].(*InstanceExport)
+	}
+	if foreign {
+		flags = flags&^executionFlagIndependent | executionFlagForeignNativeCalls
+	}
+	in.executionFlags.Store(flags)
 }
 
 func (in *Instance) markNativeControlShared() {
@@ -544,7 +535,7 @@ func (in *Instance) nativeControlIsShared() bool {
 }
 
 func (in *Instance) lockThreadedInstanceState() *sync.Mutex {
-	if in == nil || (!in.threadedMemoryZero && in.executionFlags.Load()&executionFlagThreadedMemory == 0) {
+	if !sharedMemoryRuntimeBuilt || in == nil || (!in.threadedMemoryZero && in.executionFlags.Load()&executionFlagThreadedMemory == 0) {
 		return nil
 	}
 	in.memoryDir.invokeMu.Lock()
@@ -634,7 +625,7 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 		railshotRequiresNativeOwnerScope(in.c) {
 		return preparedEntryGeneral
 	}
-	if in.memory != nil {
+	if memoriesForImage && in.memory != nil {
 		if !in.ownsMem {
 			return preparedEntryGeneral
 		}
@@ -650,7 +641,7 @@ func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
 	// instance. Publishing a callable still revokes isolated admission.
 	privateGlobals := len(in.globalCells) == 0 || preparedPrivateGlobalsSupported &&
 		len(in.c.GlobalImports) == 0 && len(in.c.GlobalExports) == 0 && len(in.c.customInstructions) == 0
-	if privateGlobals && (in.tableDescPtr == 0 || isolatedTables) && in.gc == nil &&
+	if privateGlobals && (in.tableDescPtr == 0 || isolatedTables) && !in.hasNativeCollector() &&
 		in.c.NumImports == 0 && (!in.c.needsFuncRefContext() || isolatedTables) {
 		if !memoryFree && in.c.boundsMode == BoundsChecksSignalsBased && in.tableDescPtr != 0 {
 			return preparedEntryGeneral
@@ -752,7 +743,7 @@ func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte, reser
 	}
 	if !reserved {
 		if !in.lockPreparedFastState() {
-			if in.syncMode {
+			if syncHostControlForImage && in.syncMode {
 				return in.callNativeSyncWithTrapContext(entry, activeTrap, nil)
 			}
 			return in.callNativeAsyncWithTrap(entry, true, activeTrap)

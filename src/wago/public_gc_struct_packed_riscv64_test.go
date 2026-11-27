@@ -73,14 +73,14 @@ func TestRV64PublicGCStructPackedExecutionAndArtifact(t *testing.T) {
 					var roots []gcGlobalRootMapping
 					state := in.pluginState.Load()
 					if state != nil {
-						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+						roots = append(roots, state.stagedGlobalRoots()...)
 					}
 					stagedRoots := len(roots)
 					public := in.publicGCState()
-					roots = append(roots, public.globalRoots...)
-					if len(roots) != 2 || view.stagedGCStructProduct() == stagedGCStructGeneric && (stagedRoots != 0 || len(public.globalRoots) != 2) ||
-						view.stagedGCStructProduct() != stagedGCStructGeneric && (stagedRoots != 2 || len(public.globalRoots) != 0) {
-						t.Fatalf("gc/struct packed global roots staged/generic=%d/%d, want exact two-slot representation", stagedRoots, len(public.globalRoots))
+					roots = append(roots, public.globalRootMappings()...)
+					if len(roots) != 2 || view.stagedGCStructProduct() == stagedGCStructGeneric && (stagedRoots != 0 || len(public.globalRootMappings()) != 2) ||
+						view.stagedGCStructProduct() != stagedGCStructGeneric && (stagedRoots != 2 || len(public.globalRootMappings()) != 0) {
+						t.Fatalf("gc/struct packed global roots staged/generic=%d/%d, want exact two-slot representation", stagedRoots, len(public.globalRootMappings()))
 					}
 					var seenRoots [2]bool
 					for _, mapping := range roots {

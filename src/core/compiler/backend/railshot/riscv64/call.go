@@ -10,11 +10,13 @@
 package riscv64
 
 import (
+	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"unsafe"
 )
 
 const callFrameHeader = 48
@@ -84,23 +86,20 @@ const (
 // carry a nonzero allocation safepoint. Fixed-array and explicit struct
 // allocation shapes retain the already admitted per-call arity.
 func gcAllocHelperSlots(helper uint32, admitted int) (int, bool) {
-	switch helper {
-	case gcStructAllocDefault, gcExceptionAlloc, gcAnyConvertExtern, gcExternConvertAny:
+	switch {
+	case buildfeatures.ExceptionHandling != 0 && helper == gcExceptionAlloc:
 		return 1, true
-	case gcStructAllocOne:
-		return admitted, admitted >= 1 && admitted <= 256
-	case gcArrayAllocDefault, gcExternGlobalSet:
+	case buildfeatures.RISCV64CollectorFrameRoots && helper == gcExternGlobalSet:
 		return 2, true
-	case gcArrayAllocUniform, gcStructTableSet, gcTableGrow:
+	case buildfeatures.RISCV64CollectorFrameRoots && helper == gcStructTableSet,
+		referenceTableBridgesBuilt && helper == gcTableGrow:
 		return 3, true
-	case gcArrayAllocFixed:
-		return admitted, admitted >= 2 && admitted <= maxRootedScalarArrayFixed+2
-	case gcArrayAllocData, gcArrayAllocElem, gcStructSet, gcArraySet, gcTableFill:
+	case referenceTableBridgesBuilt && helper == gcTableFill:
 		return 4, true
-	case gcArrayFill, gcTableCopy, gcTableInit:
+	case bulkTableHelpersBuilt && (helper == gcTableCopy || helper == gcTableInit):
 		return 5, true
-	case gcArrayInitElem:
-		return 6, true
+	case buildfeatures.GC != 0:
+		return gcObjectBridgeAllocationSlots(helper, admitted)
 	default:
 		return 0, false
 	}

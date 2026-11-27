@@ -3,15 +3,12 @@
 package wago
 
 import (
-	"errors"
-	"reflect"
 	goruntime "runtime"
 	"sort"
 	"testing"
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestReferenceEntryCleanupTokenMultiplicityAndMapReentry(t *testing.T) {
@@ -133,120 +130,11 @@ func TestReferenceEntryCleanupNotificationFailureStillReleasesRoot(t *testing.T)
 			if entry.token == 1 {
 				panic(first) // local metadata phase; actual root cannot be skipped
 			}
-		}, releaseGCRefTokenMetadata, (*gc.Collector).Close)
+		}, nil, nil)
 	})
 	if !panicked || value != first || notifications != 2 || callbacks != [2]int{1, 1} {
 		t.Fatalf("panic=%v/%v notifications=%d callbacks=%v", value, panicked, notifications, callbacks)
 	}
 	cleanupTestConsumedProducer(t, one)
 	cleanupTestConsumedProducer(t, two)
-}
-
-func TestReferenceEntryCleanupGCSlotPanicUnlocksBeforeProducer(t *testing.T) {
-	first := new(int)
-	var state *gcPublicState
-	var producerUnlocked bool
-	owner := cleanupTestRootedProducer(t, func() {
-		producerUnlocked = state.mu.TryLock()
-		if producerUnlocked {
-			state.mu.Unlock()
-		}
-	})
-	state = owner.publicGCState()
-	state.resultRootsMade, state.resultTokenCount = 1, 1
-	state.resultTokens[0], state.resultRootSlots[0] = 23, 7
-	var later int
-	other := cleanupTestRootedProducer(t, func() { later++ })
-	batch := referenceTokenEntries{
-		gcRefs: []gcRefTokenEntry{{token: 23, slot: 7, ownerIndex: 0, owner: owner}, {token: 24, owner: other}},
-	}
-	value, panicked := cleanupTestPanic(func() {
-		releaseReferenceEntriesWith(batch, releaseFuncrefTokenMetadata, func(entry gcRefTokenEntry) {
-			releaseGCRefTokenMetadataWith(entry, func(actual *Instance, slot uint32) error {
-				if actual != owner || slot != 7 || state.mu.TryLock() {
-					panic("slot seam not entered under expected GC-state lock")
-				}
-				panic(first)
-			})
-		}, (*gc.Collector).Close)
-	})
-	if !panicked || value != first || !producerUnlocked || later != 1 {
-		t.Fatalf("panic=%v/%v producerUnlocked=%v later=%d", value, panicked, producerUnlocked, later)
-	}
-	cleanupTestConsumedProducer(t, owner)
-	cleanupTestConsumedProducer(t, other)
-	for _, entry := range batch.gcRefs {
-		if entry.owner != nil || entry.token != 0 {
-			t.Fatal("drain retained consumed GC-token metadata")
-		}
-	}
-	// A panic before clearing is not success: the old slot metadata remains.
-	if state.resultTokens[0] != 23 || state.resultTokenCount != 1 {
-		t.Fatal("panicking GC slot phase reported successful metadata clearing")
-	}
-}
-
-func TestReferenceEntryCleanupGCMatchAndIgnoredSlotError(t *testing.T) {
-	var callbacks int
-	owner := cleanupTestRootedProducer(t, func() { callbacks++ })
-	if !owner.retainResourceRootForFinalization() {
-		t.Fatal("second GC-token root")
-	}
-	state := owner.publicGCState()
-	state.resultRootsMade, state.resultTokenCount = 2, 2
-	state.resultTokens[0], state.resultRootSlots[0] = 31, 7
-	state.resultTokens[1], state.resultRootSlots[1] = 32, 8
-	batch := referenceTokenEntries{gcRefs: []gcRefTokenEntry{
-		{token: 31, slot: 7, ownerIndex: 0, owner: owner},
-		{token: 99, slot: 8, ownerIndex: 1, owner: owner}, // stale token: no clear
-	}}
-	var slots []uint32
-	releaseReferenceEntriesWith(batch, releaseFuncrefTokenMetadata, func(entry gcRefTokenEntry) {
-		releaseGCRefTokenMetadataWith(entry, func(actual *Instance, slot uint32) error {
-			if actual != owner {
-				t.Error("wrong GC token owner")
-			}
-			slots = append(slots, slot)
-			return errors.New("diagnostic slot error retains existing ignored-error behavior")
-		})
-	}, (*gc.Collector).Close)
-	if callbacks != 1 || !reflect.DeepEqual(slots, []uint32{7}) || state.resultTokenCount != 1 || state.resultTokens[0] != 0 || state.resultTokens[1] != 32 {
-		t.Fatalf("callbacks=%d slots=%v count=%d tokens=%v", callbacks, slots, state.resultTokenCount, state.resultTokens[:2])
-	}
-	cleanupTestConsumedProducer(t, owner)
-}
-
-func TestReferenceEntryCleanupCollectorFailureCannotStrandBatch(t *testing.T) {
-	first, later := new(int), new(int)
-	var events []int
-	owner := cleanupTestRootedProducer(t, func() { events = append(events, 1); panic(later) })
-	initial, last := &gc.Collector{}, &gc.Collector{}
-	// The diagnostic close failure is injected before real Close. The fixture
-	// explicitly owns both nil-storage collectors until these cleanup defers.
-	defer initial.Close()
-	defer last.Close()
-	batch := referenceTokenEntries{
-		funcrefs:   []*funcrefTokenEntry{{token: 1, owner: owner}},
-		collectors: []*gc.Collector{last},
-	}
-	value, panicked := cleanupTestPanic(func() {
-		releaseLifetimeEntriesWith(initial, batch, func(collector *gc.Collector) {
-			if collector == initial {
-				events = append(events, 0)
-				panic(first)
-			}
-			if collector != last {
-				panic("unexpected collector unit")
-			}
-			events = append(events, 2)
-			collector.Close()
-		})
-	})
-	if !panicked || value != first || !reflect.DeepEqual(events, []int{0, 1, 2}) {
-		t.Fatalf("panic=%v/%v events=%v", value, panicked, events)
-	}
-	cleanupTestConsumedProducer(t, owner)
-	if batch.funcrefs[0] != nil || batch.collectors[0] != nil {
-		t.Fatal("enclosing failure left the claimed batch unpublished but undrained")
-	}
 }

@@ -10,8 +10,10 @@
 package amd64
 
 import (
+	"errors"
 	"os"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 
@@ -865,8 +867,17 @@ func (f *fn) inLoop() bool {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
+	if buildfeatures.Memory64 == 0 {
+		return false
+	}
 	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
+}
+
+// A secondary memory or a shared primary memory uses a directory base.
+func (f *fn) usesIndexedMemory(index uint32) bool {
+	return buildfeatures.MultiMemory != 0 && index != 0 ||
+		buildfeatures.Threads != 0 && f.threadedMemory0
 }
 
 func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err error) {
@@ -875,6 +886,9 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 		return 0, 0, err
 	}
 	if align >= 64 && align < 128 {
+		if buildfeatures.MultiMemory == 0 {
+			return 0, 0, errors.New("multi-memory is disabled in this build")
+		}
 		memoryIndex, err = r.U32()
 		if err != nil {
 			return 0, 0, err
@@ -1025,7 +1039,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.invalidateStoreForward()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		out := f.allocReg(maskOf(base).add(ea))
@@ -1109,7 +1123,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
 		value := f.materialize(f.popValue())
@@ -1396,7 +1410,7 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	} else {
 		f.a.LeaScaled(RDX, offset, n, 0, 0)
 	}
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		if f.memSizeReg != regNone {
 			f.trapUnlessLE(RDX, f.memSizeReg)
 		} else {
@@ -1887,7 +1901,7 @@ var sharedMemoryBaseEnabled = true
 
 // The module-wide register holds a stable backing address, never its extent.
 func (f *fn) cachedSharedMemoryBase() Reg {
-	if f.threadedMemory0 && f.memSizeReg == R15 && f.opt(optSharedMemoryBase) {
+	if f.threadedMemory0 && f.memSizeReg == R15 && buildfeatures.Threads != 0 && f.opt(optSharedMemoryBase) {
 		return f.memSizeReg
 	}
 	return regNone
@@ -1995,12 +2009,12 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryShared(memoryIndex) {
+	if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 		f.sharedMemorySize(memoryIndex)
 		return nil
 	}
 	out := f.allocReg(0)
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		f.a.Load32(out, RBX, -bdCurPages)
 	} else {
 		dir := f.allocReg(maskOf(out))
@@ -2025,7 +2039,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryShared(memoryIndex) {
+	if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 		return f.sharedMemoryGrow(memoryIndex)
 	}
 	f.materializePendingTraps()
@@ -2196,7 +2210,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.a.LeaDisp(t, base, int32(n))
 	}
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		if f.memSizeReg != regNone {
 			f.a.Cmp64(t, f.memSizeReg)
 		} else {
@@ -2243,7 +2257,7 @@ func (f *fn) bulkMemory0Base(avoid regMask) (Reg, bool) {
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no rep-stos microcode startup.
 func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
-	if n >= 16 && f.opt(optBulkFillVector) {
+	if n >= 16 && buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkFillVector) {
 		f.memoryFillVector(n, memoryIndex)
 		return
 	}
@@ -2325,7 +2339,7 @@ func (f *fn) memoryCopyConst(n int, dstMemory, srcMemory uint32) {
 		f.bulkBoundsCheck(src, n, srcMemory)
 	}
 	base, baseOwned := f.bulkMemory0Base(maskOf(src, dst))
-	if n > 32 || n >= 16 && f.opt(optBulkCopyVector) {
+	if n > 32 || n >= 16 && buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkCopyVector) {
 		// 16..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
 		// registers, so the load-all footprint stays in the float pool (the GP
 		// 8-byte form would need five-to-eight registers). Overlap-safe (memmove

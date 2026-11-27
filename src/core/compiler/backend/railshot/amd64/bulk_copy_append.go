@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -20,7 +21,7 @@ import (
 // enclosing span must be proved in bounds and unshared: the extra first-byte
 // read must neither trap nor observe a concurrent writer.
 func (f *fn) tryBulkCopyAppend(r *wasm.Reader, n int) (bool, error) {
-	if !f.opt(optBulkCopyVector) || !f.opt(optMemoryMinimumBounds) || n < 15 || n > 63 || n%16 != 15 ||
+	if !(buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkCopyVector)) || !f.opt(optMemoryMinimumBounds) || n < 15 || n > 63 || n%16 != 15 ||
 		f.memoryAddr64(0) || f.memoryShared(0) ||
 		len(f.customInstructions) != 0 || len(f.intervalLast) != 0 || f.moduleEH || f.gcFrameRoots != nil ||
 		profileEnabled && f.stats != nil && f.stats.RecordSources {

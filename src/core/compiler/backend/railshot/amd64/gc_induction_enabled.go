@@ -9,4 +9,6 @@
 
 package amd64
 
-const gcInductionReductionsEnabled = true
+import "github.com/wago-org/wago/internal/buildfeatures"
+
+const gcInductionReductionsEnabled = buildfeatures.GC != 0

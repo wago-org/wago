@@ -561,7 +561,7 @@ func preparedIntegerMultiModule(params, results int) []byte {
 
 func TestPreparedDirectIntegerMultiWidths(t *testing.T) {
 	maxParams := 8
-	for _, tc := range []struct{ params, results int }{{4, 3}, {maxParams, 4}, {5, 5}, {maxParams, maxParams}} {
+	for _, tc := range []struct{ params, results int }{{2, 2}, {4, 3}, {maxParams, 4}, {5, 5}, {maxParams, maxParams}} {
 		t.Run(fmt.Sprintf("%d-%d", tc.params, tc.results), func(t *testing.T) {
 			compiled := MustCompile(preparedIntegerMultiModule(tc.params, tc.results))
 			defer compiled.Close()

@@ -104,6 +104,9 @@ func rv64RetainGlobalDescriptor(global *Global, store *referenceStore) (importGl
 // erase the deduplication witness for a later alias. The bounded nested scan
 // preserves first-occurrence order without allocating another owner set.
 func railshotReleaseGlobalReferences(entries []importGlobalReference) {
+	if !referenceSignaturesBuilt {
+		return
+	}
 	var cleanup resourceCleanup
 	for i := range entries {
 		if row := entries[i].dependency; row != nil {
@@ -126,7 +129,13 @@ func railshotReleaseGlobalReferences(entries []importGlobalReference) {
 }
 
 func railshotFreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore, cleanup *resourceCleanup) ([]importGlobalReference, error) {
-	return rv64FreezeGlobalReferences(c, globals, store, nil, cleanup)
+	if referenceSignaturesBuilt {
+		return rv64FreezeGlobalReferences(c, globals, store, nil, cleanup)
+	}
+	if cleanup.panicked {
+		return nil, ErrCallbackPanic
+	}
+	return nil, nil
 }
 
 func rv64FreezeGlobalReferences(c *Compiled, globals []*resolvedGlobalImport, store *referenceStore, graph *dependencyGraph, cleanup *resourceCleanup) (entries []importGlobalReference, err error) {
@@ -284,6 +293,13 @@ func rv64ValidateResolvedGlobals(c *Compiled, imports resolvedImports, store *re
 // An immutable imported cell or a local copy authorizes first issuance from a
 // logically retired producer. Direct access through that producer stays closed.
 func railshotImportedGlobalValue(in *Instance, cell *Global) (Value, bool, error) {
+	if referenceSignaturesBuilt {
+		return rv64ImportedGlobalValue(in, cell)
+	}
+	return Value{}, false, nil
+}
+
+func rv64ImportedGlobalValue(in *Instance, cell *Global) (Value, bool, error) {
 	if in == nil || cell == nil || cell.Type != ValFuncRef || len(in.importGlobalReferences()) == 0 {
 		return Value{}, false, nil
 	}
@@ -328,73 +344,23 @@ func railshotImportedGlobalValue(in *Instance, cell *Global) (Value, bool, error
 	return Value{}, false, nil
 }
 
-func railshotCanonicalGlobalFuncref(store *referenceStore, source *Instance, descriptor uint64) (*Instance, uint64, bool) {
-	owner := rv64GlobalDescriptorOwner(source, descriptor)
-	if owner == nil {
-		owner = rv64ImportedResultDescriptorOwner(store, source, descriptor)
-	}
-	if owner == nil && store != nil {
-		// A mutable cell can contain a token-issued function from a producer
-		// outside its container's frozen import graph. The store identity owns
-		// that producer's physical root. The caller holds store.mu.
-		if entry := store.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil && entry.descriptor == descriptor {
-			owner = entry.owner
+func (s *rv64NativeTableTargets) validateFrozenGlobalTargets(owner *Instance, edges *int) error {
+	for _, entry := range owner.importGlobalReferences() {
+		*edges += 1
+		if *edges > 4096 {
+			return fmt.Errorf("RV64 reference attachment edge bound")
 		}
-	}
-	if owner == nil || owner == source || owner.refStore != store || !store.hasInstanceResourcesLocked(owner) {
-		return nil, 0, false
-	}
-	if _, valid := rv64PublishedDescriptor(owner, descriptor); !valid {
-		return nil, 0, false
-	}
-	return store.canonicalFuncrefOwnerLocked(owner, descriptor)
-}
-
-// Frozen function attachments retain each reachable producer while the source
-// is retained. Establish membership in those owned descriptor arenas before
-// reading publication fields. This path also covers a producer's first result
-// after logical close, without searching unrelated registered instances.
-// The caller holds store.mu and the source's invocation or attachment lease.
-func rv64ImportedResultDescriptorOwner(store *referenceStore, source *Instance, descriptor uint64) *Instance {
-	if store == nil || source == nil || source.refStore != store || descriptor == 0 {
-		return nil
-	}
-	inline := [8]*Instance{source}
-	owners := inline[:1]
-	var ownerIndex map[*Instance]struct{}
-	edges := 0
-	for next := 0; next < len(owners); next++ {
-		parent := owners[next]
-		for index := 0; index < parent.c.NumImports; index++ {
-			edges++
-			if edges > rv64MaxTableLeaseEdges {
-				return nil
+		descriptor, _, err := rv64ReferenceGlobalSnapshot(entry.global, owner.refStore, true)
+		if err != nil || descriptor != entry.descriptor {
+			return fmt.Errorf("RV64 immutable reference attachment changed")
+		}
+		if descriptor != 0 {
+			if err := s.add(entry.owner); err != nil {
+				return err
 			}
-			export := parent.importReferenceNative(index)
-			if export == nil {
-				// Table-free relays have no descriptor directory. Their sealed
-				// resolved binding still owns the same import attachment.
-				export, _ = rv64NativeFunctionAttachment(parent, index)
+			if _, valid := rv64PublishedDescriptor(entry.owner, descriptor); !valid {
+				return fmt.Errorf("RV64 reference attachment descriptor changed")
 			}
-			if export == nil || export.inst == nil {
-				continue
-			}
-			owner := export.inst
-			if owner.refStore != store || !store.hasInstanceResourcesLocked(owner) {
-				continue
-			}
-			if _, own := owner.funcrefDescriptorIndex(descriptor); own {
-				if _, valid := rv64PublishedDescriptor(owner, descriptor); valid {
-					return owner
-				}
-				return nil
-			}
-			var ok bool
-			owners, ok = rv64AppendOwnerForWalk(owners, &ownerIndex, owner)
-			if !ok {
-				return nil
-			}
-
 		}
 	}
 	return nil

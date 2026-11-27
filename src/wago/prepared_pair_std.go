@@ -18,16 +18,33 @@ import (
 
 const preparedDirectPairSupported = true
 
+func directIntPairArgument(bits uint64, slot int, wideMask uint8) uint64 {
+	if pairIntNarrowArgsForImage == 0 {
+		return bits
+	}
+	if pairIntWideArgsForImage == 0 {
+		return uint64(uint32(bits))
+	}
+	lane := uint8(1 << slot)
+	if (pairIntNarrowArgsForImage == 0xff || pairIntNarrowArgsForImage&lane != 0) &&
+		(pairIntWideArgsForImage != 0xff && pairIntWideArgsForImage&lane == 0 || wideMask&lane == 0) {
+		return uint64(uint32(bits))
+	}
+	return bits
+}
+
+func storeDirectIntPair(out []uint64, resultWide []bool, r0, r1 uint64) {
+	out[0] = directBankValue(r0, 0, resultWide, pairIntNarrowResultsForImage, pairIntWideResultsForImage)
+	out[1] = directBankValue(r1, 1, resultWide, pairIntNarrowResultsForImage, pairIntWideResultsForImage)
+}
+
 func (in *Instance) invokeDirectIntPairEntry(entry uintptr, paramWideMask uint8, resultWide []bool, args []uint64) ([]uint64, error) {
 	if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
 	}
 	var raw [4]uint64
 	for i, bits := range args {
-		if paramWideMask&(1<<i) == 0 {
-			bits = uint64(uint32(bits))
-		}
-		raw[i] = bits
+		raw[i] = directIntPairArgument(bits, i, paramWideMask)
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
 	r0, r1 := in.eng.EnterPreparedIntPairBounded(entry, in.jm.LinMemBase(), raw[0], raw[1], raw[2], raw[3])
@@ -37,16 +54,7 @@ func (in *Instance) invokeDirectIntPairEntry(entry uintptr, paramWideMask uint8,
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:2]
-	if resultWide[0] {
-		out[0] = r0
-	} else {
-		out[0] = uint64(uint32(r0))
-	}
-	if resultWide[1] {
-		out[1] = r1
-	} else {
-		out[1] = uint64(uint32(r1))
-	}
+	storeDirectIntPair(out, resultWide, r0, r1)
 	return out, nil
 }
 
@@ -55,9 +63,9 @@ func (in *Instance) invokeDirectIntPairEntry(entry uintptr, paramWideMask uint8,
 func (fn *WasmFunc) invokeDirectIntPairSession(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
 	args := [4]uint64{a0, a1, a2, a3}
-	for i := 0; i < fn.paramSlots; i++ {
-		if fn.scalarWideMask&(1<<i) == 0 {
-			args[i] = uint64(uint32(args[i]))
+	if pairIntNarrowArgsForImage != 0 {
+		for i := 0; i < fn.paramSlots; i++ {
+			args[i] = directIntPairArgument(args[i], i, fn.scalarWideMask)
 		}
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
@@ -69,15 +77,6 @@ func (fn *WasmFunc) invokeDirectIntPairSession(a0, a1, a2, a3 uint64) ([]uint64,
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:2]
-	if fn.resultWide[0] {
-		out[0] = r0
-	} else {
-		out[0] = uint64(uint32(r0))
-	}
-	if fn.resultWide[1] {
-		out[1] = r1
-	} else {
-		out[1] = uint64(uint32(r1))
-	}
+	storeDirectIntPair(out, fn.resultWide, r0, r1)
 	return out, nil
 }

@@ -6,6 +6,7 @@ import (
 )
 
 func TestDirectScalarMemoryValidationParity(t *testing.T) {
+	ensureValidationEffects()
 	for opcode := byte(0x28); opcode <= 0x3e; opcode++ {
 		effect := opEffects[memOpcodeKind[opcode]]
 		for _, scenario := range []string{"memory32", "memory64", "unknown-memory", "overalign", "indexed-zero", "indexed-unknown", "wrong-address", "underflow", "truncated"} {

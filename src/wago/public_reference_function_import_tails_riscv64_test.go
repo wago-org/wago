@@ -48,7 +48,7 @@ func TestRV64PublicReferenceFunctionImportedTailsSourceArtifact(t *testing.T) {
 					rv64RequirePublishedLocalFunction(t, producer, 2)
 					state := &producer.pluginState.Load().railshotInvocation
 					capability := binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:])
-					if state.tailDispatcher == nil || capability == 0 {
+					if state.tailForTest().dispatcher == nil || capability == 0 {
 						t.Fatal("static private-tail factory missing")
 					}
 					if err := native.Close(); err != nil {
@@ -77,7 +77,7 @@ func TestRV64PublicReferenceFunctionImportedTailsSourceArtifact(t *testing.T) {
 							if (choice == 0 && hostCalls != before) || (choice != 0 && hostCalls != before+1) {
 								t.Fatal("wrong private tail target", choice, hostCalls, before)
 							}
-							if binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:]) != capability || state.tailDispatcher == nil || state.tailGenerationBudget.count != 0 {
+							if binary.LittleEndian.Uint64(rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:]) != capability || state.tailForTest().dispatcher == nil || state.tailForTest().generationBudget.count != 0 {
 								t.Fatal("static private-tail capability/lifetime changed")
 							}
 						}

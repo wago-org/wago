@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // AdmitTypeDeclarations identifies metadata with no executable obligations.
 // Full frontend type validation is still required before compilation.
@@ -38,7 +41,7 @@ func admitPublicTypeDeclarations(m *wasm.Module) bool {
 // The caller already holds the validated source graph; lowering still checks
 // its full carrier, instruction, descriptor and execution contracts.
 func AdmitPrimitiveFunctionGraphModule(m *wasm.Module) bool {
-	if !admitPublicPrimitiveReferenceModule(m, true) {
+	if !buildfeatures.ReferenceSignatures || !admitPublicPrimitiveReferenceModule(m, true) {
 		return false
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)

@@ -15,18 +15,6 @@ var rv64GCTypeSubtypingFinalityLinkWires = [][]byte{
 	mustDecodeGCTypeSubtypingFinalityLinkWire("0061736d0100000001898080800002500060000060000002898080800001024d320266320000"),
 }
 
-var rv64GCTypeSubtypingFinalityLinkModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingFinalityLinkWires))
-	for i, wire := range rv64GCTypeSubtypingFinalityLinkWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingFinalityLinkWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

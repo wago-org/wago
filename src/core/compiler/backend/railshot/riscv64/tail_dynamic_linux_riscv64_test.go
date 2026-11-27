@@ -60,7 +60,7 @@ func TestTailDynamicRV64ForeignCycleOneRecord(t *testing.T) {
 						e.a.Constant64(enc.X28, int64(tailRAPointer(f.witness)))
 						e.a.Constant64(enc.X6, 2048)
 						firstHop := e.a.BranchLong(enc.EQ, enc.X5, enc.X6)
-						tailRAAddress(&e.a, enc.X29, enc.SP, e.frameBytes)
+						emitBaseOffsetAddress(&e.a, enc.X29, enc.SP, e.frameBytes)
 						e.a.Ld(enc.X7, enc.X28, 0)
 						first := e.a.BranchLong(enc.EQ, enc.X7, enc.Zero)
 						e.a.Sub(enc.X7, enc.X7, enc.X29)

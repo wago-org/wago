@@ -39,15 +39,15 @@ func rv64GCArrayCopyMetadata(c *Compiled, requireInitializers bool) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	if requireInitializers {
-		if len(d.gcArrayGlobals) != 2 || d.gcArrayGlobals[0].GlobalIndex != 0 || d.gcArrayGlobals[0].TypeID != 0 || d.gcArrayGlobals[0].Length != 12 || d.gcArrayGlobals[0].Mode != gcArrayGlobalInitUniform || !slices.Equal(d.gcArrayGlobals[0].Bits, []uint64{10}) ||
-			d.gcArrayGlobals[1].GlobalIndex != 1 || d.gcArrayGlobals[1].TypeID != 1 || d.gcArrayGlobals[1].Length != 12 || d.gcArrayGlobals[1].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals[1].Bits) != 0 {
+		if len(d.gcArrayGlobals()) != 2 || d.gcArrayGlobals()[0].GlobalIndex != 0 || d.gcArrayGlobals()[0].TypeID != 0 || d.gcArrayGlobals()[0].Length != 12 || d.gcArrayGlobals()[0].Mode != gcArrayGlobalInitUniform || !slices.Equal(d.gcArrayGlobals()[0].Bits, []uint64{10}) ||
+			d.gcArrayGlobals()[1].GlobalIndex != 1 || d.gcArrayGlobals()[1].TypeID != 1 || d.gcArrayGlobals()[1].Length != 12 || d.gcArrayGlobals()[1].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals()[1].Bits) != 0 {
 			return false
 		}
-	} else if len(d.gcArrayGlobals) != 0 {
+	} else if len(d.gcArrayGlobals()) != 0 {
 		return false
 	}
 	wantExports := map[string]int{"array_get_nth": 0, "array_copy-null-left": 1, "array_copy-null-right": 2, "array_copy": 3, "array_copy_overlap_test-1": 4, "array_copy_overlap_test-2": 5}

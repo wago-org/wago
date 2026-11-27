@@ -19,6 +19,7 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 type BoolSetting struct {
@@ -73,9 +74,11 @@ func Optimizations() []BoolSetting { return OptimizationsForArch(runtime.GOARCH)
 
 func OptimizationsForArch(arch string) []BoolSetting {
 	infos := wago.OptimizationInfosForArch(arch)
-	result := make([]BoolSetting, len(infos))
-	for index, info := range infos {
-		result[index] = optimizationSetting(info)
+	result := make([]BoolSetting, 0, len(infos))
+	for _, info := range infos {
+		if info.Desc != "" {
+			result = append(result, optimizationSetting(info))
+		}
 	}
 	return result
 }
@@ -224,7 +227,7 @@ func validateValues(kind boolSettingKind, values map[string]bool) error {
 		if err := recordCanonicalSetting(seen, setting.Key, name, label); err != nil {
 			return err
 		}
-		if enabled && !setting.Available {
+		if enabled && !setting.Available && !buildOmittedFeature(setting) {
 			return fmt.Errorf("%s setting %q is unavailable", label, name)
 		}
 	}
@@ -280,4 +283,14 @@ func ParseBool(value string) (bool, error) {
 	default:
 		return false, fmt.Errorf("invalid boolean %q (want: on or off)", value)
 	}
+}
+
+// An installed feature-trimmed runtime can share its settings file with the
+// full manager or another runtime build. Retain their stored defaults.
+func buildOmittedFeature(setting BoolSetting) bool {
+	if buildfeatures.Custom && setting.kind == featureSettingKind {
+		feature, _ := wago.FeatureInfoByName(setting.name)
+		return feature.Feature&wago.CoreFeatures(buildfeatures.Enabled) == 0
+	}
+	return false
 }

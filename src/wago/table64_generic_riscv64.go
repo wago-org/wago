@@ -31,8 +31,10 @@ func rv64ValidateGenericTable64(c *Compiled) error {
 			return fmt.Errorf("generic table64 %d requires a validated function or external table type", index)
 		}
 		has64 = has64 || c.tableDef(index).Addr64
-		if imported, ok := c.tableImportAt(index); ok && imported.Min > uint64(^uint32(0)) {
-			return fmt.Errorf("generic table64 import %d exceeds native size representation", index)
+		if tableImportsForImage {
+			if imported, ok := c.tableImportAt(index); ok && imported.Min > uint64(^uint32(0)) {
+				return fmt.Errorf("generic table64 import %d exceeds native size representation", index)
+			}
 		}
 	}
 	if !has64 {

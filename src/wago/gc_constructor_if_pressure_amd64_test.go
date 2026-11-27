@@ -94,7 +94,7 @@ func TestGCConstructorIfPressure(t *testing.T) {
 					for i := range want {
 						actual := got[i]
 						if i < 2 {
-							entry, ok := in.refStore.gcByToken[actual]
+							entry, ok := in.refStore.objectTokensLocked()[actual]
 							if !ok || entry.owner != in {
 								t.Fatal("lost reference root")
 							}

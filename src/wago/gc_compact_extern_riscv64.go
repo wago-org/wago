@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -36,8 +36,7 @@ type compactExternCollector struct {
 	scratch   *compactExternShellScratch
 	rootSlot  gc.Root // reused only under this collector's mutator lock
 	owners    map[*Instance]*compactExternPersistentOwner
-	bulk      []compactExternPreparedWord
-	bulkRoots *compactExternPreparedRoots
+	compactExternTableBulkState
 	hostSlots *compactExternHostSlotPool
 }
 
@@ -47,14 +46,14 @@ type compactExternShell struct {
 }
 
 type compactExternPublicToken struct {
-	root gcRefTokenEntry
+	root gcResultRoot
 	word uint64
 }
 
 func (v *compactExternPublicToken) nativeExternWord() uint64 { return v.word }
 
-func (v *compactExternPublicToken) externrefGCRoot() gcRefTokenEntry { return v.root }
-func (v *compactExternPublicToken) externrefPublicValue() any        { return v.word }
+func (v *compactExternPublicToken) externrefGCRoot() gcResultRoot { return v.root }
+func (v *compactExternPublicToken) externrefPublicValue() any     { return v.word }
 
 // Called at a public result boundary, after native execution has returned.
 // The public token roots the shell, including an immediate i31 shell, until
@@ -65,7 +64,7 @@ func (in *Instance) issueCompactExternPublicToken(word uint64) (uint64, error) {
 			return word, nil
 		}
 	}
-	if in == nil || in.c == nil || in.refStore == nil || in.gc == nil || in.c.nativeGCABIRequirement() != gc.NativeABIVersion || in.c.genericGCFrameRoots() == nil {
+	if !collectorObjectTokensBuilt || in == nil || in.c == nil || in.refStore == nil || in.gc == nil || in.c.nativeGCABIRequirement() != gc.NativeABIVersion || in.c.genericGCFrameRoots() == nil {
 		return 0, fmt.Errorf("compact extern result lacks exact collector ownership")
 	}
 	collector, ref := compactExternWordRoot(in.refStore, word)
@@ -98,24 +97,15 @@ func (in *Instance) issueCompactExternPublicToken(word uint64) (uint64, error) {
 	if !in.retainResourceRootMode(true) {
 		return 0, fmt.Errorf("compact extern result producer is unavailable")
 	}
-	index := state.nextResultSlot()
-	var slot uint32
-	if index == state.resultRootsMade {
-		var err error
-		slot, err = in.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootPublicToken)
-		if err != nil {
-			in.releaseResourceRoot()
-			return 0, err
-		}
-		state.appendResultRootSlot(slot)
-	} else {
-		slot = state.resultRootSlot(index)
-		if err := in.gc.SetGlobalSlot(slot, ref); err != nil {
-			in.releaseResourceRoot()
-			return 0, err
-		}
+	slots := state.resultSlots()
+	index := slots.nextResultSlot()
+	slot, err := slots.root(in.gc, ref, index)
+	if err != nil {
+		in.releaseResourceRoot()
+		return 0, err
 	}
-	value := &compactExternPublicToken{word: word, root: gcRefTokenEntry{ref: ref, slot: slot, ownerIndex: index, owner: in}}
+
+	value := &compactExternPublicToken{word: word, root: gcResultRoot{slot: slot, ownerIndex: index, owner: in}}
 	token, err := in.refStore.issueExternref(value)
 	if err != nil {
 		_ = in.gc.SetGlobalSlot(slot, gc.Null())
@@ -123,8 +113,7 @@ func (in *Instance) issueCompactExternPublicToken(word uint64) (uint64, error) {
 		return 0, err
 	}
 	value.root.token = token
-	state.setResultToken(index, token)
-	state.resultTokenCount++
+	slots.publish(index, token)
 	return token, nil
 }
 
@@ -143,14 +132,14 @@ type compactExternWord struct {
 	ref   gc.Ref
 }
 
-var compactExternWords = struct {
+var compactExternWords struct {
 	sync.RWMutex
 	rows map[compactExternWordKey]compactExternWord
-}{rows: make(map[compactExternWordKey]compactExternWord)}
+}
 var compactExternWordCount atomic.Uint32
 
 func compactExternWordReserved(store *referenceStore, word uint64) bool {
-	if compactExternWordCount.Load() == 0 {
+	if !nativeCollectorFrameRootsBuilt || compactExternWordCount.Load() == 0 {
 		return false
 	}
 	compactExternWords.RLock()
@@ -205,6 +194,22 @@ func compactExternFrameRoot(owner *Instance, collector *gc.Collector, word uint6
 	}
 	return state, ref
 }
+func compactExternOwnerFrameRoot(owner *Instance, word uint64) gc.Ref {
+	_, ref := compactExternFrameRoot(owner, owner.gc, word)
+	return ref
+}
+
+func compactExternOwnerPersistentRoot(owner *Instance, index uint32) (gc.Ref, bool) {
+	if compactExternCollectorCount.Load() != 0 {
+		if value, ok := compactExternCollectors.Load(owner.gc); ok {
+			if rows := value.owners[owner]; rows != nil && uint64(index) < uint64(len(rows.cells)) {
+				return rows.cells[index].root.GetRef(), true
+			}
+		}
+	}
+	return gc.Null(), false
+}
+
 func visitCompactExternFrameRoot(owner *Instance, collector *gc.Collector, word uint64, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
 	state, ref := compactExternFrameRoot(owner, collector, word)
 	if state == nil || ref.IsNull() {
@@ -292,17 +297,9 @@ func (in *Instance) stageCompactExternAnyArgument(token uint64, required ValueTy
 	if err != nil {
 		return gc.Null(), err
 	}
-	index := public.argumentRootCount
-	if index == public.argumentRootsMade {
-		slot, err := in.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootForeignInstance)
-		if err != nil {
-			return gc.Null(), err
-		}
-		public.appendArgumentRootSlot(slot)
-	} else if err := in.gc.SetGlobalSlot(public.argumentRootSlot(index), ref); err != nil {
+	if err := public.argumentRoots().stage(in.gc, ref); err != nil {
 		return gc.Null(), err
 	}
-	public.argumentRootCount++
 	return ref, nil
 }
 
@@ -343,6 +340,9 @@ func (in *Instance) compactExternCollector(domain *gcStoreDomain) (*compactExter
 	return compactExternCollectorFor(in.gc, in.refStore, domain)
 }
 func compactExternCollectorFor(collector *gc.Collector, store *referenceStore, domain *gcStoreDomain) (*compactExternCollector, error) {
+	if !nativeCollectorFrameRootsBuilt {
+		return nil, fmt.Errorf("compact extern conversion has no collector or reference store")
+	}
 	if state, ok := compactExternCollectors.Load(collector); ok {
 		s := state
 		if s.store != store {
@@ -479,6 +479,9 @@ func (s *compactExternCollector) externFromAny(value gc.Ref, roots gc.RootSet) (
 			compactExternWords.Unlock()
 			continue
 		}
+		if compactExternWords.rows == nil {
+			compactExternWords.rows = make(map[compactExternWordKey]compactExternWord)
+		}
 		compactExternWords.rows[key] = compactExternWord{s, shell}
 		compactExternWordCount.Add(1)
 		compactExternWords.Unlock()
@@ -517,6 +520,9 @@ func (s *compactExternCollector) anyFromForeign(token uint64, roots gc.RootSet) 
 	if token == 0 {
 		return gc.Null(), nil
 	}
+	if !nativeCollectorFrameRootsBuilt {
+		return gc.Null(), fmt.Errorf("compact extern conversion requires a native collector")
+	}
 	if ref, ok := s.byToken[token]; ok {
 		return ref, nil
 	}
@@ -551,7 +557,7 @@ func (s *compactExternCollector) drain() {
 }
 
 func drainCompactExternReclaims(collector *gc.Collector) {
-	if compactExternCollectorCount.Load() != 0 {
+	if nativeCollectorFrameRootsBuilt && compactExternCollectorCount.Load() != 0 {
 		if state, ok := compactExternCollectors.Load(collector); ok {
 			state.drain()
 		}

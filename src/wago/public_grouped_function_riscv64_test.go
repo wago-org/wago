@@ -13,10 +13,96 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestRV64MVPTableSignatureKeys(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		tableTestFuncSection(0, 1),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(42))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+		)),
+	)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1).WithBoundsChecks(BoundsChecksExplicit)
+	code, err := cfg.Compile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer code.Close()
+	in, err := Instantiate(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := tableTestCallI32(t, in, "callAt", I32(0)); got != 42 {
+		t.Fatalf("MVP indirect call = %d", got)
+	}
+	if len(code.FuncTypeID) != 2 {
+		t.Fatalf("table keys = %v", code.FuncTypeID)
+	}
+	check := &Compiled{Funcs: code.Funcs, FuncTypeID: slices.Clone(code.FuncTypeID)}
+	if err := rv64ValidateReferenceFunctionKeys(check); err != nil {
+		t.Fatal(err)
+	}
+	check.FuncTypeID[0] = check.FuncTypeID[1]
+	if err := rv64ValidateReferenceFunctionKeys(check); err == nil {
+		t.Fatal("accepted the table entry with another function's signature key")
+	}
+	if !referenceSignaturesBuilt {
+		check.FuncTypeID[0] = code.FuncTypeID[0]
+		check.Funcs = slices.Clone(check.Funcs)
+		check.Funcs[0].Results = []ValType{ValFuncRef}
+		if err := rv64ValidateReferenceFunctionKeys(check); err == nil {
+			t.Fatal("accepted a reference carrier with a numeric signature key")
+		}
+	}
+}
+
+func TestRV64VectorTableWithoutReferenceSignatures(t *testing.T) {
+	if referenceSignaturesBuilt || !SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
+		t.Skip("requires SIMD in a build without reference signatures")
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128}),
+		)),
+		tableTestFuncSection(0, 1),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0, 1})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestLocalGet(1), tableTestCallIndirect(0, 0))),
+		)),
+	)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV1 | CoreFeatureSIMD).WithBoundsChecks(BoundsChecksExplicit)
+	code, err := cfg.Compile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer code.Close()
+	in, err := Instantiate(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	want := []uint64{0x1122334455667788, 0x9988776655443322}
+	got, err := in.Invoke("callAt", want[0], want[1], 0)
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("vector indirect call = %v, %v", got, err)
+	}
+}
+
 func TestRV64PrimitiveTailTypeKeysSnapshotQuota(t *testing.T) {
 	c := rv64NativeTailCompile(t, "primitive-tail-type-quota", rv64PublicReferenceTailModule(nil, false), false)
 	view := c.executionView()
-	keys := view.loadCompileIndexes().railshotTail.primitiveTailTypeKeys
+	keys := view.loadCompileIndexes().railshotTail.tailCode.get().declaredTypeKeys
 	if len(keys) != len(view.Types) || len(keys) == 0 {
 		t.Fatal("missing retained declared keys")
 	}
@@ -62,7 +148,7 @@ func TestRV64PublicGroupedFunctionSourceAndArtifact(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				if c.codeCache.gcI31Product != 0 {
+				if c.stagedGCI31Product() != 0 {
 					t.Fatal("function-only graph gained i31 execution product")
 				}
 
@@ -206,7 +292,7 @@ func TestRV64ActualI31KeepsExecutionProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if c.codeCache.gcI31Product == 0 {
+	if c.stagedGCI31Product() == 0 {
 		t.Fatal("actual i31 execution lost its product")
 	}
 }

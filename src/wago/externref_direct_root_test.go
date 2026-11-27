@@ -1,3 +1,5 @@
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
+
 package wago
 
 import (

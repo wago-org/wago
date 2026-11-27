@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -14,57 +14,54 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-func compiledManagedFunctionReachability(c *Compiled) bool { return c.usesManagedFunctionStorage() }
+func (c *Compiled) functionEnvironmentFrameRoots() bool {
+	return c != nil && c.genericGCFrameRoots() != nil && c.usesManagedFunctionStorage()
+}
 
-// Explicit collection through a numeric module can span a Runtime's managed
-// edges. This private captured lease has no requesting-instance refresh: its
-// topology read lock keeps the exact ordered domain list fixed until unlock.
-func (in *Instance) lockManagedFunctionCollectionInvocation(id invocationID) gcInvocationLease {
-	if in == nil || in.refStore == nil {
-		return gcInvocationLease{}
+// usesManagedFunctionStorage classifies validated runtime ownership needs. It
+// grants no source, frame-root, or artifact authority by itself. Plain unused
+// GC type declarations have no managed execution product or native GC ABI.
+func (c *Compiled) usesManagedFunctionStorage() bool {
+	return managedFunctionGraphForImage && c.hasManagedFunctionStorage()
+}
+
+func (c *Compiled) hasManagedFunctionStorage() bool {
+	if !nativeCollectorFrameRootsBuilt || c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
+		return false
 	}
-	if _, ok := managedFunctionGraphs.Load(in.refStore); !ok {
-		return in.lockGCInvocation(id)
+	if c.needsOwnedExceptionReferences() && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) {
+		return true
 	}
-	topology := in.refStore.ensureGCTopology()
-	topology.RLock()
-	in.refStore.mu.Lock()
-	var set gcInvocationDomainSet
-	for _, entry := range in.refStore.instances {
-		if entry != nil && !entry.resourcesReleased {
-			set.add(entry.gcDomain)
+	if c.hasFunctionEnvironmentFrames() && (c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.hasOpaqueExternFrames()) && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames()) {
+		return true
+	}
+	if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !c.usesGenericGCExecution() {
+		return false
+	}
+	for _, desc := range c.GCTypeDescs {
+		if desc.Kind == gc.KindArray && (desc.Elem == gc.StorageFuncRef || desc.Elem == gc.StorageFuncRefNull) {
+			return true
+		}
+		if desc.Kind == gc.KindStruct {
+			for _, field := range desc.Fields {
+				if field.Kind == gc.StorageFuncRef || field.Kind == gc.StorageFuncRefNull {
+					return true
+				}
+			}
 		}
 	}
-	compactExternAddClaimedDomainsLocked(in.refStore, &set)
-	in.refStore.mu.Unlock()
-	set.sort()
-	domains := gcInvocationDomainView{set: &set}
-	anyBorrowed, allBorrowed := false, true
-	for i := 0; i < domains.len(); i++ {
-		domain := domains.at(i)
-		domain.invocationState.Lock()
-		borrowed := domain.invocationOwner == id
-		domain.invocationState.Unlock()
-		anyBorrowed = anyBorrowed || borrowed
-		allBorrowed = allBorrowed && borrowed
-	}
-	if anyBorrowed {
-		topology.RUnlock()
-		if !allBorrowed {
-			return in.lockGCInvocation(id)
-		}
-		return gcInvocationLease{domains: domains, owner: id, dynamic: true}
-	}
-	domains.lock()
-	domains.claim(id)
-	return gcInvocationLease{topology: topology, domains: domains, owner: id, acquired: true, dynamic: true}
+	return false
+}
+
+func compiledManagedFunctionReachability(c *Compiled) bool {
+	return c.usesManagedFunctionStorage()
 }
 
 // collectManagedFunctionGraph runs only at an explicit full-collection boundary.
 // A helper's incremental scheduling uses the same cursor separately; this full
 // operation intentionally completes the fixed point before reclaiming a domain.
 func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLeased bool) (bool, error) {
-	if managedFunctionMemberCount.Load() == 0 || !topologyLeased {
+	if !nativeCollectorFrameRootsBuilt || managedFunctionMemberCount.Load() == 0 || !topologyLeased {
 		return false, nil
 	}
 	value, ok := managedFunctionGraphs.Load(in.refStore)
@@ -80,14 +77,16 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 			continue
 		}
 		owners = append(owners, owner)
-		domains.add(entry.gcDomain)
+		domains.add(entry.gcRegistration().domain)
 	}
 	current := in.refStore.instances[in]
 	var id invocationID
-	if current != nil && current.gcDomain != nil {
-		current.gcDomain.invocationState.Lock()
-		id = current.gcDomain.invocationOwner
-		current.gcDomain.invocationState.Unlock()
+	if current != nil {
+		if domain := current.gcRegistration().domain; domain != nil {
+			domain.invocationState.Lock()
+			id = domain.invocationOwner
+			domain.invocationState.Unlock()
+		}
 	}
 	compactExternAddClaimedDomainsLocked(in.refStore, &domains)
 	in.refStore.mu.Unlock()
@@ -145,18 +144,21 @@ func collectManagedFunctionGraph(in *Instance, public *gcPublicState, topologyLe
 	}
 	graph.mu.Unlock()
 	mark := graph.newMark()
-	groups := make(map[*gc.Collector]gc.RootGroups, len(mark.domains))
-	for _, owner := range owners {
-		if owner.gc == nil {
-			continue
+	var groups map[*gc.Collector]gc.RootGroups
+	if nativeCollectorFrameRootsBuilt {
+		groups = make(map[*gc.Collector]gc.RootGroups, len(mark.domains))
+		for _, owner := range owners {
+			if owner.gc == nil {
+				continue
+			}
+			p := owner.existingPublicGCState()
+			if p == nil {
+				continue
+			}
+			roots := owner.gcCollectFrameRoots(p)
+			roots.omitDomainHostRoots() // each physical owner is represented exactly once
+			groups[owner.gc] = append(groups[owner.gc], gc.RootGroup{Class: gc.RootNativeFrame, Roots: managedFunctionTransientRoots{roots: &roots}})
 		}
-		p := owner.existingPublicGCState()
-		if p == nil {
-			continue
-		}
-		roots := owner.gcCollectFrameRoots(p)
-		roots.domainHostRoots = false // each physical owner is represented exactly once
-		groups[owner.gc] = append(groups[owner.gc], gc.RootGroup{Class: gc.RootNativeFrame, Roots: managedFunctionTransientRoots{roots: &roots}})
 	}
 	for _, domain := range mark.domains {
 		if err := mark.seedRoots(domain.state.collector, groups[domain.state.collector]); err != nil {

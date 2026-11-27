@@ -14,6 +14,7 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/internal/jitprofile"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -83,10 +84,19 @@ func finishProfileBoundary(span jitprofile.SpanToken, err *error, completed ...*
 			if trap != nil && (errors.Is(trap.Err, context.Canceled) || errors.Is(trap.Err, context.DeadlineExceeded)) {
 				outcome = "cancelled"
 			}
-		case gcStructHelperTrap:
-			outcome = "trap"
-		case gcStructHelperError, atomicWaitHelperError:
-			outcome = "error"
+		}
+		if nativeCollectorBuilt {
+			switch r.(type) {
+			case gcStructHelperTrap:
+				outcome = "trap"
+			case gcStructHelperError:
+				outcome = "error"
+			}
+		}
+		if buildfeatures.Threads != 0 {
+			if _, ok := r.(atomicWaitHelperError); ok {
+				outcome = "error"
+			}
 		}
 		span.Finish(outcome)
 		panic(r)

@@ -10,6 +10,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -27,7 +28,7 @@ type simdStoreLoadAddress struct {
 // The original tree is evaluated normally once; the actual load is retained.
 func (f *fn) inspectSIMDStoreLoadAddress(source *wasm.Reader, memoryIndex uint32, off uint64) (simdStoreLoadAddress, bool) {
 	var p simdStoreLoadAddress
-	if !f.opt(optSIMDStoreLoadAddress) || f.guardMode || len(f.customInstructions) != 0 {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDStoreLoadAddress)) || f.guardMode || len(f.customInstructions) != 0 {
 		return p, false
 	}
 	r := *source
@@ -50,7 +51,7 @@ func (f *fn) inspectSIMDStoreLoadAddress(source *wasm.Reader, memoryIndex uint32
 		return p, false
 	}
 	p.End = r.Offset()
-	if f.opt(optSIMDLoadExtract) {
+	if buildfeatures.SIMD != 0 && f.opt(optSIMDLoadExtract) {
 		if extract, ok := shared.InspectSIMDLoadExtract(&r); ok {
 			p.Narrow = true
 			p.Extract = extract

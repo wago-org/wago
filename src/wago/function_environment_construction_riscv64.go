@@ -5,15 +5,16 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
 import (
 	"fmt"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"sync"
 	"sync/atomic"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Construction has no Instance descriptor directory until registration. Its
@@ -34,21 +35,34 @@ type managedFunctionConstruction struct {
 	objects   []managedFunctionConstructedObject
 }
 
-func newManagedFunctionConstruction(c *Compiled, collector *gc.Collector, parent *gc.Slots) *managedFunctionConstruction {
-	if c == nil || collector == nil || !c.usesManagedOpaqueStorage() {
-		return nil
+func managedFunctionConstructionNeeded(c *Compiled) bool {
+	return managedAggregateHelperFamilies(c) != 0
+}
+
+func managedAggregateHelperFamilies(c *Compiled) uint64 {
+	if c == nil || !c.usesManagedOpaqueStorage() {
+		return 0
 	}
-	has := false
+	var helpers uint64
 	for _, desc := range c.GCTypeDescs {
 		if desc.Kind == gc.KindArray {
-			has = has || opaqueAggregateStorage(desc.Elem)
+			if opaqueAggregateStorage(desc.Elem) {
+				helpers |= managedArrayAggregateHelpers
+			}
 		} else if desc.Kind == gc.KindStruct {
 			for _, field := range desc.Fields {
-				has = has || opaqueAggregateStorage(field.Kind)
+				if opaqueAggregateStorage(field.Kind) {
+					helpers |= managedStructAggregateHelpers
+					break
+				}
 			}
 		}
 	}
-	if !has {
+	return helpers
+}
+
+func newManagedFunctionConstruction(c *Compiled, collector *gc.Collector, parent *gc.Slots) *managedFunctionConstruction {
+	if collector == nil || !managedFunctionConstructionNeeded(c) {
 		return nil
 	}
 	journal := &managedFunctionConstruction{c: c, collector: collector, parent: parent}
@@ -59,7 +73,7 @@ func newManagedFunctionConstruction(c *Compiled, collector *gc.Collector, parent
 	return journal
 }
 func (j *managedFunctionConstruction) roots(fallback gc.Slots) gc.RootSet {
-	if j == nil {
+	if !managedFunctionConstructionForImage || j == nil {
 		return fallback
 	}
 	return j
@@ -105,7 +119,7 @@ func (j *managedFunctionConstruction) close() {
 	j.parent = nil
 }
 func recordManagedFunctionConstruction(collector *gc.Collector, c *Compiled, ref gc.Ref, local uint32) {
-	if managedFunctionConstructionCount.Load() == 0 || ref.IsNull() {
+	if !managedFunctionConstructionForImage || managedFunctionConstructionCount.Load() == 0 || ref.IsNull() {
 		return
 	}
 	value, ok := managedFunctionConstructions.Load(collector)

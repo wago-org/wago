@@ -227,31 +227,6 @@ func (r *gcArrayElementRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefS
 
 func (r *gcArrayElementRoots) ref(i uint32) gc.Ref { return gc.Ref(r.Values[i]) }
 
-func (in *Instance) existingGCArrayElementState() *gcArrayElementState {
-	if in == nil {
-		return nil
-	}
-	plugin := in.pluginState.Load()
-	if plugin == nil {
-		return nil
-	}
-	return plugin.gcArrayElements.Load()
-}
-
-// takeGCArrayElementState transfers teardown ownership exactly once. Physical
-// instance release calls it while holding the public collector lock, before the
-// arena-backed descriptor is released.
-func (in *Instance) takeGCArrayElementState() *gcArrayElementState {
-	if in == nil {
-		return nil
-	}
-	plugin := in.pluginState.Load()
-	if plugin == nil {
-		return nil
-	}
-	return plugin.gcArrayElements.Swap(nil)
-}
-
 func (s *gcArrayElementState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return

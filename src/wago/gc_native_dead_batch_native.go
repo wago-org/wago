@@ -33,7 +33,7 @@ func (in *Instance) prepareNativeDeadStructBatch(typeID, count uint32) {
 // Dead array batches need handles but no reserved array payload chunk: the
 // native shortcut charges the complete batch before the next collection.
 func (in *Instance) prepareNativeDeadArrayBatch(typeID, length, count uint32) {
-	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.GCTypeDescs) {
+	if !wasmGCBuilt || !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.GCTypeDescs) {
 		return
 	}
 	d := in.c.GCTypeDescs[typeID]

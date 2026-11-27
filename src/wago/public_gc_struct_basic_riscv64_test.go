@@ -62,14 +62,14 @@ func TestRV64PublicGCStructBasicExecutionAndArtifact(t *testing.T) {
 			var roots []gcGlobalRootMapping
 			state := in.pluginState.Load()
 			if state != nil {
-				roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+				roots = append(roots, state.stagedGlobalRoots()...)
 			}
 			stagedRoots := len(roots)
 			public := in.publicGCState()
-			roots = append(roots, public.globalRoots...)
+			roots = append(roots, public.globalRootMappings()...)
 			runtimeRoots := in.c.needsRuntimeGCCollectorDomain()
-			if len(roots) != 2 || runtimeRoots && (stagedRoots != 0 || len(public.globalRoots) != 2) || !runtimeRoots && (stagedRoots != 2 || len(public.globalRoots) != 0) {
-				t.Fatalf("gc/struct basic global roots staged/generic=%d/%d, want exact two-slot representation", stagedRoots, len(public.globalRoots))
+			if len(roots) != 2 || runtimeRoots && (stagedRoots != 0 || len(public.globalRootMappings()) != 2) || !runtimeRoots && (stagedRoots != 2 || len(public.globalRootMappings()) != 0) {
+				t.Fatalf("gc/struct basic global roots staged/generic=%d/%d, want exact two-slot representation", stagedRoots, len(public.globalRootMappings()))
 			}
 			var seen [2]bool
 			for _, mapping := range roots {

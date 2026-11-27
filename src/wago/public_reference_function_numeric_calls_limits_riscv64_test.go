@@ -248,7 +248,7 @@ func rv64ReferenceFunctionNumericCallsMaximum(t *testing.T, ownedTable bool, pro
 							t.Fatal("maximum transport clobbered raw lower reference", value, index, ok)
 						}
 					}
-					if state := &in.pluginState.Load().railshotInvocation; state.tailDispatcher != nil || state.tailGenerationBudget.count != 0 || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
+					if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().dispatcher != nil || state.tailForTest().generationBudget.count != 0 || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("ordinary call_ref created or retained tail generation")
 					}
 					session.Close()
@@ -320,7 +320,7 @@ func TestRV64PublicReferenceFunctionNumericCallsTrapReuse(t *testing.T) {
 					if got, err := in.Invoke("run", 0xdeadbeef00000002); err != nil || !slices.Equal(got, []uint64{2}) {
 						t.Fatal("private numeric call_ref reuse after trap", got, err)
 					}
-					if state := &in.pluginState.Load().railshotInvocation; state.tableDepth != 0 || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+					if state := &in.pluginState.Load().railshotInvocation; state.tableDepth != 0 || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("trap retained call activation")
 					}
 				}

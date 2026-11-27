@@ -9,4 +9,12 @@
 
 package wago
 
-const sourceCompilationEnabled = false
+import (
+	"errors"
+
+	"github.com/wago-org/wago/src/core/compiler/frontend"
+)
+
+func compileWithFrontendFeaturesAndInstructions(*RuntimeConfig, []byte, frontend.Features, pluginInstructions) (*Compiled, error) {
+	return nil, errors.New("source compilation is unavailable in a standalone executable")
+}

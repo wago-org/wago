@@ -18,7 +18,13 @@ import (
 // Only AMD64 currently publishes live structs from a reserved native batch.
 const nativeLiveStructAllocSupported = false
 
-var nativeStructAllocEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_ALLOC") != "1"
+var nativeStructAllocEnabled bool
+
+func init() {
+	if wasmGCBuilt {
+		nativeStructAllocEnabled = os.Getenv("WAGO_ARM64_NO_GC_NATIVE_ALLOC") != "1"
+	}
+}
 
 func (in *Instance) prepareNativeDefaultArrayAllocation(typeID, length uint32) {
 	in.prepareNativeArrayAllocation(typeID, length)
@@ -28,7 +34,7 @@ func (in *Instance) prepareNativeArrayAllocation(typeID, length uint32) {
 	if length > 64 {
 		return
 	}
-	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
+	if !wasmGCBuilt || !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
 		return
 	}
 	t := in.c.Types[typeID]

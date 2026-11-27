@@ -17,16 +17,16 @@ import (
 // The canonical image contract binds code, frame entries, types and tags.
 // Collector payloads also require native GC ABI and exact retained frame maps.
 func rv64ExceptionHandling(c *Compiled) bool {
-	if c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || !c.nativeContextTrapABI || !c.needsFuncRefContextHeader || !rv64SourceContractValid(c) {
+	if !exceptionHandlingForImage || c == nil || !c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || !c.nativeContextTrapABI || !c.needsFuncRefContextHeader || !rv64SourceContractValid(c) {
 		return false
 	}
 	if c.memoryDir == nil {
 		return true
 	}
-	if len(c.memoryDir.ehTags) > railshot.MaxModuleTags {
+	if len(c.memoryDir.exceptionTags()) > railshot.MaxModuleTags {
 		return false
 	}
-	for _, tag := range c.memoryDir.ehTags {
+	for _, tag := range c.memoryDir.exceptionTags() {
 		if int(tag.TypeIndex) >= len(c.Types) {
 			return false
 		}
@@ -60,8 +60,8 @@ func rv64ExceptionHandling(c *Compiled) bool {
 			return false
 		}
 	}
-	for _, index := range c.memoryDir.ehTagExports {
-		if index < 0 || index >= len(c.memoryDir.ehTags) {
+	for _, index := range c.memoryDir.exceptionTagExports() {
+		if index < 0 || index >= len(c.memoryDir.exceptionTags()) {
 			return false
 		}
 	}

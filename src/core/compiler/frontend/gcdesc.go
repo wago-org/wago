@@ -10,6 +10,7 @@ package frontend
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -73,10 +74,18 @@ func LowerGCTypeMetadata(types []wasm.RecType) (GCTypeMetadata, error) {
 }
 
 func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTypeMetadata, error) {
+	// A single function type with no supertype has neither a heap layout nor
+	// recursive edges to resolve. Preserve its descriptor at type index zero.
+	if len(types) == 1 && len(types[0].SubTypes) == 1 {
+		st := &types[0].SubTypes[0]
+		if st.Comp.Kind == wasm.CompFunc && len(st.Supers) == 0 {
+			return GCTypeMetadata{Descs: []gc.TypeDesc{{Kind: gc.KindFunc, Final: st.Final}}}, nil
+		}
+	}
 	flat, hasLayouts := flattenGCTypes(types)
 	descs := make([]gc.TypeDesc, len(flat))
 	var layouts []codegen.GCTypeLayout
-	if hasLayouts {
+	if buildfeatures.GC != 0 && hasLayouts {
 		layouts = make([]codegen.GCTypeLayout, len(flat))
 	}
 	for i, ft := range flat {
@@ -90,6 +99,9 @@ func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTy
 		case wasm.CompFunc:
 			d = gc.TypeDesc{ID: id, Kind: gc.KindFunc, Final: st.Final}
 		case wasm.CompStruct:
+			if buildfeatures.GC == 0 {
+				return GCTypeMetadata{}, fmt.Errorf("frontend: gc is disabled in this build")
+			}
 			builder := gc.NewStructDescBuilder(id, len(st.Comp.Fields))
 			for j, f := range st.Comp.Fields {
 				var field gc.StorageKind
@@ -130,6 +142,9 @@ func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTy
 			layout.PointerFree = d.PointerFree()
 			layout.NativeAlloc = nativeStructAllocEligible(st, layout.FieldLayout, resolver)
 		case wasm.CompArray:
+			if buildfeatures.GC == 0 {
+				return GCTypeMetadata{}, fmt.Errorf("frontend: gc is disabled in this build")
+			}
 			elem, err := lowerGCStorage(st.Comp.Array.Storage(), resolver)
 			if err != nil {
 				return GCTypeMetadata{}, fmt.Errorf("frontend: type %d array: %w", i, err)
@@ -164,10 +179,10 @@ func lowerGCTypeMetadata(types []wasm.RecType, opts GCTypeMetadataOptions) (GCTy
 			layouts[i] = layout
 		}
 	}
-	if err := gc.ValidateTypeDescs(descs); err != nil {
+	if err := validateLoweredTypeDescs(descs); err != nil {
 		return GCTypeMetadata{}, fmt.Errorf("frontend: lowered GC type descriptors invalid: %w", err)
 	}
-	if layouts != nil {
+	if buildfeatures.GC != 0 && layouts != nil {
 		intervals, err := gc.BuildSubtypeIntervals(descs)
 		if err != nil {
 			return GCTypeMetadata{}, fmt.Errorf("frontend: lowered GC subtype intervals invalid: %w", err)

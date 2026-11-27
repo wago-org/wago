@@ -15,6 +15,7 @@ import (
 	"slices"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -37,7 +38,12 @@ func swarHostThunks(signatures []swarHostSignature, limit int) ([]byte, []int, e
 		return nil, nil, unsupported("SWAR host thunk resource bound")
 	}
 	for _, sig := range signatures {
-		if err := swarImportSignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}); err != nil && !sig.custom && !((sig.rooted || sig.primitive) && tailRASignature(&wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}) == nil) {
+		signature := wasm.CompType{Kind: wasm.CompFunc, Params: sig.params, Results: sig.results}
+		if err := swarImportSignature(&signature); err != nil && !sig.custom {
+			if (buildfeatures.ReferenceSignatures || buildfeatures.TailCall != 0) &&
+				(sig.rooted || sig.primitive) && validateCallCarrierSignature(&signature, MaxVectorFunctionValues) == nil {
+				continue
+			}
 			return nil, nil, err
 		}
 	}

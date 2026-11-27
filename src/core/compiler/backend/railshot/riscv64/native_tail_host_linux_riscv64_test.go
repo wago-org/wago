@@ -57,7 +57,7 @@ func TestNativeTailHostRV64DynamicTargetParkReentry(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: f.b, context: f.cb, directory: f.db, info: FunctionInfo{CodeBytes: len(code)}}
+					host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: f.b, context: f.cb, directory: f.db, info: tailRAFunctionInfo{CodeBytes: len(code)}}
 					host, _ = tailPublishedFunctionForTest(t, host)
 					oa := tailDynamicOwnerForTest(t, []tailRAFunction{a})
 					ob := tailDynamicOwnerForTest(t, []tailRAFunction{host, leaf})

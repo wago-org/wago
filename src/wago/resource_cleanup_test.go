@@ -5,6 +5,8 @@ package wago
 import (
 	"reflect"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func TestResourceCleanupContinuesAndPreservesFirstPanic(t *testing.T) {
@@ -187,10 +189,12 @@ func TestBuilderRollbackContinuesEveryAttachmentClass(t *testing.T) {
 		tables = append(tables, table)
 		builder.tableAttachments.set.push(table)
 	}
-	for _, name := range []string{"tag0", "tag1"} {
-		tag := &Tag{owner: newProducer(name, nil), importers: 1}
-		tags = append(tags, tag)
-		builder.tagAttachments.set.push(tag)
+	if buildfeatures.ExceptionHandling != 0 {
+		for _, name := range []string{"tag0", "tag1"} {
+			tag := &Tag{owner: newProducer(name, nil), importers: 1}
+			tags = append(tags, tag)
+			builder.tagAttachments.recordAttached(tag)
+		}
 	}
 	// The final registration notification must run after all attachment groups,
 	// even when an earlier producer's physical-release callback panics.
@@ -203,7 +207,10 @@ func TestBuilderRollbackContinuesEveryAttachmentClass(t *testing.T) {
 	if !panicked || value != first {
 		t.Fatalf("panic=%v/%v", value, panicked)
 	}
-	want := []string{"function0", "function1", "global0", "global1", "table0", "table1", "tag0", "tag1"}
+	want := []string{"function0", "function1", "global0", "global1", "table0", "table1"}
+	if buildfeatures.ExceptionHandling != 0 {
+		want = append(want, "tag0", "tag1")
+	}
 	if !reflect.DeepEqual(visited, want) {
 		t.Fatalf("callbacks=%v, want %v", visited, want)
 	}

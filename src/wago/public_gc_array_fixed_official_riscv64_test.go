@@ -69,12 +69,12 @@ func TestRV64PublicGCArrayFixedOfficialExecutionAndArtifact(t *testing.T) {
 					}
 					defer in.Close()
 					state := in.pluginState.Load()
-					stagedRoots := uint32(0)
+					stagedRoots := 0
 					if state != nil {
-						stagedRoots = state.gcGlobalRootCount
+						stagedRoots = len(state.stagedGlobalRoots())
 					}
-					genericRoots := len(in.publicGCState().globalRoots)
-					if stagedRoots+uint32(genericRoots) != 1 {
+					genericRoots := len(in.publicGCState().globalRootMappings())
+					if stagedRoots+genericRoots != 1 {
 						t.Fatalf("fixed official array roots staged/generic = %d/%d", stagedRoots, genericRoots)
 					}
 					for _, tc := range []struct {

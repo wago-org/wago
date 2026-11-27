@@ -66,7 +66,7 @@ func TestRV64PublicReferenceFunctionOwnedTablePoolTrapsReuse(t *testing.T) {
 						}
 					}
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tableDepth != 0 || state.tailGenerationBudget.count != 0 {
+					if state.tableDepth != 0 || state.tailForTest().generationBudget.count != 0 {
 						t.Fatal("table private trap leaked owner scope")
 					}
 				}

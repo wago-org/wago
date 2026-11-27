@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func TestLegacyExceptionHandlingDiagnostic(t *testing.T) {
@@ -42,7 +44,10 @@ func TestLegacyExceptionHandlingDiagnostic(t *testing.T) {
 
 func TestLegacyExceptionDiagnosticDoesNotCatchCurrentOrReservedOpcodes(t *testing.T) {
 	for _, body := range [][]byte{{0x08, 0}, {0x0a}, {0x1f, 0x40, 0, 0x0b}} {
-		if _, err := decodeInstruction(newReader(body), 0); err != nil {
+		_, err := decodeInstruction(newReader(body), 0)
+		if buildfeatures.ExceptionHandling == 0 {
+			checkDisabledInstructionDecode(t, err, 0, "exception-handling")
+		} else if err != nil {
 			t.Fatalf("current opcode %x: %v", body[0], err)
 		}
 		if _, err := skipExprOp(newReader(body)); err != nil {

@@ -10,7 +10,8 @@ import (
 // 0x1c + a result-type vector when typed. Guards against the fast simpleKindOpcode
 // table path swallowing InstrSelect and always emitting 0x1b.
 func TestEncodeOpcodeTablesStayCompactAndComplete(t *testing.T) {
-	if got, want := unsafe.Sizeof(simpleKindOpcode)+unsafe.Sizeof(memKindOpcode), uintptr(numInstrKinds*2); got != want {
+	encoderOpcodesOnce.Do(fillEncoderOpcodes)
+	if got, want := unsafe.Sizeof(simpleKindOpcode)+unsafe.Sizeof(memKindOpcode), uintptr(InstrRefIsNull+1+InstrI64Store32-InstrI32Load+1); got != want {
 		t.Fatalf("reverse opcode storage = %d bytes, want %d", got, want)
 	}
 	for op, kind := range simpleOpcode {

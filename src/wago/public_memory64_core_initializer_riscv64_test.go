@@ -2,7 +2,11 @@
 
 package wago
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 func TestRV64PublicMemory64CoreInitializerFeatureWitness(t *testing.T) {
 	for _, tt := range []struct {
@@ -18,7 +22,7 @@ func TestRV64PublicMemory64CoreInitializerFeatureWitness(t *testing.T) {
 		{"imported-global", []byte{0x23, 0, 0x0b}, 0, ValI64, 2, true},
 		{"wrong-width", []byte{0x41, 0, 0x0b}, 0, ValI64, 2, false},
 		{"arithmetic-needs-feature", []byte{0x42, 1, 0x42, 2, 0x7c, 0x0b}, 0, ValI64, 2, false},
-		{"arithmetic-with-feature", []byte{0x42, 1, 0x42, 2, 0x7c, 0x0b}, CoreFeatureExtendedConst, ValI64, 2, true},
+		{"arithmetic-with-feature", []byte{0x42, 1, 0x42, 2, 0x7c, 0x0b}, CoreFeatureExtendedConst, ValI64, 2, buildfeatures.ExtendedConstArithmetic},
 		{"local-needs-feature", []byte{0x23, 1, 0x0b}, 0, ValI64, 2, false},
 		{"local-needs-scope-feature", []byte{0x23, 1, 0x0b}, CoreFeatureExtendedConst, ValI64, 2, false},
 		{"local-with-feature", []byte{0x23, 1, 0x0b}, CoreFeatureExtendedConstExpressions, ValI64, 2, true},

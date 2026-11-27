@@ -16,6 +16,7 @@ import (
 	"maps"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/wago-org/wago/cli/internal/project"
 	"github.com/wago-org/wago/internal/filelock"
@@ -28,6 +29,7 @@ const (
 )
 
 type localLayer struct {
+	Build         *BuildProfile   `json:"build,omitempty"`
 	Features      map[string]bool `json:"features,omitempty"`
 	Optimizations map[string]bool `json:"optimizations,omitempty"`
 	Runtime       *runtimeLayer   `json:"runtime,omitempty"`
@@ -102,6 +104,9 @@ func (target *Target) Config() Config    { return cloneConfig(target.config) }
 func (target *Target) ResetBase() Config { return cloneConfig(target.base) }
 
 func (target *Target) Set(key, value string, experimental bool) error {
+	if value == "inherit" && strings.HasPrefix(CanonicalKey(key), "build.") {
+		return target.Reset(key, experimental)
+	}
 	return Set(&target.config, key, value, experimental)
 }
 
@@ -120,7 +125,10 @@ func (target *Target) Reset(key string, experimental bool) error {
 func (target *Target) ResetAll() { target.config = cloneConfig(target.base) }
 
 func (target *Target) Overrides() []Override {
-	keys := []string{"runtime.parallel", "runtime.deferred-bounds-checking"}
+	keys := []string{"runtime.parallel", "runtime.deferred-bounds-checking", "build.core"}
+	for _, feature := range buildFeatures() {
+		keys = append(keys, "build.features."+feature.Name)
+	}
 	for _, setting := range AllBoolean() {
 		keys = append(keys, setting.Key)
 	}
@@ -164,6 +172,9 @@ func (target *Target) Save() error {
 		}
 		return errors.Join(operationErr, lock.Close())
 	}
+	if err := target.config.Build.validate(); err != nil {
+		return err
+	}
 	layer := diffLayer(target.config, target.base)
 	return project.WithMutation(context.Background(), ".", func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
@@ -189,12 +200,19 @@ func (target *Target) Save() error {
 
 func sameConfig(left, right Config) bool {
 	return left.Version == right.Version && left.Runtime == right.Runtime &&
-		maps.Equal(left.Features, right.Features) && maps.Equal(left.Optimizations, right.Optimizations)
+		maps.Equal(left.Features, right.Features) && maps.Equal(left.Optimizations, right.Optimizations) &&
+		sameBuildProfile(left.Build, right.Build)
 }
 
 // matches compares a snapshot with the current validated manifest settings.
 func (layer localLayer) matches(value any) bool {
 	current, _ := value.(map[string]any)
+	build, _ := current["build"].(map[string]any)
+	buildFeatures, _ := build["features"].(map[string]any)
+	buildCore, _ := build["core"].(string)
+	if buildCore != layer.Build.core() || !maps.EqualFunc(buildFeatures, layer.Build.features(), func(value any, expected bool) bool { return value == expected }) {
+		return false
+	}
 	features, _ := current["features"].(map[string]any)
 	optimizations, _ := current["optimizations"].(map[string]any)
 	equalBool := func(value any, expected bool) bool { return value == expected }
@@ -238,6 +256,9 @@ func decodeLocalLayer(value any) (localLayer, bool, error) {
 }
 
 func validateLayer(layer localLayer) error {
+	if err := layer.Build.validate(); err != nil {
+		return err
+	}
 	if err := ValidateFeatureValues(layer.Features); err != nil {
 		return err
 	}
@@ -269,6 +290,9 @@ func validateLocalOptimizationValues(values map[string]bool) error {
 }
 
 func applyLayer(config *Config, layer localLayer) {
+	if layer.Build != nil {
+		config.Build = mergeBuildProfile(config.Build, layer.Build)
+	}
 	for name, value := range layer.Features {
 		setting, _ := Lookup("features." + name)
 		setting.SetValue(config, value)
@@ -292,7 +316,7 @@ func applyLayer(config *Config, layer localLayer) {
 }
 
 func diffLayer(config, base Config) localLayer {
-	layer := localLayer{}
+	layer := localLayer{Build: diffBuildProfile(config.Build, base.Build)}
 	for _, setting := range allKnownBoolean() {
 		value := setting.Value(config)
 		if value != setting.Value(base) {
@@ -325,12 +349,13 @@ func diffLayer(config, base Config) localLayer {
 }
 
 func layerEmpty(layer localLayer) bool {
-	return len(layer.Features) == 0 && len(layer.Optimizations) == 0 &&
+	return layer.Build.empty() && len(layer.Features) == 0 && len(layer.Optimizations) == 0 &&
 		(layer.Runtime == nil || (layer.Runtime.Parallel == nil && layer.Runtime.DeferredBoundsChecking == nil))
 }
 
 func cloneConfig(config Config) Config {
 	clone := config
+	clone.Build = config.Build.clone()
 	clone.Features = make(map[string]bool, len(config.Features))
 	for name, value := range config.Features {
 		clone.Features[name] = value

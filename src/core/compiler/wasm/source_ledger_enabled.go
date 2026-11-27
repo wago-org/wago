@@ -11,6 +11,8 @@ package wasm
 
 import (
 	"encoding/binary"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/internal/regalloccheck"
 )
 
@@ -243,6 +245,7 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 		result.Message = "missing immutable validated module context"
 		return
 	}
+	ensureValidationEffects()
 	b := &sourceLedgerBuilder{limits: limits, pc: -1}
 	defer func() {
 		result.Work = b.work
@@ -303,8 +306,8 @@ func BuildSourceLedger(m *Module, analysis *ValidatedModuleAnalysis, localFuncti
 	addMetadata(len(fn.Locals.Runs))
 	owner := moduleValidator{m: m, features: features, limits: defaultValidationLimits}
 	owner.ensureImportIndexes()
-	if (!features.MultiMemory && len(owner.importIndexes[ExternMem])+len(m.Memories) > 1) ||
-		(m.UsesCompactImports && !features.CompactImports) {
+	if ((buildfeatures.MultiMemory == 0 || !features.MultiMemory) && len(owner.importIndexes[ExternMem])+len(m.Memories) > 1) ||
+		(m.UsesCompactImports && (buildfeatures.CompactImports == 0 || !features.CompactImports)) {
 		result.Coverage = SourceInvalid
 		result.Reason = regalloccheck.InvalidGraph
 		result.Message = "source feature profile disagrees with validated module"
@@ -610,15 +613,17 @@ func sourceConstant(in *Instruction) (uint64, uint64, bool) {
 }
 
 func sourceMemoryInstruction(kind InstrKind) bool {
-	if int(kind) >= len(opEffects) {
+	if kind >= numInstrKinds {
 		return false
 	}
-	if e := opEffects[kind]; e.cat == effLoad || e.cat == effStore {
+	if e := scalarOpEffect(kind); e.cat == effLoad || e.cat == effStore {
 		return true
 	}
-	switch simdEffects[kind].cat {
-	case simdEffLoad, simdEffStore, simdEffMemLoadLane, simdEffMemStoreLane:
-		return true
+	if buildfeatures.SIMD != 0 {
+		switch simdOpEffect(kind).cat {
+		case simdEffLoad, simdEffStore, simdEffMemLoadLane, simdEffMemStoreLane:
+			return true
+		}
 	}
 	return false
 }
@@ -626,26 +631,28 @@ func sourceMemoryInstruction(kind InstrKind) bool {
 // signature uses the validator's authoritative primitive effects. Explicit
 // cases describe original alias/call semantics, not allocator state transitions.
 func (b *sourceLedgerBuilder) signature(in *Instruction, ft *CompType) (inputs, outputs int, alias, supported bool) {
-	if int(in.Kind) >= len(opEffects) {
+	if in.Kind >= numInstrKinds {
 		return
 	}
-	switch simdEffects[in.Kind].cat {
-	case simdEffLoad, simdEffSplat, simdEffExtract, simdEffUnary, simdPopV128PushI32:
-		return 1, 1, false, true
-	case simdEffStore, simdEffMemStoreLane:
-		return 2, 0, false, true
-	case simdEffMemLoadLane, simdEffReplace, simdEffShift, simdEffBinary:
-		return 2, 1, false, true
-	case simdEffTernary, simdBitselect:
-		return 3, 1, false, true
-	case simdConst:
-		return 0, 1, false, true
-	case simdNone:
-		// Only non-SIMD instructions may use the scalar/control rules below.
-	default:
-		return
+	if buildfeatures.SIMD != 0 {
+		switch simdOpEffect(in.Kind).cat {
+		case simdEffLoad, simdEffSplat, simdEffExtract, simdEffUnary, simdPopV128PushI32:
+			return 1, 1, false, true
+		case simdEffStore, simdEffMemStoreLane:
+			return 2, 0, false, true
+		case simdEffMemLoadLane, simdEffReplace, simdEffShift, simdEffBinary:
+			return 2, 1, false, true
+		case simdEffTernary, simdBitselect:
+			return 3, 1, false, true
+		case simdConst:
+			return 0, 1, false, true
+		case simdNone:
+			// Only non-SIMD instructions may use the scalar/control rules below.
+		default:
+			return
+		}
 	}
-	switch opEffects[in.Kind].cat {
+	switch scalarOpEffect(in.Kind).cat {
 	case effUnary, effTest, effConv, effLoad:
 		return 1, 1, false, true
 	case effBinary, effCompare:

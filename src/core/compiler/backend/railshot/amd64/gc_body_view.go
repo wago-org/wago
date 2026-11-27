@@ -11,13 +11,13 @@ package amd64
 
 import (
 	"fmt"
+	"sort"
+
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"os"
-	"sort"
 )
 
-var gcPrivateSinkDropEnabled = os.Getenv("WAGO_AMD64_NO_GC_SINK_STORE_ELISION") != "1"
+var gcPrivateSinkDropEnabled bool
 
 func validateGCBodyViews(m *wasm.Module, views map[uint32]codegen.GCBodyView) error {
 	for index, view := range views {

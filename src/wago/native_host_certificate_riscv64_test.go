@@ -261,7 +261,7 @@ func TestRV64HostCertificateMixedPublication(t *testing.T) {
 				t.Fatal(err)
 			}
 			need := uint64(in.c.arenaNeedForImports(in.imports, true) + railshotNativeImportMetadataBytes(in.c, in.imports))
-			if need != in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase {
+			if need != in.pluginState.Load().railshotInvocation.tail.get().policy.metadataBase {
 				t.Fatal("mixed publication charge", need)
 			}
 		})
@@ -290,7 +290,7 @@ func TestRV64HostCertificateMetadataAdmission(t *testing.T) {
 			in := rv64HostTailInstantiate(t, rt, c, makeImports(rt))
 			cost := railshotNativeImportMetadataBytes(in.c, in.imports)
 			need := uint64(in.c.arenaNeedForImports(in.imports, true) + cost)
-			if cost == 0 || in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase != need {
+			if cost == 0 || in.pluginState.Load().railshotInvocation.tail.get().policy.metadataBase != need {
 				t.Fatal("host construction not charged", cost, need)
 			}
 			for _, limit := range []uint64{need - 1, need} {

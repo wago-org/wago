@@ -170,7 +170,7 @@ func TestRV64PublicTailNativeReexportEntry(t *testing.T) {
 								t.Fatal(err)
 							}
 						}
-						if leaf.jm == nil || leaf.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+						if leaf.jm == nil || leaf.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil {
 							t.Fatal("retained relay released tail producer")
 						}
 						if got, err := relay.Invoke("alias", input...); err != nil || !slices.Equal(got, want) {
@@ -179,7 +179,7 @@ func TestRV64PublicTailNativeReexportEntry(t *testing.T) {
 						if err := relay.Close(); err != nil {
 							t.Fatal(err)
 						}
-						if leaf.jm != nil || leaf.pluginState.Load().railshotInvocation.tailDispatcher != nil || identity != nil && identity.jm != nil {
+						if leaf.jm != nil || leaf.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || identity != nil && identity.jm != nil {
 							t.Fatal("final relay retained tail graph")
 						}
 					})

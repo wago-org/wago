@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -51,7 +51,7 @@ func TestRV64ManagedFunctionPublicCollectionClosedCycle(t *testing.T) {
 						}
 						tb := rb[0]
 						rt.refStore.mu.Lock()
-						oa, ob := rt.refStore.gcByToken[ta].ref, rt.refStore.gcByToken[tb].ref
+						oa, ob := rt.refStore.objectTokensLocked()[ta].ref, rt.refStore.objectTokensLocked()[tb].ref
 						rt.refStore.mu.Unlock()
 						domain := a.lockGCCollector()
 						ea, err := state.newManagedFunctionEnv(b, gc.EmptyRoots{})

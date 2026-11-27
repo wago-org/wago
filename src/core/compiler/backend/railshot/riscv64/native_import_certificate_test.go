@@ -43,13 +43,13 @@ func TestNativeImportCertificatePublishedIdentity(t *testing.T) {
 	if err := certificate.Validate(image, 0, callee, home, context, 0); err != nil {
 		t.Fatal(err)
 	}
-	proxy := tailRAFunction{published: image, snapshot: image.Bytes(), signature: sig, info: FunctionInfo{Entry: 0, CodeBytes: len(code)}, job: source.job, context: source.context, directory: source.directory}
+	proxy := tailRAFunction{published: image, snapshot: image.Bytes(), signature: sig, info: tailRAFunctionInfo{Entry: 0, CodeBytes: len(code)}, job: source.job, context: source.context, directory: source.directory}
 	proof.certificate = certificate
-	if err := proof.validate(proxy, target, trampoline); err != nil {
+	if err := proof.validate(&proxy, &target, trampoline); err != nil {
 		t.Fatal("certified proxy", err)
 	}
 	if n := testing.AllocsPerRun(4, func() {
-		if err := proof.validate(proxy, target, trampoline); err != nil {
+		if err := proof.validate(&proxy, &target, trampoline); err != nil {
 			panic(err)
 		}
 	}); n != 0 {

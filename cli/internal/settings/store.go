@@ -33,6 +33,7 @@ type Config struct {
 	Features      map[string]bool `json:"features"`
 	Optimizations map[string]bool `json:"optimizations"`
 	Runtime       RuntimeDefaults `json:"runtime"`
+	Build         *BuildProfile   `json:"build,omitempty"`
 }
 
 type RuntimeDefaults struct {
@@ -41,6 +42,7 @@ type RuntimeDefaults struct {
 }
 
 type storedConfig struct {
+	Build         *BuildProfile   `json:"build"`
 	Version       int             `json:"version"`
 	Features      map[string]bool `json:"features"`
 	Optimizations map[string]bool `json:"optimizations"`
@@ -115,6 +117,10 @@ func LoadFile(path string) (Config, error) {
 	if err := ensureEOF(decoder); err != nil {
 		return Config{}, fmt.Errorf("decode %s: %w", path, err)
 	}
+	if err := stored.Build.validate(); err != nil {
+		return Config{}, err
+	}
+	config.Build = stored.Build
 	if stored.Version != Version {
 		return Config{}, fmt.Errorf("unsupported settings version %d (want %d)", stored.Version, Version)
 	}
@@ -127,7 +133,7 @@ func LoadFile(path string) (Config, error) {
 		if err := recordCanonicalSetting(featureNames, setting.Key, name, "feature"); err != nil {
 			return Config{}, err
 		}
-		if value && !setting.Available {
+		if value && !setting.Available && !buildOmittedFeature(setting) {
 			return Config{}, fmt.Errorf("feature setting %q is unavailable", name)
 		}
 		setting.SetValue(&config, value)
@@ -186,6 +192,9 @@ func saveFileLocked(path string, config Config) error {
 }
 
 func Validate(config Config) error {
+	if err := config.Build.validate(); err != nil {
+		return err
+	}
 	if config.Version != Version {
 		return fmt.Errorf("settings version must be %d", Version)
 	}
@@ -215,6 +224,9 @@ func ValidateParallel(value string) error {
 
 func Set(config *Config, key, value string, experimental bool) error {
 	key = CanonicalKey(key)
+	if strings.HasPrefix(key, "build.") {
+		return setBuildProfile(config, key, value)
+	}
 	switch key {
 	case "runtime.parallel":
 		if err := ValidateParallel(value); err != nil {
@@ -250,6 +262,9 @@ func Set(config *Config, key, value string, experimental bool) error {
 
 func Get(config Config, key string) (string, error) {
 	key = CanonicalKey(key)
+	if strings.HasPrefix(key, "build.") {
+		return getBuildProfile(config.Build, key)
+	}
 	switch key {
 	case "runtime.parallel":
 		return config.Runtime.Parallel, nil

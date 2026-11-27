@@ -72,7 +72,7 @@ func TestRV64PublicImportedTable64IndirectTail(t *testing.T) {
 					if !slices.Equal(table.desc, before) || table.Size() != 2 {
 						t.Fatal("imported table64 tail trap changed storage", index)
 					}
-					if state := &consumer.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(consumer) != 0 {
+					if state := &consumer.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || state.tableDepth != 0 || rv64EntryCapability(consumer) != 0 {
 						t.Fatal("imported table64 tail leaked generation", index)
 					}
 				}

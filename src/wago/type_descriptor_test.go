@@ -1,7 +1,9 @@
 package wago
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -161,6 +163,72 @@ func TestResolveTypeFuncCorpusAllocationReduction(t *testing.T) {
 				t.Logf("exact allocation reduction = %.0f (%.0f -> %.0f)", reduction, publicAllocs, internalAllocs)
 			}
 		})
+	}
+}
+
+func TestTypeDescriptorAggregateBuildFeature(t *testing.T) {
+	field := wasm.NewFieldType(wasm.StorageVal(wasm.I64), wasm.Var)
+	for _, tt := range []struct {
+		name string
+		comp wasm.CompType
+		kind CompositeTypeKind
+	}{
+		{"struct", wasm.CompType{Kind: wasm.CompStruct, Fields: []wasm.FieldType{field}}, CompositeTypeStruct},
+		{"array", wasm.CompType{Kind: wasm.CompArray, Array: field}, CompositeTypeArray},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: tt.comp}}}}}
+			types, err := typeDescriptorsFromWasm(m)
+			if !wasmGCBuilt {
+				if err == nil || !strings.Contains(err.Error(), "gc is disabled") || types != nil {
+					t.Fatalf("aggregate conversion = %v, %v, want disabled-GC error", types, err)
+				}
+				return
+			}
+			if err != nil || len(types) != 1 || types[0].Kind != tt.kind {
+				t.Fatalf("aggregate conversion = %v, %v, want %v", types, err, tt.kind)
+			}
+			got := types[0].Array
+			if tt.kind == CompositeTypeStruct {
+				if len(types[0].Fields) != 1 {
+					t.Fatalf("struct field count = %d, want 1", len(types[0].Fields))
+				}
+				got = types[0].Fields[0]
+			}
+			if !got.Mutable || got.Storage.Packed || got.Storage.Value.Kind != ValueTypeI64 {
+				t.Fatalf("aggregate field = %+v, want mutable i64", got)
+			}
+		})
+	}
+}
+
+func TestCompiledTypeDescriptorAggregateBuildFeature(t *testing.T) {
+	field := FieldTypeDescriptor{Storage: StorageTypeDescriptor{Value: ValueTypeDescriptor{Kind: ValueTypeI64}}, Mutable: true}
+	for _, d := range []DefinedTypeDescriptor{
+		{Final: true, Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field}},
+		{Final: true, Kind: CompositeTypeArray, Array: field},
+	} {
+		var writer compiledWriter
+		err := writer.typeDescriptors([]DefinedTypeDescriptor{d})
+		if !wasmGCBuilt {
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) || unsupported.Requested != CoreFeatureGC || len(writer.buf) != 0 {
+				t.Fatalf("serialize aggregate kind %d = %x, %v, want GC feature error", d.Kind, writer.buf, err)
+			}
+			continue
+		}
+		want := []byte{1, 0, 0, 0, 0, 1, 0, 0, 0, byte(d.Kind)}
+		if d.Kind == CompositeTypeStruct {
+			want = append(want, 1)
+		}
+		want = append(want, 0, byte(ValueTypeI64), 1)
+		if err != nil || !bytes.Equal(writer.buf, want) {
+			t.Fatalf("serialize aggregate kind %d = %x, %v, want %x", d.Kind, writer.buf, err, want)
+		}
+		d.Params = []ValueTypeDescriptor{{Kind: ValueTypeI64}}
+		if err = validateDefinedTypeDescriptors([]DefinedTypeDescriptor{d}); err == nil {
+			t.Fatalf("accepted aggregate kind %d carrying function parameters", d.Kind)
+		}
 	}
 }
 

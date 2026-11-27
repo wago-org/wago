@@ -4,8 +4,28 @@ package wago
 
 import (
 	"encoding/hex"
+	"errors"
 	"testing"
 )
+
+func TestCompiledI31InitializerBuildFeature(t *testing.T) {
+	body := []byte{0x41, 7, 0xfb, 0x1c, 0x0b}
+	scope := constExprGlobalScope{context: constExprGlobalInitializer}
+	validateErr := validateCompiledScalarConstExpr(body, ValI31Ref, nil, scope)
+	value, evalErr := evalCompiledScalarConstExpr(body, ValI31Ref, []*Global{}, nil, scope)
+	if !wasmGCBuilt {
+		for _, err := range []error{validateErr, evalErr} {
+			var unsupported *UnsupportedFeatureError
+			if !errors.As(err, &unsupported) || unsupported.Requested != CoreFeatureGC {
+				t.Fatalf("compiled i31 initializer error = %v, want disabled GC", err)
+			}
+		}
+		return
+	}
+	if validateErr != nil || evalErr != nil || value != 15 {
+		t.Fatalf("compiled i31 initializer = %d, %v, validation %v, want 15", value, evalErr, validateErr)
+	}
+}
 
 // A global ref.i31 initializer whose operand is extended-constant arithmetic
 // compiled, then failed instantiation as "compiled metadata invalid": the

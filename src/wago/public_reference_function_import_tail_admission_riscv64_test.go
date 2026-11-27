@@ -15,17 +15,14 @@ func rv64ReferenceImportTailCopy(c *Compiled) *Compiled {
 		// executable mapping with the unchanged fixture.
 		v.codeCache = &compiledCodeCache{
 			gcMetadataFlags:        cache.gcMetadataFlags,
-			gcTypeSubtypingProduct: cache.gcTypeSubtypingProduct,
-			gcStructProduct:        cache.gcStructProduct,
-			gcArrayProduct:         cache.gcArrayProduct,
-			gcI31Product:           cache.gcI31Product,
+			compiledGCProductState: cache.compiledGCProductState,
 			flags:                  cache.flags,
 			stagedFeatures:         cache.stagedFeatures,
 		}
 	}
 	indexes := *c.loadCompileIndexes()
 	if module := rv64NativeTailModule(c); module != nil {
-		indexes.railshotTail.module = &encoder.NativeTailModule{Plans: slices.Clone(module.Plans)}
+		indexes.railshotTail.tailCode.get().module = &encoder.NativeTailModule{Plans: slices.Clone(module.Plans)}
 	}
 	v.validateMemo = &validateMemo{compileIndexes: &indexes, importModuleEnds: slices.Clone(c.loadValidateMemo().importModuleEnds)}
 	return v

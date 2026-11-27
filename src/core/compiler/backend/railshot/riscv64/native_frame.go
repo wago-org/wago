@@ -21,8 +21,15 @@ import (
 // canonical frame constant and bounded cold destinations. It does not establish
 // code ownership or authenticate the rest of a trusted native artifact.
 func NativeFrameBytes(code []byte, entry int) (int, error) {
+	frame, _, err := NativeFrameLayout(code, entry)
+	return frame, err
+}
+
+// NativeFrameLayout validates the entry guard packet and returns the frame
+// size and the first cold guard destination, relative to the code slice.
+func NativeFrameLayout(code []byte, entry int) (frameBytes, bodyEnd int, err error) {
 	if entry < 0 || entry&15 != 0 || entry > len(code)-36 || len(code) > 1<<31-1 {
-		return 0, unsupported("native frame entry/span")
+		return 0, 0, unsupported("native frame entry/span")
 	}
 	b := code[entry:]
 	w := binary.LittleEndian.Uint32(b[16:])
@@ -37,10 +44,10 @@ func NativeFrameBytes(code []byte, entry int) (int, error) {
 			end = 24
 		}
 	} else {
-		return 0, unsupported("native frame constant instruction")
+		return 0, 0, unsupported("native frame constant instruction")
 	}
 	if frame < 16 || frame > MaxFrameBytes || frame&15 != 0 || len(b) < end+16 {
-		return 0, unsupported("native frame constant/span bound")
+		return 0, 0, unsupported("native frame constant/span bound")
 	}
 	// Compare the fixed RV64G words directly. Building a temporary Asm here
 	// escapes its backing slice; this reader is also used on warm entry refresh.
@@ -53,7 +60,7 @@ func NativeFrameBytes(code []byte, entry int) (int, error) {
 	if frame <= 2047 {
 		expected[4] = uint32(frame)<<20 | uint32(enc.Scratch0)<<7 | 0x13
 		if end != 20 {
-			return 0, unsupported("native frame canonical small constant")
+			return 0, 0, unsupported("native frame canonical small constant")
 		}
 	} else {
 		expected[4] = uint32((frame+2048)>>12)<<12 | uint32(enc.Scratch0)<<7 | 0x37
@@ -63,7 +70,7 @@ func NativeFrameBytes(code []byte, entry int) (int, error) {
 			n++
 		}
 		if end != n*4 {
-			return 0, unsupported("native frame canonical large constant")
+			return 0, 0, unsupported("native frame canonical large constant")
 		}
 	}
 	expected[n] = 0x20<<25 | uint32(enc.X29)<<20 | uint32(enc.SP)<<15 | uint32(enc.Scratch1)<<7 | 0x33
@@ -79,7 +86,7 @@ func NativeFrameBytes(code []byte, entry int) (int, error) {
 			mask = 0xfffff
 		}
 		if binary.LittleEndian.Uint32(b[i*4:])&mask != word&mask {
-			return 0, unsupported("native frame prewrite guard packet")
+			return 0, 0, unsupported("native frame prewrite guard packet")
 		}
 	}
 	cold := int64(-1)
@@ -88,9 +95,9 @@ func NativeFrameBytes(code []byte, entry int) (int, error) {
 		lo := int64(int32(binary.LittleEndian.Uint32(b[off+4:])) >> 20)
 		target := int64(off) + hi + lo
 		if target < int64(n*4) || target&3 != 0 || target > int64(len(b)-4) || cold >= 0 && target != cold {
-			return 0, unsupported("native frame cold guard destination")
+			return 0, 0, unsupported("native frame cold guard destination")
 		}
 		cold = target
 	}
-	return frame, nil
+	return frame, entry + int(cold), nil
 }

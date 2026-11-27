@@ -5,13 +5,11 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build !wago_standalone_no_collector && linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
-// Gate registration is cold and does not root any additional native resource.
-// The graph already holds Go identities until their physical lifetime retires.
-var managedFunctionInvocationStates managedFunctionPointerRegistry[*instancePluginState] // *instancePluginState -> *managedFunctionGraph
+import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 func managedFunctionBindInvocationState(in *Instance, state *instancePluginState) {
 	if managedFunctionMemberCount.Load() == 0 || in == nil || state == nil {
@@ -32,7 +30,7 @@ func managedFunctionAfterInvocationUnlock(state *instancePluginState, id invocat
 }
 
 func drainManagedFunctionStoreReclaims(store *referenceStore) {
-	if managedFunctionMemberCount.Load() == 0 || store == nil {
+	if !managedFunctionLifetimeBuilt || managedFunctionMemberCount.Load() == 0 || store == nil {
 		return
 	}
 	if value, ok := managedFunctionGraphs.Load(store); ok {
@@ -93,7 +91,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 		}
 		g.mu.Unlock()
 		for _, state := range collectors {
-			cleanup.run(func() { drainExceptionReclaims(state.collector) })
+			cleanup.run(func() { drainGCMetadataReclaims(state.collector) })
 			cleanup.run(func() { drainManagedFunctionReclaims(state.collector) })
 		}
 		g.mu.Lock()
@@ -130,7 +128,7 @@ func (g *managedFunctionGraph) drainAfterGate(id invocationID) {
 // topology reader. Defer its finalization (not the root-count decrement) to the
 // same synchronous outer cleanup boundary as Env physical reclamation.
 func managedFunctionDeferFinalization(in *Instance) bool {
-	if managedFunctionMemberCount.Load() == 0 || in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
+	if !managedFunctionLifetimeBuilt || managedFunctionMemberCount.Load() == 0 || in == nil || in.invocationState.Load()&instanceInvocationClosed == 0 {
 		return false
 	}
 	value, ok := managedFunctionMembers.Load(in)
@@ -140,14 +138,14 @@ func managedFunctionDeferFinalization(in *Instance) bool {
 	member := value.(*managedFunctionMember)
 	g := member.graph
 	g.store.mu.Lock()
-	topology := g.store.gcDomains
+	topology := g.store.gcTopologyLocked()
 	g.store.mu.Unlock()
 	if topology == nil {
 		return false
 	}
-	topology.mu.Lock()
-	readers := topology.readers != 0
-	topology.mu.Unlock()
+	topology.gate.mu.Lock()
+	readers := topology.gate.readers != 0
+	topology.gate.mu.Unlock()
 	if !readers {
 		return false
 	}
@@ -162,4 +160,73 @@ func managedFunctionDeferFinalization(in *Instance) bool {
 	}
 	g.mu.Unlock()
 	return true
+}
+
+func drainManagedFunctionReclaims(collector *gc.Collector) {
+	value, ok := managedFunctionCollectors.Load(collector)
+	if !ok {
+		return
+	}
+	s := value.(*managedFunctionCollector)
+	s.mu.Lock()
+	pending := s.reclaimed
+	s.reclaimed = nil
+	closed := s.closed
+	s.mu.Unlock()
+	if len(pending) != 0 {
+		// Count queued work, not a batch already owned by a callback journal.
+		// Another post-gate driver must not spin behind a blocked finalizer.
+		s.graph.pendingReclaims.Add(^uint64(len(pending) - 1))
+	}
+	var cleanup resourceCleanup
+	for _, env := range pending {
+		s.graph.mu.Lock()
+		env.member.envPins--
+		if env.member.envPins == 0 && !env.member.registered {
+			s.graph.removeMemberLocked(env.member)
+		}
+		s.graph.epoch.Add(1)
+		s.graph.mu.Unlock()
+		cleanup.run(func() {
+			defer s.graph.epoch.Add(1)
+			env.member.owner.releaseResourceRoot()
+		})
+	}
+	clear(pending)
+	s.mu.Lock()
+	if len(s.reclaimed) == 0 && cap(pending) > cap(s.reclaimed) {
+		s.reclaimed = pending[:0]
+	}
+	s.mu.Unlock()
+	if closed {
+		managedFunctionCollectors.Delete(collector)
+		managedFunctionRegistryMu.Lock()
+		s.graph.mu.Lock()
+		delete(s.graph.collectors, collector)
+		if len(s.graph.collectors) == 0 {
+			s.graph.retired = true
+			for _, member := range s.graph.members {
+				s.graph.removeMemberLocked(member)
+			}
+			managedFunctionGraphs.Delete(s.graph.store)
+		}
+		s.graph.mu.Unlock()
+		managedFunctionRegistryMu.Unlock()
+	}
+	cleanup.finish()
+}
+
+func managedFunctionInvocationActive(store *referenceStore) bool {
+	if !managedFunctionLifetimeBuilt {
+		return false
+	}
+	value, ok := managedFunctionGraphs.Load(store)
+	if !ok {
+		return false
+	}
+	graph := value.(*managedFunctionGraph)
+	graph.mu.Lock()
+	active := graph.gateStillOwnedLocked(0)
+	graph.mu.Unlock()
+	return active
 }

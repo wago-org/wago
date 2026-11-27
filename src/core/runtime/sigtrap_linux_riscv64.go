@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -231,7 +232,9 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 	goruntime.KeepAlive(j)
 	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-		j.ClearEHHandler()
+		if buildfeatures.StandaloneExceptionHandling {
+			j.ClearEHHandler()
+		}
 		return trapErrorFromBuffer(tc, trap)
 	}
 	return nil

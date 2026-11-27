@@ -10,6 +10,8 @@ package wasm
 import (
 	"runtime"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // directCodeBody is the part of a code-section function body the byte-backed
@@ -376,10 +378,15 @@ func decodeDirectTableSection(dm *directModule, r *reader) error {
 	}
 	capHint := boundedVecCap(n, r.left())
 	dm.m.Tables = make([]Table, 0, capHint)
-	dm.direct.tableHasInit = make([]bool, 0, capHint)
-	dm.direct.tableInits = make([]directConstExpr, 0, capHint)
+	if buildfeatures.ReferenceSignatures {
+		dm.direct.tableHasInit = make([]bool, 0, capHint)
+		dm.direct.tableInits = make([]directConstExpr, 0, capHint)
+	}
 	for i := uint32(0); i < n; i++ {
 		if b, ok := r.peek(); ok && b == 0x40 {
+			if !buildfeatures.ReferenceSignatures {
+				return disabledInstruction("reference-types", r.off())
+			}
 			_, _ = r.byte()
 			if b2, ok := r.peek(); !ok || b2 != 0x00 {
 				return &DecodeError{Code: ErrInvalidType, Offset: r.off()}
@@ -403,8 +410,10 @@ func decodeDirectTableSection(dm *directModule, r *reader) error {
 			return err
 		}
 		dm.m.Tables = append(dm.m.Tables, Table{Type: tt})
-		dm.direct.tableHasInit = append(dm.direct.tableHasInit, false)
-		dm.direct.tableInits = append(dm.direct.tableInits, directConstExpr{})
+		if buildfeatures.ReferenceSignatures {
+			dm.direct.tableHasInit = append(dm.direct.tableHasInit, false)
+			dm.direct.tableInits = append(dm.direct.tableInits, directConstExpr{})
+		}
 	}
 	return nil
 }
@@ -529,11 +538,14 @@ func decodeDirectElementSection(dm *directModule, r *reader) error {
 	dm.m.Elements = make([]Elem, 0, capHint)
 	dm.direct.elements = make([]directElem, 0, capHint)
 	for i := uint32(0); i < n; i++ {
-		e, elem, err := decodeDirectElem(r)
-		if err != nil {
+		var elem directElem
+		if err := decodeDirectElem(r, &elem); err != nil {
 			return err
 		}
-		dm.m.Elements = append(dm.m.Elements, e)
+		dm.m.Elements = append(dm.m.Elements, Elem{
+			Mode: ElemMode{Kind: elem.modeKind, Table: elem.table},
+			Kind: ElemKind{Kind: elem.kind, Ref: elem.ref},
+		})
 		dm.direct.elements = append(dm.direct.elements, elem)
 	}
 	return nil
@@ -550,134 +562,110 @@ func readElemKind(r *reader) error {
 	return nil
 }
 
-func decodeDirectElem(r *reader) (Elem, directElem, error) {
+func decodeDirectElem(r *reader, de *directElem) error {
+	flagOffset := r.off()
 	flags, err := r.u32()
 	if err != nil {
-		return Elem{}, directElem{}, err
+		return err
 	}
-	var e Elem
-	var de directElem
 	switch flags {
 	case 0:
 		off, err := readDirectConstExprBytes(r)
 		if err != nil {
-			return e, de, err
+			return err
 		}
 		de.modeKind = ElemActive
 		de.offset = off
 		de.kind = ElemFuncs
-		if err := readDirectFuncIdxSummary(r, &de); err != nil {
-			return e, de, err
+		if err := readDirectFuncIdxSummary(r, de); err != nil {
+			return err
 		}
 	case 1:
 		if err := readElemKind(r); err != nil {
-			return e, de, err
+			return err
 		}
 		de.modeKind = ElemPassive
 		de.kind = ElemFuncs
-		if err := readDirectFuncIdxSummary(r, &de); err != nil {
-			return e, de, err
+		if err := readDirectFuncIdxSummary(r, de); err != nil {
+			return err
 		}
 	case 2:
 		t, err := r.u32()
 		if err != nil {
-			return e, de, err
+			return err
 		}
 		off, err := readDirectConstExprBytes(r)
 		if err != nil {
-			return e, de, err
+			return err
 		}
 		if err := readElemKind(r); err != nil {
-			return e, de, err
+			return err
 		}
 		de.modeKind = ElemActive
 		de.table = TableIdx(t)
 		de.offset = off
 		de.kind = ElemFuncs
-		if err := readDirectFuncIdxSummary(r, &de); err != nil {
-			return e, de, err
+		if err := readDirectFuncIdxSummary(r, de); err != nil {
+			return err
 		}
 	case 3:
 		if err := readElemKind(r); err != nil {
-			return e, de, err
+			return err
 		}
 		de.modeKind = ElemDeclarative
 		de.kind = ElemFuncs
-		if err := readDirectFuncIdxSummary(r, &de); err != nil {
-			return e, de, err
+		if err := readDirectFuncIdxSummary(r, de); err != nil {
+			return err
 		}
-	case 4:
-		off, err := readDirectConstExprBytes(r)
-		if err != nil {
-			return e, de, err
+	case 4, 5, 6, 7:
+		if !buildfeatures.ReferenceSignatures {
+			return disabledInstruction("reference-types", flagOffset)
 		}
-		exprs, err := readDirectConstExprVec(r)
-		if err != nil {
-			return e, de, err
-		}
-		de.modeKind = ElemActive
-		de.offset = off
-		de.kind = ElemFuncExprs
-		de.elemLen = uint32(len(exprs))
-		de.exprs = exprs
-	case 5:
-		rt, err := decodeRefType(r)
-		if err != nil {
-			return e, de, err
-		}
-		exprs, err := readDirectConstExprVec(r)
-		if err != nil {
-			return e, de, err
-		}
-		de.modeKind = ElemPassive
-		de.kind = ElemTypedExprs
-		de.ref = rt
-		de.elemLen = uint32(len(exprs))
-		de.exprs = exprs
-	case 6:
-		t, err := r.u32()
-		if err != nil {
-			return e, de, err
-		}
-		off, err := readDirectConstExprBytes(r)
-		if err != nil {
-			return e, de, err
-		}
-		rt, err := decodeRefType(r)
-		if err != nil {
-			return e, de, err
-		}
-		exprs, err := readDirectConstExprVec(r)
-		if err != nil {
-			return e, de, err
-		}
-		de.modeKind = ElemActive
-		de.table = TableIdx(t)
-		de.offset = off
-		de.kind = ElemTypedExprs
-		de.ref = rt
-		de.elemLen = uint32(len(exprs))
-		de.exprs = exprs
-	case 7:
-		rt, err := decodeRefType(r)
-		if err != nil {
-			return e, de, err
-		}
-		exprs, err := readDirectConstExprVec(r)
-		if err != nil {
-			return e, de, err
-		}
-		de.modeKind = ElemDeclarative
-		de.kind = ElemTypedExprs
-		de.ref = rt
-		de.elemLen = uint32(len(exprs))
-		de.exprs = exprs
+		return decodeDirectReferenceElem(r, flags, de)
 	default:
-		return e, de, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 	}
-	e.Mode = ElemMode{Kind: de.modeKind, Table: de.table}
-	e.Kind = ElemKind{Kind: de.kind, Ref: de.ref}
-	return e, de, nil
+	return nil
+}
+
+func decodeDirectReferenceElem(r *reader, flags uint32, de *directElem) error {
+	switch flags {
+	case 4:
+		de.modeKind, de.kind = ElemActive, ElemFuncExprs
+	case 5:
+		de.modeKind, de.kind = ElemPassive, ElemTypedExprs
+	case 6:
+		table, err := r.u32()
+		if err != nil {
+			return err
+		}
+		de.modeKind, de.kind, de.table = ElemActive, ElemTypedExprs, TableIdx(table)
+	case 7:
+		de.modeKind, de.kind = ElemDeclarative, ElemTypedExprs
+	default:
+		return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+	}
+	if de.modeKind == ElemActive {
+		offset, err := readDirectConstExprBytes(r)
+		if err != nil {
+			return err
+		}
+		de.offset = offset
+	}
+	if de.kind == ElemTypedExprs {
+		ref, err := decodeRefType(r)
+		if err != nil {
+			return err
+		}
+		de.ref = ref
+	}
+	exprs, err := readDirectConstExprVec(r)
+	if err != nil {
+		return err
+	}
+	de.elemLen = uint32(len(exprs))
+	de.exprs = exprs
+	return nil
 }
 
 func readDirectFuncIdxSummary(r *reader, de *directElem) error {
@@ -908,14 +896,10 @@ func (v *moduleValidator) validateDirectElem(e directElem) error {
 		if !ok {
 			return v.err(ErrUnknownTable, "elem")
 		}
-		want := I32
-		if tt.Limits.Addr64 {
-			want = I64
-		}
-		if err := v.validateConstExprDirect(e.offset, want); err != nil {
+		if err := v.validateConstExprDirect(e.offset, tableAddrType(tt)); err != nil {
 			return err
 		}
-		if !v.refSubtype(elemRef, tt.Ref) {
+		if buildfeatures.ReferenceSignatures && !v.refSubtype(elemRef, tt.Ref) {
 			return v.err(ErrTypeMismatch, "element type does not match table")
 		}
 	}
@@ -930,6 +914,9 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 		}
 		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
+		if !buildfeatures.ReferenceSignatures {
+			return RefType{}, v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
 		for _, ex := range e.exprs {
 			if err := v.validateConstExprDirect(ex, FuncRef); err != nil {
 				return RefType{}, err
@@ -937,6 +924,9 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 		}
 		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
+		if !buildfeatures.ReferenceSignatures {
+			return RefType{}, v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
 		if err := v.validateRefType(e.ref); err != nil {
 			return RefType{}, err
 		}
@@ -1005,11 +995,12 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				opcode := r.data[r.pos]
 				if opcode >= 0x20 && opcode <= 0x24 || opcode >= 0x41 && opcode <= 0x44 {
 					r.pos++
-					kind, err := v.stepDirectScalarImmediate(r, opcode)
-					if err != nil {
+					if _, err := v.stepDirectScalarImmediate(r, opcode); err != nil {
 						return err
 					}
-					facts.Flags |= validatedFuncFlagsByKind[kind]
+					if opcode == 0x23 || opcode == 0x24 {
+						facts.Flags |= ValidatedFuncTouchesGlobal
+					}
 					continue
 				}
 				if opcode >= 0x28 && opcode <= 0x3e {
@@ -1022,16 +1013,18 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 					if err = v.stepDirectMemory(kind, arg); err != nil {
 						return err
 					}
-					facts.Flags |= validatedFuncFlagsByKind[kind]
+					facts.Flags |= validatedNonAtomicMemory
 					continue
 				}
-				if opcode >= 0x45 && opcode <= 0xc4 {
+				if opcode >= 0x45 && opcode <= lastDirectNumericOpcode {
 					r.pos++
 					kind := simpleOpcode[opcode]
 					if err := v.stepDirectNumeric(kind); err != nil {
 						return err
 					}
-					facts.Flags |= validatedFuncFlagsByKind[kind]
+					if buildfeatures.SignExtensionOps != 0 && isSignExtensionOpcode(opcode) {
+						facts.Flags |= ValidatedFuncUsesSignExtension
+					}
 					continue
 				}
 				if opcode == 0x05 || opcode >= 0x0b && opcode <= 0x0d {
@@ -1041,17 +1034,21 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 						return err
 					}
 					if kind != InstrInvalid {
-						facts.Flags |= validatedFuncFlagsByKind[kind]
+						facts.Flags |= ValidatedFuncHasControl
 					}
 					continue
 				}
-				if opcode == 0x10 || opcode == 0x12 {
+				if opcode == 0x10 || buildfeatures.TailCall != 0 && opcode == 0x12 {
 					r.pos++
 					kind, err := v.stepDirectCallImmediate(r, opcode)
 					if err != nil {
 						return err
 					}
-					facts.Flags |= validatedFuncFlagsByKind[kind]
+					if kind == InstrCall {
+						facts.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncMayCollect
+					} else {
+						facts.observe(kind)
+					}
 					continue
 				}
 			}
@@ -1062,11 +1059,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				return err
 			}
 			if op.kind == directInstr {
-				kind := op.instr.Kind
-				facts.Flags |= validatedFuncFlagsByKind[kind]
-				if validatedFuncNeedsPayloadByKind[kind] {
-					v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
-				}
+				v.observeValidatedInstruction(facts, &op.instr, segmentCounts)
 			} else {
 				facts.observeStructuredDirect(op)
 			}
@@ -1099,7 +1092,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				}
 				continue
 			}
-			if opcode >= 0x45 && opcode <= 0xc4 {
+			if opcode >= 0x45 && opcode <= lastDirectNumericOpcode {
 				r.pos++
 				if err := v.stepDirectNumeric(simpleOpcode[opcode]); err != nil {
 					return err
@@ -1113,7 +1106,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				}
 				continue
 			}
-			if opcode == 0x10 || opcode == 0x12 {
+			if opcode == 0x10 || buildfeatures.TailCall != 0 && opcode == 0x12 {
 				r.pos++
 				if _, err := v.stepDirectCallImmediate(r, opcode); err != nil {
 					return err
@@ -1192,6 +1185,18 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{}
 		return err
 	}
+	if buildfeatures.SignExtensionOps == 0 && isSignExtensionOpcode(op) {
+		*out = directOp{}
+		return disabledInstruction("sign-extension-ops", r.off()-1)
+	}
+	if buildfeatures.ExceptionHandling == 0 && op == 0x0a {
+		*out = directOp{}
+		return disabledInstruction("exception-handling", r.off()-1)
+	}
+	if !buildfeatures.ReferenceSignatures && op == 0xd1 {
+		*out = directOp{}
+		return disabledInstruction("reference-types", r.off()-1)
+	}
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: k}}
 		return nil
@@ -1215,6 +1220,10 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directElse}
 		return nil
 	case 0x08:
+		if buildfeatures.ExceptionHandling == 0 {
+			*out = directOp{}
+			return disabledInstruction("exception-handling", r.off()-1)
+		}
 		in, err := indexInst(r, InstrThrow)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
@@ -1239,28 +1248,8 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		v.opExt = instrExt{Indices: labels}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &v.opExt}}
 		return err
-	case 0x10:
-		in, err := indexInst(r, InstrCall)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x11:
-		in, err := twoIndexInst(r, InstrCallIndirect)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x12:
-		in, err := indexInst(r, InstrReturnCall)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x13:
-		in, err := twoIndexInst(r, InstrReturnCallIndirect)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x14:
-		in, err := indexInst(r, InstrCallRef)
-		*out = directOp{kind: directInstr, instr: in}
-		return err
-	case 0x15:
-		in, err := indexInst(r, InstrReturnCallRef)
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+		in, err := decodeCallInstruction(r, op)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x1c:
@@ -1269,12 +1258,11 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrSelect, ext: &v.opExt}}
 		return err
 	case 0x1f:
-		bt, err := decodeBlockType(r)
-		if err != nil {
+		if buildfeatures.ExceptionHandling == 0 {
 			*out = directOp{}
-			return err
+			return disabledInstruction("exception-handling", r.off()-1)
 		}
-		catches, err := readVec(r, decodeCatch)
+		bt, catches, err := decodeTryTableHeader(r)
 		if err != nil {
 			*out = directOp{}
 			return err
@@ -1302,10 +1290,18 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x25:
+		if !buildfeatures.ReferenceSignatures {
+			*out = directOp{}
+			return disabledInstruction("reference-types", r.off()-1)
+		}
 		in, err := indexInst(r, InstrTableGet)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x26:
+		if !buildfeatures.ReferenceSignatures {
+			*out = directOp{}
+			return disabledInstruction("reference-types", r.off()-1)
+		}
 		in, err := indexInst(r, InstrTableSet)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
@@ -1315,16 +1311,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}
 		return err
 	case 0x3f, 0x40:
-		kind := InstrMemorySize
-		if op == 0x40 {
-			kind = InstrMemoryGrow
-		}
-		if multiMemory {
-			in, err := indexInst(r, kind)
-			*out = directOp{kind: directInstr, instr: in}
-			return err
-		}
-		in, err := reservedZeroInst(r, kind)
+		in, err := decodeMemorySizeGrow(r, op, multiMemory)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0x41:
@@ -1344,29 +1331,56 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrF64Const, F64Bits: x}}
 		return err
 	case 0xd0:
+		if !buildfeatures.ReferenceSignatures {
+			*out = directOp{}
+			return disabledInstruction("reference-types", r.off()-1)
+		}
 		rt, err := decodeRefTypeForNull(r)
 		v.opExt = instrExt{RefType: rt}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &v.opExt}}
 		return err
 	case 0xd2:
+		if !buildfeatures.ReferenceSignatures {
+			*out = directOp{}
+			return disabledInstruction("reference-types", r.off()-1)
+		}
 		in, err := indexInst(r, InstrRefFunc)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xd3:
+		if buildfeatures.GC == 0 {
+			*out = directOp{}
+			return disabledInstruction("gc", r.off()-1)
+		}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefEq}}
 		return nil
 	case 0xd4:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			*out = directOp{}
+			return disabledInstruction("typed-function-references", r.off()-1)
+		}
 		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefAsNonNull}}
 		return nil
 	case 0xd5:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			*out = directOp{}
+			return disabledInstruction("typed-function-references", r.off()-1)
+		}
 		in, err := indexInst(r, InstrBrOnNull)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xd6:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			*out = directOp{}
+			return disabledInstruction("typed-function-references", r.off()-1)
+		}
 		in, err := indexInst(r, InstrBrOnNonNull)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfb:
+		if buildfeatures.GC == 0 {
+			return disabledInstruction("gc", r.off()-1)
+		}
 		in, err := decodeFBInto(r, &v.opExt)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
@@ -1375,10 +1389,16 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfd:
+		if buildfeatures.SIMD == 0 {
+			return disabledInstruction("simd", r.off()-1)
+		}
 		in, err := decodeFDWithMemargWidthsInto(r, widths, &v.opExt)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfe:
+		if buildfeatures.Threads == 0 {
+			return disabledInstruction("threads", r.off()-1)
+		}
 		in, err := decodeFEWithMemargWidths(r, widths)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
@@ -1410,6 +1430,9 @@ func (v *funcValidator) stepDirectOp(op *directOp) error {
 	case directIf:
 		return v.directStartIf(op.blockType)
 	case directTryTable:
+		if buildfeatures.ExceptionHandling == 0 {
+			return v.verr(ErrUnsupportedFeature, "exception-handling is disabled in this build")
+		}
 		return v.directStartTryTable(op.blockType, op.catches)
 	case directElse:
 		return v.directElse()
@@ -1758,7 +1781,7 @@ func (v *funcValidator) stepDirectCallImmediate(r *reader, opcode byte) (InstrKi
 	if err := v.popAll(ft.Params); err != nil {
 		return InstrInvalid, err
 	}
-	if opcode == 0x12 {
+	if buildfeatures.TailCall != 0 && opcode == 0x12 {
 		if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 			return InstrInvalid, v.verr(ErrTypeMismatch, "return_call")
 		}

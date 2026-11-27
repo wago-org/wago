@@ -9,6 +9,15 @@ package wago
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
+func hasAggregateTypeDeclarations(types []DefinedTypeDescriptor) bool {
+	for _, typ := range types {
+		if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+			return true
+		}
+	}
+	return false
+}
+
 // Function-only type graphs require no collector-backed storage. This checks
 // their representation; native code and reference binding checks remain separate.
 func compiledFunctionOnlyTypeGraph(c *Compiled) bool {
@@ -27,7 +36,7 @@ func compiledFunctionOnlyTypeGraph(c *Compiled) bool {
 					}
 					continue
 				}
-				if value.Kind != ValueTypeReference || value.Ref.Exact {
+				if !referenceTypeDescriptorsForImage || value.Kind != ValueTypeReference || value.Ref.Exact {
 					return false
 				}
 				heap := value.Ref.Heap
@@ -42,4 +51,25 @@ func compiledFunctionOnlyTypeGraph(c *Compiled) bool {
 		}
 	}
 	return true
+}
+
+func compiledUsesTypedSignatures(c *Compiled) bool {
+	for _, typ := range c.Types {
+		if !typ.Final || len(typ.Supers) != 0 {
+			return true
+		}
+		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
+			for _, value := range values {
+				if value.Kind == ValueTypeReference && (!value.Ref.Nullable || value.Ref.Heap.Defined || value.Ref.Heap.Abstract != AbstractHeapFunc && value.Ref.Heap.Abstract != AbstractHeapExtern) {
+					return true
+				}
+			}
+		}
+	}
+	for index := 1; index < len(c.Types); index++ {
+		if c.Types[index].RecGroup == c.Types[index-1].RecGroup {
+			return true
+		}
+	}
+	return false
 }

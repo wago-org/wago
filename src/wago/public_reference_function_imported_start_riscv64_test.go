@@ -608,7 +608,7 @@ func TestRV64PublicReferenceFunctionImportedStartNativeParked(t *testing.T) {
 				if err := rt.WaitClosed(wait); err != nil {
 					t.Fatal(err)
 				}
-				if calls != 1 || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || gate.state.Load() != 0 || active.invocationState.Load()&instanceInvocationCount != 0 || active.pluginState.Load().railshotInvocation.tailDispatcher != nil || readGlobalObject(provider.globalCells[1], ValI32) != 12 || provider.jm.HostBytes()[49] != 42 || provider.jm.HostBytes()[2] != 0 {
+				if calls != 1 || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || gate.state.Load() != 0 || active.invocationState.Load()&instanceInvocationCount != 0 || active.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || readGlobalObject(provider.globalCells[1], ValI32) != 12 || provider.jm.HostBytes()[49] != 42 || provider.jm.HostBytes()[2] != 0 {
 					t.Fatal("parked native start continued or retained constructor/scope resources")
 				}
 				rv64ReferenceImportedStartRetired(t, producer, nc)

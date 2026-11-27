@@ -11,6 +11,7 @@ package riscv64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -71,6 +72,9 @@ func (f *integerEmitter) swarRelaxedMadd(width uint8, negative bool) {
 }
 
 func swarRelaxedMaddOpcode(kind uint32) (width uint8, negative, ok bool) {
+	if buildfeatures.RelaxedSIMD == 0 {
+		return 0, false, false
+	}
 	if kind >= 261 && kind <= 264 {
 		width = 32
 		if kind >= 263 {

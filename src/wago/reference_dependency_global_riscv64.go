@@ -87,7 +87,7 @@ func rv64AcquireGlobalDependency(a *globalImportAttachments, global *Global, sto
 		return errors.New("global has no explicit owner")
 	}
 	validate := global.validateNumericImport
-	if isReferenceValType(global.Type) {
+	if referenceSignaturesBuilt && isReferenceValType(global.Type) {
 		validate = func() error { return global.validateReferenceImportWithCollector(store, collector) }
 	}
 	if err := validate(); err != nil {

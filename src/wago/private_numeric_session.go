@@ -72,7 +72,7 @@ func (h *privateNumericSession) invokeOwned(fn *WasmFunc, args []uint64) (out []
 			err = in.decorateTrap(err)
 		}
 	}()
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}

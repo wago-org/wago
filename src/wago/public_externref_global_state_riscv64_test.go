@@ -13,6 +13,62 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+// rv64StateOnlyExternrefGlobals checks the legacy state-only declaration shape
+// used by these fixtures. Native execution admission exits before this shape.
+func rv64StateOnlyExternrefGlobals(c *Compiled) bool {
+	if c == nil || !c.hasNoFunctionCode() || c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 || len(c.FuncTypeID) != 0 || len(c.Exports) != 0 {
+		return false
+	}
+	if len(c.Globals) == 0 || len(c.Globals) > 256 || len(c.GlobalImports) != 0 || len(c.GlobalExports) > 256 || len(c.ValueTypes) == 0 || len(c.ValueTypes) > 5 || c.tableCount() != 0 || c.memoryCount() != 0 || c.tagImportCount() != 0 || c.HasStart {
+		return false
+	}
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
+		return false
+	}
+	for _, index := range c.GlobalExports {
+		if index < 0 || index >= len(c.Globals) {
+			return false
+		}
+	}
+	plainExternref, _ := valueTypeDescriptorFromValType(ValExternRef)
+	var kinds, used uint8
+	for _, exact := range c.ValueTypes {
+		if exact.Kind > ValueTypeF64 && exact != plainExternref || exact.Kind <= ValueTypeF64 && exact.Ref != (ReferenceTypeDescriptor{}) || kinds&(1<<exact.Kind) != 0 {
+			return false
+		}
+		kinds |= 1 << exact.Kind
+	}
+	required := CoreFeatureReferenceTypes
+	hasExternref := false
+	for i, g := range c.Globals {
+		exact, err := c.globalExactType(i)
+		plain, ok := valueTypeDescriptorFromValType(g.Type)
+		if err != nil || !ok || exact != plain || !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) || g.Mutable || g.V128 != (V128{}) || g.HasInitFunc || g.InitFunc != 0 || len(g.InitExpr) != 0 {
+			return false
+		}
+		used |= 1 << g.ValueTypeIndex
+		if g.Type != ValExternRef {
+			if g.Type != ValI32 && g.Type != ValI64 && g.Type != ValF32 && g.Type != ValF64 || g.HasInitGlobal || g.InitGlobal != 0 || (g.Type == ValI32 || g.Type == ValF32) && g.Bits>>32 != 0 {
+				return false
+			}
+			continue
+		}
+		hasExternref = true
+		if exact != plainExternref || g.Bits != 0 {
+			return false
+		}
+		if g.HasInitGlobal {
+			if g.InitGlobal < 0 || g.InitGlobal >= i || c.Globals[g.InitGlobal].Type != ValExternRef {
+				return false
+			}
+			required |= CoreFeatureExtendedConstExpressions
+		} else if g.InitGlobal != 0 {
+			return false
+		}
+	}
+	return hasExternref && used == uint8((1<<len(c.ValueTypes))-1) && c.requiredFeatures == required && compiledStructuralRequiredFeatures(c) == required
+}
+
 type rv64StateOnlyMixedGlobal struct {
 	typ    wasm.ValType
 	bits   uint64

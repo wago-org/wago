@@ -12,7 +12,7 @@ func TestReferenceRootShadowExistingTargetFootprint(t *testing.T) {
 	// Mirror the sidecar before the RV64-only holder. Empty accounting must
 	// preserve its size and each following field's alignment on existing targets.
 	type previousImportState struct {
-		pluginGCImports  map[uint32]struct{}
+		pluginGCImportState
 		funcrefImports   atomic.Pointer[funcrefImportContainers]
 		importRefEntries []importReferenceEntry
 		globalRefEntries []importGlobalReference

@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/cli/standalone/arguments"
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // ValidateSignature rejects values that the command-line text format cannot
@@ -36,71 +38,44 @@ func validateSignatureValues(kind string, types []wago.ValType) error {
 	return nil
 }
 
+// The standalone argument parser uses the same scalar codes as wago.ValType.
+var (
+	_ [arguments.I32]struct{} = [wago.ValI32]struct{}{}
+	_ [arguments.I64]struct{} = [wago.ValI64]struct{}{}
+	_ [arguments.F32]struct{} = [wago.ValF32]struct{}{}
+	_ [arguments.F64]struct{} = [wago.ValF64]struct{}{}
+)
+
 func ParseArgs(values []string, params []wago.ValType) ([]uint64, error) {
 	if err := ValidateSignature(params, nil); err != nil {
 		return nil, err
 	}
-	if len(values) != len(params) {
-		return nil, fmt.Errorf("expected %d arg(s), got %d", len(params), len(values))
+	return ParseScalarArgs(values, params)
+}
+
+// ParseScalarArgs decodes parameters from an already validated scalar signature.
+func ParseScalarArgs[T ~uint8](values []string, params []T) ([]uint64, error) {
+	var slots []uint64
+	if len(values) == len(params) {
+		slots = make([]uint64, len(params))
 	}
-	arguments := make([]uint64, len(values))
-	for index, value := range values {
-		valueType := params[index]
-		literal := value
-		if suffix := strings.LastIndexByte(value, ':'); suffix >= 0 {
-			literal = value[:suffix]
-			switch value[suffix+1:] {
-			case "i32":
-				valueType = wago.ValI32
-			case "i64":
-				valueType = wago.ValI64
-			case "f32":
-				valueType = wago.ValF32
-			case "f64":
-				valueType = wago.ValF64
-			default:
-				return nil, fmt.Errorf("arg %d: bad type suffix in %q", index, value)
-			}
-		}
-		parsed, err := ParseValue(literal, valueType)
-		if err != nil {
-			return nil, fmt.Errorf("arg %d (%q): %w", index, value, err)
-		}
-		arguments[index] = parsed
+	if err := arguments.Decode(values, params, slots); err != nil {
+		return nil, err
 	}
-	return arguments, nil
+	return slots, nil
 }
 
 func ParseValue(value string, valueType wago.ValType) (uint64, error) {
-	switch valueType {
-	case wago.ValI64:
-		if integer, err := strconv.ParseInt(value, 0, 64); err == nil {
-			return wago.I64(integer), nil
-		}
-		unsigned, err := strconv.ParseUint(value, 0, 64)
-		return wago.I64(int64(unsigned)), err
-	case wago.ValF32:
-		float, err := strconv.ParseFloat(value, 32)
-		return wago.F32(float32(float)), err
-	case wago.ValF64:
-		float, err := strconv.ParseFloat(value, 64)
-		return wago.F64(float), err
-	default:
-		if integer, err := strconv.ParseInt(value, 0, 32); err == nil {
-			return wago.I32(int32(integer)), nil
-		}
-		unsigned, err := strconv.ParseUint(value, 0, 32)
-		return wago.I32(int32(uint32(unsigned))), err
-	}
+	return arguments.ParseValue(value, arguments.Type(valueType))
 }
 
 func FormatValue(bits uint64, valueType wago.ValType) string {
-	switch valueType {
-	case wago.ValI64:
+	switch {
+	case buildfeatures.StandaloneResultTypes&(1<<wago.ValI64) != 0 && valueType == wago.ValI64:
 		return strconv.FormatInt(wago.AsI64(bits), 10)
-	case wago.ValF32:
+	case buildfeatures.StandaloneResultTypes&(1<<wago.ValF32) != 0 && valueType == wago.ValF32:
 		return strconv.FormatFloat(float64(wago.AsF32(bits)), 'g', -1, 32)
-	case wago.ValF64:
+	case buildfeatures.StandaloneResultTypes&(1<<wago.ValF64) != 0 && valueType == wago.ValF64:
 		return strconv.FormatFloat(wago.AsF64(bits), 'g', -1, 64)
 	default:
 		return strconv.FormatInt(int64(wago.AsI32(bits)), 10)
@@ -108,13 +83,13 @@ func FormatValue(bits uint64, valueType wago.ValType) string {
 }
 
 // FormatResults renders raw function results without a call-expression prefix.
-func FormatResults(results []uint64, resultTypes []wago.ValType) string {
+func FormatResults[T ~uint8](results []uint64, resultTypes []T) string {
 	if len(results) != len(resultTypes) {
 		return fmt.Sprintf("invalid result count: got %d values for %d types", len(results), len(resultTypes))
 	}
 	formatted := make([]string, len(results))
 	for index, value := range results {
-		formatted[index] = FormatValue(value, resultTypes[index])
+		formatted[index] = FormatValue(value, wago.ValType(resultTypes[index]))
 	}
 	return strings.Join(formatted, ", ")
 }

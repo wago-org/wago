@@ -8,6 +8,9 @@
 package plugin
 
 import (
+	"strings"
+
+	"github.com/wago-org/wago/cli/internal/settings"
 	pluginbuild "github.com/wago-org/wago/cli/manager/internal/plugin/build"
 	managerversion "github.com/wago-org/wago/cli/manager/internal/version"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -59,3 +62,14 @@ func (selection pluginRuntimeSelection) config() pluginbuild.Config {
 }
 
 func pluginBuildConfig() pluginbuild.Config { return capturePluginRuntime().config() }
+
+func pluginRuntimeBuildConfig(config pluginbuild.Config, manifest map[string]any) (pluginbuild.Config, error) {
+	tags, err := settings.BuildTagsForManifest(manifest)
+	if err != nil {
+		return pluginbuild.Config{}, err
+	}
+	if len(tags) != 0 {
+		config.BuildTag = strings.Join(append([]string{config.BuildTag}, tags...), ",")
+	}
+	return config, nil
+}

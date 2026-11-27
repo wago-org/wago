@@ -28,6 +28,9 @@ type referenceRootAccounting struct {
 // legacy/finalization-only acquisitions until its guard is rolled back or the
 // later collector has drained all outgoing ownership.
 func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
+	if !crossInstanceDependenciesForImage {
+		return true
+	}
 	if !managedFunctionRetainAllowedLocked(in) {
 		return false
 	}
@@ -39,6 +42,9 @@ func railshotResourceRootRetainAllowedLocked(in *Instance) bool {
 
 // Called after resourceRefs increments, with lifeMu held.
 func railshotResourceRootAcquiredLocked(in *Instance) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	managedFunctionRootEpochLocked(in)
 	accounting := &in.ensureImportState().rootAccounting
 	if accounting.ledger == nil {
@@ -53,6 +59,9 @@ func railshotResourceRootAcquiredLocked(in *Instance) {
 // Called after a successful resourceRefs decrement, with lifeMu held. A missing
 // node is possible for synthetic/preexisting roots; release stays allocation-free.
 func railshotResourceRootReleasedLocked(in *Instance) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	managedFunctionRootEpochLocked(in)
 	if state := in.importState.Load(); state != nil && state.rootAccounting.ledger != nil {
 		state.rootAccounting.ledger.external--

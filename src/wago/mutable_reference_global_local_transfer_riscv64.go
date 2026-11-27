@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -27,7 +28,7 @@ var rv64MutableFuncrefLocalTransferCodeDigest = [sha256.Size]byte{0x23, 0x8e, 0x
 var rv64MutableFuncrefLocalTransferCheckedCodeDigest = [sha256.Size]byte{0xcc, 0xc9, 0x25, 0x22, 0x0f, 0x98, 0x09, 0x8c, 0xc1, 0xfe, 0x33, 0x09, 0xff, 0x55, 0x4c, 0x19, 0xa8, 0x09, 0xcc, 0xee, 0xbe, 0x96, 0xcd, 0x1a, 0x16, 0x2b, 0x37, 0xf2, 0x7d, 0x59, 0x69, 0x0b}
 
 func rv64MutableFuncrefGlobalLocalTransferExecutionCode(c *Compiled) bool {
-	if c == nil {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil {
 		return false
 	}
 	switch len(c.code) {
@@ -45,7 +46,7 @@ func rv64MutableFuncrefGlobalLocalTransferExecutionCode(c *Compiled) bool {
 // it to imported target one, and clear itself. Every write crosses the parked
 // ownership bridge and the private cell receives an internal Global owner.
 func rv64MutableFuncrefGlobalLocalTransfer(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 3 || len(c.FuncTypeID) != 3 || len(c.Exports) != 3 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
@@ -62,7 +63,7 @@ func rv64MutableFuncrefGlobalLocalTransfer(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	funcType := &wasm.CompType{Kind: wasm.CompFunc}

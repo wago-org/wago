@@ -81,7 +81,7 @@ func TestRV64PlainHostDescriptorValidationPreservesGCLease(t *testing.T) {
 			}
 		})
 	}
-	topology := in.refStore.gcDomains
+	topology := in.refStore.gcTopologyLocked()
 	var validationPanic any
 	func() {
 		id := newInvocationID()
@@ -92,9 +92,9 @@ func TestRV64PlainHostDescriptorValidationPreservesGCLease(t *testing.T) {
 			defer func() { validationPanic = recover() }()
 			activation.dispatch(activation.ctrl, hostFuncRefDispatchBit, []uint64{0, 0, 0}, nil)
 		}()
-		topology.mu.Lock()
-		readers := topology.readers
-		topology.mu.Unlock()
+		topology.gate.mu.Lock()
+		readers := topology.gate.readers
+		topology.gate.mu.Unlock()
 		if readers != 1 {
 			t.Errorf("validation consumed acquired reader: readers=%d", readers)
 		}
@@ -103,9 +103,9 @@ func TestRV64PlainHostDescriptorValidationPreservesGCLease(t *testing.T) {
 	if !ok || !strings.Contains(validation.err.Error(), "invalid RV64 guest global store bridge") {
 		t.Fatalf("validation panic=%v", validationPanic)
 	}
-	topology.mu.Lock()
-	readers, writer := topology.readers, topology.writer
-	topology.mu.Unlock()
+	topology.gate.mu.Lock()
+	readers, writer := topology.gate.readers, topology.gate.writer
+	topology.gate.mu.Unlock()
 	if readers != 0 || writer {
 		t.Fatalf("validation left topology readers=%d writer=%t", readers, writer)
 	}

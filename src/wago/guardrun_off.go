@@ -27,7 +27,7 @@ func callNative(_ *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refre
 	}
 	if preparedCallEnabled {
 		err := eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
-		if err != nil {
+		if exceptionHandlingForImage && err != nil {
 			jm.ClearEHHandler()
 		}
 		return err

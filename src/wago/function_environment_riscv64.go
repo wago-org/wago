@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -25,6 +25,10 @@ var managedFunctionCollectors managedFunctionCollectorRegistry
 var managedFunctionRegistryMu sync.Mutex                             // graph registration and last-domain retirement
 var managedFunctionMembers managedFunctionPointerRegistry[*Instance] // *Instance -> *managedFunctionMember
 var managedFunctionMemberCount atomic.Uint32
+
+// Gate registration is cold and does not root any additional native resource.
+// The graph already holds Go identities until their physical lifetime retires.
+var managedFunctionInvocationStates managedFunctionPointerRegistry[*instancePluginState] // *instancePluginState -> *managedFunctionGraph
 
 type managedFunctionPointerRegistry[K comparable] struct {
 	mu   sync.RWMutex
@@ -107,30 +111,6 @@ type managedFunctionMember struct {
 	finalizationPending bool // graph.mu; no physical callbacks under a topology reader
 }
 
-// lifeMu is held by the physical root ledger. This cold lookup does not take
-// another lock and cannot reverse the graph-to-lifetime commit lock order.
-func managedFunctionRootEpochLocked(in *Instance) {
-	if managedFunctionMemberCount.Load() == 0 {
-		return
-	}
-	if value, ok := managedFunctionMembers.Load(in); ok {
-		member := value.(*managedFunctionMember)
-		member.graph.epoch.Add(1)
-		if in.invocationState.Load()&instanceInvocationClosed != 0 {
-			member.graph.pendingCollection.Store(true)
-		}
-	}
-}
-
-func managedFunctionRetainAllowedLocked(in *Instance) bool {
-	if managedFunctionMemberCount.Load() != 0 {
-		if value, ok := managedFunctionMembers.Load(in); ok {
-			return !value.(*managedFunctionMember).collecting.Load()
-		}
-	}
-	return true
-}
-
 type managedFunctionEnv struct {
 	root        gc.Root
 	member      *managedFunctionMember
@@ -138,6 +118,7 @@ type managedFunctionEnv struct {
 }
 
 type managedFunctionCollector struct {
+	managedFunctionExceptionState
 	mu           sync.Mutex // observer journal only; maps are collector-domain serialized
 	graph        *managedFunctionGraph
 	collector    *gc.Collector
@@ -154,7 +135,6 @@ type managedFunctionCollector struct {
 	liveOwners   map[*managedFunctionMember]bool
 	reclaimed    []*managedFunctionEnv
 	closed       bool
-	exception    *managedFunctionExceptionScratch
 }
 
 func (s *managedFunctionCollector) ObjectEdgeCount(ref gc.Ref) uint32 {
@@ -208,21 +188,6 @@ func managedFunctionGraphFor(store *referenceStore) *managedFunctionGraph {
 	return graph
 }
 
-// Registration must publish the graph before registerInstance takes store.mu.
-// Mutable function containers need lifecycle deferral even when no heap closure
-// has allocated a collector environment yet.
-func managedFunctionPrepareRegistration(store *referenceStore, in *Instance) {
-	if store == nil || in == nil || !compiledManagedFunctionReachability(in.c) {
-		return
-	}
-	if _, ok := managedFunctionGraphs.Load(store); ok {
-		return
-	}
-	managedFunctionRegistryMu.Lock()
-	defer managedFunctionRegistryMu.Unlock()
-	managedFunctionGraphFor(store)
-}
-
 // graph.mu is held (or the new graph is unpublished).
 func (g *managedFunctionGraph) registerMemberLocked(in *Instance, registered bool) *managedFunctionMember {
 	if member := g.members[in]; member != nil {
@@ -273,37 +238,6 @@ func (g *managedFunctionGraph) removeMemberLocked(member *managedFunctionMember)
 	}
 	managedFunctionMemberCount.Add(^uint32(0))
 	g.epoch.Add(1)
-}
-
-// These hooks run with store.mu held, never from a collector callback.
-func managedFunctionRegisteredLocked(store *referenceStore, in *Instance) {
-	if value, ok := managedFunctionGraphs.Load(store); ok {
-		g := value.(*managedFunctionGraph)
-		g.mu.Lock()
-		if !g.retired {
-			g.registerMemberLocked(in, true)
-		}
-		g.mu.Unlock()
-	}
-}
-func managedFunctionLifetimeLocked(store *referenceStore, in *Instance, released bool) {
-	if managedFunctionMemberCount.Load() == 0 {
-		return
-	}
-	if value, ok := managedFunctionGraphs.Load(store); ok {
-		g := value.(*managedFunctionGraph)
-		g.mu.Lock()
-		if member := g.members[in]; member != nil && !g.retired {
-			if released {
-				member.registered = false
-				if member.envPins == 0 {
-					g.removeMemberLocked(member)
-				}
-			}
-			g.epoch.Add(1)
-		}
-		g.mu.Unlock()
-	}
 }
 
 // Called with the collector domain locked. The private empty struct occupies
@@ -426,6 +360,9 @@ func visitManagedFunctionFrameRoot(source *Instance, descriptor uint64, fn func(
 	if descriptor == 0 {
 		return true
 	}
+	if !managedFunctionGraphForImage {
+		return false
+	}
 	var state *managedFunctionCollector
 	if value, ok := managedFunctionCollectors.Load(source.gc); ok {
 		state = value.(*managedFunctionCollector)
@@ -461,6 +398,9 @@ func visitManagedFunctionFrameRoot(source *Instance, descriptor uint64, fn func(
 }
 
 func visitManagedFunctionOwnerFrameRoot(owner *Instance, collector *gc.Collector, fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+	if !managedFunctionGraphForImage {
+		return true
+	}
 	if producerSink, ok := sink.(managedFunctionProducerRootSink); ok && !producerSink.VisitFunctionProducer(owner) {
 		return false
 	}
@@ -486,6 +426,9 @@ func visitManagedFunctionOwnerFrameRoot(owner *Instance, collector *gc.Collector
 // Returning a Ref does not root it: the caller must publish a managed edge or
 // constructor root before another collecting operation.
 func (s *managedFunctionCollector) newManagedFunctionEnv(producer *Instance, roots gc.RootSet) (gc.Ref, error) {
+	if !nativeCollectorFrameRootsBuilt {
+		return gc.Null(), fmt.Errorf("managed function environment requires a native collector")
+	}
 	if env := s.byOwner[producer]; env != nil {
 		return env.root.GetRef(), nil
 	}
@@ -515,58 +458,4 @@ func (s *managedFunctionCollector) newManagedFunctionEnv(producer *Instance, roo
 	s.envs[ref] = env
 	s.byOwner[producer] = env
 	return ref, nil
-}
-
-func drainManagedFunctionReclaims(collector *gc.Collector) {
-	value, ok := managedFunctionCollectors.Load(collector)
-	if !ok {
-		return
-	}
-	s := value.(*managedFunctionCollector)
-	s.mu.Lock()
-	pending := s.reclaimed
-	s.reclaimed = nil
-	closed := s.closed
-	s.mu.Unlock()
-	if len(pending) != 0 {
-		// Count queued work, not a batch already owned by a callback journal.
-		// Another post-gate driver must not spin behind a blocked finalizer.
-		s.graph.pendingReclaims.Add(^uint64(len(pending) - 1))
-	}
-	var cleanup resourceCleanup
-	for _, env := range pending {
-		s.graph.mu.Lock()
-		env.member.envPins--
-		if env.member.envPins == 0 && !env.member.registered {
-			s.graph.removeMemberLocked(env.member)
-		}
-		s.graph.epoch.Add(1)
-		s.graph.mu.Unlock()
-		cleanup.run(func() {
-			defer s.graph.epoch.Add(1)
-			env.member.owner.releaseResourceRoot()
-		})
-	}
-	clear(pending)
-	s.mu.Lock()
-	if len(s.reclaimed) == 0 && cap(pending) > cap(s.reclaimed) {
-		s.reclaimed = pending[:0]
-	}
-	s.mu.Unlock()
-	if closed {
-		managedFunctionCollectors.Delete(collector)
-		managedFunctionRegistryMu.Lock()
-		s.graph.mu.Lock()
-		delete(s.graph.collectors, collector)
-		if len(s.graph.collectors) == 0 {
-			s.graph.retired = true
-			for _, member := range s.graph.members {
-				s.graph.removeMemberLocked(member)
-			}
-			managedFunctionGraphs.Delete(s.graph.store)
-		}
-		s.graph.mu.Unlock()
-		managedFunctionRegistryMu.Unlock()
-	}
-	cleanup.finish()
 }

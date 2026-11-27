@@ -130,7 +130,7 @@ func TestRV64PublicReferenceFunctionImportedTailsForeignOwners(t *testing.T) {
 							}), pc.importFuncSigs[2])
 							selected := rv64NativeTokenInstantiate(t, rt, pc, im.Function("env.calls", "native.fn", binding).Function("env.calls", "shared.fn", shared).Function("env.calls", "owned.fn", owned))
 							capability := rv64ReferenceImportTailCapability(selected)
-							if capability == 0 || selected.pluginState.Load().railshotInvocation.tailDispatcher == nil || selected.jm != resource.jm || selected.memoryDir.memories[1].jobMemory() != selected.memoryDir.memories[2].jobMemory() {
+							if capability == 0 || selected.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil || selected.jm != resource.jm || selected.memoryDir.memories[1].jobMemory() != selected.memoryDir.memories[2].jobMemory() {
 								t.Fatal("selected static/resource factory")
 							}
 							target, err := selected.ExportedFunc("run")
@@ -216,7 +216,7 @@ func TestRV64PublicReferenceFunctionImportedTailsForeignOwners(t *testing.T) {
 							} else if readGlobalObject(selected.globalCells[1], ValF64) != raw[0] || readGlobalObject(selected.globalCells[4], ValF64) != raw[0] {
 								t.Fatal("tail raw borrowed NaN")
 							}
-							if rv64ReferenceImportTailCapability(selected) != capability || selected.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+							if rv64ReferenceImportTailCapability(selected) != capability || selected.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil {
 								t.Fatal("selected static capability not restored")
 							}
 							for _, choice := range []uint64{0, 1, 2} {
@@ -236,7 +236,7 @@ func TestRV64PublicReferenceFunctionImportedTailsForeignOwners(t *testing.T) {
 								t.Fatal("caller home/context restoration", got, err)
 							}
 							for _, owner := range []*Instance{caller, selected, native} {
-								if owner.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || owner.pluginState.Load().railshotInvocation.definedTailOwner != nil {
+								if owner.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || owner.pluginState.Load().railshotInvocation.tailForTest().definedOwner != nil {
 									t.Fatal("tail generation retained after return")
 								}
 							}

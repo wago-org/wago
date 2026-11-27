@@ -9,11 +9,14 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 func tailLoopInlineCandidate(m *wasm.Module, h []funcHints, index int, policy CodegenPolicy) bool {
 	ft, ok := m.LocalFuncType(index)
-	if !ok || policy.CompactNative || !policy.EnabledOption(optTailLoopInline) || !policy.EnabledOption(optTailSelfLoop) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
+	if !ok || policy.CompactNative || !(buildfeatures.TailCall != 0 && policy.EnabledOption(optTailLoopInline)) || !(buildfeatures.TailCall != 0 && policy.EnabledOption(optTailSelfLoop)) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
 		return false
 	}
 	proof := fn{m: m, ft: ft, traceFuncIdx: uint32(index + m.ImportedFuncCount()), policy: policy, classifier: wasm.NewModuleInstructionClassifier(m, true)}

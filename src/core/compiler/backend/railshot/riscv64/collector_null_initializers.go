@@ -9,11 +9,17 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Null collector globals need no object allocation, collector domain or native
 // root ABI. The public decoder separately validates their declared heap types.
 func abstractCollectorNullInitializer(global wasm.Global) bool {
+	if buildfeatures.GC == 0 {
+		return false
+	}
 	typ := global.Type.Type
 	if typ.Kind() != wasm.ValRef || !typ.Ref().Nullable() || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapAbs {
 		return false

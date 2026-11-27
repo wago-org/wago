@@ -75,15 +75,6 @@ func floatOpcode(op byte) (wide, unary, resultWide, ok bool) {
 	return false, false, false, false
 }
 
-func saturatingFloatKind(kind wasm.InstrKind) (byte, bool) {
-	for i, k := range [...]wasm.InstrKind{wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U, wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U} {
-		if kind == k {
-			return byte(i), true
-		}
-	}
-	return 0, false
-}
-
 // Only caller-saved f0..f2 are scratch. All live guest values, including raw NaN
 // payloads, reside in canonical GP/stack slots across calls and control joins.
 func (f *integerEmitter) floatInput(dst enc.FReg, src enc.Reg, wide bool) {
@@ -144,11 +135,11 @@ func (f *integerEmitter) floatOperation(op byte) {
 		return
 	} // reinterpret retains raw bits; slot transport normalizes 32 bits.
 	if op >= 0xa8 && op <= 0xab {
-		f.floatTrunc(wide, false, op&1 != 0, false)
+		f.floatTrunc(wide, false, op&1 != 0)
 		return
 	}
 	if op >= 0xae && op <= 0xb1 {
-		f.floatTrunc(wide, true, op&1 != 0, false)
+		f.floatTrunc(wide, true, op&1 != 0)
 		return
 	}
 	if op >= 0xb2 && op <= 0xbb {
@@ -318,13 +309,21 @@ func (f *integerEmitter) floatRound(wide bool, mode enc.RoundingMode) {
 	f.floatPatch(end)
 }
 
-func (f *integerEmitter) floatTrunc(wide, resultWide, unsigned, saturating bool) {
+func (f *integerEmitter) floatTrunc(wide, resultWide, unsigned bool) {
 	f.floatInput(enc.F0, enc.X5, wide)
-	nan := f.floatNaNBranch(wide)
-	if !saturating {
-		f.trap(trapFloatConversion, nan)
-		f.a.WriteFflags(enc.Zero)
+	f.trap(trapFloatConversion, f.floatNaNBranch(wide))
+	f.a.WriteFflags(enc.Zero)
+	f.floatTruncRTZ(wide, resultWide, unsigned)
+	f.a.ReadFflags(enc.X6)
+	f.Constant(7, 0x10, false)
+	f.a.And(enc.X6, enc.X6, enc.X7)
+	f.trap(trapFloatConversion, f.a.BranchLong(enc.NE, enc.X6, enc.Zero))
+	if !resultWide {
+		f.a.ZeroExtend32(enc.X5, enc.X5)
 	}
+}
+
+func (f *integerEmitter) floatTruncRTZ(wide, resultWide, unsigned bool) {
 	if wide {
 		if resultWide {
 			if unsigned {
@@ -353,20 +352,6 @@ func (f *integerEmitter) floatTrunc(wide, resultWide, unsigned, saturating bool)
 				f.a.FcvtWS(enc.X5, enc.F0, enc.RTZ)
 			}
 		}
-	}
-	if !saturating {
-		f.a.ReadFflags(enc.X6)
-		f.Constant(7, 0x10, false)
-		f.a.And(enc.X6, enc.X6, enc.X7)
-		f.trap(trapFloatConversion, f.a.BranchLong(enc.NE, enc.X6, enc.Zero))
-	} else {
-		end := f.Jump()
-		f.floatPatch(nan)
-		f.Constant(5, 0, resultWide)
-		f.floatPatch(end)
-	}
-	if !resultWide {
-		f.a.ZeroExtend32(enc.X5, enc.X5)
 	}
 }
 

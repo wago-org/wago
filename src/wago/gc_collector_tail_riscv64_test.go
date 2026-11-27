@@ -241,7 +241,7 @@ func TestRV64CollectorTailWarmAllocations(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer in.unlockNativeEntry(entry)
-				generations := entry.tables.targets.tailActive
+				generations := entry.tables.targets.tailForTest().active
 				if len(generations) != 1 {
 					t.Fatal("missing retained collector tail generation")
 				}

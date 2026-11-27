@@ -120,6 +120,7 @@ type InstantiateFootprint struct {
 	PassiveDataCount   int
 	MaxParamSlots      int
 	MaxResultSlots     int
+	OmitCallBuffers    bool
 }
 
 // InstantiateArenaNeed estimates the exact sequence of arena allocations made
@@ -261,10 +262,15 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("passive data count %d overflows arena allocation", fp.PassiveDataCount)
 	}
 	need += fp.PassiveDataCount * PassiveDataDescBytes
-	if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-TrapBufferBytes {
-		return 0, fmt.Errorf("call buffers overflow arena allocation")
+	if !fp.OmitCallBuffers {
+		if need > maxInt()-argsBytes || need+argsBytes > maxInt()-resultsBytes || need+argsBytes+resultsBytes > maxInt()-TrapBufferBytes {
+			return 0, fmt.Errorf("call buffers overflow arena allocation")
+		}
+		need += argsBytes + resultsBytes + TrapBufferBytes
 	}
-	need += argsBytes + resultsBytes + TrapBufferBytes // args, results, trap buffers
+	if need == 0 {
+		return 0, nil
+	}
 	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
 	if need > maxInt()-8*8 {
 		return 0, fmt.Errorf("instantiate footprint overflows arena allocation")

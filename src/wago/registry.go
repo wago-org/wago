@@ -8,13 +8,8 @@
 package wago
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-
-	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 // Registrar is the declarative builder passed to Plugin.Register. It is scoped
@@ -41,7 +36,7 @@ type Registrar struct {
 	consumes       []contractBinder
 	lifecycle      PluginLifecycle
 	hasLifecycle   bool
-	config         json.RawMessage
+	config         pluginRawMessage
 	customTypes    map[string]CustomType
 	instructions   []*registeredInstruction
 }
@@ -61,7 +56,7 @@ func newRegistrar(def PluginDefinition, selection PluginSelection) *Registrar {
 		used:       map[Authority]struct{}{},
 		hooks:      &hookRegistry{},
 		callGate:   newPluginCallGate(def.ID),
-		config:     append(json.RawMessage(nil), selection.Config...),
+		config:     append(pluginRawMessage(nil), selection.Config...),
 	}
 	for _, request := range def.Authorities {
 		r.requests[request.Name] = request
@@ -90,31 +85,6 @@ func (r *Registrar) Granted(authority Authority) bool {
 	}
 	_, ok := r.grants[authority]
 	return ok
-}
-
-// Config strictly decodes the plugin's opaque configuration. Unknown fields in
-// struct destinations and trailing JSON fail closed. An absent config is {}.
-func (r *Registrar) Config(dst any) error {
-	if err := r.ensureOpen(); err != nil {
-		return err
-	}
-	b := r.config
-	if len(b) == 0 {
-		b = []byte("{}")
-	}
-	if err := jsonstrict.ValidateTypedJSON(b, dst); err != nil {
-		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
-	}
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
-	}
-	var trailing any
-	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: fmt.Errorf("trailing JSON value")}
-	}
-	return nil
 }
 
 // Lifecycle declares activation and teardown. At most one lifecycle may be

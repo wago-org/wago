@@ -48,7 +48,7 @@ func (s *PreparedSession) tryPrivateViewFixed2(a0, a1 uint64) (out []uint64, err
 			err = in.decorateTrap(err)
 		}
 	}()
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}

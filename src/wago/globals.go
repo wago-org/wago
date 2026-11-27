@@ -420,7 +420,7 @@ func (g *Global) pruneRetainedInstances() {
 }
 
 func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
 	operation, err := rt.beginOperation("NewFuncRefGlobal", false)
@@ -431,7 +431,7 @@ func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, err
 	descriptor := uint64(0)
 	if initial.token != 0 {
 		var ok bool
-		descriptor, ok = rt.refStore.resolve(initial.token)
+		descriptor, ok = rt.references().resolve(initial.token)
 		if !ok {
 			return nil, fmt.Errorf("wago: invalid funcref token for global initializer")
 		}
@@ -440,12 +440,12 @@ func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, err
 	if err != nil {
 		return nil, err
 	}
-	if err := rt.refStore.registerStoreObject(); err != nil {
+	if err := rt.references().registerStoreObject(); err != nil {
 		_ = arena.Close()
 		return nil, err
 	}
 	g := newGlobalInCell(ValFuncRef, descriptor, V128{}, mutable, arena.Alloc(8), arena)
-	g.owner.store = rt.refStore
+	g.owner.store = rt.references()
 	return g, nil
 }
 
@@ -453,7 +453,7 @@ func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, err
 // Runtime's exact reference store. The initial token must be null or have been
 // issued by the same Runtime.
 func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global, error) {
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
 	operation, err := rt.beginOperation("NewExternRefGlobal", false)
@@ -462,7 +462,7 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	}
 	defer operation.end()
 	if initial.token != 0 {
-		if _, ok := rt.refStore.resolveExternref(initial.token); !ok {
+		if _, ok := rt.references().resolveExternref(initial.token); !ok {
 			return nil, fmt.Errorf("wago: invalid externref token for global initializer")
 		}
 	}
@@ -470,12 +470,12 @@ func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global,
 	if err != nil {
 		return nil, err
 	}
-	if err := rt.refStore.registerStoreObject(); err != nil {
+	if err := rt.references().registerStoreObject(); err != nil {
 		_ = arena.Close()
 		return nil, err
 	}
 	g := newGlobalInCell(ValExternRef, initial.token, V128{}, mutable, arena.Alloc(8), arena)
-	g.owner.store = rt.refStore
+	g.owner.store = rt.references()
 	return g, nil
 }
 
@@ -715,7 +715,7 @@ func (g *Global) getValueNoLease() (Value, error) {
 		return value, err
 	}
 	if isGCRefValType(typ) {
-		if source == nil || source.gc == nil || source.c == nil || !hasExact {
+		if !collectorObjectTokensBuilt || source == nil || source.gc == nil || source.c == nil || !hasExact {
 			return Value{}, fmt.Errorf("global has no compatible collector-reference owner")
 		}
 		if bits != uint64(uint32(bits)) {
@@ -866,7 +866,7 @@ func (g *Global) setValueNoLease(v Value, roots *globalValueRoots) error {
 		return fmt.Errorf("global is immutable")
 	}
 	if isGCRefValType(typ) {
-		if containerOwner == nil || containerOwner.c == nil {
+		if !collectorObjectTokensBuilt || containerOwner == nil || containerOwner.c == nil {
 			return fmt.Errorf("global has no compatible collector-reference owner")
 		}
 		name, ok := containerOwner.exportedGlobalNameForCell(g)
@@ -1178,14 +1178,16 @@ type memoryDef struct {
 func (c *Compiled) funcTypeKey(index int) uint64 {
 	if c != nil && index >= 0 && index < len(c.FuncTypeID) {
 		key := c.FuncTypeID[index]
-		if rv64GCTypeSubtypingRuntimeFinalityCallCast(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex && c.Funcs[index].TypeIndex == 1 {
-			key ^= 0x9e3779b97f4a7c15
-		}
-		if rv64GCTypeSubtypingRuntimeTypedTableCall(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
-			key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
-		}
-		if rv64GCTypeSubtypingRefTestSingle(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
-			key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+		if rv64LegacyGCProductsForImage {
+			if rv64GCTypeSubtypingRuntimeFinalityCallCast(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex && c.Funcs[index].TypeIndex == 1 {
+				key ^= 0x9e3779b97f4a7c15
+			}
+			if rv64GCTypeSubtypingRuntimeTypedTableCall(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
+				key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+			}
+			if rv64GCTypeSubtypingRefTestSingle(c) && index < len(c.Funcs) && c.Funcs[index].HasTypeIndex {
+				key ^= uint64(c.Funcs[index].TypeIndex) * 0x9e3779b97f4a7c15
+			}
 		}
 		return key
 	}
@@ -1193,18 +1195,13 @@ func (c *Compiled) funcTypeKey(index int) uint64 {
 }
 
 type compiledMemoryDirectory struct {
-	defs         []memoryDef
-	exports      map[string]int
-	exactExports bool
-	staged       bool // internal multi-memory execution gate; never serialized
-
-	stagedMemory64  bool                   // internal bounded memory64 execution gate; never serialized
-	gcStructGlobals []gcStructGlobalInit   // exact staged GC constant initializers; never serialized
-	gcArrayGlobals  []gcArrayGlobalInit    // exact staged numeric array globals; never serialized
-	gcArrayElement  *gcArrayElementInit    // exact passive GC element constructors; never serialized
-	gcI31TableInit  *gcI31TableInitializer // exact imported-global i31 table initializer; never serialized
-	ehTags          []compiledTagDef       // staged EH product metadata in tag-index order; never serialized
-	ehTagExports    map[string]int         // exact tag export name -> tag index; never serialized
+	compiledExceptionTagMetadata
+	compiledGCInitializers
+	defs           []memoryDef
+	exports        map[string]int
+	exactExports   bool
+	staged         bool // internal multi-memory execution gate; never serialized
+	stagedMemory64 bool // internal bounded memory64 execution gate; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
@@ -1465,32 +1462,11 @@ type validateMemo struct {
 	hostThunks     [2]compiledHostThunkCache
 	compileIndexes *compiledCacheIndexes
 
-	once         sync.Once
-	err          error
-	gcFrameRoots *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
-	// rv64FreshRootedGC is a process-local compiler receipt. It is never encoded;
-	// loaded artifacts therefore remain fail-closed until generic RV64 images
-	// gain a persisted machine-code authenticator.
-	rv64FreshRootedGC                 bool
-	rv64RootedNoCollectingBodies      bool
-	rv64FreshRootedGCDigest           [32]byte
-	rv64FreshRootedGCTypeDigest       [32]byte
-	rv64FreshRootedGCSyncHostSlots    uint16
-	rv64FreshRootedGCMemories         uint8
-	rv64FreshRootedGCMemoryStaged     bool
-	rv64FreshRootedGCMemMin           uint64
-	rv64FreshRootedGCMemMax           uint64
-	rv64FreshRootedGCReserveMax       uint32
-	rv64FreshRootedGCDataDigest       [32]byte
-	rv64FreshRootedGCExportDigest     [32]byte
-	rv64FreshRootedGCGlobalDigest     [32]byte
-	rv64FreshRootedGCTableDigest      [32]byte
-	rv64FreshRootedGCImportDigest     [32]byte
-	rv64FreshRootedGCHasStart         bool
-	rv64FreshRootedGCStartImport      bool
-	rv64FreshRootedGCStartLocal       uint32
-	rv64FreshRootedGCStartImportIndex uint32
-	structuralCallIdentities          atomic.Pointer[structuralCallIdentityCache]
+	once sync.Once
+	err  error
+	compiledGCFrameRootState
+	rv64RootedReceiptCache
+	structuralCallIdentities atomic.Pointer[structuralCallIdentityCache]
 	// importModuleEnds stores one plus the module-name byte length for each
 	// non-global import, grouped as functions, tables, memories, then tags. A
 	// zero entry retains the legacy first-dot interpretation for hand-built
@@ -1542,6 +1518,15 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 // ImportedGlobalCount returns the number of imported globals at the front of
 // the wasm global-index space.
 func (c *Compiled) ImportedGlobalCount() int { return len(c.executionView().GlobalImports) }
+
+func (c *Compiled) hasMutableFuncrefGlobals() bool {
+	for _, global := range c.Globals {
+		if global.Mutable && global.Type == ValFuncRef {
+			return true
+		}
+	}
+	return false
+}
 
 // LocalGlobalCount returns the number of module-defined globals.
 func (c *Compiled) LocalGlobalCount() int {
@@ -1821,8 +1806,8 @@ func (g *Global) validateReferenceImportWithCollector(store *referenceStore, col
 	if source != nil && !source.hasPhysicalResources() {
 		return fmt.Errorf("reference global owner instance is closed")
 	}
-	if isGCRefValType(typ) {
-		if source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
+	if nativeCollectorBuilt && isGCRefValType(typ) {
+		if !collectorObjectTokensBuilt || source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector) {
 			return fmt.Errorf("collector-reference global requires producer and importer in the same Runtime GC domain")
 		}
 		ref := gc.Ref(uint32(bits))
@@ -1936,7 +1921,9 @@ func (g *Global) detachImporterCounterMatching(expected *Instance, checkExpected
 		return nil, false
 	}
 	o := g.owner
-	defer railshotFinishCompactExternHostGlobalDetach(g)
+	if rv64CollectorBuilt {
+		defer railshotFinishCompactExternHostGlobalDetach(g)
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.importers <= 0 || checkExpected && (g.owner != o || o.instance != expected) {

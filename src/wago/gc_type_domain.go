@@ -25,55 +25,6 @@ type gcTypeMapping struct {
 	mappedTypeCount     int
 }
 
-// A Compiled retains only its most recently used domain mapping. Instances own
-// their immutable mapping independently, so replacement cannot invalidate a
-// live instance and retired domains cannot accumulate in a long-lived Compiled.
-type gcTypeMappingCacheEntry struct {
-	domainID        uint64
-	domainTypeCount int
-	mapping         *gcTypeMapping
-}
-
-func (c *Compiled) cachedGCTypeMapping(domainID uint64, domainTypeCount int) *gcTypeMapping {
-	if c == nil || domainID == 0 {
-		return nil
-	}
-	cache := c.loadCodeCache()
-	indexes := c.loadCompileIndexes()
-	if cache == nil || indexes == nil {
-		return nil
-	}
-	cache.mu.Lock()
-	entry := indexes.gcTypeMapping
-	cache.mu.Unlock()
-	if entry == nil || entry.domainID != domainID || entry.domainTypeCount != domainTypeCount {
-		return nil
-	}
-	return entry.mapping
-}
-
-func (c *Compiled) rememberGCTypeMapping(domainID uint64, domainTypeCount int, mapping *gcTypeMapping) {
-	if c == nil || domainID == 0 || mapping == nil {
-		return
-	}
-	c.ensureCodeCache()
-	cache := c.loadCodeCache()
-	indexes := c.ensureCompileIndexes()
-	if indexes == nil {
-		return
-	}
-	cache.mu.Lock()
-	previous := indexes.gcTypeMapping
-	if previous != nil && previous.domainID == domainID && previous.domainTypeCount == domainTypeCount && previous.mapping == mapping {
-		cache.mu.Unlock()
-		return
-	}
-	if previous == nil || previous.domainID != domainID || previous.domainTypeCount <= domainTypeCount {
-		indexes.gcTypeMapping = &gcTypeMappingCacheEntry{domainID: domainID, domainTypeCount: domainTypeCount, mapping: mapping}
-	}
-	cache.mu.Unlock()
-}
-
 const unavailableLocalGCType = ^uint32(0)
 
 func (m *gcTypeMapping) domain(local uint32) (gc.TypeID, bool) {
@@ -442,7 +393,7 @@ func preferredGCCollectorFromImports(c *Compiled, imports resolvedImports, store
 	// list for every InstanceExport in the imports map.
 	if c != nil {
 		for i, displayKey := range c.Imports {
-			if i >= len(c.importFuncSigs) || !c.needsOwnedExceptionReferences() && !funcSigHasGCRefs(c.importFuncSigs[i]) {
+			if i >= len(c.importFuncSigs) || !(c.needsOwnedExceptionReferences() || wasmGCBuilt && funcSigHasGCRefs(c.importFuncSigs[i])) {
 				continue
 			}
 			v, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport)
@@ -524,14 +475,14 @@ func (in *Instance) gcDomainType(local uint32) (gc.TypeID, bool) {
 	if in == nil {
 		return 0, false
 	}
-	return in.gcTypeMap.domain(local)
+	return in.gcTypeMap().domain(local)
 }
 
 func (in *Instance) gcLocalType(domain gc.TypeID) (uint32, bool) {
 	if in == nil {
 		return 0, false
 	}
-	return in.gcTypeMap.local(domain)
+	return in.gcTypeMap().local(domain)
 }
 
 func (in *Instance) requireGCDomainType(local uint32) gc.TypeID {
@@ -548,63 +499,6 @@ func mappedGCType(mapping *gcTypeMapping, local uint32) (gc.TypeID, error) {
 		return 0, fmt.Errorf("gc module type %d has no Runtime-domain identity", local)
 	}
 	return domain, nil
-}
-
-func (in *Instance) gcRefMatchesValueType(ref gc.Ref, required ValueTypeDescriptor) bool {
-	if in == nil || required.Kind != ValueTypeReference {
-		return false
-	}
-	if ref.IsNull() {
-		return required.Ref.Nullable
-	}
-	if ref.IsI31() {
-		if required.Ref.Heap.Defined {
-			return false
-		}
-		switch required.Ref.Heap.Abstract {
-		case AbstractHeapAny, AbstractHeapEq, AbstractHeapI31:
-			return true
-		default:
-			return false
-		}
-	}
-	if in.gc == nil {
-		return false
-	}
-	if matched, handled := ownedExceptionReferenceMatches(in.gc, ref, required); handled {
-		return matched
-	}
-	if matched, handled := compactForeignAnyMatches(in.gc, ref, required); handled {
-		return matched
-	}
-	var target gc.RefTestTarget
-	target.Nullable = required.Ref.Nullable
-	if required.Ref.Heap.Defined {
-		domain, ok := in.gcDomainType(required.Ref.Heap.TypeIndex)
-		if !ok {
-			return false
-		}
-		target.Kind, target.Type, target.Exact = gc.RefTestDefined, domain, required.Ref.Exact
-	} else {
-		switch required.Ref.Heap.Abstract {
-		case AbstractHeapAny:
-			target.Kind = gc.RefTestAny
-		case AbstractHeapEq:
-			target.Kind = gc.RefTestEq
-		case AbstractHeapI31:
-			target.Kind = gc.RefTestI31
-		case AbstractHeapStruct:
-			target.Kind = gc.RefTestStruct
-		case AbstractHeapArray:
-			target.Kind = gc.RefTestArray
-		case AbstractHeapNone:
-			target.Kind = gc.RefTestNone
-		default:
-			return false
-		}
-	}
-	matched, err := in.gc.RefTest(ref, target)
-	return err == nil && matched
 }
 
 // gcCollectorLayoutEqual compares the collector metadata after local type IDs

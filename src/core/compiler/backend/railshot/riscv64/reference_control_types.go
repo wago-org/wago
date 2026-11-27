@@ -11,6 +11,8 @@ package riscv64
 
 import (
 	"fmt"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -75,7 +77,7 @@ func integerControlSignature(sig functionSpec, types internalReferenceTypes, ref
 			if scalarType(typ, floating) {
 				continue
 			}
-			if !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
+			if !buildfeatures.ReferenceSignatures || !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
 				err = unsupported("integer control carrier")
 				return
 			}
@@ -119,7 +121,7 @@ func swarControlClass(typ wasm.ValType, types internalReferenceTypes, references
 	if class := swarClassOf(typ); class != swarInvalid {
 		return class
 	}
-	if referencesAllowed && internalFunctionReferenceWithTypes(typ, typed, types) {
+	if buildfeatures.ReferenceSignatures && referencesAllowed && internalFunctionReferenceWithTypes(typ, typed, types) {
 		return swarFuncRef
 	}
 	if referencesAllowed && len(custom) != 0 && custom[0].hasCustom() {
@@ -182,7 +184,7 @@ func admitDeclaredControlSignature(sig *wasm.CompType, types internalReferenceTy
 			if !vector && scalarType(typ, true) || vector && swarCarrierType(typ) {
 				continue
 			}
-			if !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
+			if !buildfeatures.ReferenceSignatures || !referencesAllowed || !internalFunctionReferenceWithTypes(typ, typed, types) {
 				return false, false, unsupported(fmt.Sprintf("declared internal reference carrier %v (typed=%t rooted=%t)", typ, typed, types.gcRootedScalar))
 			}
 			reference = true

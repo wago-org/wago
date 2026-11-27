@@ -23,7 +23,7 @@ func (in *Instance) prepareNativeStructHandlesMode(typeID uint32, dead bool) {
 	if !dead && !nativeLiveStructAllocSupported {
 		return
 	}
-	if !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
+	if !wasmGCBuilt || !nativeStructAllocEnabled || in == nil || in.gc == nil || in.c == nil || int(typeID) >= len(in.c.Types) || int(typeID) >= len(in.c.GCTypeDescs) {
 		return
 	}
 	t := in.c.Types[typeID]

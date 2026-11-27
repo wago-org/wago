@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -19,6 +20,12 @@ const rv64I31CoreWire = "\x00\x61\x73\x6d\x01\x00\x00\x00" +
 
 func TestRV64I31CoreExactAdmissionAndLowering(t *testing.T) {
 	source := []byte(rv64I31CoreWire)
+	if buildfeatures.GC == 0 {
+		if AdmitI31CoreSource(source) {
+			t.Fatal("i31 source was admitted with WasmGC disabled")
+		}
+		return
+	}
 	wantSource := [sha256.Size]byte{0x91, 0xa5, 0x75, 0x41, 0xb3, 0x27, 0x61, 0xe0, 0xa6, 0x76, 0xb9, 0xf6, 0xf4, 0x79, 0x18, 0xf4, 0xcb, 0xfb, 0x40, 0x2e, 0xa1, 0x4f, 0x65, 0x84, 0xa4, 0x70, 0xa7, 0x39, 0x2b, 0x21, 0x21, 0x21}
 	if len(source) != 65 || sha256.Sum256(source) != wantSource || !admitRV64I31CoreWire(source) || AdmitProductionSource(source) != nil {
 		t.Fatal("canonical i31 source was not admitted", len(source), sha256.Sum256(source))

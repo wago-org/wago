@@ -113,9 +113,13 @@ func TestTableImporterCounterRuntimeCloseRetainsTopologyUntilPhysicalDetach(t *t
 			if got, err := consumer.Invoke("run"); err != nil || len(got) != 1 || got[0] != 17 {
 				t.Fatal("actual Runtime table importer failed execution", got, err)
 			}
-			store, topology := rt.refStore, rt.refStore.gcDomains
-			if topology == nil || table.owner.importers != 1 || table.owner.funcrefStores[store] != 1 || topology.funcrefTables[table] != 1 {
-				t.Fatal("actual importer lacks all three exact counter units")
+			store, topology := rt.refStore, rt.refStore.gcTopologyLocked()
+			var wantGCRows uint32
+			if nativeCollectorFrameRootsBuilt {
+				wantGCRows = 1
+			}
+			if (topology != nil) != nativeCollectorFrameRootsBuilt || table.owner.importers != 1 || table.owner.funcrefStores[store] != 1 || tableTestGCRows(store)[table] != wantGCRows {
+				t.Fatal("actual importer has incorrect table ownership or collector registration")
 			}
 			// An explicit real root isolates delayed physical cleanup from token
 			// issuance. Runtime shutdown may retire entries after Close/quiescence.
@@ -141,16 +145,19 @@ func TestTableImporterCounterRuntimeCloseRetainsTopologyUntilPhysicalDetach(t *t
 			if !retired || !quiesced {
 				t.Fatal("Runtime fixture did not reach actual token retirement before physical release")
 			}
-			topology.funcrefMu.Lock()
-			count := topology.funcrefTables[table]
-			topology.funcrefMu.Unlock()
-			if count != 1 || table.owner.funcrefStores[store] != 1 || table.owner.importers != 1 {
+			var count uint32
+			if topology != nil {
+				topology.funcrefMu.Lock()
+				count = topology.funcrefTables[table]
+				topology.funcrefMu.Unlock()
+			}
+			if count != wantGCRows || table.owner.funcrefStores[store] != 1 || table.owner.importers != 1 {
 				t.Fatal("logical/token retirement lost a physical table attachment", count)
 			}
 			consumer.releaseResourceRoot()
 			held = false
-			if !consumer.resourcesClosed || consumer.resourceRefs != 0 || consumer.jm != nil || consumer.ar != nil || consumer.eng != nil || consumer.nativeContext != 0 || table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(topology.funcrefTables) != 0 {
-				t.Fatalf("physical teardown: closed=%t refs=%d jm=%t arena=%t engine=%t context=%#x importers=%d stores=%v topology=%v", consumer.resourcesClosed, consumer.resourceRefs, consumer.jm != nil, consumer.ar != nil, consumer.eng != nil, consumer.nativeContext, table.owner.importers, table.owner.funcrefStores, topology.funcrefTables)
+			if !consumer.resourcesClosed || consumer.resourceRefs != 0 || consumer.jm != nil || consumer.ar != nil || consumer.eng != nil || consumer.nativeContext != 0 || table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(tableTestGCRows(store)) != 0 {
+				t.Fatalf("physical teardown: closed=%t refs=%d jm=%t arena=%t engine=%t context=%#x importers=%d stores=%v topology=%v", consumer.resourcesClosed, consumer.resourceRefs, consumer.jm != nil, consumer.ar != nil, consumer.eng != nil, consumer.nativeContext, table.owner.importers, table.owner.funcrefStores, tableTestGCRows(store))
 			}
 			if owner, consumed := table.detachImporterCounter(store); owner != nil || consumed {
 				t.Fatal("late duplicate detach fabricated another store unit")

@@ -72,7 +72,7 @@ func TestRV64PublicReferenceFunctionImportsQuota(t *testing.T) {
 				}
 				for _, owner := range []*Instance{in, producer, native} {
 					state := &owner.pluginState.Load().railshotInvocation
-					if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil {
+					if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil {
 						t.Fatal("imported generation charge not refunded")
 					}
 				}

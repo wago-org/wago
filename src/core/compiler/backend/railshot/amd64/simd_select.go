@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+)
 
 const (
 	opVPacksswb  simdBinaryOp = 0x63
@@ -187,7 +190,9 @@ func (op simdBinaryOp) emit(f *fn, dst, left, right Reg) {
 		f.a.VexMapRRR(opcodeMap, pp, byte(op), dst, left, right)
 		return
 	}
-	if feature != 0 && !f.cpuHas(feature) {
+	// Scalar lowering uses baseline SSE2 or checks SSE4.1 before admitting
+	// a vectorized reduction. Only Wasm SIMD needs to emulate these opcodes.
+	if buildfeatures.SIMD != 0 && feature != 0 && !f.cpuHas(feature) {
 		f.simdFallback(byte(op), dst, left, right)
 		return
 	}
@@ -224,7 +229,7 @@ func (op simdUnaryOp) emit(f *fn, dst, src Reg) {
 		f.a.VexMapRR(opcodeMap, pp, byte(op), dst, src)
 		return
 	}
-	if feature != 0 && !f.cpuHas(feature) {
+	if buildfeatures.SIMD != 0 && feature != 0 && !f.cpuHas(feature) {
 		f.simdFallback(byte(op), dst, src, src)
 		return
 	}

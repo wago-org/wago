@@ -102,7 +102,7 @@ func TestRV64TypeDeclarationBoundary(t *testing.T) {
 				if _, err := compileSWARProductionModule(m, options); err != nil {
 					t.Fatal("hybrid production compilation", err)
 				}
-				if _, _, _, _, err := admitProductionDynamicTails(m, true, false, false, false); err != nil {
+				if _, _, _, _, err := admitProductionControlTransfers(m, true, false, false, false); err != nil {
 					t.Fatal("control declaration admission", err)
 				}
 				if _, err := CompileModuleWith(m, CompileOptions{DeferCodeMapping: true}); err != nil {

@@ -63,6 +63,9 @@ func tinygoARM64IntEntryCode(light bool) []byte {
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	if !tinygoPreparedIntForImage {
+		return 0, errors.New("tinygo prepared integer entry is unavailable in this image")
+	}
 	entries := tinygoARM64Entries.Load()
 	if entries == nil || e.stackTop == 0 {
 		return 0, errors.New("tinygo prepared integer entry requires an open engine")
@@ -94,6 +97,9 @@ func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, 
 }
 
 func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	if !tinygoPreparedLightIntForImage {
+		return 0
+	}
 	entries := tinygoARM64Entries.Load()
 	if entries == nil || e.stackTop == 0 {
 		return 0

@@ -15,6 +15,8 @@ import (
 )
 
 func railshotPrimitiveReferenceDeclarations(*Compiled) bool { return false }
+func railshotNeedsLegacyGCProducts(*Compiled) bool          { return false }
+func railshotLegacyI31ProductMask(*Compiled) uint16         { return 0 }
 func railshotPrimitiveReferenceContract(*Compiled) bool     { return false }
 
 func railshotAdmitSource([]byte, *wasm.Module) error                                    { return nil }
@@ -99,41 +101,43 @@ func railshotGCTypeSubtypingNonFlatExportSource([]byte) bool { return false }
 func railshotConfigureGCTypeSubtypingNonFlatExport(bool, *railshotCompileOptions) {
 }
 
-func railshotGCRootedScalarSource([]byte) bool                                          { return false }
-func railshotGCStructGetSource([]byte) bool                                             { return false }
-func railshotConfigureGCStructGet(bool, *railshotCompileOptions)                        {}
-func railshotGCStructMutationSource([]byte) bool                                        { return false }
-func railshotConfigureGCStructMutation(bool, *railshotCompileOptions)                   {}
-func railshotGCStructNullSource([]byte) bool                                            { return false }
-func railshotConfigureGCStructNull(bool, *railshotCompileOptions)                       {}
-func railshotGCStructPackedSource([]byte) bool                                          { return false }
-func railshotConfigureGCStructPacked(bool, *railshotCompileOptions)                     {}
-func railshotGCStructBasicSource([]byte) bool                                           { return false }
-func railshotConfigureGCStructBasic(bool, *railshotCompileOptions)                      {}
-func railshotGCStructNumericGlobalsSource([]byte) bool                                  { return false }
-func railshotConfigureGCStructNumericGlobals(bool, *railshotCompileOptions)             {}
-func railshotGCArrayLocalSource([]byte) bool                                            { return false }
-func railshotConfigureGCArrayLocal(bool, *railshotCompileOptions)                       {}
-func railshotGCArrayUniformSource([]byte) bool                                          { return false }
-func railshotConfigureGCArrayUniform(bool, *railshotCompileOptions)                     {}
-func railshotGCArrayFixedLocalSource([]byte) bool                                       { return false }
-func railshotConfigureGCArrayFixedLocal(bool, *railshotCompileOptions)                  {}
-func railshotGCArrayFixedOfficialSource([]byte) bool                                    { return false }
-func railshotConfigureGCArrayFixedOfficial(bool, *railshotCompileOptions)               {}
-func railshotGCArrayDefaultOfficialSource([]byte) bool                                  { return false }
-func railshotConfigureGCArrayDefaultOfficial(bool, *railshotCompileOptions)             {}
-func railshotGCArrayPackedDataSource([]byte) bool                                       { return false }
-func railshotConfigureGCArrayPackedData(bool, *railshotCompileOptions)                  {}
-func railshotGCArrayReferenceSource([]byte) bool                                        { return false }
-func railshotConfigureGCArrayReference(bool, *railshotCompileOptions)                   {}
-func railshotGCArrayInitElemSource([]byte) bool                                         { return false }
-func railshotConfigureGCArrayInitElem(bool, *railshotCompileOptions)                    {}
-func railshotGCArrayInitDataSource([]byte) bool                                         { return false }
-func railshotConfigureGCArrayInitData(bool, *railshotCompileOptions)                    {}
-func railshotGCArrayFillSource([]byte) bool                                             { return false }
-func railshotConfigureGCArrayFill(bool, *railshotCompileOptions)                        {}
-func railshotGCArrayCopySource([]byte) bool                                             { return false }
-func railshotConfigureGCArrayCopy(bool, *railshotCompileOptions)                        {}
+func railshotGCRootedScalarSource([]byte) bool                              { return false }
+func railshotGCStructGetSource([]byte) bool                                 { return false }
+func railshotConfigureGCStructGet(bool, *railshotCompileOptions)            {}
+func railshotGCStructMutationSource([]byte) bool                            { return false }
+func railshotConfigureGCStructMutation(bool, *railshotCompileOptions)       {}
+func railshotGCStructNullSource([]byte) bool                                { return false }
+func railshotConfigureGCStructNull(bool, *railshotCompileOptions)           {}
+func railshotGCStructPackedSource([]byte) bool                              { return false }
+func railshotConfigureGCStructPacked(bool, *railshotCompileOptions)         {}
+func railshotGCStructBasicSource([]byte) bool                               { return false }
+func railshotConfigureGCStructBasic(bool, *railshotCompileOptions)          {}
+func railshotGCStructNumericGlobalsSource([]byte) bool                      { return false }
+func railshotConfigureGCStructNumericGlobals(bool, *railshotCompileOptions) {}
+func railshotGCArrayLocalSource([]byte) bool                                { return false }
+func railshotConfigureGCArrayLocal(bool, *railshotCompileOptions)           {}
+func railshotGCArrayUniformSource([]byte) bool                              { return false }
+func railshotConfigureGCArrayUniform(bool, *railshotCompileOptions)         {}
+func railshotGCArrayFixedLocalSource([]byte) bool                           { return false }
+func railshotConfigureGCArrayFixedLocal(bool, *railshotCompileOptions)      {}
+func railshotGCArrayFixedOfficialSource([]byte) bool                        { return false }
+func railshotConfigureGCArrayFixedOfficial(bool, *railshotCompileOptions)   {}
+func railshotGCArrayDefaultOfficialSource([]byte) bool                      { return false }
+func railshotConfigureGCArrayDefaultOfficial(bool, *railshotCompileOptions) {}
+func railshotGCArrayPackedDataSource([]byte) bool                           { return false }
+func railshotConfigureGCArrayPackedData(bool, *railshotCompileOptions)      {}
+func railshotGCArrayReferenceSource([]byte) bool                            { return false }
+func railshotConfigureGCArrayReference(bool, *railshotCompileOptions)       {}
+func railshotGCArrayInitElemSource([]byte) bool                             { return false }
+func railshotConfigureGCArrayInitElem(bool, *railshotCompileOptions)        {}
+func railshotGCArrayInitDataSource([]byte) bool                             { return false }
+func railshotConfigureGCArrayInitData(bool, *railshotCompileOptions)        {}
+func railshotGCArrayFillSource([]byte) bool                                 { return false }
+func railshotConfigureGCArrayFill(bool, *railshotCompileOptions)            {}
+func railshotGCArrayCopySource([]byte) bool                                 { return false }
+func railshotConfigureGCArrayCopy(bool, *railshotCompileOptions)            {}
+func railshotLegacyGCImportIdentity(*Compiled) bool                         { return false }
+
 func railshotValidateCompiled(*Compiled) error                                          { return nil }
 func railshotValidateResolvedImports(*Compiled, resolvedImports, *referenceStore) error { return nil }
 func railshotNeedsImportContextHeader(*Compiled) bool                                   { return false }

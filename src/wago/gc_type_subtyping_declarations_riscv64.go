@@ -188,8 +188,8 @@ func rv64GCTypeSubtypingDeclarationsMetadata(c *Compiled, allowUnrestored bool) 
 		return false
 	}
 	d := c.memoryDir
-	return d != nil && len(d.defs) == 0 && len(d.exports) == 0 && d.exactExports && !d.staged && !d.stagedMemory64 && len(d.gcStructGlobals) == 0 &&
-		len(d.gcArrayGlobals) == 0 && d.gcArrayElement == nil && d.gcI31TableInit == nil && len(d.ehTags) == 0 && len(d.ehTagExports) == 0
+	return d != nil && len(d.defs) == 0 && len(d.exports) == 0 && d.exactExports && !d.staged && !d.stagedMemory64 && len(d.gcStructGlobals()) == 0 &&
+		len(d.gcArrayGlobals()) == 0 && d.gcArrayElement() == nil && !d.hasExceptionTagMetadata()
 }
 
 func rv64GCTypeSubtypingDeclarations(c *Compiled) bool {

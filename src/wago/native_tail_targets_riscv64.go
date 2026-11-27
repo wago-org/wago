@@ -43,7 +43,7 @@ func rv64PrimitiveHostReferenceTransport(c *Compiled, sig FuncSig) bool {
 // Shape proof is independent of attachment. The shared binding path additionally
 // authenticates the owned handle, exact structural types and collector domain.
 func rv64CollectorHostTailTransport(c *Compiled, sig FuncSig) bool {
-	if c == nil || !rv64FreshRootedGC(c) || c.genericGCFrameRoots() == nil || !funcSigHasGCRefs(sig) {
+	if !wasmGCBuilt || c == nil || !rv64FreshRootedGC(c) || c.genericGCFrameRoots() == nil || !funcSigHasGCRefs(sig) {
 		return false
 	}
 	for _, values := range [][]ValType{sig.Params, sig.Results} {
@@ -150,29 +150,34 @@ func rv64PrepareTailTargets(in *Instance, imports resolvedImports, sharedBase ui
 			}
 			entry = uint64(in.base) + uint64(in.c.Entry[local])
 			home, context = uint64(in.jm.LinMemBase()), uint64(in.nativeContext)
-		} else if target, native := imports[in.c.functionImportBindingKey(function)].(*InstanceExport); native {
-			var valid bool
-			entry, home, context, valid = rv64QualifiedNativeTailTarget(target)
-			if !valid {
-				continue // Keep the ordinary proxy; do not publish a tail entry.
-			}
 		} else {
-			if in.hostEvents != nil {
-				continue // Deferred host events never publish transferable tail rows.
+			if !hostFunctionImportsBuilt {
+				return fmt.Errorf("RV64 imported tail target exceeds the standalone runtime profile")
 			}
-			if err := rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]); err != nil {
-				// Preserve the ordinary descriptor; this signature has no
-				// qualified tail transport yet.
-				continue
+			if target, native := imports[in.c.functionImportBindingKey(function)].(*InstanceExport); native {
+				var valid bool
+				entry, home, context, valid = rv64QualifiedNativeTailTarget(target)
+				if !valid {
+					continue // Keep the ordinary proxy; do not publish a tail entry.
+				}
+			} else {
+				if in.hostEvents != nil {
+					continue // Deferred host events never publish transferable tail rows.
+				}
+				if err := rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]); err != nil {
+					// Preserve the ordinary descriptor; this signature has no
+					// qualified tail transport yet.
+					continue
+				}
+				if !in.syncMode {
+					return fmt.Errorf("RV64 tail target requires synchronous host transport")
+				}
+				entry = ownedAddr[uint32(function)]
+				if entry == 0 && function < len(sharedOffsets) && sharedOffsets[function] != noHostThunkOffset {
+					entry = uint64(sharedBase + uintptr(sharedOffsets[function]))
+				}
+				home, context, flags = uint64(in.jm.LinMemBase()), uint64(in.nativeContext), abi.RV64TailTargetsHost
 			}
-			if !in.syncMode {
-				return fmt.Errorf("RV64 tail target requires synchronous host transport")
-			}
-			entry = ownedAddr[uint32(function)]
-			if entry == 0 && function < len(sharedOffsets) && sharedOffsets[function] != noHostThunkOffset {
-				entry = uint64(sharedBase + uintptr(sharedOffsets[function]))
-			}
-			home, context, flags = uint64(in.jm.LinMemBase()), uint64(in.nativeContext), abi.RV64TailTargetsHost
 		}
 		if entry == 0 || entry&15 != 0 || home == 0 || home&7 != 0 || context == 0 || context&7 != 0 {
 			return fmt.Errorf("RV64 tail target entry/identity alignment")
@@ -222,32 +227,37 @@ func rv64ValidateTailTargets(in *Instance) error {
 				return fmt.Errorf("RV64 tail target local function index")
 			}
 			expected = uint64(in.base) + uint64(in.c.Entry[local])
-		} else if target, native := rv64NativeFunctionAttachment(in, function); native {
-			var valid bool
-			expected, home, context, valid = rv64QualifiedNativeTailTarget(target)
-			if !valid {
-				if !rv64EmptyTailTargetRow(row) {
-					return fmt.Errorf("RV64 unsupported native tail row must be empty")
-				}
-				continue
-			}
 		} else {
-			if in.hostEvents != nil {
-				if !rv64EmptyTailTargetRow(row) {
-					return fmt.Errorf("RV64 deferred host tail row must be empty")
+			if !hostFunctionImportsBuilt {
+				return fmt.Errorf("RV64 imported tail target exceeds the standalone runtime profile")
+			}
+			if target, native := rv64NativeFunctionAttachment(in, function); native {
+				var valid bool
+				expected, home, context, valid = rv64QualifiedNativeTailTarget(target)
+				if !valid {
+					if !rv64EmptyTailTargetRow(row) {
+						return fmt.Errorf("RV64 unsupported native tail row must be empty")
+					}
+					continue
 				}
-				continue
-			}
-			if rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]) != nil {
-				if !rv64EmptyTailTargetRow(row) {
-					return fmt.Errorf("RV64 unsupported host tail row must be empty")
+			} else {
+				if in.hostEvents != nil {
+					if !rv64EmptyTailTargetRow(row) {
+						return fmt.Errorf("RV64 deferred host tail row must be empty")
+					}
+					continue
 				}
-				continue
+				if rv64ValidateHostTailSignature(in.c, in.c.importFuncSigs[function]) != nil {
+					if !rv64EmptyTailTargetRow(row) {
+						return fmt.Errorf("RV64 unsupported host tail row must be empty")
+					}
+					continue
+				}
+				if function >= len(in.importReferenceEntries()) {
+					return fmt.Errorf("RV64 tail target host attachment")
+				}
+				expected, flags = in.importReferenceEntries()[function].address, abi.RV64TailTargetsHost
 			}
-			if function >= len(in.importReferenceEntries()) {
-				return fmt.Errorf("RV64 tail target host attachment")
-			}
-			expected, flags = in.importReferenceEntries()[function].address, abi.RV64TailTargetsHost
 		}
 		if entry != expected || expected == 0 || expected&15 != 0 || binary.LittleEndian.Uint64(row[8:]) != home || binary.LittleEndian.Uint64(row[16:]) != context || binary.LittleEndian.Uint64(row[24:]) != flags {
 			return fmt.Errorf("RV64 tail target differs from retained attachment")

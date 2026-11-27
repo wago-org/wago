@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -23,15 +24,15 @@ import (
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
 	// Check necessary shape/helper conditions before entering cold recognizers.
-	if len(code) >= 2 && code[0] == 0x03 && code[1] == 0x40 && f.gcI31Reduction(code) {
+	if buildfeatures.GC != 0 && len(code) >= 2 && code[0] == 0x03 && code[1] == 0x40 && f.gcI31Reduction(code) {
 		return f.emitGCI31Reduction()
 	}
-	if f.gcStructHelpers {
+	if buildfeatures.GC != 0 && f.gcStructHelpers {
 		if typeIndex, ok := f.gcStructReduction(code); ok {
 			return f.emitGCStructReduction(typeIndex)
 		}
 	}
-	if f.gcArrayHelpers {
+	if buildfeatures.GC != 0 && f.gcArrayHelpers {
 		if typeIndex, length, ok := f.gcArrayReduction(code); ok {
 			return f.emitGCArrayReduction(typeIndex, length)
 		}
@@ -145,7 +146,11 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
-			err = f.opTryTable(r)
+			if buildfeatures.ExceptionHandling != 0 {
+				err = f.opTryTable(r)
+			} else {
+				err = fmt.Errorf("arm64: try_table is disabled in this build")
+			}
 		case 0x05: // else
 			err = f.opElse()
 		case 0x0b: // end
@@ -195,20 +200,38 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	switch op {
 	case 0x08: // throw
+		if buildfeatures.ExceptionHandling == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.opThrow(r)
 	case 0x0a: // throw_ref
+		if buildfeatures.ExceptionHandling == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.opThrowRef()
 	case 0x10: // call
 		return f.callOp(r)
 	case 0x11: // call_indirect
 		return f.callIndirect(r)
 	case 0x12: // return_call
+		if buildfeatures.TailCall == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
+		if buildfeatures.TailCall == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.callRef(r)
 	case 0x15: // return_call_ref
+		if buildfeatures.TailCall == 0 || buildfeatures.TypedFunctionReferences == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.returnCallRef(r)
 
 	case 0x1a: // drop
@@ -224,6 +247,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return err
 		}
@@ -318,8 +344,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x24: // global.set
 		return f.globalSet(r)
 	case 0x25: // table.get
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.tableGet(r)
 	case 0x26: // table.set
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.tableSet(r)
 
 	// i32 comparisons / eqz
@@ -551,14 +583,29 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0xad: // i64.extend_i32_u
 		f.pushUnOp(opZExt32, mtI64)
 	case 0xc0: // i32.extend8_s
+		if buildfeatures.SignExtensionOps == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.pushUnOp(opSExt8, mtI32)
 	case 0xc1: // i32.extend16_s
+		if buildfeatures.SignExtensionOps == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.pushUnOp(opSExt16, mtI32)
 	case 0xc2: // i64.extend8_s
+		if buildfeatures.SignExtensionOps == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.pushUnOp(opSExt8, mtI64)
 	case 0xc3: // i64.extend16_s
+		if buildfeatures.SignExtensionOps == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.pushUnOp(opSExt16, mtI64)
 	case 0xc4: // i64.extend32_s
+		if buildfeatures.SignExtensionOps == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.pushUnOp(opSExt32, mtI64)
 
 	// --- floating point ---
@@ -771,26 +818,59 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.reinterpretIntToFloat(true) // f64.reinterpret_i64
 
 	case 0xd0: // ref.null
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.refNull(r)
 	case 0xd1: // ref.is_null
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.refIsNull()
 	case 0xd2: // ref.func
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.refFunc(r)
 	case 0xd3: // ref.eq
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.refEq()
 	case 0xd4: // ref.as_non_null
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		f.refAsNonNull()
 	case 0xd5: // br_on_null
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.brOnNull(r)
 	case 0xd6: // br_on_non_null
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.brOnNonNull(r)
 	case 0xfb: // GC
+		if buildfeatures.GC == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.emitFB(r)
 	case 0xfc: // misc (multi-byte) opcodes
+		if buildfeatures.BulkMemoryOperations|buildfeatures.ReferenceTypes|buildfeatures.NonTrappingFloatToIntConversion|buildfeatures.WideArithmetic == 0 {
+			return fmt.Errorf("0xFC opcode family is disabled in this build")
+		}
 		return f.emitFC(r)
 	case 0xfd: // SIMD
+		if buildfeatures.SIMD == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.emitFD(r)
 	case 0xfe: // threads and atomics
+		if buildfeatures.Threads == 0 {
+			return fmt.Errorf("arm64: opcode 0x%02x is disabled in this build", op)
+		}
 		return f.emitFE(r)
 
 	default:
@@ -969,42 +1049,99 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 	}
 	switch sub {
 	case 0:
-		f.truncSat(false, false, true) // i32.trunc_sat_f32_s
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(false, false, true)
 	case 1:
-		f.truncSat(false, false, false) // i32.trunc_sat_f32_u
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(false, false, false)
 	case 2:
-		f.truncSat(true, false, true) // i32.trunc_sat_f64_s
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(true, false, true)
 	case 3:
-		f.truncSat(true, false, false) // i32.trunc_sat_f64_u
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(true, false, false)
 	case 4:
-		f.truncSat(false, true, true) // i64.trunc_sat_f32_s
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(false, true, true)
 	case 5:
-		f.truncSat(false, true, false) // i64.trunc_sat_f32_u
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(false, true, false)
 	case 6:
-		f.truncSat(true, true, true) // i64.trunc_sat_f64_s
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(true, true, true)
 	case 7:
-		f.truncSat(true, true, false) // i64.trunc_sat_f64_u
+		if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+			return fmt.Errorf("saturating float-to-int conversion is disabled in this build")
+		}
+		f.truncSat(true, true, false)
 	case 8: // memory.init
+		if buildfeatures.BulkMemoryOperations == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.memoryInit(r)
 	case 9: // data.drop
+		if buildfeatures.BulkMemoryOperations == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.dataDrop(r)
 	case 10: // memory.copy
+		if buildfeatures.BulkMemoryOperations == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.memoryCopy(r)
 	case 11: // memory.fill
+		if buildfeatures.BulkMemoryOperations == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.memoryFill(r)
 	case 12: // table.init
+		if buildfeatures.BulkMemoryOperations == 0 || buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.tableInit(r)
 	case 13: // elem.drop
+		if buildfeatures.BulkMemoryOperations == 0 || buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.elemDrop(r)
 	case 14: // table.copy
+		if buildfeatures.BulkMemoryOperations == 0 || buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.tableCopy(r)
 	case 15: // table.grow
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.tableGrow(r)
 	case 16: // table.size
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.tableSize(r)
 	case 17: // table.fill
+		if buildfeatures.ReferenceTypes == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		return f.tableFill(r)
 	case 19, 20, 21, 22:
+		if buildfeatures.WideArithmetic == 0 {
+			return fmt.Errorf("0xFC opcode %d is disabled in this build", sub)
+		}
 		f.wideArithmetic(sub)
 	default:
 		return fmt.Errorf("arm64: unsupported 0xFC opcode %d", sub)

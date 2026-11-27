@@ -10,6 +10,8 @@
 package arm64
 
 import (
+	"errors"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
@@ -763,12 +765,21 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	return ea, eaOwned, borrow, disp
 }
 
+// A secondary memory or a shared primary memory uses a directory base.
+func (f *fn) usesIndexedMemory(index uint32) bool {
+	return buildfeatures.MultiMemory != 0 && index != 0 ||
+		buildfeatures.Threads != 0 && f.threadedMemory0
+}
+
 func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err error) {
 	align, err := r.U32()
 	if err != nil {
 		return 0, 0, err
 	}
 	if align >= 64 && align < 128 {
+		if buildfeatures.MultiMemory == 0 {
+			return 0, 0, errors.New("multi-memory is disabled in this build")
+		}
 		memoryIndex, err = r.U32()
 		if err != nil {
 			return 0, 0, err
@@ -785,7 +796,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 }
 
 func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, releaseBase, eaOwned bool, borrow int, disp int32) {
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0, f.guardMode)
 		return linMemReg, ea, false, eaOwned, borrow, disp
 	}
@@ -850,7 +861,7 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 		mb = f.allocReg(maskOf(ea, dir))
 		base = f.allocReg(maskOf(ea, dir, mb))
 		f.ld64(base, dir, entry+abi.MemoryDirBaseOffset)
-		if f.memoryShared(memoryIndex) {
+		if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 			f.loadSharedMemoryBytes(mb, base)
 		} else {
 			f.ld64(mb, base, -int32(bdCurBytes))
@@ -1146,7 +1157,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.invalidateStoreForward()
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		out := f.allocReg(maskOf(base, ea))
@@ -1286,7 +1297,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoads()
 		f.invalidateStoreForward()
 		stored := f.popValue()
@@ -1642,7 +1653,7 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	// Align backward vector stores without rereading an already-written source
 	// byte when the ranges overlap by less than one vector. Small copies retain
 	// their existing path; the byte prologue is paid once for larger spans.
-	if f.opt(optBulkMemoryLoops) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) {
 		f.cmpImm(n, 128, true)
 		small := f.a.Bcond(condB)
 		alignment := f.allocReg(maskOf(dst, src, n))
@@ -1689,7 +1700,7 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 			store(vecs[2], vecs[3], offset+32)
 		}
 	}
-	if f.opt(optBulkMemoryLoops) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) {
 		f.cmpImm(n, 256, true)
 		skip256 := f.a.Bcond(condB)
 		loop256 := f.a.Len()
@@ -1765,7 +1776,7 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.FmovFromGpr(vec, pat, true)
 	f.a.NeonInsD(vec, pat, 1)
-	if f.opt(optBulkMemoryLoops) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) {
 		// DC ZVA is optional at EL0. Admit only allowed 64/128-byte blocks,
 		// and zero a complete in-range prefix before aligning the cursor.
 		nonzero := f.a.Cbnz64(pat)
@@ -1798,7 +1809,7 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 		f.patchBranch19(short, f.a.Len())
 		f.patchBranch19(unsupported, f.a.Len())
 	}
-	if f.opt(optBulkMemoryLoops) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) {
 		f.cmpImm(n, 256, true)
 		small := f.a.Bcond(condB)
 		f.a.AndImm64(X16, dst, 31)
@@ -1813,7 +1824,7 @@ func (f *fn) fillLoop(dst, pat, n Reg) {
 		f.patchBranch19(aligned, f.a.Len())
 		f.patchBranch19(small, f.a.Len())
 	}
-	if f.opt(optBulkMemoryLoops) {
+	if buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkMemoryLoops) {
 		f.cmpImm(n, 1024, true)
 		skip1024 := f.a.Bcond(condB)
 		loop1024 := f.a.Len()
@@ -2314,7 +2325,7 @@ var sharedMemoryBaseEnabled = true
 // Growth cannot relocate the reservation; helper/cross-context continuations
 // reestablish it from the restored instance's private directory.
 func (f *fn) cachedSharedMemoryBase() Reg {
-	if f.threadedMemory0 && f.memSizeReg == X27 && f.opt(optSharedMemoryBase) {
+	if f.threadedMemory0 && f.memSizeReg == X27 && buildfeatures.Threads != 0 && f.opt(optSharedMemoryBase) {
 		return f.memSizeReg
 	}
 	return regNone
@@ -2444,12 +2455,12 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryShared(memoryIndex) {
+	if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 		f.sharedMemorySize(memoryIndex)
 		return nil
 	}
 	out := f.allocReg(0)
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		f.ld32(out, linMemReg, -int32(bdCurPages))
 	} else {
 		dir := f.allocReg(maskOf(out))
@@ -2475,7 +2486,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryShared(memoryIndex) {
+	if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 		return f.sharedMemoryGrow(memoryIndex)
 	}
 	f.materializePendingTraps()
@@ -2623,26 +2634,13 @@ func bulkChunks(n int, buf *[8][2]int) [][2]int {
 	}
 }
 
-func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	if memoryIndex == 0 {
-		if !f.memory0TypeKnown {
-			mt, ok := f.memoryType(0)
-			f.memory0Is64 = ok && mt.Limits.Addr64
-			f.memory0TypeKnown = true
-		}
-		return f.memory0Is64
-	}
-	mt, ok := f.memoryType(memoryIndex)
-	return ok && mt.Limits.Addr64
-}
-
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
 // op. Constant paths always check, including signals-based mode: a zero-length
 // operation has no later load/store to fault and must still reject base > size.
 func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	f.a.Adds64(X12, offset, n)
 	f.trapIf(condAE, trapMemOOB)
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		mb := f.memSizeReg
 		if mb == regNone {
 			mb = X13
@@ -2662,7 +2660,7 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	}
 	f.ld64(X13, linMemReg, -int32(offMemoryDirPtr))
 	entry := f.memoryDirectoryEntry(X13, memoryIndex)
-	if f.memoryShared(memoryIndex) {
+	if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 		f.ld64(X16, X13, entry+abi.MemoryDirBaseOffset)
 		f.loadSharedMemoryBytes(X16, X16)
 	} else {
@@ -2699,7 +2697,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.leaDisp(t, base, int32(n), true)
 	}
-	if memoryIndex == 0 && !f.threadedMemory0 && f.memSizeReg != regNone {
+	if !f.usesIndexedMemory(memoryIndex) && f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
 		mb := f.allocReg(maskOf(t))
@@ -2708,11 +2706,11 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 		f.release(mb)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		if memoryIndex == 0 && !f.threadedMemory0 {
+		if !f.usesIndexedMemory(memoryIndex) {
 			f.ld64(mb, linMemReg, -int32(bdCurBytes))
 		} else {
 			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
-			if f.memoryShared(memoryIndex) {
+			if buildfeatures.Threads != 0 && f.memoryShared(memoryIndex) {
 				entry := f.memoryDirectoryEntry(mb, memoryIndex)
 				f.ld64(mb, mb, entry+abi.MemoryDirBaseOffset)
 				f.loadSharedMemoryBytes(mb, mb)
@@ -2733,7 +2731,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 }
 
 func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		return linMemReg, false
 	}
 	if memoryIndex == 0 && f.cachedSharedMemoryBase() != regNone {
@@ -2751,7 +2749,7 @@ func (f *fn) indexedMemoryBase(memoryIndex uint32, avoid regMask) (Reg, bool) {
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no fill-loop startup.
 func (f *fn) memoryFillConst(n int, memoryIndex uint32) {
-	if n >= 16 && f.opt(optBulkFillVector) {
+	if n >= 16 && buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkFillVector) {
 		f.memoryFillVector(n, memoryIndex)
 		return
 	}

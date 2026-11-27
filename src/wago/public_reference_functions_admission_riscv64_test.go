@@ -66,7 +66,7 @@ func TestRV64PublicReferenceFunctionsCorruptRows(t *testing.T) {
 					t.Fatal("entry accepted corrupt tail row")
 				}
 			}
-			if state.definedTailOwner != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+			if state.tailForTest().definedOwner != nil || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 				t.Fatal("failed entry retained owner state")
 			}
 			copy(row, savedRow)

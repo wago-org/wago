@@ -14,6 +14,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -592,7 +593,7 @@ func (f *fn) emitTailFrameRelease() {
 // Re-entry starts before parameter setup and declared-local initialization.
 // Interruptible/profiled functions retain their ordinary entry checks and maps.
 func (f *fn) canReuseSelfTailFrame() bool {
-	return f.opt(optTailSelfLoop) && f.entryTrapEnd != 0 && f.localBase == 0 &&
+	return buildfeatures.TailCall != 0 && f.opt(optTailSelfLoop) && f.entryTrapEnd != 0 && f.localBase == 0 &&
 		!f.interruptible && !profileEnabled && !f.moduleEH && f.gcFrameRoots == nil &&
 		len(f.customInstructions) == 0 && len(f.intervalLast) == 0 && !f.lazyZero &&
 		!f.scalarSummary.Eligible && sigIsIntOnly(f.ft)
@@ -1449,6 +1450,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	nativeDeadArrayBytes := f.nativeDeadArrayBytes
 	f.nativeDeadArrayBytes = 0
 	f.stats.call(callKindHostSync)
+	if buildfeatures.Threads != 0 && uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 {
+		f.atomicHelperUses |= shared.AtomicHelperBridgeUses(uint32(importIdx)&^shared.AtomicWaitDispatchBit, ft.Params)
+	}
 	// Blocking waits use the complete host frame and GC callsite maps. Other
 	// atomic helpers retain the compact internal transition.
 	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
@@ -1456,7 +1460,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	internalGC := uint32(importIdx)&gcStructDispatchBit != 0 || uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 && !atomicWait
 	p := len(ft.Params)
 	notifyIndex := uint32(0)
-	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && buildfeatures.Threads != 0 && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
 	if notifyFast && p == 4 {
 		top := f.s.back()
 		if top.st.kind != stConst {
@@ -1468,7 +1472,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	var rootOffsets []uint32
 	recordRoots := false
-	if !internalGC {
+	if buildfeatures.GC != 0 && !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
@@ -1564,7 +1568,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast || growFast {
+	if buildfeatures.Threads != 0 && (atomicFast || growFast) {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
@@ -1579,28 +1583,30 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	gcDone := -1
-	if nativeDeadArrayBatchBytes != 0 && !wide {
-		gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
-	}
-	if nativeDeadStructBatchType != 0 && !wide {
-		gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
-	}
-	if nativeDeadStructType != 0 && !wide {
-		gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
-	}
-
-	if nativeArrayHelper != 0 && !wide {
-		if nativeDeadArrayBytes != 0 {
-			gcDone = f.deadObjectShortcut(nativeDeadArrayBytes, 8)
-		} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
-			gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
-		} else {
-			gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+	if buildfeatures.GC != 0 {
+		if nativeDeadArrayBatchBytes != 0 && !wide {
+			gcDone = f.deadObjectCountShortcut(nativeDeadArrayBatchBytes, 8, int(slotOf[d-p]))
 		}
-	}
+		if nativeDeadStructBatchType != 0 && !wide {
+			gcDone = f.deadStructBatchShortcut(nativeDeadStructBatchType-1, int(slotOf[d-p]))
+		}
+		if nativeDeadStructType != 0 && !wide {
+			gcDone = f.deadStructShortcut(nativeDeadStructType - 1)
+		}
 
-	if uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
-		gcDone = f.arrayLenShortcut(int(slotOf[d-p]))
+		if nativeArrayHelper != 0 && !wide {
+			if nativeDeadArrayBytes != 0 {
+				gcDone = f.deadObjectShortcut(nativeDeadArrayBytes, 8)
+			} else if nativeArrayHelper == gcArrayAllocUniform || nativeArrayHelper == gcArrayAllocDefault {
+				gcDone = f.arrayAllocationShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+			} else {
+				gcDone = f.arrayScalarShortcut(nativeArrayHelper, nativeArrayType, int(slotOf[d-p]))
+			}
+		}
+
+		if uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
+			gcDone = f.arrayLenShortcut(int(slotOf[d-p]))
+		}
 	}
 
 	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
@@ -2116,7 +2122,11 @@ func (f *fn) restoreNativeLeafPreservedLocals(saved localStateSnapshot) {
 // callee entry, home memory, and target/caller contexts from the import dispatch
 // cell; the immediate form remains only for focused backend callers.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	kind := callKindCrossInstance
 	if b.Dynamic {
 		kind = callKindImportDispatch
@@ -2371,7 +2381,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (sp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	relocBase := len(f.relocs)
 	finishRoots := func() {
 		if !recordRoots {
@@ -2429,6 +2443,9 @@ func (f *fn) consumeGCFrameCallsite() {
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
+	if buildfeatures.GC == 0 {
+		return nil, false
+	}
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return nil, false
@@ -3165,7 +3182,11 @@ func (f *fn) callRef(r *wasm.Reader) error {
 
 	f.materializePendingTraps()
 	ref := f.materialize(f.popValue())
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	f.pinned = f.pinned.add(ref)
 	f.trapIfZero(ref, true, true, trapIndirectOOB)
 	code := f.allocReg(0)
@@ -3260,7 +3281,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	f.materializePendingTraps()
 	idxReg := f.materialize(f.popValue())
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	relocBase := len(f.relocs)
 	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)

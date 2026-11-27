@@ -14,7 +14,7 @@ import "fmt"
 var standaloneDispatcherFactory func() *Compiled
 
 func compileManagedVoidDispatcher(*RuntimeConfig) (*Compiled, error) {
-	if standaloneDispatcherFactory == nil {
+	if !pluginRuntimeBuilt || standaloneDispatcherFactory == nil {
 		return nil, fmt.Errorf("standalone managed dispatcher was not linked")
 	}
 	return standaloneDispatcherFactory(), nil

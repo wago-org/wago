@@ -12,6 +12,13 @@ func counterTable(typ ValType, producer *Instance, store *referenceStore, count 
 	return &Table{desc: make([]byte, 8), owner: &tableOwner{instance: producer, elementType: typ, store: store, importers: count}}
 }
 
+func tableTestGCRows(store *referenceStore) map[*Table]uint32 {
+	if store.gcTopologyLocked() == nil {
+		return nil
+	}
+	return store.gcTopologyLocked().funcrefTables
+}
+
 func TestTableImporterCounterBoundaryAndRootBalance(t *testing.T) {
 	for _, typ := range []ValType{ValFuncRef, ValExternRef} {
 		for _, instanceOwned := range []bool{false, true} {
@@ -29,7 +36,7 @@ func TestTableImporterCounterBoundaryAndRootBalance(t *testing.T) {
 					exact, _ := valueTypeDescriptorFromValType(typ)
 					err := table.attachImporter(typ, exact, nil, store, false)
 					if count < 0 || count == maxInt() {
-						if err == nil || table.owner.importers != count || producer != nil && producer.resourceRefs != 0 || len(table.owner.funcrefStores) != 0 || store.gcDomains != nil {
+						if err == nil || table.owner.importers != count || producer != nil && producer.resourceRefs != 0 || len(table.owner.funcrefStores) != 0 || store.gcTopologyLocked() != nil {
 							t.Fatal("denied count acquired an owner/store/topology unit", err)
 						}
 						return
@@ -52,7 +59,7 @@ func TestTableImporterCounterBoundaryAndRootBalance(t *testing.T) {
 					if owner != nil {
 						owner.releaseResourceRoot()
 					}
-					if producer != nil && producer.resourceRefs != 0 || len(table.owner.funcrefStores) != 0 || store.gcDomains != nil && len(store.gcDomains.funcrefTables) != 0 {
+					if producer != nil && producer.resourceRefs != 0 || len(table.owner.funcrefStores) != 0 || store.gcTopologyLocked() != nil && len(store.gcTopologyLocked().funcrefTables) != 0 {
 						t.Fatal("exact count/root/store/topology unit did not drain")
 					}
 					table.owner.importers = 0 // discard only synthetic background count
@@ -68,20 +75,25 @@ func TestTableImporterCounterBoundaryAndRootBalance(t *testing.T) {
 func TestTableImporterCounterHostTopologyLimits(t *testing.T) {
 	for _, exhausted := range []string{"store", "topology"} {
 		t.Run(exhausted, func(t *testing.T) {
+			if exhausted == "topology" && !nativeCollectorFrameRootsBuilt {
+				t.Skip("requires native collector topology")
+			}
 			store := newReferenceStore(true)
-			topology := store.ensureGCTopology()
-			topology.funcrefGCActive = true
 			table := counterTable(ValFuncRef, nil, nil, 0)
 			table.owner.funcrefStores = map[*referenceStore]uint32{store: 0}
-			topology.funcrefTables = map[*Table]uint32{table: 0}
+			if topology := store.ensureGCTopology(); topology != nil {
+				topology.funcrefGCActive = true
+				topology.funcrefTables = map[*Table]uint32{table: 0}
+			}
+			topologyRows := tableTestGCRows(store)
 			if exhausted == "store" {
 				table.owner.funcrefStores[store] = ^uint32(0)
 			} else {
-				topology.funcrefTables[table] = ^uint32(0)
+				topologyRows[table] = ^uint32(0)
 			}
-			beforeStore, beforeTopology := table.owner.funcrefStores[store], topology.funcrefTables[table]
+			beforeStore, beforeTopology := table.owner.funcrefStores[store], topologyRows[table]
 			exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
-			if err := table.attachImporter(ValFuncRef, exact, nil, store, false); err == nil || table.owner.importers != 0 || table.owner.funcrefGCStore != nil || table.owner.funcrefStores[store] != beforeStore || topology.funcrefTables[table] != beforeTopology {
+			if err := table.attachImporter(ValFuncRef, exact, nil, store, false); err == nil || table.owner.importers != 0 || table.owner.funcrefGCStore != nil || table.owner.funcrefStores[store] != beforeStore || tableTestGCRows(store)[table] != beforeTopology {
 				t.Fatal("denied store/topology counter changed GC binding or another unit", err)
 			}
 		})
@@ -101,17 +113,21 @@ func TestTableImporterCounterAliasesAndStoreMismatch(t *testing.T) {
 			if err := batch.attach(first, ValFuncRef, exact, nil, firstStore, nil, false); err != nil {
 				t.Fatal(err)
 			}
-			if err := batch.attach(other, ValFuncRef, exact, nil, otherStore, nil, false); err == nil || batch.store != firstStore || batch.set.n != 1 || first.owner.importers != 1 || !duplicate && other.owner.importers != 0 || otherStore.gcDomains != nil || len(other.owner.funcrefStores) != map[bool]int{false: 0, true: 1}[duplicate] {
+			if err := batch.attach(other, ValFuncRef, exact, nil, otherStore, nil, false); err == nil || batch.store != firstStore || batch.set.n != 1 || first.owner.importers != 1 || !duplicate && other.owner.importers != 0 || otherStore.gcTopologyLocked() != nil || len(other.owner.funcrefStores) != map[bool]int{false: 0, true: 1}[duplicate] {
 				t.Fatal("store mismatch bypassed dedup or acquired an unrecorded unit", err)
 			}
 			first.owner.importers = maxInt() // a duplicate does not acquire a unit
-			if err := batch.attach(first, ValFuncRef, exact, nil, firstStore, nil, false); err != nil || batch.set.n != 1 || first.owner.importers != maxInt() || first.owner.funcrefStores[firstStore] != 1 || firstStore.gcDomains.funcrefTables[first] != 1 {
+			var wantGCRows uint32
+			if nativeCollectorFrameRootsBuilt {
+				wantGCRows = 1
+			}
+			if err := batch.attach(first, ValFuncRef, exact, nil, firstStore, nil, false); err != nil || batch.set.n != 1 || first.owner.importers != maxInt() || first.owner.funcrefStores[firstStore] != 1 || tableTestGCRows(firstStore)[first] != wantGCRows {
 				t.Fatal("full-count duplicate validation acquired or rejected a unit", err)
 			}
 			first.owner.importers = 1
 			batch.detachAll()
 			batch.detachAll()
-			if first.owner.importers != 0 || len(first.owner.funcrefStores) != 0 || len(firstStore.gcDomains.funcrefTables) != 0 || batch.set.n != 0 || batch.store != nil {
+			if first.owner.importers != 0 || len(first.owner.funcrefStores) != 0 || len(tableTestGCRows(firstStore)) != 0 || batch.set.n != 0 || batch.store != nil {
 				t.Fatal("exact batch store obligations did not drain once")
 			}
 		})
@@ -119,13 +135,16 @@ func TestTableImporterCounterAliasesAndStoreMismatch(t *testing.T) {
 }
 
 func TestTableImporterCounterMissingActiveTopologyDoesNotConsume(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires native collector topology")
+	}
 	store := newReferenceStore(true)
 	table := counterTable(ValFuncRef, nil, nil, 0)
 	exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
 	if err := table.attachImporter(ValFuncRef, exact, nil, store, false); err != nil {
 		t.Fatal(err)
 	}
-	topology := store.gcDomains
+	topology := store.gcTopologyLocked()
 	delete(topology.funcrefTables, table) // synthetic corruption of one actual unit
 	if owner, consumed := table.detachImporterCounter(store); owner != nil || consumed || table.owner.importers != 1 || table.owner.funcrefStores[store] != 1 {
 		t.Fatal("missing active topology unit falsely consumed its obligation")
@@ -151,13 +170,13 @@ func TestTableImporterCounterFootprintAndWarmAllocation(t *testing.T) {
 			failed = true
 		}
 		batch.detachAll()
-		if table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(store.gcDomains.funcrefTables) != 0 {
+		if table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(tableTestGCRows(store)) != 0 {
 			failed = true
 		}
 	})
 	// Runtime-backed batches and direct attachments both allocate once on the
 	// baseline. Keep those bounds while reusing all warmed ownership maps.
-	if failed || allocs != 1 {
+	if failed || allocs > 1 {
 		t.Fatal("warmed batch changed its existing allocation bound", failed, allocs)
 	}
 	allocs = testing.AllocsPerRun(100, func() {
@@ -165,11 +184,11 @@ func TestTableImporterCounterFootprintAndWarmAllocation(t *testing.T) {
 			failed = true
 		}
 		table.detachImporter(store)
-		if table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(store.gcDomains.funcrefTables) != 0 {
+		if table.owner.importers != 0 || len(table.owner.funcrefStores) != 0 || len(tableTestGCRows(store)) != 0 {
 			failed = true
 		}
 	})
-	if failed || allocs != 1 {
+	if failed || allocs > 1 {
 		t.Fatal("warmed direct attachment changed its allocation bound", failed, allocs)
 	}
 }

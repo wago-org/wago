@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/codeimage"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -113,6 +114,9 @@ func NewNativeTailHostReferenceFunction(image *NativeTailCodeImage, certificate 
 // the caller's exact collector domain, with authenticated native root maps.
 // The image owner must repeat that proof whenever the target is validated.
 func NewNativeTailHostCollectorFunction(image *NativeTailCodeImage, certificate *NativeTailHostCertificate, job *coreruntime.JobMemory, context, anchor []byte, offset int, dispatchIndex uint32, owned bool, signature wasm.CompType) (*NativeTailHostFunction, error) {
+	if buildfeatures.GC == 0 {
+		return nil, unsupported("native tail collector host requires WasmGC")
+	}
 	if !owned {
 		return nil, unsupported("native tail collector host ownership")
 	}
@@ -134,7 +138,7 @@ func (f *NativeTailHostFunction) Validate() error {
 	}
 	for _, values := range [][]wasm.ValType{f.signature.Params, f.signature.Results} {
 		for _, typ := range values {
-			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !(f.collectorCarriers && nativeTailCollectorHostCarrier(typ)) && (!f.referenceCarriers || !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef)) {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !(buildfeatures.GC != 0 && f.collectorCarriers && nativeTailCollectorHostCarrier(typ)) && (!f.referenceCarriers || !wasm.EqualValType(typ, wasm.FuncRef) && !wasm.EqualValType(typ, wasm.ExternRef)) {
 				return unsupported("native tail host scalar carrier")
 			}
 		}
@@ -154,7 +158,7 @@ func (f *NativeTailHostFunction) Validate() error {
 // certificate may validate this entry in an explicitly marked dynamic row.
 func (f *NativeTailHostFunction) function(signature *wasm.CompType) tailRAFunction {
 	return tailRAFunction{published: f.image, snapshot: f.image.Bytes(), signature: signature, job: f.job, context: f.context, directory: f.anchor,
-		info: FunctionInfo{Entry: f.offset, CodeBytes: f.certificate.CodeBytes(), Params: swarSignatureSlots(signature.Params), Results: swarSignatureSlots(signature.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true}}}
+		info: tailRAFunctionInfo{Entry: f.offset, CodeBytes: f.certificate.CodeBytes(), Params: swarSignatureSlots(signature.Params), Results: swarSignatureSlots(signature.Results), production: true, interruptible: true, invocationContext: true}}
 }
 
 func nativeTailCollectorHostCarrier(typ wasm.ValType) bool {

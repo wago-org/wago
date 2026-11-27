@@ -37,6 +37,52 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 	return validateTypeDescsFrom(descs, 0)
 }
 
+// ValidatePlainFunctionTypeDescs checks a table containing only function
+// sentinels with no heap layouts or supertype edges.
+func ValidatePlainFunctionTypeDescs(descs []TypeDesc) error {
+	for i, d := range descs {
+		if d.ID != TypeID(i) {
+			return fmt.Errorf("gc: descriptor %d has id %d", i, d.ID)
+		}
+		if d.Kind != KindFunc || d.HasSuper {
+			return fmt.Errorf("gc: descriptor %d is not a plain function", i)
+		}
+		if d.hasHeapLayout() {
+			return fmt.Errorf("gc: function descriptor %d has heap layout metadata", i)
+		}
+	}
+	return nil
+}
+
+// ValidateFunctionTypeDescs checks function sentinels and their supertype
+// graph for builds without WasmGC heap types.
+func ValidateFunctionTypeDescs(descs []TypeDesc) error {
+	for i, d := range descs {
+		if d.ID != TypeID(i) {
+			return fmt.Errorf("gc: descriptor %d has id %d", i, d.ID)
+		}
+		if d.Kind != KindFunc {
+			return fmt.Errorf("gc: descriptor %d is not a function", i)
+		}
+		if d.hasHeapLayout() {
+			return fmt.Errorf("gc: function descriptor %d has heap layout metadata", i)
+		}
+		if d.HasSuper {
+			if err := validateSuperIndex(d, len(descs)); err != nil {
+				return err
+			}
+			if descs[d.Super].Final {
+				return fmt.Errorf("gc: descriptor %d cannot extend final super %d", d.ID, d.Super)
+			}
+		}
+	}
+	return validateSuperAcyclic(descs)
+}
+
+func (d TypeDesc) hasHeapLayout() bool {
+	return len(d.Fields) != 0 || d.Elem != 0 || d.Size != 0 || d.ElemSize != 0 || d.Align != 0 || d.HasRefs
+}
+
 // Existing descriptors have already passed validation. Check only appended
 // descriptors, including their edges to the existing table.
 func validateTypeDescsFrom(descs []TypeDesc, start int) error {
@@ -46,16 +92,13 @@ func validateTypeDescsFrom(descs []TypeDesc, start int) error {
 			return fmt.Errorf("gc: descriptor %d has id %d", i, d.ID)
 		}
 		if d.HasSuper {
-			if uint64(d.Super) >= uint64(len(descs)) {
-				return fmt.Errorf("gc: descriptor %d has invalid super %d", i, d.Super)
-			}
-			if d.Super == d.ID {
-				return fmt.Errorf("gc: descriptor %d cannot be its own super", i)
+			if err := validateSuperIndex(d, len(descs)); err != nil {
+				return err
 			}
 		}
 		switch d.Kind {
 		case KindFunc:
-			if len(d.Fields) != 0 || d.Elem != 0 || d.Size != 0 || d.ElemSize != 0 || d.Align != 0 || d.HasRefs {
+			if d.hasHeapLayout() {
 				return fmt.Errorf("gc: function descriptor %d has heap layout metadata", i)
 			}
 		case KindStruct:
@@ -82,6 +125,16 @@ func validateTypeDescsFrom(descs []TypeDesc, start int) error {
 	}
 	if err := validateSuperRelationsFrom(descs, start); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateSuperIndex(d TypeDesc, count int) error {
+	if uint64(d.Super) >= uint64(count) {
+		return fmt.Errorf("gc: descriptor %d has invalid super %d", d.ID, d.Super)
+	}
+	if d.Super == d.ID {
+		return fmt.Errorf("gc: descriptor %d cannot be its own super", d.ID)
 	}
 	return nil
 }

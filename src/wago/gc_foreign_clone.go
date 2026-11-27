@@ -75,6 +75,9 @@ func (target *Instance) CloneGCRefFrom(source *Instance, value GCRef) (GCRef, er
 	if value.token == 0 {
 		return GCRef{}, nil
 	}
+	if !wasmGCBuilt {
+		return GCRef{}, fmt.Errorf("wago: GC graph cloning is disabled in this build")
+	}
 	if source.guestStorageBorrowed() || target.guestStorageBorrowed() {
 		return GCRef{}, fmt.Errorf("GC graph clone is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
@@ -135,10 +138,10 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	source.refStore.mu.Lock()
-	entry, ok := source.refStore.gcByToken[token]
+	entry, ok := source.refStore.objectTokensLocked()[token]
 	_, registered := source.refStore.instances[source]
 	source.refStore.mu.Unlock()
-	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultToken(entry.ownerIndex) != token || state.resultRootSlot(entry.ownerIndex) != entry.slot {
+	if !ok || entry.owner != source || !registered || !state.resultSlots().matches(entry.ownerIndex, token, entry.slot) {
 		return nil, gcCloneRef{}, fmt.Errorf("invalid, stale, or foreign source GC reference token")
 	}
 	rootRef := source.gc.GlobalSlot(entry.slot)
@@ -406,17 +409,8 @@ func restoreForeignGCGraphLocked(target *Instance, state *gcPublicState, objects
 		}
 	}
 	result := refs[root.value-1]
-	if state.cloneRootMade {
-		if err := target.gc.SetGlobalSlot(state.cloneRootSlot, result); err != nil {
-			return rollback(fmt.Errorf("root cloned GC graph: %w", err))
-		}
-	} else {
-		slot, err := target.gc.NewCheckedClassifiedGlobalSlot(result, gc.RootForeignInstance)
-		if err != nil {
-			return rollback(fmt.Errorf("root cloned GC graph: %w", err))
-		}
-		state.cloneRootSlot = slot
-		state.cloneRootMade = true
+	if err := state.cloneRoot().stage(target.gc, result); err != nil {
+		return rollback(fmt.Errorf("root cloned GC graph: %w", err))
 	}
 	return result, uint32(objects[root.value-1].typeID), nil
 }
@@ -440,9 +434,7 @@ func clearForeignCloneRoot(target *Instance, collect bool) {
 }
 
 func clearForeignCloneRootLocked(target *Instance, state *gcPublicState, collect bool) {
-	if state.cloneRootMade {
-		_ = target.gc.SetGlobalSlot(state.cloneRootSlot, gc.Null())
-	}
+	state.cloneRoot().clear(target.gc)
 	if collect {
 		// If root preparation fails, leave reclamation to a later safe collection.
 		if err := target.prepareGCCollectionRootsLocked(state); err == nil {

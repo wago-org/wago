@@ -54,7 +54,7 @@ func rv64GCArrayReferenceMetadata(c *Compiled, requireInitializer bool) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 || requireInitializer && !rv64GCArrayReferenceInitializer(d.gcArrayElement) || !requireInitializer && d.gcArrayElement != nil {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || len(d.gcArrayGlobals()) != 0 || d.hasExceptionTagMetadata() || requireInitializer && !rv64GCArrayReferenceInitializer(d.gcArrayElement()) || !requireInitializer && d.gcArrayElement() != nil {
 		return false
 	}
 	wantExports := map[string]int{"new": 0, "new-overflow": 1, "get": 5, "set_get": 7, "len": 9, "drop_segs": 10}

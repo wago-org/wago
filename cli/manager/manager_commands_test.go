@@ -48,7 +48,7 @@ func TestManagerCommandSurfaceCoversEveryLeaf(t *testing.T) {
 		"auth login", "auth logout", "auth whoami", "init", "add", "rm",
 		"plugin list", "plugin inspect", "plugin add", "plugin remove", "plugin grant", "plugin config", "plugin update", "plugin outdated", "plugin tree", "plugin rebuild", "plugin catalog", "plugin publish", "plugin unpublish", "plugin deprecate",
 		"self update", "self uninstall", "cache dir", "cache size", "cache prune", "cache clean",
-		"config list", "config diff", "config get", "config set", "config reset", "config completions",
+		"config list", "config diff", "config get", "config set", "config reset", "config completions", "config build-tags",
 		"run", "module imports", "module exports", "module capabilities", "validate",
 	}, "\n")
 	if jitprofile.Enabled {

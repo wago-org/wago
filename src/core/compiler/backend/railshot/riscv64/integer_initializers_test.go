@@ -92,3 +92,38 @@ func TestIntegerInitializerBoundsAndTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestRootedPlainReferenceInitializer(t *testing.T) {
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{}},
+		Globals: []wasm.Global{
+			{Type: wasm.GlobalType{Type: wasm.ExternRef}},
+			{Type: wasm.GlobalType{Type: wasm.ExternRef, Mutable: true}},
+		},
+	}
+	parser := newRootedScalarReferenceInitializer(m)
+	for _, tc := range []struct {
+		name  string
+		code  []byte
+		ref   wasm.RefType
+		limit int
+		want  bool
+	}{
+		{"extern null", []byte{0xd0, 0x6f, 0x0b}, wasm.ExternRef.Ref(), 2, true},
+		{"extern global", []byte{0x23, 0, 0x0b}, wasm.ExternRef.Ref(), 2, true},
+		{"future global", []byte{0x23, 0, 0x0b}, wasm.ExternRef.Ref(), 0, false},
+		{"mutable global", []byte{0x23, 1, 0x0b}, wasm.ExternRef.Ref(), 2, false},
+		{"local function", []byte{0xd2, 0, 0x0b}, wasm.FuncRef.Ref(), 2, true},
+		{"wrong reference", []byte{0xd2, 0, 0x0b}, wasm.ExternRef.Ref(), 2, false},
+		{"two values", []byte{0xd0, 0x6f, 0xd0, 0x6f, 0x0b}, wasm.ExternRef.Ref(), 2, false},
+		{"trailing code", []byte{0x23, 0, 0x0b, 0x0b}, wasm.ExternRef.Ref(), 2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parser.validateExpression(wasm.Expr{BodyBytes: tc.code}, tc.ref, tc.limit); got != tc.want {
+				t.Fatalf("initializer admitted = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}

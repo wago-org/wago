@@ -12,6 +12,7 @@ package riscv64
 import (
 	"bytes"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -27,6 +28,9 @@ const maxRootedScalarMemories = 4
 // responsibility of the typed integer walker, and exact allocation roots are
 // authenticated independently by validateGCFrameRootPlans.
 func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionDirectory) bool {
+	if !buildfeatures.RISCV64CollectorFrameRoots {
+		return false
+	}
 	var instructions *pluginInstructionDirectory
 	if len(custom) != 0 {
 		instructions = custom[0]
@@ -116,7 +120,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 	}
 	remainingElements := 256
 	retainedElementSegments := len(m.Elements)
-	aggregateParser := newRootedScalarAggregateParser(m)
+	aggregateParser := newRootedScalarReferenceInitializer(m)
 	for i := range m.Tables {
 		table := &m.Tables[i]
 		elem := wasm.RefVal(table.Type.Ref)
@@ -127,7 +131,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 		}
 		if table.Init != nil {
 			if rootedTable {
-				if !rootedScalarAggregateElementExpressionWithParser(*table.Init, table.Type.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
+				if !aggregateParser.validateExpression(*table.Init, table.Type.Ref, importedGlobals+len(m.Globals)) {
 					return false
 				}
 				if !rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
@@ -190,7 +194,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 					continue
 				}
 				if aggregate {
-					if !rootedScalarAggregateElementExpressionWithParser(expr, elem.Kind.Ref, aggregateParser, importedGlobals+len(m.Globals)) {
+					if !aggregateParser.validateExpression(expr, elem.Kind.Ref, importedGlobals+len(m.Globals)) {
 						return false
 					}
 					continue
@@ -252,7 +256,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 			}
 			switch imm.Kind {
 			case wasm.InstrReturnCall:
-				if uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
+				if buildfeatures.TailCall == 0 || uint64(imm.Index) >= uint64(importedFunctions+len(m.Code)) {
 					return false
 				}
 				if uint64(imm.Index) < uint64(importedFunctions) {
@@ -262,11 +266,11 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 					}
 				}
 			case wasm.InstrReturnCallIndirect:
-				if !rootedScalarNumericIndirectTail(m, imm) {
+				if buildfeatures.TailCall == 0 || !rootedScalarNumericIndirectTail(m, imm) {
 					return false
 				}
 			case wasm.InstrReturnCallRef:
-				if !rootedScalarNumericReferenceTail(m, imm) {
+				if buildfeatures.TailCall == 0 || !rootedScalarNumericReferenceTail(m, imm) {
 					return false
 				}
 			case wasm.InstrCallRef:
@@ -285,7 +289,7 @@ func admitRV64GCRootedScalarModule(m *wasm.Module, custom ...*pluginInstructionD
 			if admitPrimitiveReferenceGlobalInitializer(*global, m, importedGlobals+i) {
 				continue
 			}
-			if !rootedScalarAggregateGlobal(*global, aggregateParser, importedGlobals+i) {
+			if !rootedScalarReferenceGlobalInitializer(*global, aggregateParser, importedGlobals+i) {
 				return false
 			}
 			continue
@@ -577,6 +581,9 @@ func rootedScalarNullGlobal(global wasm.Global, m *wasm.Module) bool {
 }
 
 func rootedScalarAggregateAt(m *wasm.Module, index uint32) bool {
+	if buildfeatures.GC == 0 {
+		return false
+	}
 	comp := rootedScalarAggregateType(m, index)
 	if comp == nil {
 		return false
@@ -584,7 +591,7 @@ func rootedScalarAggregateAt(m *wasm.Module, index uint32) bool {
 	return comp.Kind == wasm.CompStruct || comp.Kind == wasm.CompArray
 }
 
-func rootedScalarNumericTailSignature(sig *wasm.CompType) bool {
+func rootedScalarNumericCallSignature(sig *wasm.CompType) bool {
 	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
 		return false
 	}
@@ -648,7 +655,7 @@ func rootedScalarNumericReferenceCall(m *wasm.Module, imm wasm.InstructionImmedi
 		return false
 	}
 	sig, ok := m.ResolvedTypeFunc(imm.Index)
-	return ok && rootedScalarNumericTailSignature(sig)
+	return ok && rootedScalarNumericCallSignature(sig)
 }
 
 // Collector reference calls retain exact maps and verify the target native
@@ -802,14 +809,8 @@ func rootedScalarFlatTypeCount(m *wasm.Module) int {
 	return total
 }
 
-type rootedScalarAggregateParser struct {
-	m           *wasm.Module
-	valid       bool
-	entry, exit []uint32
-}
-
-func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser {
-	p := &rootedScalarAggregateParser{m: m}
+func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarReferenceInitializer {
+	p := &rootedScalarReferenceInitializer{m: m}
 	flatCount := rootedScalarFlatTypeCount(m)
 	if m == nil || flatCount <= 0 || flatCount > MaxTypeDeclarations {
 		return p
@@ -852,7 +853,7 @@ func newRootedScalarAggregateParser(m *wasm.Module) *rootedScalarAggregateParser
 	return p
 }
 
-func (p *rootedScalarAggregateParser) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
+func (p *rootedScalarReferenceInitializer) constructedSubtype(typeIndex uint32, required wasm.RefType) bool {
 	if p == nil || !p.valid {
 		return false
 	}
@@ -886,7 +887,7 @@ type rootedScalarAggregateStackValue struct {
 	i32         uint32
 }
 
-func (p *rootedScalarAggregateParser) valueMatches(value rootedScalarAggregateStackValue, storage wasm.StorageType, owner uint32) bool {
+func (p *rootedScalarReferenceInitializer) valueMatches(value rootedScalarAggregateStackValue, storage wasm.StorageType, owner uint32) bool {
 	want := storage.Val()
 	if storage.Packed() {
 		want = wasm.I32
@@ -913,7 +914,7 @@ func (p *rootedScalarAggregateParser) valueMatches(value rootedScalarAggregateSt
 	return p.m.ReferenceTypeSubtype(value.typ.Ref(), want.Ref())
 }
 
-func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, required wasm.RefType, globalLimit int) bool {
+func (p *rootedScalarReferenceInitializer) validateAggregateExpression(expr wasm.Expr, required wasm.RefType, globalLimit int) bool {
 	if p == nil || !p.valid || globalLimit < 0 || globalLimit > p.m.ImportedGlobalCount()+len(p.m.Globals) ||
 		len(expr.Instrs) != 0 || len(expr.BodyBytes) < 3 || len(expr.BodyBytes) > 4096 {
 		return false
@@ -954,6 +955,9 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 			_, err = r.Bytes(8)
 			value.typ = wasm.F64
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
+			if !buildfeatures.ExtendedConstArithmetic {
+				return false
+			}
 			typ := wasm.I32
 			if op >= 0x7c {
 				typ = wasm.I64
@@ -977,8 +981,11 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 			}
 		case 0x23:
 			index, indexErr := r.U32()
-			global, ok := p.m.GlobalTypeByIndex(index)
-			if indexErr != nil || int(index) >= globalLimit || !ok || global.Mutable {
+			if indexErr != nil {
+				return false
+			}
+			global, ok := availableInitializerGlobal(p.m, index, globalLimit)
+			if !ok {
 				return false
 			}
 			value.typ = global.Type
@@ -1003,6 +1010,9 @@ func (p *rootedScalarAggregateParser) validateExpression(expr wasm.Expr, require
 			}
 			value.typ = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
 		case 0xfd:
+			if buildfeatures.SIMD == 0 {
+				return false
+			}
 			sub, subErr := r.U32()
 			if subErr != nil || sub != 12 {
 				return false
@@ -1141,40 +1151,6 @@ func rootedScalarAggregateDefaultableStorage(storage wasm.StorageType) bool {
 // scalar/null literals and bounded nested reference constructors. The retained
 // constant-expression evaluator supports more; this narrower source witness
 // keeps instantiation ownership independently reviewable.
-func rootedScalarAggregateElementExpression(expr wasm.Expr, ref wasm.RefType, m *wasm.Module) bool {
-	return rootedScalarAggregateElementExpressionWithParser(expr, ref, newRootedScalarAggregateParser(m), m.ImportedGlobalCount()+len(m.Globals))
-}
-
-func rootedScalarAggregateElementExpressionWithParser(expr wasm.Expr, ref wasm.RefType, p *rootedScalarAggregateParser, globalLimit int) bool {
-	return p.validateExpression(expr, ref, globalLimit)
-}
-
-func rootedScalarAggregateGlobal(global wasm.Global, p *rootedScalarAggregateParser, globalLimit int) bool {
-	if global.Type.Type.Kind() != wasm.ValRef {
-		return false
-	}
-	ref := global.Type.Type.Ref()
-	heap := ref.Heap()
-	if ref.Exact() {
-		return false
-	}
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		if !ref.Nullable() && heap.Abs() != wasm.HeapI31 {
-			return false
-		}
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapExtern, wasm.HeapNoExtern:
-			return p.validateExpression(global.Init, ref, globalLimit)
-		default:
-			return false
-		}
-	case wasm.HeapTypeIndex:
-		return !heap.Type().Rec && rootedScalarAggregateAt(p.m, heap.Type().Index) && p.validateExpression(global.Init, ref, globalLimit)
-	default:
-		return false
-	}
-}
 func admitRV64GCRootedScalarWire(data []byte) bool {
 	if len(data) < 8 || len(data) > MaxModuleBytes || !bytes.Equal(data[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) {
 		return false
@@ -1240,7 +1216,7 @@ func admitRV64GCRootedScalarWire(data []byte) bool {
 // The public query also typechecks the source: unlike the compiler's private
 // preclassification pass, callers have not necessarily run validation first.
 func AdmitGCRootedScalarSource(data []byte) bool {
-	if AdmitExceptionHandlingSource(data) {
+	if buildfeatures.ExceptionHandling != 0 && AdmitExceptionHandlingSource(data) {
 		m, err := wasm.DecodeModule(data)
 		return err == nil && admitRV64GCRootedScalarModule(exceptionAdmissionProjection(m))
 	}

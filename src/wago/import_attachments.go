@@ -13,6 +13,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
@@ -146,7 +147,13 @@ func (a *memoryImportAttachments) attach(memory *Memory, cleanup *resourceCleanu
 	if a.set.contains(memory) {
 		return nil
 	}
-	if err := railshotAcquireMemoryDependency(a, memory, cleanup); err != nil {
+	var err error
+	if crossInstanceDependenciesForImage {
+		err = railshotAcquireMemoryDependency(a, memory, cleanup)
+	} else {
+		err = memory.attachImporter()
+	}
+	if err != nil {
 		return err
 	}
 	a.set.push(memory)
@@ -154,7 +161,7 @@ func (a *memoryImportAttachments) attach(memory *Memory, cleanup *resourceCleanu
 }
 
 func (a *memoryImportAttachments) detachAll() {
-	if railshotDrainBuilderMemoryDependencies(a) {
+	if crossInstanceDependenciesForImage && railshotDrainBuilderMemoryDependencies(a) {
 		return
 	}
 	a.set.drain((*Memory).detachImporter)
@@ -274,7 +281,7 @@ func (a *globalImportAttachments) attach(global *Global, store *referenceStore, 
 		return fmt.Errorf("global is nil")
 	}
 	validate := global.validateNumericImport
-	if isReferenceValType(global.Type) {
+	if referenceSignaturesBuilt && isReferenceValType(global.Type) {
 		validate = func() error { return global.validateReferenceImportWithCollector(store, collector) }
 	}
 	if a.set.contains(global) {
@@ -415,20 +422,20 @@ func (c *Compiled) preflightImportBindings(imports resolvedImports) error {
 	// Function bindings keep their signature-specific validation in
 	// validateImportBindings. Storage imports are otherwise resolved in separate
 	// setup phases, so verify their presence before attaching or mutating owners.
-	for i := range c.GlobalImports {
+	for i := 0; globalImportsForImage && i < len(c.GlobalImports); i++ {
 		imp := c.GlobalImports[i]
 		key := importBindingMapKey(imp.Module, imp.Name)
 		if _, ok := imports[key]; !ok {
 			return fmt.Errorf("missing imported global %q", imp.Module+"."+imp.Name)
 		}
 	}
-	for i := 0; i < c.memoryImportCount(); i++ {
+	for i := 0; memoryImportsForImage && i < c.memoryImportCount(); i++ {
 		def, _ := c.memoryImportAt(i)
 		if _, ok := imports[c.memoryImportBindingKey(i)]; !ok {
 			return fmt.Errorf("missing imported memory %q", def.ImportKey)
 		}
 	}
-	for i := 0; i < c.tableImportCount(); i++ {
+	for i := 0; tableImportsForImage && i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
 		if _, ok := imports[c.tableImportBindingKey(i)]; !ok {
 			return fmt.Errorf("missing imported table %q", def.Key)
@@ -546,19 +553,26 @@ func retainProducerRootsInImportedContainersForFinalization(in *Instance) bool {
 // beforeTransfer is a test seam for checking that imported containers remain
 // pinned after retention and before the deferred attachment handover.
 func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in *Instance, beforeTransfer func()) bool {
-	if in == nil || in.c == nil {
+	if !funcrefStorageImportsBuilt || in == nil || in.c == nil {
 		return false
 	}
 	var cleanup resourceCleanup
+	var retainedTables, retainedGlobals bool
+	retain := func(pass *importedContainerFinalizationPass) {
+		if tableImportsForImage {
+			cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, pass) })
+		}
+		if globalImportsForImage {
+			cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, pass) })
+		}
+	}
 	// RV64 imports carry exact table and frozen-global dependency receipts. Those
 	// receipts are transferred by each container pass and deliberately exclude
 	// immutable frozen cells from generic producer retention. A generic discovery
 	// pass would reacquire the retiring writer through those raw descriptor views,
 	// leaving construction rollback and terminal close permanently rooted.
 	if railshotNativeContextTrapABI() {
-		var retainedTables, retainedGlobals bool
-		cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, nil) })
-		cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, nil) })
+		retain(nil)
 		if beforeTransfer != nil {
 			cleanup.run(beforeTransfer)
 		}
@@ -566,16 +580,21 @@ func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in
 		return retainedTables || retainedGlobals
 	}
 	// One imported container has no other destination to propagate back to.
-	if in.c.tableImportCount()+len(in.c.GlobalImports) > 1 {
+	tableCount := 0
+	if tableImportsForImage {
+		tableCount = in.c.tableImportCount()
+	}
+	if tableCount+len(in.c.GlobalImports) > 1 {
 		var tables importDedup[*Table]
-		for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
 			table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 			if ok && table != nil && tables.add(table) {
 				table.retainDescriptorOwnersForFinalizationWithCleanup(in.refStore, in, &cleanup)
 			}
 		}
 		var globals importDedup[*Global]
-		for i, imp := range in.c.GlobalImports {
+		for i := 0; globalImportsForImage && i < len(in.c.GlobalImports); i++ {
+			imp := in.c.GlobalImports[i]
 			if imp.Type != ValFuncRef {
 				continue
 			}
@@ -585,21 +604,21 @@ func retainProducerRootsInImportedContainersForFinalizationWithBeforeTransfer(in
 			}
 		}
 		pass := importedContainerFinalizationPass{roots: importedFuncrefProducerRoots(in)}
-		var retainedTables, retainedGlobals bool
-		cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, &pass) })
-		cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, &pass) })
+		retain(&pass)
 		if beforeTransfer != nil {
 			cleanup.run(beforeTransfer)
 		}
-		pass.tables.each(func(table *Table) { cleanup.run(func() { in.transferImportedTableAttachment(table) }) })
-		pass.globals.each(func(global *Global) { cleanup.run(func() { in.transferImportedGlobalAttachment(global) }) })
+		if tableImportsForImage {
+			pass.tables.each(func(table *Table) { cleanup.run(func() { in.transferImportedTableAttachment(table) }) })
+		}
+		if globalImportsForImage {
+			pass.globals.each(func(global *Global) { cleanup.run(func() { in.transferImportedGlobalAttachment(global) }) })
+		}
 		pass.owners.each(func(owner *Instance) { cleanup.run(func() { in.transferImportedAttachmentsFromOwner(owner) }) })
 		cleanup.finish()
 		return retainedTables || retainedGlobals
 	}
-	var retainedTables, retainedGlobals bool
-	cleanup.run(func() { retainedTables = retainProducerRootsInImportedTablesMode(in, true, nil) })
-	cleanup.run(func() { retainedGlobals = retainProducerRootsInImportedGlobalsMode(in, true, nil) })
+	retain(nil)
 	cleanup.finish()
 	return retainedTables || retainedGlobals
 }
@@ -615,7 +634,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	}
 	var cleanup resourceCleanup
 	var memories importDedup[*Memory]
-	for memoryIndex := 0; memoryIndex < in.c.memoryCount(); memoryIndex++ {
+	for memoryIndex := 0; memoryImportsForImage && memoryIndex < in.c.memoryCount(); memoryIndex++ {
 		def := in.c.memoryDef(memoryIndex)
 		if def.ImportKey == "" {
 			continue
@@ -623,7 +642,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 		var memory *Memory
 		if memoryIndex == 0 {
 			memory = in.memory
-		} else if in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
+		} else if buildfeatures.MultiMemory != 0 && in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
 			memory = in.memoryDir.memories[memoryIndex]
 		}
 		if memory != nil && memories.add(memory) && memory.instanceOwner() == owner {
@@ -632,7 +651,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	}
 
 	var globals importDedup[*Global]
-	for i := range in.c.GlobalImports {
+	for i := 0; globalImportsForImage && i < len(in.c.GlobalImports); i++ {
 		provided, ok := in.imports.global(in.c.globalImportBindingKey(i))
 		if ok && provided.Global != nil && globals.add(provided.Global) && provided.Global.instanceOwner() == owner {
 			cleanup.run(func() { in.transferImportedGlobalAttachment(provided.Global) })
@@ -640,7 +659,7 @@ func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
 	}
 
 	var tables importDedup[*Table]
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+	for tableIndex := 0; tableImportsForImage && tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) && table.instanceOwner() == owner {
 			cleanup.run(func() { in.transferImportedTableAttachment(table) })
@@ -672,14 +691,15 @@ func importedFuncrefProducerRoots(in *Instance) []*Instance {
 		}
 	}
 	var tables importDedup[*Table]
-	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+	for tableIndex := 0; tableImportsForImage && tableIndex < in.c.tableImportCount(); tableIndex++ {
 		table, ok := in.imports.table(in.c.tableImportBindingKey(tableIndex))
 		if ok && table != nil && tables.add(table) {
 			add(table.funcrefProducerRoots())
 		}
 	}
 	var globals importDedup[*Global]
-	for globalIndex, imp := range in.c.GlobalImports {
+	for globalIndex := 0; globalImportsForImage && globalIndex < len(in.c.GlobalImports); globalIndex++ {
+		imp := in.c.GlobalImports[globalIndex]
 		if imp.Type != ValFuncRef || globalIndex >= len(in.globalCells) {
 			continue
 		}
@@ -692,7 +712,7 @@ func importedFuncrefProducerRoots(in *Instance) []*Instance {
 }
 
 func (c *Compiled) hasFuncrefImportContainers() bool {
-	if c == nil {
+	if !funcrefStorageImportsBuilt || c == nil {
 		return false
 	}
 	scan := func() bool {
@@ -727,7 +747,7 @@ func (c *Compiled) hasFuncrefImportContainers() bool {
 // mayImportFuncrefStorage is the cheap immutable module-shape check. Callers
 // on an import-free hot path can avoid entering the detailed import scan.
 func (in *Instance) mayImportFuncrefStorage() bool {
-	return in != nil && in.c != nil && (len(in.c.GlobalImports) != 0 || in.c.tableImport != "")
+	return funcrefStorageImportsBuilt && in != nil && in.c != nil && (len(in.c.GlobalImports) != 0 || in.c.tableImport != "")
 }
 
 func (in *Instance) importsFuncrefStorage() bool {
@@ -755,7 +775,8 @@ func (in *Instance) funcrefImportContainers() *funcrefImportContainers {
 		}
 	}
 	containers.once.Do(func() {
-		for i, imp := range in.c.GlobalImports {
+		for i := 0; globalImportsForImage && i < len(in.c.GlobalImports); i++ {
+			imp := in.c.GlobalImports[i]
 			if imp.Type != ValFuncRef {
 				continue
 			}
@@ -764,7 +785,7 @@ func (in *Instance) funcrefImportContainers() *funcrefImportContainers {
 				containers.globals.add(provided.Global)
 			}
 		}
-		for i := 0; i < in.c.tableImportCount(); i++ {
+		for i := 0; tableImportsForImage && i < in.c.tableImportCount(); i++ {
 			def, _ := in.c.tableImportAt(i)
 			if def.Type != ValFuncRef {
 				continue
@@ -787,14 +808,21 @@ func (in *Instance) reconcileFuncrefRoots() {
 	if in == nil || in.c == nil {
 		return
 	}
-	imports := in.funcrefImportContainers()
 	var cleanup resourceCleanup
-	imports.globals.each(func(global *Global) {
-		cleanup.run(global.pruneRetainedInstances)
-	})
-	imports.tables.each(func(table *Table) {
-		cleanup.run(table.pruneRetainedInstances)
-	})
+	var imports *funcrefImportContainers
+	if funcrefStorageImportsBuilt {
+		imports = in.funcrefImportContainers()
+		imports.globals.each(func(global *Global) {
+			cleanup.run(global.pruneRetainedInstances)
+		})
+		imports.tables.each(func(table *Table) {
+			cleanup.run(table.pruneRetainedInstances)
+		})
+	}
+	if !tablesForImage {
+		cleanup.finish()
+		return
+	}
 	// Walk the local export-handle chain one link at a time under lifeMu, but
 	// reconcile only after releasing it. pruneRetainedInstances may drop a
 	// producer's final root and synchronously finalize that producer; its scan can
@@ -807,7 +835,8 @@ func (in *Instance) reconcileFuncrefRoots() {
 	in.lifeMu.Unlock()
 	var localTables importDedup[*Table]
 	for table != nil {
-		if table.owner != nil && table.owner.elementType == ValFuncRef && !imports.tables.contains(table) && localTables.add(table) {
+		if table.owner != nil && table.owner.elementType == ValFuncRef &&
+			(!funcrefStorageImportsBuilt || !imports.tables.contains(table)) && localTables.add(table) {
 			cleanup.run(table.pruneRetainedInstances)
 		}
 		in.lifeMu.Lock()
@@ -818,21 +847,26 @@ func (in *Instance) reconcileFuncrefRoots() {
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {
-	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
+	if !tablesForImage || in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
 	}
-	if _, imported := in.c.tableImportAt(index); imported {
-		table, ok := in.imports.table(in.c.tableImportBindingKey(index))
-		if !ok || len(table.desc) < 8 {
-			return nil
+	if tableImportsForImage {
+		if _, imported := in.c.tableImportAt(index); imported {
+			table, ok := in.imports.table(in.c.tableImportBindingKey(index))
+			if !ok || len(table.desc) < 8 {
+				return nil
+			}
+			return table.desc
 		}
-		return table.desc
 	}
 	if index == 0 {
 		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {
 			return nil
 		}
 		return unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
+	}
+	if !multiTableForImage {
+		return nil
 	}
 	dirPtr := in.jm.TableDirPtr()
 	if dirPtr == 0 {

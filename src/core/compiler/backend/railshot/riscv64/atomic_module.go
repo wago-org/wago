@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && !tinygo
+//go:build linux && !tinygo && !wago_no_threads
 
 package riscv64
 
@@ -50,7 +50,8 @@ func atomicHelperSlots(m *wasm.Module) int {
 
 // Preserve existing images when no atomic helpers are present. Each of the
 // returning helpers has one checked synchronous bridge per image.
-func appendAtomicHelpers(code []byte, calls []directCall) ([]byte, error) {
+func appendAtomicHelpers(code []byte, calls []directCall) ([]byte, uint8, error) {
+	var uses uint8
 	var entries [4]int
 	for i := range entries {
 		entries[i] = -1
@@ -61,7 +62,7 @@ func appendAtomicHelpers(code []byte, calls []directCall) ([]byte, error) {
 		}
 		helper := call.atomicHelper &^ shared.AtomicWaitDispatchBit
 		if call.atomicHelper&shared.AtomicWaitDispatchBit == 0 || helper >= uint32(len(entries)) {
-			return nil, unsupported("atomic helper dispatch identity")
+			return nil, 0, unsupported("atomic helper dispatch identity")
 		}
 		if entries[helper] >= 0 {
 			continue
@@ -75,11 +76,12 @@ func appendAtomicHelpers(code []byte, calls []directCall) ([]byte, error) {
 		padding := (-len(code)) & 15
 		stub := HostIndirectOwnedSyncThunk(call.atomicHelper, slots, 1)
 		if len(stub) == 0 || len(stub)+padding > MaxCodeBytes-len(code) {
-			return nil, unsupported("atomic helper image bound")
+			return nil, 0, unsupported("atomic helper image bound")
 		}
 		for ; padding > 0; padding -= 4 {
 			code = append(code, 0x13, 0, 0, 0)
 		}
+		uses |= 1 << helper
 		entries[helper] = len(code)
 		code = append(code, stub...)
 	}
@@ -90,10 +92,10 @@ func appendAtomicHelpers(code []byte, calls []directCall) ([]byte, error) {
 		}
 		target := entries[call.atomicHelper&^shared.AtomicWaitDispatchBit]
 		if err := image.PatchLong(call.site, int64(target)); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
-	return code, nil
+	return code, uses, nil
 }
 
 func moduleThreadedMemory(m *wasm.Module) bool {

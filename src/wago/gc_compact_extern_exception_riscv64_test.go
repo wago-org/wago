@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -17,7 +17,7 @@ func TestRV64CompactExternExceptionEdges(t *testing.T) {
 			in, tags := ownedExceptionTestInstance(t, profile, []ValueTypeDescriptor{param})
 			in.c.requiredFeatures |= CoreFeatureExceptionHandling
 			in.c.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
-			in.c.validateMemo.gcFrameRoots = &compiledGCFrameRoots{}
+			in.c.validateMemo.compiledGCFrameRootState = testCompiledGCFrameRootState(&compiledGCFrameRoots{})
 			state, err := in.compactExternCollector(nil)
 			if err != nil {
 				t.Fatal(err)
@@ -27,7 +27,7 @@ func TestRV64CompactExternExceptionEdges(t *testing.T) {
 				if err := in.gc.CollectFull(roots); err != nil {
 					t.Fatal(err)
 				}
-				drainExceptionReclaims(in.gc)
+				drainGCMetadataReclaims(in.gc)
 			}
 			packet := make([]byte, ownedExceptionPayloadBytes)
 			copy(packet, tags)

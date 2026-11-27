@@ -43,16 +43,16 @@ func rv64GCArrayInitDataPackedMetadata(c *Compiled, requireInitializers bool) bo
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	if requireInitializers {
-		if len(d.gcArrayGlobals) != 3 || d.gcArrayGlobals[0].GlobalIndex != 0 || d.gcArrayGlobals[0].TypeID != 0 || d.gcArrayGlobals[0].Length != 12 || d.gcArrayGlobals[0].Mode != gcArrayGlobalInitUniform || !slices.Equal(d.gcArrayGlobals[0].Bits, []uint64{10}) ||
-			d.gcArrayGlobals[1].GlobalIndex != 1 || d.gcArrayGlobals[1].TypeID != 1 || d.gcArrayGlobals[1].Length != 12 || d.gcArrayGlobals[1].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals[1].Bits) != 0 ||
-			d.gcArrayGlobals[2].GlobalIndex != 2 || d.gcArrayGlobals[2].TypeID != 2 || d.gcArrayGlobals[2].Length != 6 || d.gcArrayGlobals[2].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals[2].Bits) != 0 {
+		if len(d.gcArrayGlobals()) != 3 || d.gcArrayGlobals()[0].GlobalIndex != 0 || d.gcArrayGlobals()[0].TypeID != 0 || d.gcArrayGlobals()[0].Length != 12 || d.gcArrayGlobals()[0].Mode != gcArrayGlobalInitUniform || !slices.Equal(d.gcArrayGlobals()[0].Bits, []uint64{10}) ||
+			d.gcArrayGlobals()[1].GlobalIndex != 1 || d.gcArrayGlobals()[1].TypeID != 1 || d.gcArrayGlobals()[1].Length != 12 || d.gcArrayGlobals()[1].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals()[1].Bits) != 0 ||
+			d.gcArrayGlobals()[2].GlobalIndex != 2 || d.gcArrayGlobals()[2].TypeID != 2 || d.gcArrayGlobals()[2].Length != 6 || d.gcArrayGlobals()[2].Mode != gcArrayGlobalInitDefault || len(d.gcArrayGlobals()[2].Bits) != 0 {
 			return false
 		}
-	} else if len(d.gcArrayGlobals) != 0 {
+	} else if len(d.gcArrayGlobals()) != 0 {
 		return false
 	}
 	wantExports := map[string]int{"array_get_nth": 0, "array_get_nth_i16": 1, "array_init_data-null": 2, "array_init_data": 3, "array_init_data_i16": 4, "drop_segs": 5}

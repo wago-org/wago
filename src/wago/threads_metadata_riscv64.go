@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_threads
 
 package wago
 
@@ -32,13 +32,4 @@ func rv64ThreadedMemoryProfile(c *Compiled) bool {
 		}
 	}
 	return !c.usesAtomicWaitHelpers() || c.syncHostSlots >= 4 && c.needsFuncRefContextHeader
-}
-
-// Guard mode elides only memory-zero memory32 accesses. Indexed accesses retain
-// explicit checks, and importing a primary memory requires a guarded backing.
-func rv64GuardedMemoryProfile(c *Compiled) bool {
-	if c == nil || !guardPageBuilt || c.threadedMemory0() {
-		return false
-	}
-	return c.memoryCount() == 0 || !c.memoryDef(0).Addr64
 }

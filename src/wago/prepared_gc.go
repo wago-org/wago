@@ -5,15 +5,49 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
+//go:build !wago_no_gc && (amd64 || arm64)
+
 package wago
 
 import (
 	"encoding/binary"
 	"fmt"
+	goruntime "runtime"
+
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	goruntime "runtime"
 )
+
+type preparedGCScalarState struct {
+	gcPrepared         bool
+	gcScalar32         bool
+	gcScalar32Plain    bool
+	gcPrivateContext   bool
+	gcRevocableContext bool
+	gcBoundarySafe     bool
+	gcHasRefGlobals    bool
+}
+
+func (fn *WasmFunc) prepareGCScalar() {
+	in := fn.in
+	fn.gcBoundarySafe = in.c.genericGCBoundaryCollectionSafe()
+	fn.gcHasRefGlobals = in.c.hasGCRefGlobals()
+	fn.gcPrepared = in.gc != nil && fn.scalarFast && in.c.NumImports == 0 && !in.c.usesAtomicWaitHelpers()
+	fn.gcScalar32 = fn.gcPrepared && fn.gcMaintenance && in.syncMode && fn.paramSlots == 1 && fn.resultSlots == 1 && fn.scalarWideMask == 0 && !fn.scalarResultWide
+	// The collector/config and compiled root plan are fixed before publication.
+	// Profiling builds retain the live inherited-profile and maintenance path.
+	fn.gcScalar32Plain = fn.gcScalar32 && !codeProfileEnabled && !fn.gcHasRefGlobals && len(in.hostLog) == 0 &&
+		(!fn.gcBoundarySafe || in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation())
+	// These modules cannot replace resource-context pointers during execution.
+	// The instance GC view itself is stable; collector contents remain live.
+	fn.gcPrivateContext = fn.gcScalar32Plain && fn.boundedWrapper && in.c.memoryCount() == 0 && !in.c.HasTable && len(in.c.Globals) == 0
+	// Preserve direct numeric ABI priority when GC types are otherwise unused.
+	fn.gcRevocableContext = fn.gcPrivateContext && in.rt == nil && !fn.directIntFast && !fn.directFloatFast && fn.directMixedInfo == 0 && gcPrivateNumericSignatures(in.c)
+}
+
+func (fn *WasmFunc) hasPreparedGCScalar() bool   { return fn.gcPrepared }
+func (fn *WasmFunc) hasPrivateGCContext() bool   { return fn.gcPrivateContext }
+func (fn *WasmFunc) hasRevocableGCContext() bool { return fn.gcRevocableContext }
 
 // callGCPrepared runs under the ordinary invocation and GC domain leases. It
 // caches validated buffer/entry metadata. Certified private entries reuse
@@ -26,7 +60,7 @@ func (fn *WasmFunc) callGCPrepared() (err error) {
 	}
 	defer in.unlockNativeEntry(locked)
 	defer in.recoverBoundedNativeSyncPanic(&err)
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}
@@ -99,7 +133,7 @@ func (l *preparedGCInvocationLease) unlockGCInvocation() {
 		return
 	}
 	defer l.in.endOrdinaryInvocation(l.state)
-	if l.gc.acquired {
+	if l.gc.isAcquired() {
 		l.gc.unlock()
 	}
 	if l.in.importsFuncrefStorage() || l.in.table != nil {
@@ -199,11 +233,26 @@ func (fn *WasmFunc) tryBeginPrivateGCState() *instancePluginState {
 		return nil
 	}
 	if !in.privateGCStateValid(state) ||
-		fn.gcDeadInductionLayout == 0 && !fn.privateGCNativeContextValid(state) {
+		!fn.hasPreparedDeadInduction() && !fn.privateGCNativeContextValid(state) {
 		in.endFastInvocation(state)
 		return nil
 	}
 	return state
+}
+
+func (fn *WasmFunc) tryInvokeRevocableGCScalar(arg uint64) ([]uint64, error, bool) {
+	state := fn.tryBeginPrivateGCState()
+	if state == nil {
+		return nil, nil, false
+	}
+	if fn.hasPreparedDeadInduction() {
+		if out, err, handled := fn.tryInvokePreparedDeadInduction(arg, state); handled {
+			return out, err, true
+		}
+	}
+	// A failed charge leaves admission held. The ordinary driver owns cleanup.
+	out, err := fn.invokePrivateGCScalar(arg, state)
+	return out, err, true
 }
 
 // The plugin state is published once. Check its live borrow bit and one
@@ -242,7 +291,7 @@ func (fn *WasmFunc) invokePrivateGCScalarSlow(arg uint64, state *instancePluginS
 	// Only helper dispatch can expose an invocation identity or host parent.
 	// The successful induction reduction cannot invoke helpers or host code.
 	state.invocationID = newInvocationID()
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}
@@ -263,14 +312,4 @@ func (fn *WasmFunc) invokePrivateGCScalarSlow(arg uint64, state *instancePluginS
 	out = in.resultVals[:1]
 	out[0] = uint64(binary.LittleEndian.Uint32(in.results))
 	return out, nil
-}
-
-// Called before external access acquires collector or native-context locks.
-// Internal GC helpers retain the fast gate and must not revoke their own entry.
-func (in *Instance) revokePrivateGCEntry() {
-	if in != nil && in.gc != nil {
-		if state := in.pluginState.Load(); state != nil {
-			state.invokeMu.revokeFast()
-		}
-	}
 }

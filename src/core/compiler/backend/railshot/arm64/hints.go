@@ -13,6 +13,7 @@ import (
 	"os"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -1225,7 +1226,7 @@ func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
 		kind = shared.LocalEventEnd
 	case 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f:
 		kind = shared.LocalEventBranch
-	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+	case 0x10, 0x11, 0x12, 0x13:
 		kind = shared.LocalEventCall
 	case 0x24, 0x26, 0x40:
 		kind = shared.LocalEventInvalidate
@@ -1390,14 +1391,16 @@ func (s *byteBodyScanner) scanExpr() (bool, byte, error) {
 			}
 			subHasCall = true
 		case 0x14, 0x15: // call_ref, return_call_ref
+			if buildfeatures.TypedFunctionReferences == 0 || buildfeatures.TailCall == 0 && op == 0x15 {
+				return true, 0, wasm.SkipInstructionImmediate(&s.r.Reader, op)
+			}
+			s.h.noteBoundaryEvent(shared.LocalEventCall, depth)
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
 			s.h.flags.set(hintHasCall)
 			s.h.flags.set(hintHasNonDirectCall)
-			if op == 0x14 || op == 0x15 {
-				s.h.markUnsupportedDynamicCall()
-			}
+			s.h.markUnsupportedDynamicCall()
 			if loopDepth != 0 {
 				s.h.flags.set(hintHasLoopCall)
 			}

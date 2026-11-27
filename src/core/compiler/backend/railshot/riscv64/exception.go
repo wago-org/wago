@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -432,7 +433,7 @@ func (f *integerEmitter) copyExceptionPayloadAt(clause *exceptionCatch, targetBa
 }
 
 func newExceptionFrame(m *wasm.Module, fn *wasm.Func, base int32) (*exceptionFrame, error) {
-	if m == nil {
+	if buildfeatures.ExceptionHandling == 0 || m == nil {
 		return nil, nil
 	}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)

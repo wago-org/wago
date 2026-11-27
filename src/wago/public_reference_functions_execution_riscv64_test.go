@@ -115,7 +115,7 @@ func TestRV64PublicReferenceFunctionsCancellationAndClose(t *testing.T) {
 					if got, err := in.Invoke("run", 5); err != nil || !slices.Equal(got, []uint64{0}) {
 						t.Fatal("cancelled instance reuse", got, err)
 					}
-					if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
+					if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(in) != 0 {
 						t.Fatal("interrupted owner state retained")
 					}
 				}
@@ -149,7 +149,7 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 				defer caller.unlockNativeEntry(entry)
 				scope := entry.tables.targets
 				found := false
-				for _, g := range scope.tailActive {
+				for _, g := range scope.tailForTest().active {
 					for i, owner := range g.owners {
 						if owner == producer {
 							counts, _, err := rv64NativeTailOwnerCounts(owner)
@@ -197,7 +197,7 @@ func TestRV64PublicReferenceFunctionsSparseGenerationQuota(t *testing.T) {
 				}
 				for _, owner := range []*Instance{in, producer} {
 					s := &owner.pluginState.Load().railshotInvocation
-					if s.tailGenerationBudget.count != 0 || s.definedTailOwner != nil {
+					if s.tailForTest().generationBudget.count != 0 || s.tailForTest().definedOwner != nil {
 						t.Fatal("generation charge not refunded")
 					}
 				}

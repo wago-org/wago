@@ -53,7 +53,7 @@ func (in *Instance) hasBoundedCallerHostView() bool {
 	// Owned HostFuncRef imports use a separate dispatch namespace. Their
 	// ordinary path remains responsible for owner identity and signature.
 	_, caller := binding.fn.(CallerHostCallFunc)
-	return caller && binding.gate == nil && binding.scalarKind != syncHostNonScalar &&
+	return caller && binding.callbackGate() == nil && binding.scalarKind != syncHostNonScalar &&
 		len(binding.sig.Params) <= coreruntime.MaxHostArity && len(binding.sig.Results) <= coreruntime.MaxHostArity
 }
 
@@ -76,7 +76,7 @@ func (in *Instance) isolatedNativeScalarLeaf() bool {
 	if in.refStore != nil && !in.refStore.private {
 		return false
 	}
-	if in.memory != nil {
+	if memoriesForImage && in.memory != nil {
 		if !in.ownsMem {
 			return false
 		}

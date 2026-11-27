@@ -64,7 +64,7 @@ func sparseImportedOwnerFixture(t *testing.T, holes []bool, host, owned bool, ty
 		if err != nil {
 			t.Fatal(err)
 		}
-		functions = append(functions, tailRAFunction{code: tailRAProofBuffer(t, hostCode), snapshot: hostCode, signature: &sig, job: locals[0].job, context: locals[0].context, directory: locals[0].directory, info: FunctionInfo{CodeBytes: len(hostCode)}})
+		functions = append(functions, tailRAFunction{code: tailRAProofBuffer(t, hostCode), snapshot: hostCode, signature: &sig, job: locals[0].job, context: locals[0].context, directory: locals[0].directory, info: tailRAFunctionInfo{CodeBytes: len(hostCode)}})
 	}
 	ni := len(functions)
 	functions = append(functions, locals...)
@@ -138,7 +138,7 @@ func TestNativeTailSparseImportedOwnerPhysicalSpansAndBudgets(t *testing.T) {
 				for local, hole := range holes {
 					i := ni + local
 					a, b := f.owner.owner.functions[i], f.owner.owner.targets[i]
-					if a.info.Entry != f.entries[local] || a.info.mode.functionIndex != uint32(i) || (a.signature == nil) != hole || f.owner.owner.uncallable[i] != hole || !sameNativeTailPhysicalFunction(a, b) {
+					if a.info.Entry != f.entries[local] || a.info.functionIndex != uint32(i) || (a.signature == nil) != hole || f.owner.owner.uncallable[i] != hole || !sameNativeTailPhysicalFunction(&a, &b) {
 						t.Fatal("physical source/target ordinal", i)
 					}
 				}
@@ -206,7 +206,7 @@ func TestNativeTailSparseImportedOwnerRejectsCallableHoles(t *testing.T) {
 		{"target-frame", func(o *tailRADynamicOwner) { o.targets[2].info.FrameBytes += 16 }},
 		{"target-entry", func(o *tailRADynamicOwner) { o.targets[2].info.Entry += 16 }},
 		{"target-span", func(o *tailRADynamicOwner) { o.targets[2].info.CodeBytes -= 4 }},
-		{"target-ordinal", func(o *tailRADynamicOwner) { o.targets[2].info.mode.functionIndex++ }},
+		{"target-ordinal", func(o *tailRADynamicOwner) { o.targets[2].info.functionIndex++ }},
 		{"target-params", func(o *tailRADynamicOwner) { o.targets[2].info.Params = 1 }},
 		{"target-job", func(o *tailRADynamicOwner) { o.targets[2].job = o.targets[0].job }},
 		{"target-context", func(o *tailRADynamicOwner) { o.targets[2].context = bytes.Clone(o.context) }},

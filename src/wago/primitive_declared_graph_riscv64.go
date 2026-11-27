@@ -12,6 +12,7 @@ package wago
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -24,7 +25,7 @@ func rv64PrimitiveDeclaredGraph(c *Compiled) (*wasm.Module, error) {
 
 // Collector callers must hold the complete rooted execution proof before using
 // this structural graph for a native target key. It grants no carrier authority.
-func rv64DeclaredGraph(c *Compiled, collector bool) (*wasm.Module, error) {
+func rv64DeclaredGraph(c *Compiled, collectorTail bool) (*wasm.Module, error) {
 	groups := int(c.Types[len(c.Types)-1].RecGroup) + 1
 	starts := make([]uint32, groups)
 	module := &wasm.Module{Types: make([]wasm.RecType, groups)}
@@ -67,7 +68,7 @@ func rv64DeclaredGraph(c *Compiled, collector bool) (*wasm.Module, error) {
 		case ValueTypeV128:
 			return wasm.V128, nil
 		}
-		if c.Types[owner].Kind == CompositeTypeFunction && !rv64PrimitiveReferenceValue(c, value) && !(collector && rv64CollectorTailDeclaredCarrier(c, value)) {
+		if c.Types[owner].Kind == CompositeTypeFunction && !rv64PrimitiveReferenceValue(c, value) && !(buildfeatures.TailCall != 0 && rv64RootedReceiptsForImage && collectorTail && rv64CollectorTailDeclaredCarrier(c, value)) {
 			return wasm.ValType{}, fmt.Errorf("RV64 function graph reference carrier")
 		}
 		if value.Ref.Heap.Defined && value.Ref.Heap.Abstract != 0 || !value.Ref.Heap.Defined && value.Ref.Heap.TypeIndex != 0 {

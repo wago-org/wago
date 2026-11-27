@@ -51,6 +51,29 @@ const (
 	ValI31Ref // exact i31 immediate category; never an opaque GCRef token
 )
 
+const vectorInvocationForImage = invocationTypesForImage&(1<<ValV128) != 0
+const referenceSignatureTypesForImage = invocationTypesForImage&(1<<ValFuncRef|1<<ValExternRef|1<<ValExnRef|1<<ValAnyRef|1<<ValI31Ref) != 0
+const wideInvocationSlotsForImage = invocationTypesForImage&^(1<<ValI32|1<<ValF32) != 0
+
+// Include internal and imported signatures because prepared and attached
+// invocations share the same slot layout as direct calls to exports.
+func (c *Compiled) invocationTypes() uint16 {
+	var types uint16
+	for _, signatures := range [][]FuncSig{c.Funcs, c.importFuncSigs} {
+		for _, signature := range signatures {
+			for _, values := range [][]ValType{signature.Params, signature.Results} {
+				for _, typ := range values {
+					if typ > ValI31Ref {
+						return ^uint16(0)
+					}
+					types |= 1 << typ
+				}
+			}
+		}
+	}
+	return types
+}
+
 // NullFuncRef, NullExternRef, NullExnRef, NullGCRef, and NullI31Ref return null reference values.
 func NullFuncRef() FuncRef     { return FuncRef{} }
 func NullExternRef() ExternRef { return ExternRef{} }

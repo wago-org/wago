@@ -20,6 +20,8 @@ func TestProfileOrdinaryHoldersPreserveLayout(t *testing.T) {
 		fields := make([]reflect.StructField, now.NumField()-1)
 		for i := range fields {
 			fields[i] = now.Field(i + 1)
+			// Embedding does not affect offsets, and StructOf rejects unexported embeddings.
+			fields[i].Anonymous = false
 		}
 		before := reflect.StructOf(fields)
 		if now.Size() != before.Size() || now.Align() != before.Align() {

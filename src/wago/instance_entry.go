@@ -10,6 +10,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"sync"
 )
 
@@ -45,7 +46,36 @@ const (
 	invocationGateHandoff = uint32(16)
 )
 
+var errStandaloneInvocationBusy = errors.New("wago: one-shot invocation gate is already held")
+
+// The launcher owns the only entry to this instance. A held gate signals an
+// invalid reentry; waiting for the current invocation would deadlock.
+func (g *invocationGate) lockOneShot(ctx context.Context) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if !g.state.CompareAndSwap(0, invocationGateHeld) &&
+		!g.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
+		return errStandaloneInvocationBusy
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			g.Unlock()
+			return err
+		}
+	}
+	return nil
+}
+
 func (g *invocationGate) Lock() {
+	if standaloneOneShot {
+		if err := g.lockOneShot(nil); err != nil {
+			panic(err)
+		}
+		return
+	}
 	if g.state.CompareAndSwap(0, invocationGateHeld) {
 		return
 	}
@@ -63,6 +93,9 @@ func (g *invocationGate) lockAfterFastAttempt() {
 }
 
 func (g *invocationGate) lockContext(ctx context.Context) error {
+	if standaloneOneShot {
+		return g.lockOneShot(ctx)
+	}
 	for {
 		if ctx != nil {
 			if err := ctx.Err(); err != nil {
@@ -223,6 +256,17 @@ func (g *invocationGate) removeWaiterLocked(waiter *invocationGateWaiter) {
 // Held set until the claim prevents an ownerless sleeping queue, while allowing
 // barging avoids forcing a scheduler round trip for every contended call.
 func (g *invocationGate) Unlock() {
+	if standaloneOneShot {
+		for {
+			state := g.state.Load()
+			if state&invocationGateHeld == 0 {
+				panic("unlock of unlocked invocation gate")
+			}
+			if g.state.CompareAndSwap(state, state&invocationGateRevoked) {
+				return
+			}
+		}
+	}
 	// Both ordinary and direct owners release atomically when no queue or
 	// revocation observer needs a handoff. Registration validates this same word.
 	state := g.state.Load()
@@ -308,7 +352,9 @@ func (in *Instance) lockInvocationContext(ctx context.Context, id invocationID) 
 		id = newInvocationID()
 	}
 	state.setInvocationIdentity(id)
-	managedFunctionBindInvocationState(in, state)
+	if managedFunctionLifetimeBuilt {
+		managedFunctionBindInvocationState(in, state)
+	}
 	return state, nil
 }
 
@@ -323,7 +369,9 @@ func (in *Instance) lockInvocation(id invocationID) *instancePluginState {
 		id = newInvocationID()
 	}
 	state.setInvocationIdentity(id)
-	managedFunctionBindInvocationState(in, state)
+	if managedFunctionLifetimeBuilt {
+		managedFunctionBindInvocationState(in, state)
+	}
 	return state
 }
 
@@ -331,13 +379,15 @@ func (state *instancePluginState) unlockInvocation() {
 	id := state.invocationID
 	state.setInvocationIdentity(0)
 	state.invokeMu.Unlock()
-	managedFunctionAfterInvocationUnlock(state, id)
+	if managedFunctionLifetimeBuilt {
+		managedFunctionAfterInvocationUnlock(state, id)
+	}
 }
 
 // invokeVoidEntry runs a table dispatcher or local start under the same native,
 // collector, callback, and cancellation machinery as ordinary invocation. The
 // caller owns serialization, identity, lifetime, and any argument slots.
-func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservation *pluginOperationReservation) error {
+func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservation pluginReservation) error {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -352,7 +402,7 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	cleanup.run(func() {
 		resultErr = in.invokeVoidEntryAdmitted(ctx, entry, reservation)
 	})
-	cleanup.run(gcLease.unlock)
+	gcLease.release(&cleanup)
 	if in.importsFuncrefStorage() || in.table != nil {
 		cleanup.run(in.reconcileFuncrefRoots)
 	}
@@ -360,13 +410,15 @@ func (in *Instance) invokeVoidEntry(ctx context.Context, entry uintptr, reservat
 	return resultErr
 }
 
-func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, reservation *pluginOperationReservation) error {
-	if reservation != nil {
+func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, reservation pluginReservation) error {
+	if hasPluginReservation(reservation) {
 		previous := in.swapInvocationReservation(reservation)
 		defer in.swapInvocationReservation(previous)
 	}
-	if mu := in.lockThreadedInstanceState(); mu != nil {
-		defer mu.Unlock()
+	if sharedMemoryRuntimeBuilt {
+		if mu := in.lockThreadedInstanceState(); mu != nil {
+			defer mu.Unlock()
+		}
 	}
 	if err := in.collectGenericGCAtBoundary(); err != nil {
 		return err
@@ -374,10 +426,10 @@ func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, 
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
-	if ctx == nil || ctx.Done() == nil {
+	if standaloneBareImage || ctx == nil || ctx.Done() == nil {
 		// Keep non-cancelable entries free of context watcher allocations.
 		var err error
-		if codeProfileEnabled && in.lifecycleProfile() != nil && in.syncMode {
+		if syncHostControlForImage && codeProfileEnabled && in.lifecycleProfile() != nil && in.syncMode {
 			err = in.callNativeSyncWithTrapContext(entry, in.trap, ctx)
 		} else {
 			err = in.callVoidNative(entry)
@@ -389,7 +441,7 @@ func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, 
 		return err
 	}
 	defer stopCancel()
-	if in.syncMode {
+	if syncHostControlForImage && in.syncMode {
 		err = in.callNativeSyncWithTrapContext(entry, in.trap, ctx)
 	} else {
 		err = in.callVoidNative(entry)
@@ -398,13 +450,16 @@ func (in *Instance) invokeVoidEntryAdmitted(ctx context.Context, entry uintptr, 
 }
 
 func (in *Instance) callVoidNative(entry uintptr) error {
-	if in.syncMode {
+	if syncHostControlForImage && in.syncMode {
 		return in.callNativeSync(entry)
 	}
 	if err := in.callNativeAsync(entry, false); err != nil {
 		return err
 	}
-	return in.replayHostLog()
+	if hostFunctionImportsBuilt {
+		return in.replayHostLog()
+	}
+	return nil
 }
 
 // Every public gate path, including prepared calls and sessions, publishes the

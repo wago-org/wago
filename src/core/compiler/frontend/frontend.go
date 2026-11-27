@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -629,34 +630,13 @@ func (p supportPass) types() error {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
-				switch st.Comp.Kind {
-				case wasm.CompStruct:
-					for fi := range st.Comp.Fields {
-						storage := st.Comp.Fields[fi].Storage()
-						if !storage.Packed() {
-							if err := p.aggregateStorageType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi), gi); err != nil {
-								return err
-							}
-						}
-					}
-				case wasm.CompArray:
-					storage := st.Comp.Array.Storage()
-					if !storage.Packed() {
-						if err := p.aggregateStorageType(storage.Val(), ctx+" array element", gi); err != nil {
-							return err
-						}
-					}
+				if buildfeatures.GC == 0 {
+					return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
 				}
-				if (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts) && (st.Comp.Kind == wasm.CompStruct || st.Comp.Kind == wasm.CompArray) {
-					continue
+				if err := p.validateAggregateType(st.Comp, ctx, gi); err != nil {
+					return err
 				}
-				if p.feat.GCStructProducts && st.Comp.Kind == wasm.CompStruct {
-					continue
-				}
-				if p.feat.GCArrayProducts && st.Comp.Kind == wasm.CompArray {
-					continue
-				}
-				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
+				continue
 			}
 			var comp wasm.CompType
 			if !p.m.ResolveTypeFunc(uint32(typeIndex), &comp) {
@@ -773,7 +753,7 @@ func (p supportPass) tables() error {
 			return p.unsupported("reference type", "externref (reference-types disabled)", ctx)
 		}
 		if t.Type.Limits.Addr64 {
-			if !p.feat.Table64 {
+			if buildfeatures.Table64 == 0 || !p.feat.Table64 {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
 			if !p.feat.GenericTable64 && t.Type.Limits.Min > stagedTable64Max {
@@ -1521,6 +1501,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0xfd:
+		if buildfeatures.SIMD == 0 {
+			return false, p.unsupported("instruction", "simd is disabled in this build", ctx())
+		}
 		var imm wasm.InstructionImmediate
 		memarg64 := false
 		for i := 0; i < p.m.MemCount(); i++ {
@@ -1908,6 +1891,9 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return p.unsupported("const expression", imm.Kind.String()+" (gc disabled)", instructionContext(context, instr))
 			}
 		case 0xfd:
+			if buildfeatures.SIMD == 0 {
+				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, instr))
+			}
 			var imm wasm.InstructionImmediate
 			if err := wasm.ClassifyInstructionImmediateInto(&r, op, &imm); err != nil {
 				return err
@@ -2317,33 +2303,6 @@ func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
 	return p.feat.ExceptionReferences && heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapExn || heap.Abs() == wasm.HeapNoExn)
 }
 
-func (p supportPass) supportedGCReference(rt wasm.RefType) bool {
-	heap := rt.Heap()
-	if rt.Exact() || heap.Kind() != wasm.HeapAbs {
-		return false
-	}
-	if p.feat.GCI31Products && (heap.Abs() == wasm.HeapI31 || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapNone) {
-		return true
-	}
-	return (p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts || p.feat.GCArrayProducts) && (heap.Abs() == wasm.HeapAny || heap.Abs() == wasm.HeapEq || heap.Abs() == wasm.HeapNone || heap.Abs() == wasm.HeapStruct || heap.Abs() == wasm.HeapArray)
-}
-
-func (p supportPass) supportedStructuralTypeRef(rt wasm.RefType) bool {
-	heap := rt.Heap()
-	if (!p.feat.StructuralTypeProducts && !p.feat.GCTypeSubtypingProducts && !p.feat.GCStructProducts && !p.feat.GCArrayProducts) || heap.Kind() != wasm.HeapTypeIndex {
-		return false
-	}
-	index := heap.Type().Index
-	for gi := range p.m.Types {
-		if index < uint32(len(p.m.Types[gi].SubTypes)) {
-			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
-			return kind == wasm.CompStruct || kind == wasm.CompArray
-		}
-		index -= uint32(len(p.m.Types[gi].SubTypes))
-	}
-	return false
-}
-
 func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 	heap := rt.Heap()
 	if !p.feat.NullReferenceProducts || rt.Exact() || heap.Kind() != wasm.HeapAbs {
@@ -2360,27 +2319,6 @@ func (p supportPass) supportedNullReference(rt wasm.RefType) bool {
 	default:
 		return false
 	}
-}
-
-func (p supportPass) supportedGCHeap(heap int64) bool {
-	if heap < 0 {
-		if p.feat.GCStructProducts && (heap == -21 || heap == -19 || heap == -18 || heap == -15) { // struct / eq / any / none
-			return true
-		}
-		return p.feat.GCArrayProducts && (heap == -22 || heap == -19 || heap == -18 || heap == -15) // array / eq / any / none
-	}
-	if uint64(heap) > uint64(^uint32(0)) || p.m == nil {
-		return false
-	}
-	index := uint32(heap)
-	for _, group := range p.m.Types {
-		if index < uint32(len(group.SubTypes)) {
-			kind := group.SubTypes[index].Comp.Kind
-			return (p.feat.GCStructProducts && kind == wasm.CompStruct) || (p.feat.GCArrayProducts && kind == wasm.CompArray)
-		}
-		index -= uint32(len(group.SubTypes))
-	}
-	return false
 }
 
 func (p supportPass) supportedNullReferenceHeap(heap int64) bool {
@@ -2409,53 +2347,6 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		return p.unsupported("reference type", feature, context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
-}
-
-// aggregateStorageType admits exact indexed aggregate references only in GC
-// storage. Exactness changes validation and casting, but not the collector's
-// reference layout. Keep the exception local to aggregate fields/elements so
-// signatures, globals, and tables retain their existing capability gates.
-func (p supportPass) aggregateStorageType(v wasm.ValType, context string, group int) error {
-	if v.Kind() == wasm.ValRef && p.supportedRecursiveAggregateStorageRef(v.Ref(), group) {
-		return nil
-	}
-	if v.Kind() == wasm.ValRef && p.supportedExactAggregateStorageRef(v.Ref()) {
-		return nil
-	}
-	return p.valType(v, context)
-}
-
-func (p supportPass) supportedRecursiveAggregateStorageRef(rt wasm.RefType, group int) bool {
-	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || rt.Exact() || p.m == nil || group < 0 || group >= len(p.m.Types) {
-		return false
-	}
-	heap := rt.Heap()
-	if heap.Kind() != wasm.HeapTypeIndex || !heap.Type().Rec || int(heap.Type().Index) >= len(p.m.Types[group].SubTypes) {
-		return false
-	}
-	kind := p.m.Types[group].SubTypes[heap.Type().Index].Comp.Kind
-	return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
-		kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
-}
-
-func (p supportPass) supportedExactAggregateStorageRef(rt wasm.RefType) bool {
-	if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || !rt.Exact() {
-		return false
-	}
-	heap := rt.Heap()
-	if heap.Kind() != wasm.HeapTypeIndex || heap.Type().Rec || p.m == nil {
-		return false
-	}
-	index := heap.Type().Index
-	for gi := range p.m.Types {
-		if index < uint32(len(p.m.Types[gi].SubTypes)) {
-			kind := p.m.Types[gi].SubTypes[index].Comp.Kind
-			return kind == wasm.CompStruct && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCStructProducts) ||
-				kind == wasm.CompArray && (p.feat.StructuralTypeProducts || p.feat.GCTypeSubtypingProducts || p.feat.GCArrayProducts)
-		}
-		index -= uint32(len(p.m.Types[gi].SubTypes))
-	}
-	return false
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {

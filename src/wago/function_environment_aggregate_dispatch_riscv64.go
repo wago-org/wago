@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -15,22 +15,22 @@ import (
 )
 
 func (in *Instance) managedFunctionAggregateMayAllocate(helper uint32, args []uint64) bool {
-	if in == nil || in.c == nil {
+	if standaloneBareImage && managedAggregateHelpersForImage&(uint64(1)<<helper) == 0 || in == nil || in.c == nil {
 		return false
 	}
 	switch helper {
 	case gcStructSet:
-		if len(args) >= 4 {
+		if managedAggregateHelpersForImage&(1<<gcStructSet) != 0 && len(args) >= 4 {
 			typeID, field := uint32(args[len(args)-2]), uint32(args[len(args)-1])
 			return int(typeID) < len(in.c.GCTypeDescs) && int(field) < len(in.c.GCTypeDescs[typeID].Fields) && (functionStorage(in.c.GCTypeDescs[typeID].Fields[field].Kind) || in.c.compactExternFrameRoots() && externAggregateStorage(in.c.GCTypeDescs[typeID].Fields[field].Kind))
 		}
 	case gcArraySet, gcArrayFill:
-		if len(args) >= 4 {
+		if managedAggregateHelpersForImage&(1<<gcArraySet|1<<gcArrayFill) != 0 && len(args) >= 4 {
 			t := uint32(args[len(args)-1])
 			return int(t) < len(in.c.GCTypeDescs) && (functionStorage(in.c.GCTypeDescs[t].Elem) || in.c.compactExternFrameRoots() && externAggregateStorage(in.c.GCTypeDescs[t].Elem))
 		}
 	case gcArrayInitElem:
-		if len(args) == 6 {
+		if managedAggregateHelpersForImage&(1<<gcArrayInitElem) != 0 && len(args) == 6 {
 			t := uint32(args[4])
 			return int(t) < len(in.c.GCTypeDescs) && (functionStorage(in.c.GCTypeDescs[t].Elem) || in.c.compactExternFrameRoots() && externAggregateStorage(in.c.GCTypeDescs[t].Elem))
 		}
@@ -39,7 +39,7 @@ func (in *Instance) managedFunctionAggregateMayAllocate(helper uint32, args []ui
 }
 
 func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, results []uint64, roots gc.RootSet, public *gcPublicState) bool {
-	if in.c == nil || !in.c.usesManagedOpaqueStorage() {
+	if standaloneBareImage && managedAggregateHelpersForImage&(uint64(1)<<helper) == 0 || in.c == nil || !in.c.usesManagedOpaqueStorage() {
 		return false
 	}
 	var typeID uint32
@@ -121,6 +121,9 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 	defer a.clear()
 	switch helper {
 	case gcStructAllocOne:
+		if managedAggregateHelpersForImage&(1<<gcStructAllocOne) == 0 {
+			return false
+		}
 		if len(results) == 0 || len(in.c.Types[typeID].Fields) != len(desc.Fields) {
 			panic(gcHelperFailuref("invalid function struct initializer metadata"))
 		}
@@ -153,13 +156,16 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 				cursor++
 			}
 		}
-		ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), args[:len(args)-1], a, &public.initializerRoots)
+		ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), args[:len(args)-1], a, public.structInitializerScratch())
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
 		a.publish(state, ref)
 		results[0] = uint64(ref)
 	case gcStructSet:
+		if managedAggregateHelpersForImage&(1<<gcStructSet) == 0 {
+			return false
+		}
 		field := uint32(args[len(args)-1])
 		if len(args) != 4 {
 			panic(gcHelperFailuref("invalid function struct setter arity"))
@@ -182,18 +188,24 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 		}
 		a.publish(state, object)
 	case gcArrayAllocUniform, gcArrayAllocUniformNative:
+		if managedAggregateHelpersForImage&managedArrayUniformHelpers == 0 {
+			return false
+		}
 		if len(args) != 3 || len(results) == 0 {
 			panic(gcHelperFailuref("invalid function array initializer arity"))
 		}
 		value, count := in.managedFunctionArrayValue(typeID, args[0]), uint32(args[1])
 		a.changeOpaque(state, in, desc.Elem, value.Bits, int64(count), true)
-		ref, err := in.gc.NewArrayWithRootScratch(in.requireGCDomainType(typeID), count, value, a, &public.arrayInitializerRoots)
+		ref, err := in.gc.NewArrayWithRootScratch(in.requireGCDomainType(typeID), count, value, a, public.arrayInitializerScratch())
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
 		a.publish(state, ref)
 		results[0] = uint64(ref)
 	case gcArrayAllocFixed, gcArrayAllocFixedNative:
+		if managedAggregateHelpersForImage&managedArrayFixedHelpers == 0 {
+			return false
+		}
 		count := uint32(args[len(args)-1])
 		if uint64(count)+2 != uint64(len(args)) || len(results) == 0 {
 			panic(gcHelperFailuref("invalid function fixed array initializer arity"))
@@ -208,13 +220,16 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 		for _, value := range values {
 			a.changeOpaque(state, in, desc.Elem, value.Bits, 1, true)
 		}
-		ref, err := in.gc.NewArrayFixedPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), values, a, &public.arrayInitializerRoots)
+		ref, err := in.gc.NewArrayFixedPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), values, a, public.arrayInitializerScratch())
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
 		a.publish(state, ref)
 		results[0] = uint64(ref)
 	case gcArraySet:
+		if managedAggregateHelpersForImage&(1<<gcArraySet) == 0 {
+			return false
+		}
 		if len(args) != 4 {
 			panic(gcHelperFailuref("invalid function array setter arity"))
 		}
@@ -231,6 +246,9 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 		}
 		a.publish(state, object)
 	case gcArrayFill:
+		if managedAggregateHelpersForImage&(1<<gcArrayFill) == 0 {
+			return false
+		}
 		if len(args) != 5 {
 			panic(gcHelperFailuref("invalid function array fill arity"))
 		}
@@ -257,13 +275,16 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 		}
 		a.publish(state, object)
 	case gcArrayAllocElem, gcArrayInitElem:
+		if managedAggregateHelpersForImage&managedArrayElementHelpers == 0 {
+			return false
+		}
 		var source, count, segment, destination uint32
-		if helper == gcArrayAllocElem {
+		if managedAggregateHelpersForImage&(1<<gcArrayAllocElem) != 0 && helper == gcArrayAllocElem {
 			source, count, segment = uint32(args[0]), uint32(args[1]), uint32(args[3])
 			if len(results) == 0 {
 				panic(gcHelperFailuref("missing function array result"))
 			}
-		} else {
+		} else if managedAggregateHelpersForImage&(1<<gcArrayInitElem) != 0 {
 			destination, source, count, segment = uint32(args[1]), uint32(args[2]), uint32(args[3]), uint32(args[5])
 			in.gcCheckArray(object, typeID)
 			length, err := in.gc.ArrayLen(object)
@@ -285,7 +306,7 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 			value := in.managedFunctionArrayValue(typeID, in.gcArrayElemBits(entries, width, source+i))
 			a.changeOpaque(state, in, desc.Elem, value.Bits, 1, true)
 		}
-		if helper == gcArrayInitElem {
+		if managedAggregateHelpersForImage&(1<<gcArrayInitElem) != 0 && helper == gcArrayInitElem {
 			for i := uint32(0); i < count; i++ {
 				old, err := in.gc.ArrayGet(object, destination+i)
 				if err != nil {
@@ -293,7 +314,7 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 				}
 				a.changeOpaque(state, in, desc.Elem, old.Bits, -1, false)
 			}
-		} else {
+		} else if managedAggregateHelpersForImage&(1<<gcArrayAllocElem) != 0 {
 			ref, err := in.gc.NewArrayUninitializedWithRoots(in.requireGCDomainType(typeID), count, a)
 			if err != nil {
 				in.gcPanicArrayError(err)
@@ -306,10 +327,13 @@ func (in *Instance) dispatchManagedFunctionAggregate(helper uint32, args, result
 			}
 		}
 		a.publish(state, object)
-		if helper == gcArrayAllocElem {
+		if managedAggregateHelpersForImage&(1<<gcArrayAllocElem) != 0 && helper == gcArrayAllocElem {
 			results[0] = uint64(object)
 		}
 	case gcArrayCopy:
+		if managedAggregateHelpersForImage&(1<<gcArrayCopy) == 0 {
+			return false
+		}
 		in.gcCheckArray(object, typeID)
 		src, dstStart, srcStart, count, srcType := gc.Ref(uint32(args[2])), uint32(args[1]), uint32(args[3]), uint32(args[4]), uint32(args[6])
 		in.gcCheckArray(src, srcType)

@@ -24,6 +24,72 @@ const rv64RootedMaxHostFunctionImports = (1<<31 - 1) / 16
 const rv64MaxModuleExports = (1<<31 - 1) / 16
 const rv64RootedMaxMemories = 4
 
+// rv64RootedReceipt authenticates native rooted code and its source metadata.
+// The source compiler publishes it only after all digests are available.
+type rv64RootedReceipt struct {
+	codeDigest   [32]byte
+	typeDigest   [32]byte
+	importDigest [32]byte
+	dataDigest   [32]byte
+	exportDigest [32]byte
+	globalDigest [32]byte
+	tableDigest  [32]byte
+
+	memoryMin          uint64
+	memoryMax          uint64
+	memoryReserveMax   uint32
+	startImportIndex   uint32
+	startLocalIndex    uint32
+	syncHostSlots      uint16
+	memoryCount        uint8
+	memoryStaged       bool
+	hasStart           bool
+	startImported      bool
+	noCollectingBodies bool
+}
+
+func rv64PopulateSourceReceipt(receipt *rv64RootedReceipt, c *Compiled) error {
+	var ok bool
+	if receipt.typeDigest, ok = rv64RootedTypeDigest(c); !ok {
+		return fmt.Errorf("invalid rooted type receipt")
+	}
+	if receipt.importDigest, ok = rv64RootedImportDigest(c); !ok {
+		return fmt.Errorf("invalid rooted import receipt")
+	}
+	if receipt.dataDigest, ok = rv64RootedActiveDataDigest(c); !ok {
+		return fmt.Errorf("invalid rooted active data receipt")
+	}
+	if receipt.exportDigest, ok = rv64RootedMemoryExportDigest(c); !ok {
+		return fmt.Errorf("invalid rooted memory export receipt")
+	}
+	if receipt.globalDigest, ok = rv64RootedGlobalDigest(c); !ok {
+		return fmt.Errorf("invalid rooted global receipt")
+	}
+	if receipt.tableDigest, ok = rv64RootedTableDigest(c); !ok {
+		return fmt.Errorf("invalid rooted table receipt")
+	}
+	receipt.codeDigest = sha256.Sum256(c.code)
+	receipt.syncHostSlots = c.syncHostSlots
+	receipt.memoryReserveMax = c.MemMaxPages
+	receipt.hasStart = c.HasStart
+	if c.HasStart {
+		receipt.startImported = c.StartIsImport
+		if c.StartIsImport {
+			receipt.startImportIndex = uint32(c.StartImportIdx)
+		} else {
+			receipt.startLocalIndex = uint32(c.StartLocalFunc)
+		}
+	}
+	if directory := c.memoryDir; directory != nil {
+		receipt.memoryCount = uint8(len(directory.defs))
+		receipt.memoryStaged = directory.staged
+		if len(directory.defs) != 0 {
+			receipt.memoryMin, receipt.memoryMax = directory.defs[0].Min, directory.defs[0].Max
+		}
+	}
+	return nil
+}
+
 // rv64RootedTypeDigest authenticates the complete flattened structural type
 // directory retained by a fresh generic RV64 compilation. GC descriptors only
 // encode physical layout, so semantic properties such as reference exactness
@@ -117,7 +183,7 @@ type compactActiveData struct {
 }
 
 func (d *compactActiveData) payloadSize() int {
-	if d.nativePayloadSize != 0 {
+	if !standaloneBareImage && d.nativePayloadSize != 0 {
 		return d.nativePayloadSize
 	}
 	return len(d.bytes)
@@ -139,7 +205,7 @@ const (
 // Validate packed spans before any reader forms a payload slice. Public
 // metadata copies can reach admission without the execution clone's proof.
 func (c *Compiled) validateCompactData() error {
-	if c == nil || c.compactData == nil {
+	if !activeDataForImage || c == nil || c.compactData == nil {
 		return nil
 	}
 	d := c.compactData
@@ -157,7 +223,9 @@ func (c *Compiled) validateCompactData() error {
 // closeNativeActiveData runs under the shared code owner lock after the last
 // instance reference, or on a snapshot that failed before publication.
 func (c *Compiled) closeNativeActiveData() error {
-	if c.compactData == nil || c.compactData.arena == nil {
+	// The standalone generator embeds the payload bytes and omits the
+	// compiler process's arena.
+	if standaloneBareImage || c.compactData == nil || c.compactData.arena == nil {
 		return nil
 	}
 	if err := c.compactData.arena.Close(); err != nil {

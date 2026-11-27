@@ -10,7 +10,6 @@
 package wago
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"sort"
@@ -70,14 +69,14 @@ func rv64SourceFrameOwnership(c *Compiled) bool {
 			(c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) || c.requiredFeatures.IsEnabled(CoreFeatureGC) && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary())) &&
 			len(roots.safepoints) == 0 && len(roots.callsites) == 0 && len(roots.adapterReturnOffsets) == 0
 	}
-	if roots == nil {
-		if c.needsExactNativeGCRoots() && !rv64FixedRootlessGCProduct(c) {
-			return false
-		}
-		roots = &importOnlyGCFrameRoots
+	if !functionCodeForImage {
+		return false
+	}
+	if roots == nil && c.needsExactNativeGCRoots() && !(rv64LegacyGCProductsForImage && rv64FixedRootlessGCProduct(c)) {
+		return false
 	}
 	var frames []int
-	if len(roots.safepoints) != 0 || len(roots.callsites) != 0 {
+	if nativeCollectorBuilt && roots != nil && (len(roots.safepoints) != 0 || len(roots.callsites) != 0) {
 		frames = make([]int, len(c.Entry))
 	}
 	for i, entry := range c.Entry {
@@ -90,18 +89,14 @@ func rv64SourceFrameOwnership(c *Compiled) bool {
 		if !rv64DirectIntegerMarkerShape(internal, adapter) || internalEntryOffset(internal) != entry && !adapter || entry < 0 || entry >= end || end > len(c.code) || i > 0 && entry <= c.Entry[i-1] {
 			return false
 		}
-		frame, err := railshot.NativeFrameBytes(c.code[:end], entry)
+		frame, mainEnd, err := railshot.NativeFrameLayout(c.code[:end], entry)
 		if err != nil {
 			return false
 		}
 		if frames != nil {
 			frames[i] = frame
 		}
-		mainEnd, err := railshot.NativeFrameBodyEnd(c.code[:end], entry)
-		if err != nil {
-			return false
-		}
-		if c.genericGCFrameRoots() != nil && len(roots.safepoints) == 0 && len(roots.callsites) == 0 {
+		if nativeCollectorBuilt && roots != nil && len(roots.safepoints) == 0 && len(roots.callsites) == 0 {
 			// With no retained map, no local body may make a collecting call.
 			// Wrapper guard veneers use x0, so only actual linking calls count.
 			for at := entry + 4; at <= mainEnd; at += 4 {
@@ -110,6 +105,9 @@ func rv64SourceFrameOwnership(c *Compiled) bool {
 				}
 			}
 		}
+	}
+	if !nativeCollectorBuilt || roots == nil {
+		return true
 	}
 	for _, point := range roots.safepoints {
 		found := false
@@ -145,7 +143,7 @@ func rv64SourceFrameOwnership(c *Compiled) bool {
 // A decoded artifact uses generic product markers, so frame ownership must use
 // the same exact validators that selected its persisted execution flags.
 func rv64FixedRootlessGCProduct(c *Compiled) bool {
-	return c != nil && c.genericGCFrameRoots() == nil &&
+	return rv64LegacyGCProductsForImage && c != nil && c.genericGCFrameRoots() == nil &&
 		(rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) ||
 			rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) ||
 			rv64GCRefCastConcrete(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) ||
@@ -193,69 +191,28 @@ func rv64DirectIntegerMarkerShape(entry int, adapter bool) bool {
 	return uint(entry)&foreignHost == 0 && !directPreparedLightEntry(entry) && (!direct && !bounded || adapter && direct)
 }
 
-func rv64PopulateSourceReceipt(memo *validateMemo, c *Compiled) bool {
-	var ok bool
-	if memo.rv64FreshRootedGCTypeDigest, ok = rv64RootedTypeDigest(c); !ok {
-		return false
-	}
-	if memo.rv64FreshRootedGCImportDigest, ok = rv64RootedImportDigest(c); !ok {
-		return false
-	}
-	if memo.rv64FreshRootedGCDataDigest, ok = rv64RootedActiveDataDigest(c); !ok {
-		return false
-	}
-	if memo.rv64FreshRootedGCExportDigest, ok = rv64RootedMemoryExportDigest(c); !ok {
-		return false
-	}
-	if memo.rv64FreshRootedGCGlobalDigest, ok = rv64RootedGlobalDigest(c); !ok {
-		return false
-	}
-	if memo.rv64FreshRootedGCTableDigest, ok = rv64RootedTableDigest(c); !ok {
-		return false
-	}
-	memo.rv64FreshRootedGC = true
-	memo.rv64FreshRootedGCDigest = sha256.Sum256(c.code)
-	memo.rv64FreshRootedGCSyncHostSlots = c.syncHostSlots
-	memo.rv64FreshRootedGCReserveMax = c.MemMaxPages
-	memo.rv64FreshRootedGCHasStart = c.HasStart
-	if c.HasStart {
-		memo.rv64FreshRootedGCStartImport = c.StartIsImport
-		if c.StartIsImport {
-			memo.rv64FreshRootedGCStartImportIndex = uint32(c.StartImportIdx)
-		} else {
-			memo.rv64FreshRootedGCStartLocal = uint32(c.StartLocalFunc)
-		}
-	}
-	if directory := c.memoryDir; directory != nil {
-		memo.rv64FreshRootedGCMemories = uint8(len(directory.defs))
-		memo.rv64FreshRootedGCMemoryStaged = directory.staged
-		if len(directory.defs) != 0 {
-			memo.rv64FreshRootedGCMemMin, memo.rv64FreshRootedGCMemMax = directory.defs[0].Min, directory.defs[0].Max
-		}
-	}
-	return true
-}
-
 // rv64CanonicalMetadata preserves the representation used by source-admission
 // fingerprints. These bytes are internal consistency checks, not a module format.
 func rv64CanonicalMetadata(c *Compiled) ([]byte, error) {
 	metadata, err := compiledMetadataBytes(c, true)
 	memo := c.loadValidateMemo()
-	if err != nil || memo == nil || c.rv64ExecutionContract() == nil && !memo.rv64FreshRootedGC {
+	if err != nil || memo == nil || c.rv64ExecutionContract() == nil && memo.rootedReceipt() == nil {
 		return metadata, err
 	}
 	if !rv64SourceContractValid(c) && !(rv64FreshRootedGC(c) && rv64SourceFrameOwnership(c)) {
 		return nil, fmt.Errorf("RV64 execution contract lacks admitted source metadata")
 	}
 	capacities := c.rv64ExecutionTableCapacities()
-	if len(capacities) > maxRV64ExecutionTables || len(capacities) != 0 && len(capacities) != c.tableCount() {
+	hasCapacities := rv64TableCapacitiesForImage && len(capacities) != 0
+	if len(capacities) > maxRV64ExecutionTables ||
+		len(capacities) != 0 && (!hasCapacities || len(capacities) != c.tableCount()) {
 		return nil, fmt.Errorf("invalid RV64 execution table capacity count")
 	}
 	storageFree := rv64StorageFreeProof(c)
 	digest := rv64ExecutionDigestProof(c.code, metadata, c.syncHostSlots, storageFree, capacities...)
 	metadata = append(metadata, 'R', 'V', '6', '4', 'E', 'X', 'E', 'C')
 	version := byte(1)
-	if len(capacities) != 0 {
+	if hasCapacities {
 		version = 2
 	}
 	if storageFree {
@@ -266,7 +223,7 @@ func rv64CanonicalMetadata(c *Compiled) ([]byte, error) {
 		metadata = append(metadata, 1)
 	}
 	metadata = append(metadata, byte(c.syncHostSlots), byte(c.syncHostSlots>>8))
-	if len(capacities) != 0 {
+	if hasCapacities {
 		metadata = binary.LittleEndian.AppendUint32(metadata, uint32(len(capacities)))
 		for _, capacity := range capacities {
 			metadata = binary.LittleEndian.AppendUint32(metadata, capacity)

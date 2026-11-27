@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -11,7 +11,7 @@ import (
 )
 
 func TestRV64ManagedFunctionJointRejectsHighHandleBeforeBitmapGrowth(t *testing.T) {
-	in, _ := ownedExceptionTestInstance(t, gc.ProfileTiny, nil)
+	in := managedCollectorTestInstance(t, gc.ProfileTiny)
 	state := in.managedFunctionCollector(nil)
 	mark := state.graph.newMark()
 	domain := mark.byCollector[in.gc]
@@ -59,8 +59,8 @@ func managedFunctionFinishMark(t *testing.T, m *managedFunctionMark, budget uint
 func TestRV64ManagedFunctionJointClosedCycle(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 		t.Run(map[gc.Profile]string{gc.ProfileThroughput: "throughput", gc.ProfileTiny: "tiny"}[profile], func(t *testing.T) {
-			a, _ := ownedExceptionTestInstance(t, profile, nil)
-			b, _ := ownedExceptionTestInstance(t, profile, nil)
+			a := managedCollectorTestInstance(t, profile)
+			b := managedCollectorTestInstance(t, profile)
 			b.refStore = a.refStore
 			sa, sb := a.managedFunctionCollector(nil), b.managedFunctionCollector(nil)
 			ea, err := sa.newManagedFunctionEnv(b, gc.EmptyRoots{})
@@ -140,7 +140,7 @@ func TestRV64ManagedFunctionJointClosedCycle(t *testing.T) {
 }
 
 func TestRV64ManagedFunctionJointMarkRejectsChangedRoots(t *testing.T) {
-	in, _ := ownedExceptionTestInstance(t, gc.ProfileTiny, nil)
+	in := managedCollectorTestInstance(t, gc.ProfileTiny)
 	state := in.managedFunctionCollector(nil)
 	if _, err := state.newManagedFunctionEnv(in, gc.EmptyRoots{}); err != nil {
 		t.Fatal(err)

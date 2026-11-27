@@ -7,7 +7,20 @@
 
 package wasm
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 const maxInstructionNestingDepth = 20000
+
+const (
+	firstSignExtensionOpcode = 0xc0
+	lastSignExtensionOpcode  = 0xc4
+	signExtensionBuilt       = buildfeatures.SignExtensionOps / buildfeatures.SignExtensionOpsBit
+	lastDirectNumericOpcode  = firstSignExtensionOpcode - 1 + signExtensionBuilt*(lastSignExtensionOpcode-firstSignExtensionOpcode+1)
+)
+
+func isSignExtensionOpcode(op byte) bool {
+	return op >= firstSignExtensionOpcode && op <= lastSignExtensionOpcode
+}
 
 func decodeBlockType(r *reader) (BlockType, error) {
 	b, ok := r.peek()
@@ -21,6 +34,9 @@ func decodeBlockType(r *reader) (BlockType, error) {
 	if isValTypeLead(b) {
 		vt, err := decodeValType(r)
 		return BlockType{Kind: BlockVal, Val: vt}, err
+	}
+	if buildfeatures.MultiValue == 0 {
+		return BlockType{}, disabledInstruction("multi-value", r.off())
 	}
 	x, err := r.s33()
 	if err != nil || x < 0 {
@@ -83,6 +99,15 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 	if err != nil {
 		return Instruction{}, err
 	}
+	if buildfeatures.SignExtensionOps == 0 && isSignExtensionOpcode(op) {
+		return Instruction{}, disabledInstruction("sign-extension-ops", r.off()-1)
+	}
+	if buildfeatures.ExceptionHandling == 0 && op == 0x0a {
+		return Instruction{}, disabledInstruction("exception-handling", r.off()-1)
+	}
+	if !buildfeatures.ReferenceSignatures && op == 0xd1 {
+		return Instruction{}, disabledInstruction("reference-types", r.off()-1)
+	}
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		return Instruction{Kind: k}, nil
 	}
@@ -105,6 +130,9 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 		}
 		return Instruction{Kind: InstrLoop, ext: &instrExt{BlockType: bt, Body: body}}, nil
 	case 0x08:
+		if buildfeatures.ExceptionHandling == 0 {
+			return Instruction{}, disabledInstruction("exception-handling", r.off()-1)
+		}
 		return indexInst(r, InstrThrow)
 	case 0x0c:
 		return indexInst(r, InstrBr)
@@ -120,27 +148,16 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 			return Instruction{}, err
 		}
 		return Instruction{Kind: InstrBrTable, Index: def, ext: &instrExt{Indices: labels}}, nil
-	case 0x10:
-		return indexInst(r, InstrCall)
-	case 0x11:
-		return twoIndexInst(r, InstrCallIndirect)
-	case 0x12:
-		return indexInst(r, InstrReturnCall)
-	case 0x13:
-		return twoIndexInst(r, InstrReturnCallIndirect)
-	case 0x14:
-		return indexInst(r, InstrCallRef)
-	case 0x15:
-		return indexInst(r, InstrReturnCallRef)
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+		return decodeCallInstruction(r, op)
 	case 0x1c:
 		vts, err := decodeResultType(r)
 		return Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: vts}}, err
 	case 0x1f:
-		bt, err := decodeBlockType(r)
-		if err != nil {
-			return Instruction{}, err
+		if buildfeatures.ExceptionHandling == 0 {
+			return Instruction{}, disabledInstruction("exception-handling", r.off()-1)
 		}
-		catches, err := readVec(r, decodeCatch)
+		bt, catches, err := decodeTryTableHeader(r)
 		if err != nil {
 			return Instruction{}, err
 		}
@@ -157,22 +174,20 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 	case 0x24:
 		return indexInst(r, InstrGlobalSet)
 	case 0x25:
+		if !buildfeatures.ReferenceSignatures {
+			return Instruction{}, disabledInstruction("reference-types", r.off()-1)
+		}
 		return indexInst(r, InstrTableGet)
 	case 0x26:
+		if !buildfeatures.ReferenceSignatures {
+			return Instruction{}, disabledInstruction("reference-types", r.off()-1)
+		}
 		return indexInst(r, InstrTableSet)
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		ma, err := decodeMemArgWithWidths(r, widths)
 		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
-	case 0x3f:
-		if widths.multiMemory {
-			return indexInst(r, InstrMemorySize)
-		}
-		return reservedZeroInst(r, InstrMemorySize)
-	case 0x40:
-		if widths.multiMemory {
-			return indexInst(r, InstrMemoryGrow)
-		}
-		return reservedZeroInst(r, InstrMemoryGrow)
+	case 0x3f, 0x40:
+		return decodeMemorySizeGrow(r, op, widths.multiMemory)
 	case 0x41:
 		x, err := r.i32()
 		return Instruction{Kind: InstrI32Const, I32: x}, err
@@ -186,29 +201,93 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 		x, err := r.le64()
 		return Instruction{Kind: InstrF64Const, F64Bits: x}, err
 	case 0xd0:
+		if !buildfeatures.ReferenceSignatures {
+			return Instruction{}, disabledInstruction("reference-types", r.off()-1)
+		}
 		rt, err := decodeRefTypeForNull(r)
 		return Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: rt}}, err
 	case 0xd2:
+		if !buildfeatures.ReferenceSignatures {
+			return Instruction{}, disabledInstruction("reference-types", r.off()-1)
+		}
 		return indexInst(r, InstrRefFunc)
 	case 0xd3:
+		if buildfeatures.GC == 0 {
+			return Instruction{}, disabledInstruction("gc", r.off()-1)
+		}
 		return Instruction{Kind: InstrRefEq}, nil
 	case 0xd4:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return Instruction{}, disabledInstruction("typed-function-references", r.off()-1)
+		}
 		return Instruction{Kind: InstrRefAsNonNull}, nil
 	case 0xd5:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return Instruction{}, disabledInstruction("typed-function-references", r.off()-1)
+		}
 		return indexInst(r, InstrBrOnNull)
 	case 0xd6:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return Instruction{}, disabledInstruction("typed-function-references", r.off()-1)
+		}
 		return indexInst(r, InstrBrOnNonNull)
 	case 0xfb:
+		if buildfeatures.GC == 0 {
+			return Instruction{}, disabledInstruction("gc", r.off()-1)
+		}
 		return decodeFB(r)
 	case 0xfc:
 		return decodeFCWithMultiMemory(r, widths.multiMemory)
 	case 0xfd:
+		if buildfeatures.SIMD == 0 {
+			return Instruction{}, disabledInstruction("simd", r.off()-1)
+		}
 		return decodeFDWithMemargWidths(r, widths)
 	case 0xfe:
+		if buildfeatures.Threads == 0 {
+			return Instruction{}, disabledInstruction("threads", r.off()-1)
+		}
 		return decodeFEWithMemargWidths(r, widths)
 	default:
 		return Instruction{}, invalidInstructionError(op, r.off()-1)
 	}
+}
+
+// decodeCallInstruction is shared by the tree and byte-backed readers. Call
+// feature checks precede immediate decoding, so disabled variants need no
+// immediate payload or validation dispatch.
+func decodeCallInstruction(r *reader, op byte) (Instruction, error) {
+	if feature := disabledCallFeature(op); feature != "" {
+		return Instruction{}, disabledInstruction(feature, r.off()-1)
+	}
+	switch op {
+	case 0x10:
+		return indexInst(r, InstrCall)
+	case 0x11:
+		return twoIndexInst(r, InstrCallIndirect)
+	case 0x12, 0x13:
+		if op == 0x12 {
+			return indexInst(r, InstrReturnCall)
+		}
+		return twoIndexInst(r, InstrReturnCallIndirect)
+	case 0x14, 0x15:
+		if op == 0x14 {
+			return indexInst(r, InstrCallRef)
+		}
+		return indexInst(r, InstrReturnCallRef)
+	default:
+		return Instruction{}, invalidInstructionError(op, r.off()-1)
+	}
+}
+
+func disabledCallFeature(op byte) string {
+	if buildfeatures.TailCall == 0 && (op == 0x12 || op == 0x13 || op == 0x15) {
+		return "tail-call"
+	}
+	if buildfeatures.TypedFunctionReferences == 0 && (op == 0x14 || op == 0x15) {
+		return "typed-function-references"
+	}
+	return ""
 }
 
 func decodeIfBodies(r *reader, depth int, widths memargWidths) ([]Instruction, []Instruction, error) {
@@ -255,12 +334,20 @@ func twoIndexInst(r *reader, k InstrKind) (Instruction, error) {
 	b, err := r.u32()
 	return Instruction{Kind: k, Index: a, Index2: b}, err
 }
-func reservedZeroInst(r *reader, k InstrKind) (Instruction, error) {
+func decodeMemorySizeGrow(r *reader, opcode byte, multiMemory bool) (Instruction, error) {
+	kind := InstrMemorySize
+	if opcode == 0x40 {
+		kind = InstrMemoryGrow
+	}
+	if buildfeatures.MultiMemory != 0 && multiMemory {
+		return indexInst(r, kind)
+	}
 	if err := readReservedZeroByte(r); err != nil {
 		return Instruction{}, err
 	}
-	return Instruction{Kind: k}, nil
+	return Instruction{Kind: kind}, nil
 }
+
 func readReservedZeroByte(r *reader) error {
 	b, err := r.byte()
 	if err != nil {
@@ -273,71 +360,13 @@ func readReservedZeroByte(r *reader) error {
 }
 
 type memargWidths struct {
+	memargIndexedWidths
 	multiMemory bool
-	indexed64   []uint64
-	fixed64     bool
+	fixed64     bool // explicit width for raw walks or uniform module widths
 }
 
 func fixedMemargWidths(addr64 bool) memargWidths {
 	return memargWidths{multiMemory: true, fixed64: addr64}
-}
-
-func moduleMemargWidths(m *Module) memargWidths {
-	if m == nil {
-		return memargWidths{multiMemory: true}
-	}
-	seen, mixed := false, false
-	addr64 := false
-	count := 0
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != ExternMem {
-			continue
-		}
-		got := m.Imports[i].Type.MemType().Limits.Addr64
-		mixed = mixed || seen && got != addr64
-		seen, addr64 = true, got
-		count++
-	}
-	for i := range m.Memories {
-		got := m.Memories[i].Limits.Addr64
-		mixed = mixed || seen && got != addr64
-		seen, addr64 = true, got
-		count++
-	}
-	if !seen {
-		return memargWidths{multiMemory: true}
-	}
-	// Preserve the allocation-free fixed-width hot path for the overwhelmingly
-	// common single-memory and uniform-width multi-memory modules.
-	if !mixed {
-		return memargWidths{multiMemory: true, fixed64: addr64}
-	}
-	indexed64 := make([]uint64, (count+63)/64)
-	index := 0
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != ExternMem {
-			continue
-		}
-		if m.Imports[i].Type.MemType().Limits.Addr64 {
-			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
-		}
-		index++
-	}
-	for i := range m.Memories {
-		if m.Memories[i].Limits.Addr64 {
-			indexed64[index>>6] |= uint64(1) << (uint(index) & 63)
-		}
-		index++
-	}
-	return memargWidths{multiMemory: true, indexed64: indexed64}
-}
-
-func (w memargWidths) offset64(memoryIndex uint32) bool {
-	word := memoryIndex >> 6
-	if uint(word) < uint(len(w.indexed64)) {
-		return w.indexed64[word]&(uint64(1)<<(memoryIndex&63)) != 0
-	}
-	return w.fixed64
 }
 
 func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
@@ -351,7 +380,7 @@ func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	}
 	ma := MemArg{}
 	if n >= 64 && n < 128 {
-		if !widths.multiMemory {
+		if buildfeatures.MultiMemory == 0 || !widths.multiMemory {
 			return MemArg{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 		}
 		ma.Align = n - 64
@@ -378,6 +407,15 @@ func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	off, err := r.u32()
 	ma.Offset = uint64(off)
 	return ma, err
+}
+
+func decodeTryTableHeader(r *reader) (BlockType, []Catch, error) {
+	block, err := decodeBlockType(r)
+	if err != nil {
+		return BlockType{}, nil, err
+	}
+	catches, err := readVec(r, decodeCatch)
+	return block, catches, err
 }
 
 func decodeCatch(r *reader) (Catch, error) {

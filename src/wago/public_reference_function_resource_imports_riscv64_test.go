@@ -127,7 +127,7 @@ func TestRV64PublicReferenceFunctionResourceImportsSourceArtifact(t *testing.T) 
 									}
 									defer caller.unlockNativeEntry(entry)
 									found := false
-									for _, g := range entry.tables.targets.tailActive {
+									for _, g := range entry.tables.targets.tailForTest().active {
 										for i, owner := range g.owners {
 											if owner == resource {
 												t.Fatal("resource-only provider became callable snapshot owner")

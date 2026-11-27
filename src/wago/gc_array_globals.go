@@ -9,18 +9,11 @@ package wago
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
-)
-
-var (
-	errGenericGCRootState   = errors.New("generic GC boundary collection has no registered root state")
-	errGenericGCRootMapping = errors.New("generic GC boundary collection has an invalid global root mapping")
-	errGenericGCNonCompact  = errors.New("generic GC boundary collection found a non-compact reference")
 )
 
 type gcArrayGlobalInitMode uint8
@@ -153,7 +146,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 			switch subopcode {
 			case 6: // array.new: value, length
 				if len(values) != 2 || !wasm.EqualValType(values[0].typ, want) || !wasm.EqualValType(values[1].typ, wasm.I32) {
-					return gcArrayGlobalInit{}, fmt.Errorf("array.new operands do not match %s, i32", want)
+					return gcArrayGlobalInit{}, fmt.Errorf("array.new operands do not match %s, i32", want.String())
 				}
 				init.Mode = gcArrayGlobalInitUniform
 				if want.Kind() == wasm.ValRef {
@@ -180,7 +173,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 				init.Bits = make([]uint64, count)
 				for i := range values {
 					if !wasm.EqualValType(values[i].typ, want) {
-						return gcArrayGlobalInit{}, fmt.Errorf("element %d operand type %s, want %s", i, values[i].typ, want)
+						return gcArrayGlobalInit{}, fmt.Errorf("element %d operand type %s, want %s", i, values[i].typ.String(), want.String())
 					}
 					init.Bits[i] = values[i].bits
 				}
@@ -201,7 +194,7 @@ func (c *Compiled) gcArrayGlobalInit(globalIndex int) (gcArrayGlobalInit, bool) 
 	if c == nil || c.memoryDir == nil {
 		return gcArrayGlobalInit{}, false
 	}
-	for _, init := range c.memoryDir.gcArrayGlobals {
+	for _, init := range c.memoryDir.gcArrayGlobals() {
 		if int(init.GlobalIndex) == globalIndex {
 			return init, true
 		}
@@ -262,98 +255,4 @@ func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, d
 		return gc.Null(), 0, err
 	}
 	return ref, slot, nil
-}
-
-// collectGenericGCAtBoundary performs a full collection only between native
-// invocations, when no unpublished frame reference exists. Persistent globals,
-// local/shared collector tables, retained tokens, and suspended frames are exact
-// roots. The process-wide native lease serializes collector mutation with token
-// issue, ingress, release, and cleanup.
-func (in *Instance) syncGenericGCGlobalRootsLocked(public *gcPublicState) error {
-	if in == nil || in.gc == nil || public == nil {
-		return nil
-	}
-	for _, mapping := range public.globalRoots {
-		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
-			return errGenericGCRootMapping
-		}
-		typ := ValAnyRef
-		if int(mapping.GlobalIndex) < len(in.c.Globals) {
-			typ = in.c.Globals[mapping.GlobalIndex].Type
-		}
-		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], typ)
-		ref := gc.Ref(uint32(bits))
-		if bits != uint64(ref) {
-			return errGenericGCNonCompact
-		}
-		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (in *Instance) collectGenericGCAtBoundary() error {
-	if in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
-		return nil
-	}
-	// Exact native roots permit allocation-pressure and stress collections.
-	// Keep the boundary fallback when native collection is unavailable.
-	if in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation() {
-		return nil
-	}
-	return in.collectGC()
-}
-
-// reconcileGCGlobalRoots synchronizes exact staged mutable GC global cells with
-// their checked collector slots after every successful native invocation. Native
-// allocation can now satisfy several constructors without a Go helper boundary,
-// so helper-triggered synchronization alone is no longer authoritative.
-func (in *Instance) reconcileGCGlobalRoots() error {
-	if in == nil || in.gc == nil || in.c == nil || !in.c.hasGCRefGlobals() {
-		return nil
-	}
-	state := in.pluginState.Load()
-	public := in.existingPublicGCState()
-	hasGeneric := public != nil && len(public.globalRoots) != 0
-	hasStaged := state != nil && state.gcGlobalRootCount != 0
-	if !hasGeneric && !hasStaged {
-		return nil
-	}
-	if public == nil {
-		public = in.publicGCState()
-	}
-	public.mu.Lock()
-	defer public.mu.Unlock()
-	if hasGeneric {
-		if err := in.syncGenericGCGlobalRootsLocked(public); err != nil {
-			return err
-		}
-	}
-	if !hasStaged {
-		return nil
-	}
-	for i := uint32(0); i < state.gcGlobalRootCount; i++ {
-		mapping := state.gcGlobalRoots[i]
-		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
-			return fmt.Errorf("GC global root mapping %d names unavailable global %d", i, mapping.GlobalIndex)
-		}
-		bits := readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)
-		ref := gc.Ref(uint32(bits))
-		if bits != uint64(ref) {
-			return fmt.Errorf("GC global %d contains non-compact reference %#x", mapping.GlobalIndex, bits)
-		}
-		if err := in.gc.SetGlobalSlot(mapping.SlotIndex, ref); err != nil {
-			return fmt.Errorf("GC global %d root slot %d: %w", mapping.GlobalIndex, mapping.SlotIndex, err)
-		}
-	}
-	return nil
-}
-
-// reconcileGCGlobalRootsAfter publishes guest global writes even when native
-// execution traps or is interrupted. A trap unwinds the native frame, so the
-// global cell is the only remaining owner of a reference stored before failure.
-// Keep the execution failure first when root maintenance also fails.
-func (in *Instance) reconcileGCGlobalRootsAfter(primary error) error {
-	return joinPrimary(primary, in.reconcileGCGlobalRoots())
 }

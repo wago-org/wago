@@ -11,6 +11,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -145,7 +146,7 @@ func (f *fn) emitTailIntegerRegisterArgs(ft *wasm.CompType, localHomes bool, jum
 func (f *fn) onlyLocalTailTransfers(body []byte) bool { return f.tailTransferLeaf(body, false) }
 func (f *fn) onlySelfTailTransfers(body []byte) bool  { return f.tailTransferLeaf(body, true) }
 func (f *fn) tailTransferLeaf(body []byte, selfOnly bool) bool {
-	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) {
+	if !(buildfeatures.TailCall != 0 && f.opt(optTailSelfLoop)) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) {
 		return false
 	}
 	r := wasm.ReaderFrom(body)

@@ -137,7 +137,7 @@ func TestRV64TableDependenciesCounterBoundariesAndAliases(t *testing.T) {
 					var cleanup resourceCleanup
 					err = tableDependencyTestAcquire(&batch, table, store, graph, &cleanup)
 					if count < 0 || count == maxInt() {
-						if err == nil || batch.dependencies.rows != nil || graph.live != 0 || producer != nil && (producer.resourceRefs != 0 || producer.importState.Load() != nil) || store.gcDomains != nil {
+						if err == nil || batch.dependencies.rows != nil || graph.live != 0 || producer != nil && (producer.resourceRefs != 0 || producer.importState.Load() != nil) || store.gcTopologyLocked() != nil {
 							t.Fatal("denied count acquired storage, graph or topology", err)
 						}
 						return
@@ -244,6 +244,9 @@ func TestRV64TableDependenciesWarmBoundedRows(t *testing.T) {
 func TestRV64TableDependenciesHostFaultRepair(t *testing.T) {
 	for _, fault := range []string{"owner", "producer", "element", "store", "topology", "total"} {
 		t.Run(fault, func(t *testing.T) {
+			if fault == "topology" && !nativeCollectorFrameRootsBuilt {
+				t.Skip("requires native collector topology")
+			}
 			table, err := NewTable(1, 2)
 			if err != nil {
 				t.Fatal(err)
@@ -257,7 +260,7 @@ func TestRV64TableDependenciesHostFaultRepair(t *testing.T) {
 			}
 			row := batch.dependencies.rows.rows.inline[0]
 			owner := table.owner
-			topology := store.gcDomains
+			gcRows := tableTestGCRows(store)
 			other := &tableOwner{elementType: ValFuncRef, importers: 1, funcrefStores: map[*referenceStore]uint32{store: 1}}
 			switch fault {
 			case "owner":
@@ -269,13 +272,13 @@ func TestRV64TableDependenciesHostFaultRepair(t *testing.T) {
 			case "store":
 				delete(owner.funcrefStores, store)
 			case "topology":
-				delete(topology.funcrefTables, table)
+				delete(gcRows, table)
 			case "total":
 				owner.importers = 0
 			}
-			beforeTotal, beforeStore, beforeTopology := owner.importers, owner.funcrefStores[store], topology.funcrefTables[table]
+			beforeTotal, beforeStore, beforeTopology := owner.importers, owner.funcrefStores[store], gcRows[table]
 			_, panicked := cleanupTestPanic(batch.detachAll)
-			if owner.importers != beforeTotal || owner.funcrefStores[store] != beforeStore || topology.funcrefTables[table] != beforeTopology {
+			if owner.importers != beforeTotal || owner.funcrefStores[store] != beforeStore || gcRows[table] != beforeTopology {
 				t.Fatal("denied host claim partly consumed a counter")
 			}
 			if !panicked || batch.dependencies.rows == nil || row.state != rv64TableDependencyAttached || row.counterCommitted || other.importers != 1 {
@@ -286,10 +289,12 @@ func TestRV64TableDependenciesHostFaultRepair(t *testing.T) {
 			owner.elementType = ValFuncRef
 			owner.importers = 1
 			owner.funcrefStores[store] = 1
-			topology.funcrefTables[table] = 1
+			if nativeCollectorFrameRootsBuilt {
+				gcRows[table] = 1
+			}
 			batch.detachAll()
 			batch.detachAll()
-			if row.state != rv64TableDependencyReleased || owner.importers != 0 || len(owner.funcrefStores) != 0 || len(topology.funcrefTables) != 0 {
+			if row.state != rv64TableDependencyReleased || owner.importers != 0 || len(owner.funcrefStores) != 0 || len(gcRows) != 0 {
 				t.Fatal("repaired host obligation failed drain")
 			}
 		})

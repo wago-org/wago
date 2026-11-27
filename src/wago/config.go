@@ -13,10 +13,9 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -28,13 +27,13 @@ type CoreFeatures uint64
 
 const (
 	// CoreFeatureBulkMemoryOperations: memory.copy/fill (and the segment ops).
-	CoreFeatureBulkMemoryOperations CoreFeatures = 1 << iota
+	CoreFeatureBulkMemoryOperations CoreFeatures = buildfeatures.BulkMemoryOperationsBit
 	// CoreFeatureMultiValue: blocks and functions returning multiple values.
-	CoreFeatureMultiValue
+	CoreFeatureMultiValue CoreFeatures = buildfeatures.MultiValueBit
 	// CoreFeatureMutableGlobal: importing/exporting mutable globals.
-	CoreFeatureMutableGlobal
+	CoreFeatureMutableGlobal CoreFeatures = buildfeatures.MutableGlobalBit
 	// CoreFeatureNonTrappingFloatToIntConversion: the trunc_sat conversions.
-	CoreFeatureNonTrappingFloatToIntConversion
+	CoreFeatureNonTrappingFloatToIntConversion CoreFeatures = buildfeatures.NonTrappingFloatToIntConversionBit
 	// CoreFeatureReferenceTypes: executable funcref tables plus reference
 	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
 	// descriptor-identity ref.eq. Local and imported/shared reference globals,
@@ -42,38 +41,38 @@ const (
 	// same-store sharing, opaque host funcref call boundaries, explicitly owned
 	// HostFuncRef descriptor egress, and store-bound host-created funcref globals
 	// execute. Unowned host descriptors remain fail-closed.
-	CoreFeatureReferenceTypes
+	CoreFeatureReferenceTypes CoreFeatures = buildfeatures.ReferenceTypesBit
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
-	CoreFeatureSignExtensionOps
+	CoreFeatureSignExtensionOps CoreFeatures = buildfeatures.SignExtensionOpsBit
 	// CoreFeatureSIMD: core and relaxed v128 vector instructions. This remains
 	// one admission bit for compatibility with the existing executable SIMD
 	// surface; relaxed SIMD is therefore represented by this bit in CoreFeaturesV3.
-	CoreFeatureSIMD
+	CoreFeatureSIMD CoreFeatures = buildfeatures.SIMDBit
 	// CoreFeatureExtendedConst: integer add/sub/mul in constant expressions.
-	CoreFeatureExtendedConst
+	CoreFeatureExtendedConst CoreFeatures = buildfeatures.ExtendedConstBit
 	// CoreFeatureTailCall: return_call / return_call_indirect / return_call_ref.
-	CoreFeatureTailCall
+	CoreFeatureTailCall CoreFeatures = buildfeatures.TailCallBit
 	// CoreFeatureExtendedConstExpressions: integer add/sub/mul and references to
 	// previously declared immutable globals in constant expressions.
-	CoreFeatureExtendedConstExpressions
+	CoreFeatureExtendedConstExpressions CoreFeatures = buildfeatures.ExtendedConstExpressionsBit
 	// CoreFeatureTypedFunctionReferences: typed refs, call_ref, and related casts.
-	CoreFeatureTypedFunctionReferences
+	CoreFeatureTypedFunctionReferences CoreFeatures = buildfeatures.TypedFunctionReferencesBit
 	// CoreFeatureGC: struct, array, i31, and GC-managed reference instructions.
-	CoreFeatureGC
+	CoreFeatureGC CoreFeatures = buildfeatures.GCBit
 	// CoreFeatureExceptionHandling: tags, throw/throw_ref, and try_table.
-	CoreFeatureExceptionHandling
+	CoreFeatureExceptionHandling CoreFeatures = buildfeatures.ExceptionHandlingBit
 	// CoreFeatureMultiMemory: multiple memories and indexed memory operations.
-	CoreFeatureMultiMemory
+	CoreFeatureMultiMemory CoreFeatures = buildfeatures.MultiMemoryBit
 	// CoreFeatureMemory64: 64-bit linear-memory limits and addresses.
-	CoreFeatureMemory64
+	CoreFeatureMemory64 CoreFeatures = buildfeatures.Memory64Bit
 	// CoreFeatureTable64: 64-bit table limits and indexes.
-	CoreFeatureTable64
+	CoreFeatureTable64 CoreFeatures = buildfeatures.Table64Bit
 	// CoreFeatureThreads: shared memory and core atomic memory instructions.
-	CoreFeatureThreads
+	CoreFeatureThreads CoreFeatures = buildfeatures.ThreadsBit
 	// CoreFeatureCompactImports: grouped entries in the import section.
-	CoreFeatureCompactImports
+	CoreFeatureCompactImports CoreFeatures = buildfeatures.CompactImportsBit
 	// CoreFeatureWideArithmetic: 128-bit integer add/subtract and widening multiply.
-	CoreFeatureWideArithmetic
+	CoreFeatureWideArithmetic CoreFeatures = buildfeatures.WideArithmeticBit
 )
 
 // Feature groups for WebAssembly Core releases.
@@ -243,7 +242,7 @@ type RuntimeConfig struct {
 	features                 CoreFeatures
 	optimizations            map[string]bool
 	optimizationSnapshot     railshotOptimizationSnapshot
-	defaultSelection         optimization.Selection
+	defaultSelection         railshotOptimizationSelection
 	optimizationDeltas       map[string]bool
 	trustedOptimizations     bool
 	maxMemoryPages           uint32
@@ -291,58 +290,6 @@ const (
 	MaxMemoriesPerModuleLimit   = wasm.MaximumMemoriesPerModule
 )
 
-var defaultOptimizationCache struct {
-	sync.Mutex
-	snapshot   railshotOptimizationSnapshot
-	selection  optimization.Selection
-	values     map[string]bool
-	bmi2Values map[string]bool
-	bmi2Delta  map[string]bool
-}
-
-// defaultOptimizationSnapshot returns an immutable process-default selection.
-// The cache owns the maps: callers only read them, and WithOptimization clones
-// before mutation. A backend revision change rebuilds the snapshot from values
-// captured under the same lock as SetOptKnob.
-func defaultOptimizationSnapshot(forceBMI2 bool) (values map[string]bool, snapshot railshotOptimizationSnapshot, deltas map[string]bool, selection optimization.Selection) {
-	defaultOptimizationCache.Lock()
-	defer defaultOptimizationCache.Unlock()
-
-	snapshot = railshotCurrentOptKnobSnapshot()
-	if defaultOptimizationCache.values == nil || defaultOptimizationCache.snapshot != snapshot {
-		infos, capturedSnapshot := railshotOptKnobSnapshot()
-		values = make(map[string]bool, len(infos))
-		for _, info := range infos {
-			values[info.Name] = info.On
-		}
-		defaultOptimizationCache.snapshot = capturedSnapshot
-		defaultOptimizationCache.values = values
-		// ARM64 consumes a packed copy of the complete immutable map.
-		// Resolve only when the process defaults are first captured or change.
-		if runtime.GOARCH == "arm64" {
-			defaultOptimizationCache.selection, _ = capturedSnapshot.ResolveSelection(values)
-		}
-		defaultOptimizationCache.bmi2Values = nil
-		defaultOptimizationCache.bmi2Delta = nil
-		snapshot = capturedSnapshot
-	}
-	values = defaultOptimizationCache.values
-	snapshot = defaultOptimizationCache.snapshot
-	if !forceBMI2 || values["bmi2-rorx"] {
-		return values, snapshot, nil, defaultOptimizationCache.selection
-	}
-	if defaultOptimizationCache.bmi2Values == nil {
-		bmi2Values := make(map[string]bool, len(values))
-		for name, on := range values {
-			bmi2Values[name] = on
-		}
-		bmi2Values["bmi2-rorx"] = true
-		defaultOptimizationCache.bmi2Values = bmi2Values
-		defaultOptimizationCache.bmi2Delta = map[string]bool{"bmi2-rorx": true}
-	}
-	return defaultOptimizationCache.bmi2Values, snapshot, defaultOptimizationCache.bmi2Delta, optimization.Selection{}
-}
-
 // NewRuntimeConfig returns the default configuration: wago's selected feature
 // set for this build, serial function validation/codegen, independent-instance execution, and
 // the fastest available bounds-check mode — signals-based (guard-page) on
@@ -360,14 +307,8 @@ func NewRuntimeConfig() *RuntimeConfig {
 	case "explicit", "inline":
 		bounds = BoundsChecksExplicit
 	}
-	forceBMI2 := runtime.GOARCH == "amd64" && hostSupportsBMI2() && os.Getenv("WAGO_AMD64_NO_BMI2_RORX") != "1"
-	optimizations, optimizationSnapshot, optimizationDeltas, defaultSelection := defaultOptimizationSnapshot(forceBMI2)
-	return &RuntimeConfig{
+	config := &RuntimeConfig{
 		features:             defaultCoreFeatures(),
-		optimizations:        optimizations,
-		optimizationSnapshot: optimizationSnapshot,
-		defaultSelection:     defaultSelection,
-		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
 		maxModuleBytes:       64 << 20,
@@ -378,6 +319,8 @@ func NewRuntimeConfig() *RuntimeConfig {
 		nativeStackBytes:     DefaultNativeStackBytes,
 		independentInstances: true,
 	}
+	config.initializeOptimizationDefaults()
+	return config
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
@@ -754,7 +697,7 @@ func supportsThreadsBackend(goos, goarch string) bool {
 }
 
 func platformCoreFeatures() CoreFeatures {
-	supported := coreFeaturesWago
+	supported := coreFeaturesWago & CoreFeatures(buildfeatures.Enabled)
 	if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
 		// Other targets retain the portable
 		// Release 2 surface plus extended constant expressions and reject the
@@ -779,12 +722,13 @@ func platformCoreFeatures() CoreFeatures {
 // extended-constant surface instead of silently accepting partial support.
 // The separate threads proposal remains opt-in.
 func defaultCoreFeatures() CoreFeatures {
-	return coreFeaturesWithoutSidecar | (CoreFeaturesV3 & platformCoreFeatures())
+	return (coreFeaturesWithoutSidecar | CoreFeaturesV3) & platformCoreFeatures()
 }
 
 func SupportedFeatures() CoreFeatures {
 	supported := platformCoreFeatures()
-	if !hostSupportsSIMD() {
+	// On amd64 this also checks the baseline required by scalar code.
+	if (runtime.GOARCH == "amd64" || buildfeatures.SIMD != 0) && !hostSupportsSIMD() {
 		if runtime.GOARCH == "amd64" {
 			return 0
 		}
@@ -824,6 +768,32 @@ type UnsupportedFeatureError struct {
 	Platform  string       // GOOS/GOARCH admission target
 }
 
+const wasmGCBuilt = buildfeatures.GC != 0 && collectorRuntimeForImage
+
+// Reference signatures exclude MVP table descriptors, which can still be
+// passed between instances and host imports in builds without reference values.
+const referenceSignaturesBuilt = buildfeatures.ReferenceSignatures && referenceStoreForImage
+
+// RV64 also uses the collector portal for opaque externref and exception handles.
+const nativeCollectorBuilt = buildfeatures.NativeCollector && collectorRuntimeForImage
+
+// Exact native frame maps are produced for Wasm GC and owned exception references.
+const nativeCollectorFrameRootsBuilt = buildfeatures.NativeCollectorFrameRoots && collectorRuntimeForImage
+
+const rv64CollectorBuilt = buildfeatures.NativeRISCV64Collector && collectorRuntimeForImage
+
+func checkCompiledFeatures(required CoreFeatures) error {
+	// The Core 3 extended-constant feature already includes the legacy
+	// arithmetic instructions. Module analysis records the narrower bit.
+	if buildfeatures.ExtendedConstExpressions != 0 {
+		required &^= CoreFeatureExtendedConst
+	}
+	if unavailable := required &^ CoreFeatures(buildfeatures.Enabled); unavailable != 0 {
+		return &UnsupportedFeatureError{Requested: unavailable, Supported: platformCoreFeatures(), Platform: runtime.GOOS + "/" + runtime.GOARCH}
+	}
+	return nil
+}
+
 func (e *UnsupportedFeatureError) Error() string {
 	platform := e.Platform
 	if platform == "" {
@@ -835,11 +805,7 @@ func (e *UnsupportedFeatureError) Error() string {
 // frontendFeatures maps the config's feature set onto the frontend support
 // pass's gate.
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
-	simd := c.features.IsEnabled(CoreFeatureSIMD)
-	if simd && !hostSupportsSIMD() {
-		// Do not admit SIMD modules on hosts that lack the required CPU features.
-		simd = false
-	}
+	simd := buildfeatures.SIMD != 0 && c.features.IsEnabled(CoreFeatureSIMD) && hostSupportsSIMD()
 	return frontend.Features{
 		SignExtension:           c.features.IsEnabled(CoreFeatureSignExtensionOps),
 		BulkMemory:              c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
@@ -880,9 +846,8 @@ func (c *RuntimeConfig) Validate() error {
 	if c.codeProfile != nil && !codeProfileEnabled {
 		return fmt.Errorf("wago: profiling requires a build with -tags=wago_profile")
 	}
-	// Unknown modes must not silently inherit explicit-check behavior.
-	if c.boundsChecks != BoundsChecksExplicit && c.boundsChecks != BoundsChecksSignalsBased {
-		return fmt.Errorf("wago: invalid bounds-check mode %d", c.boundsChecks)
+	if err := c.validateBoundsMode(); err != nil {
+		return err
 	}
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
@@ -893,26 +858,53 @@ func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
+	if err := c.validateNativeStack(); err != nil {
+		return err
+	}
+	if enabled, present := c.optimizations["stack-fence"]; present && !enabled {
+		return fmt.Errorf("wago: stack-fence is required for bounded native execution")
+	}
+	if err := c.validateOptimizations(); err != nil {
+		return err
+	}
+	return c.validateExecutionPlatform()
+}
+
+func (c *RuntimeConfig) validateBoundsMode() error {
+	// Unknown modes must not silently inherit explicit-check behavior.
+	if c.boundsChecks != BoundsChecksExplicit && c.boundsChecks != BoundsChecksSignalsBased {
+		return fmt.Errorf("wago: invalid bounds-check mode %d", c.boundsChecks)
+	}
+	return nil
+}
+
+func (c *RuntimeConfig) validateNativeStack() error {
 	if c.nativeStackBytes < MinNativeStackBytes || c.nativeStackBytes > MaxNativeStackBytes {
 		return fmt.Errorf("wago: native stack bytes must be between %d and %d, got %d", MinNativeStackBytes, MaxNativeStackBytes, c.nativeStackBytes)
 	}
 	if c.nativeStackBytes&15 != 0 {
 		return fmt.Errorf("wago: native stack bytes must be 16-byte aligned, got %d", c.nativeStackBytes)
 	}
-	if enabled, present := c.optimizations["stack-fence"]; present && !enabled {
-		return fmt.Errorf("wago: stack-fence is required for bounded native execution")
+	return nil
+}
+
+// ValidateStandaloneExecutionConfig checks the runtime fields used by a
+// generated launcher. The source compiler has already validated codegen policy.
+func ValidateStandaloneExecutionConfig(c *RuntimeConfig) error {
+	if err := c.validateBoundsMode(); err != nil {
+		return err
 	}
-	if !c.trustedOptimizations {
-		for name := range c.optimizations {
-			if !optimization.Exists(runtime.GOARCH, name) {
-				return fmt.Errorf("wago: unknown %s optimization %q", runtime.GOARCH, name)
-			}
-		}
+	if err := c.validateNativeStack(); err != nil {
+		return err
 	}
+	return c.validateExecutionPlatform()
+}
+
+func (c *RuntimeConfig) validateExecutionPlatform() error {
 	if runtime.GOARCH == "amd64" && !hostSupportsSIMD() {
 		return errNativeCPUFeatures
 	}
-	supported := platformCoreFeatures() | railshotStagedTailFeatures(c) | railshotStagedGCFeatures(c)
+	supported := (platformCoreFeatures() | railshotStagedTailFeatures(c) | railshotStagedGCFeatures(c)) & CoreFeatures(buildfeatures.Enabled)
 	if unsupported := c.features &^ supported; unsupported != 0 {
 		return &UnsupportedFeatureError{
 			Requested: unsupported,

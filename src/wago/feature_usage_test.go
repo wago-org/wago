@@ -70,6 +70,27 @@ func TestCompiledStructuralRequiredFeaturesPassiveData(t *testing.T) {
 	}
 }
 
+func TestCompiledStructuralRequiredFeaturesVectorMetadata(t *testing.T) {
+	vectorField := FieldTypeDescriptor{Storage: StorageTypeDescriptor{Value: ValueTypeDescriptor{Kind: ValueTypeV128}}}
+	for name, c := range map[string]*Compiled{
+		"function import": {importFuncSigs: []FuncSig{{Params: []ValType{ValV128}}}},
+		"local function":  {Funcs: []FuncSig{{Results: []ValType{ValV128}}}},
+		"global import":   {GlobalImports: []GlobalImportDef{{Type: ValV128}}},
+		"local global": {
+			Globals:    []GlobalDef{{Type: ValV128, HasValueType: true}},
+			ValueTypes: []ValueTypeDescriptor{{Kind: ValueTypeV128}},
+		},
+		"struct field":  {Types: []DefinedTypeDescriptor{{Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{vectorField}}}},
+		"array element": {Types: []DefinedTypeDescriptor{{Kind: CompositeTypeArray, Array: vectorField}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := compiledStructuralRequiredFeatures(c); !got.IsEnabled(CoreFeatureSIMD) {
+				t.Fatalf("required features = %s, want SIMD", got)
+			}
+		})
+	}
+}
+
 func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
 	var paths []string
 	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {

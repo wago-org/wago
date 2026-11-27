@@ -81,7 +81,7 @@ func rv64ReferenceStartState(t *testing.T, in *Instance, vector bool, result uin
 	} else if readGlobalObject(in.globalCells[4], ValF64) != 0x7ff0000000000042 || readGlobalObject(in.globalCells[1], ValF64) != raw[0] || readGlobalObject(in.globalCells[7], ValF64) != raw[0] {
 		t.Fatal("start raw private/resumed NaN")
 	}
-	if in.constructionIsActive() || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || in.pluginState.Load().railshotInvocation.definedTailOwner != nil {
+	if in.constructionIsActive() || in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || in.pluginState.Load().railshotInvocation.tailForTest().definedOwner != nil {
 		t.Fatal("completed start retained construction/generation")
 	}
 }
@@ -112,7 +112,7 @@ func TestRV64PublicReferenceFunctionDefinedStartSourceArtifact(t *testing.T) {
 								return func(caller Caller, call HostCall) {
 									calls++
 									in := caller.in
-									if !in.constructionIsActive() || in.resourcesClosed || in.invocationState.Load()&instanceInvocationCount == 0 || !rv64ReferenceStartRows(in) || rv64ReferenceImportTailCapability(in) == 0 || in.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+									if !in.constructionIsActive() || in.resourcesClosed || in.invocationState.Load()&instanceInvocationCount == 0 || !rv64ReferenceStartRows(in) || rv64ReferenceImportTailCapability(in) == 0 || in.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil {
 										panic("private start scope/rows/static factory not ready")
 									}
 									if len(call.ParamSlots()) != 1 || len(call.ResultSlots()) != 1 || call.ParamSlots()[0] != 0xfffffffd || caller.Memory()[48] != 7 || caller.Memory()[49] != 42 || caller.Memory()[50] != 0 || readGlobalObject(in.globalCells[0], ValI32) != beforeCounter+1 {
@@ -154,7 +154,7 @@ func TestRV64PublicReferenceFunctionDefinedStartSourceArtifact(t *testing.T) {
 								if err := in.Close(); err != nil {
 									t.Fatal(err)
 								}
-								if !in.resourcesClosed || in.pluginState.Load().railshotInvocation.tailDispatcher != nil {
+								if !in.resourcesClosed || in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil {
 									t.Fatal("start instance did not release static factory")
 								}
 								beforeCounter += 2

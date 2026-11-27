@@ -69,7 +69,7 @@ func (f *integerEmitter) swarFloatConvert(kind uint32) {
 		f.a.Slli(enc.X5, src, 64-conversion.inputWidth-inputPosition%64)
 		f.a.Srli(enc.X5, enc.X5, 64-conversion.inputWidth)
 		if conversion.trunc {
-			f.floatTrunc(conversion.inputWidth == 64, false, conversion.unsigned, true)
+			f.floatTruncSaturating(conversion.inputWidth == 64, false, conversion.unsigned)
 		} else {
 			f.floatConvert(conversion.scalarOp)
 		}

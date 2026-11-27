@@ -211,7 +211,7 @@ func replayStagedGCExternScript(t *testing.T, tmp string, script stagedSpecScrip
 				if c.stagedGCStructProduct() != stagedGCStructExtern {
 					_ = c.Close()
 					counts.Failures++
-					t.Errorf("gc/extern.wast:%d compiled as product %s", cmd.Line, c.stagedGCStructProduct())
+					t.Errorf("gc/extern.wast:%d compiled as product %v", cmd.Line, c.stagedGCStructProduct())
 					continue
 				}
 				in, instantiateErr := instantiateCore(c, InstantiateOptions{})

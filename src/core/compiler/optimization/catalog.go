@@ -12,6 +12,8 @@ package optimization
 import (
 	"fmt"
 	"sync"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // Definition describes one user-configurable compiler optimization.
@@ -19,12 +21,14 @@ import (
 // that backend's knobs.go. Every config and CLI surface is derived from this
 // catalog.
 type Definition struct {
-	Name          string
-	Label         string
-	Description   string
-	Default       bool
-	Experimental  bool
-	Architectures []string
+	Name             string
+	Label            string
+	Description      string
+	Default          bool
+	Experimental     bool
+	Architectures    []string
+	requiredFeatures uint64
+	requiredArch     string
 }
 
 // Info describes one optimization and its selected state.
@@ -44,10 +48,16 @@ type BindingSpec struct {
 	Name     string
 	Value    *bool
 	Inverted bool
+	option   *Option
 }
 
 // Bind creates an ordinary architecture binding.
 func Bind(name string, value *bool) BindingSpec { return BindingSpec{Name: name, Value: value} }
+
+// BindOption binds a process default and resolves its lowering flag together.
+func BindOption(name string, value *bool, option *Option) BindingSpec {
+	return BindingSpec{Name: name, Value: value, option: option}
+}
 
 // BindInverted creates a binding whose implementation boolean disables the
 // optimization when true.
@@ -165,12 +175,15 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 	definitions := ForArch(arch)
 	bindings := &Bindings{
 		arch:     arch,
-		entries:  make([]binding, 0, len(definitions)),
-		before:   make([]bool, len(definitions)),
-		changed:  make([]int, len(definitions)),
+		entries:  make([]binding, 0, len(specs)),
+		before:   make([]bool, len(specs)),
+		changed:  make([]int, len(specs)),
 		revision: 1,
 	}
 	for _, definition := range definitions {
+		if !definition.availableInBuild(arch) {
+			continue
+		}
 		var spec BindingSpec
 		found := false
 		for _, candidate := range specs {
@@ -181,6 +194,10 @@ func NewBindings(arch string, specs ...BindingSpec) *Bindings {
 		}
 		if !found {
 			panic(fmt.Sprintf("%s optimization %q has no backend binding", arch, definition.Name))
+		}
+		if spec.option != nil {
+			index := len(bindings.entries)
+			*spec.option = Option{bindings: bindings, mask: uint64(1) << uint(index%64), word: uint8(index / 64)}
 		}
 		bindings.entries = append(bindings.entries, binding{definition: definition, value: spec.Value, inverted: spec.Inverted})
 	}
@@ -255,7 +272,7 @@ func (b *Bindings) ResolveSnapshot(overrides map[string]bool, _ Snapshot, _ map[
 	// need the name search to report the unknown entry.
 	if matched != len(overrides) {
 		for name := range overrides {
-			if _, ok := b.indexOf(name); !ok {
+			if _, ok := b.indexOf(name); !ok && !omitted(b.arch, name) {
 				return Selection{}, fmt.Errorf("unknown %s optimization %q", b.arch, name)
 			}
 		}
@@ -368,6 +385,9 @@ func (b *Bindings) ApplySnapshot(overrides map[string]bool, snapshot Snapshot, d
 	for name, on := range overrides {
 		index, ok := b.indexOf(name)
 		if !ok {
+			if omitted(b.arch, name) {
+				continue
+			}
 			for index, entry := range b.entries {
 				*entry.value = b.before[index]
 			}
@@ -415,169 +435,183 @@ var (
 	catalogARM64Architectures = []string{"arm64"}
 )
 
-var catalog = []Definition{
-	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
-	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
-	amd64("simd-reduction-borrow", "Read-only vector reductions", "read pinned vector inputs without copying them for bitmasks and any-true reductions"),
-	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
-	amd64("interval-control", "Regional control local cache", "reuse up to two integer local registers within call and control separated stretches"),
-	{Name: "signed-quotient-direct", Label: "Direct signed constant quotient", Description: "keep signed i32 constant quotients in their result register and combine exact product shifts and sign correction", Default: true, Architectures: catalogARM64Architectures},
-	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
-	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
-	both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),
-	both("st-flags", "Flags results", "keep comparison results in the flags register"),
-	amd64("store8-flags", "Byte-store flags", "sink comparison results directly into byte stores"),
-	both("reg-merge", "Register merge", "keep block results in registers across joins"),
-	both("tee-sink", "Tee sinking", "sink local.tee expressions into local registers"),
-	both("unary-sink", "Unary sinking", "sink unary and conversion expressions in place"),
-	arm64("counted-loop-body-align", "Counted loop body alignment", "align the hot target after a countdown loop zero-trip test"),
-	arm64("register-call-borrowed-args", "Borrowed register-call arguments", "stage numeric pinned local arguments and immediate arithmetic without temporary copies"),
-	arm64("three-op-sink", "Three-operand sinking", "sink binary operations into pinned locals"),
-	arm64("olddest-rhs-sink", "Old destination reuse", "reuse an old destination register as the right operand"),
-	both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
-	arm64("conditional-bounds-fallthrough", "Conditional fallthrough bounds certificates", "retain bounds proofs for unchanged locals on conditional fallthrough paths"),
-	arm64("repeated-native-address", "Repeated native address reuse", "reuse identical adjacent native memory-address calculations while preserving access order"),
-	arm64("repeated-store-region", "Repeated store region reuse", "remove repeated proven-identical unshared-memory stores while preserving effects"),
-	arm64("arithmetic-tee-branch", "Arithmetic tee backedge flags", "branch on an assigned arithmetic result using its proven surviving zero flag"),
-	arm64("native-loop-const", "Native loop constant leases", "lease a register with proved dead exits for repeated loop materializations"),
-	arm64("affine-bounds-loop", "Guarded affine scalar memory loops", "check bounded affine streams once while preserving the original arithmetic and checked fallback"),
-	arm64("select-subtract", "Conditional integer subtraction", "share subtraction flags with a select of zero or the subtrahend"),
-	arm64("float-memory-borrow", "Borrow float memory operands", "store read-only float operands directly and load directly into pinned float destinations"),
-	arm64("byte-store-pair", "Adjacent byte stores", "combine two byte stores only when the complete access is proven within the memory minimum"),
-	arm64("store-load-fwd", "Store/load forwarding", "forward native frame stores into later scalar loads"),
-	arm64("memcopy-tail4", "Four-byte memory-copy tails", "finish small dynamic memory copies with one four-byte tail chunk"),
-	arm64("memcopy-qpairs", "Paired vector memory-copy", "copy 32-byte groups with paired 128-bit loads and stores"),
-	arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
-	{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "regional-condition-fusion", Label: "Regional condition fusion", Description: "keep pure branch conditions deferred while writing regional locals to their canonical homes", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: catalogARM64Architectures},
-	arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
-	arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
-	arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
-	arm64("scoped-loop-float-const", "Scoped loop float constants", "cache scalar float constants inside bounded call-free loops"),
-	arm64("fp-literal-pool", "Float literal pool", "load non-immediate scalar float constants from a deduplicated PC-relative pool"),
-	both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
-	arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
-	arm64("entry-param-pairs", "Entry parameter pairs", "pair adjacent serialized wrapper parameter homes in function prologues"),
-	arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
-	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
-	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
-	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
-	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
-	both("callfree-loop-cold-exit", "Call-free loop cold exits", "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge"),
-	arm64("weighted-scalar-merge", "Weighted scalar merges", "reserve the canonical merge register for loop-hot scalar result joins"),
-	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
-	amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
-	experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
-	amd64("avx512-ternary", "AVX-512 ternary SIMD", "fuse adjacent 128-bit vector boolean operations on AVX-512VL hosts"),
-	amd64("avx512-vrotate", "AVX-512 vector rotates", "select packed rotate instructions for exact i32x4 rotate idioms on AVX-512VL hosts"),
-	amd64("callfree-loop-reg-state", "Call-free loop register state", "keep written pinned locals register-resident across simple call-free loop backedges"),
-	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
-	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
-	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
-	both("atomic-notify-empty", "Empty atomic notifications", "bypass the Go notification helper when shared backing has no queued waiters"),
-	both("atomic-wait-zero-timeout", "Immediate atomic waits", "resolve literal zero-timeout shared-memory waits in native code"),
-	both("shared-memory-base", "Shared memory backing cache", "reuse stable shared backing addresses while reading live extents"),
-	arm64("atomic-lse", "LSE atomics", "use native acquire/release atomic RMW and compare-exchange on LSE hosts"),
-	both("atomic-static-bounds", "Constant atomic bounds", "prove aligned constant atomic addresses against the declared memory minimum"),
-	both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
-	both("straight-line-block", "Straight-line blocks", "retain operand residency through bounded fallthrough blocks and fully spliced private callees"),
-	both("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
-	both("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
-	arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),
-	arm64("guarded-div-rem", "Guarded integer division", "reuse an immediately preceding local zero guard for one integer division or remainder"),
-	both("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),
-	both("pure-integer-if-select", "Pure integer if selection", "select bounded nontrapping integer expressions without a structured merge"),
-	arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
-	both("bulk-fill-vector", "Constant vector fills", "broadcast a byte into native vector stores for 16 to 64 byte constant fills"),
-	both("bulk-copy-vector", "Constant vector copies", "load complete 16 to 64 byte source spans before overlap-safe vector stores"),
-	both("bulk-memory-loops", "Wide bulk-memory loops", "align bulk stores and reduce loop overhead with architecture-specific wide groups"),
-	both("bulk-fill-copy-forward", "Filled-source copies", "reuse a proven constant fill for an adjacent unshared copy while retaining both range checks"),
-	both("byte-reduce-loop", "Read-only byte reductions", "guard complete unsigned byte-reduction ranges and lower modular byte sums in native groups"),
-	both("simd-store-load-address", "Adjacent SIMD memory addresses", "reuse an identical pure address expression for a vector store and following real load"),
-	both("simd-load-extract", "SIMD load lane extraction", "load the consumed scalar lane while retaining the original vector access bounds"),
-	both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
-	both("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
-	both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
-	{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
-	arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
-	{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-proven bounded native invocations on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
-	{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
-	both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
-	amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
-	amd64("compact-loop-align32", "Compact loop alignment", "place small loop functions at 32-byte fetch-block boundaries"),
-	amd64("interval-scratch-lease", "Regional scratch leasing", "lend idle RDX to proved straight-line integer local regions"),
-	amd64("interval-r8-lease", "Regional R8 leasing", "lend R8 to signal-bounded straight-line integer regions after excluding fixed-register lowerings"),
-	amd64("interval-i64-weight", "Regional i64 weighting", "price packed 64-bit local reloads more heavily in regional eviction"),
-	both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
-	amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
-	amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
-	{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: catalogARM64Architectures},
-	arm64("layout-padding-skip", "Skip layout padding", "branch over long alignment-preserving padding runs"),
-	arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
-	{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: catalogARM64Architectures},
-	both("borrowed-div-rem", "Read-only division operands", "read concrete pinned integer division and remainder operands without copying"),
-	{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: catalogARM64Architectures},
-	{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: catalogARM64Architectures},
-	arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
-	arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
-	arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),
-	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
-	amd64("direct-int-branch-merge", "Direct integer branch results", "deliver unconditional integer branch results directly to their merge register"),
-	amd64("wide-local-pins", "Bounded wide-function pins", "keep up to two locals per register bank in bounded numeric functions with loops"),
-	amd64("memory-compare-immediate", "Integer memory comparisons", "compare deferred integer loads with constants using the exact access width"),
-	amd64("float-store-borrow", "Read-only floating-point stores", "store pinned scalar floating-point locals and cached constants without scratch copies"),
-	amd64("float-frame-mem", "Float frame operands", "fold scalar frame locals and spills into exact-width SSE or AVX arithmetic"),
-	both("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),
-	amd64("addr-zext-elim", "Memory32 address cleanup", "skip redundant zero-extension of proven-clean memory32 addresses"),
-	amd64("canonical-i32", "Canonical i32 carriers", "reuse canonical regional-local and spill carriers for repeated 32-bit uses"),
-	amd64("commute-fixed-self-update", "Fixed-register self updates", "retain proved-safe fixed-register accumulators across commutative update trees"),
-	both("immutable-table", "Immutable tables", "specialize calls through never-written tables"),
-	both("immutable-table-type", "Immutable table types", "skip redundant immutable-table type checks"),
-	both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
-	both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
-	amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
-	amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
-	amd64("local-slot-order", "Symbolic local slot packing", "move exact referenced local homes into zero-reference compact slots"),
-	amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
-	amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
-	amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
-	arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
-	arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
-	arm64("zero-branch", "Zero branches", "select direct zero-test branches when flags are not live"),
-	arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
-	both("tail-self-loop", "Self-tail loops", "reuse the native frame for eligible direct self-tail transfers"),
-	both("tail-loop-inline", "Tail-loop inlining", "inline bounded numeric tail-call bodies as call-free native loops"),
-	arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
-	arm64("v128-direct-results", "Direct vector results", "write vector results directly into eligible pinned locals"),
-	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
-	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
-	both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks"),
-	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
-	{Name: "reg-abi", Label: "Register ABI", Description: "use Wago's internal register calling convention", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
-	amd64("direct-reference-abi", "Direct reference register ABI", "pass bounded ordinary local reference signatures through registers"),
-	both("inline", "Inlining", "inline eligible callees"),
-	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
-	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
+var (
+	catalogOnce sync.Once
+	catalog     []Definition
+)
+
+func definitions() []Definition {
+	catalogOnce.Do(func() { catalog = newCatalog() })
+	return catalog
+}
+
+func newCatalog() []Definition {
+	definitions := []Definition{
+		both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
+		requiring(buildfeatures.SIMDBit, both("simd-superopt", "simd-superopt", "")),
+		requiring(buildfeatures.SIMDBit, amd64("simd-reduction-borrow", "simd-reduction-borrow", "")),
+		both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
+		amd64("interval-control", "Regional control local cache", "reuse up to two integer local registers within call and control separated stretches"),
+		{Name: "signed-quotient-direct", Label: "Direct signed constant quotient", Description: "keep signed i32 constant quotients in their result register and combine exact product shifts and sign correction", Default: true, Architectures: catalogARM64Architectures},
+		both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
+		both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
+		both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),
+		both("st-flags", "Flags results", "keep comparison results in the flags register"),
+		amd64("store8-flags", "Byte-store flags", "sink comparison results directly into byte stores"),
+		both("reg-merge", "Register merge", "keep block results in registers across joins"),
+		both("tee-sink", "Tee sinking", "sink local.tee expressions into local registers"),
+		both("unary-sink", "Unary sinking", "sink unary and conversion expressions in place"),
+		arm64("counted-loop-body-align", "Counted loop body alignment", "align the hot target after a countdown loop zero-trip test"),
+		arm64("register-call-borrowed-args", "Borrowed register-call arguments", "stage numeric pinned local arguments and immediate arithmetic without temporary copies"),
+		arm64("three-op-sink", "Three-operand sinking", "sink binary operations into pinned locals"),
+		arm64("olddest-rhs-sink", "Old destination reuse", "reuse an old destination register as the right operand"),
+		both("branch-fold", "Branch folding", "fold branch pairs into one conditional branch"),
+		arm64("conditional-bounds-fallthrough", "Conditional fallthrough bounds certificates", "retain bounds proofs for unchanged locals on conditional fallthrough paths"),
+		arm64("repeated-native-address", "Repeated native address reuse", "reuse identical adjacent native memory-address calculations while preserving access order"),
+		arm64("repeated-store-region", "Repeated store region reuse", "remove repeated proven-identical unshared-memory stores while preserving effects"),
+		arm64("arithmetic-tee-branch", "Arithmetic tee backedge flags", "branch on an assigned arithmetic result using its proven surviving zero flag"),
+		arm64("native-loop-const", "Native loop constant leases", "lease a register with proved dead exits for repeated loop materializations"),
+		arm64("affine-bounds-loop", "Guarded affine scalar memory loops", "check bounded affine streams once while preserving the original arithmetic and checked fallback"),
+		arm64("select-subtract", "Conditional integer subtraction", "share subtraction flags with a select of zero or the subtrahend"),
+		arm64("float-memory-borrow", "Borrow float memory operands", "store read-only float operands directly and load directly into pinned float destinations"),
+		arm64("byte-store-pair", "Adjacent byte stores", "combine two byte stores only when the complete access is proven within the memory minimum"),
+		arm64("store-load-fwd", "Store/load forwarding", "forward native frame stores into later scalar loads"),
+		requiring(buildfeatures.BulkMemoryOperationsBit, arm64("memcopy-tail4", "memcopy-tail4", "")),
+		requiring(buildfeatures.BulkMemoryOperationsBit, arm64("memcopy-qpairs", "memcopy-qpairs", "")),
+		arm64("uxtw-add", "Extended adds", "fold zero-extension into ADD UXTW"),
+		{Name: "select-group-guard", Label: "Select group guard", Description: "skip pure update groups when their unchanged mask has no selected bits", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "dot-loop-vector", Label: "Scalar loop vectorization", Description: "vectorize proven integer reductions, min-plus updates and independent floating-point maps with guarded scalar fallback", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "regional-condition-fusion", Label: "Regional condition fusion", Description: "keep pure branch conditions deferred while writing regional locals to their canonical homes", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "pure-reduce-vector", Label: "Pure integer reduction vectorization", Description: "vectorize independent i32 expressions accumulated into i64 sums with exact scalar tails", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "select-sink-pure-guard", Label: "Pure integer select update guard", Description: "skip bounded costly pure work when an integer select keeps its pinned local", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "streaming-i32-reduction", Label: "Streaming i32 product reductions", Description: "reassociate proven wrapping product sums into a concrete streaming accumulator", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "single-negative-move32", Label: "Single-word negative i32 constants", Description: "use one zero-extending W-MOVN for negative constants representable by its 16-bit immediate", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "select-source-read", Label: "Read-only select sink sources", Description: "borrow protected integer select sources and share large constants with their comparison", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "crowded-products", Label: "Crowded integer product scheduling", Description: "finish bounded pure products after pending effects to reduce live operand factors", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "guarded-test-ccmp", Label: "Guarded bit test conditional compare", Description: "combine adjacent short-circuit bit tests when both continuations overwrite flags", Default: true, Architectures: catalogARM64Architectures},
+		arm64("inverted-logical", "Inverted logical operands", "fold integer bitwise complements into logical register operations"),
+		arm64("shifted-register-alu", "Shifted-register ALU", "fold constant shifts into integer ALU operands"),
+		arm64("fp-immediate-const", "Float immediates", "materialize exact AArch64 floating-point immediates directly"),
+		arm64("scoped-loop-float-const", "Scoped loop float constants", "cache scalar float constants inside bounded call-free loops"),
+		arm64("fp-literal-pool", "Float literal pool", "load non-immediate scalar float constants from a deduplicated PC-relative pool"),
+		both("value-facts", "Value facts", "propagate bounded upper-zero and boolean provenance"),
+		arm64("load-pair", "Adjacent load pairs", "combine adjacent full-width scalar loads from one local address into LDP"),
+		arm64("entry-param-pairs", "Entry parameter pairs", "pair adjacent serialized wrapper parameter homes in function prologues"),
+		arm64("entry-zero-pairs", "Entry zero pairs", "pair adjacent declared-local zero stores in function prologues"),
+		both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
+		arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
+		both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
+		arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
+		both("callfree-loop-cold-exit", "Call-free loop cold exits", "move local reconciliation from a call-free loop's hot conditional fall-through to its taken exit edge"),
+		arm64("weighted-scalar-merge", "Weighted scalar merges", "reserve the canonical merge register for loop-hot scalar result joins"),
+		amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),
+		amd64("assoc-tree", "Associative tree cover", "cover high-pressure bounded associative trees with one accumulator"),
+		experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
+		requiring(buildfeatures.SIMDBit, amd64("avx512-ternary", "avx512-ternary", "")),
+		requiring(buildfeatures.SIMDBit, amd64("avx512-vrotate", "avx512-vrotate", "")),
+		amd64("callfree-loop-reg-state", "Call-free loop register state", "keep written pinned locals register-resident across simple call-free loop backedges"),
+		arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
+		arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
+		arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
+		requiring(buildfeatures.ThreadsBit, both("atomic-notify-empty", "atomic-notify-empty", "")),
+		requiring(buildfeatures.ThreadsBit, both("atomic-wait-zero-timeout", "atomic-wait-zero-timeout", "")),
+		requiring(buildfeatures.ThreadsBit, both("shared-memory-base", "shared-memory-base", "")),
+		requiring(buildfeatures.ThreadsBit, arm64("atomic-lse", "atomic-lse", "")),
+		requiring(buildfeatures.ThreadsBit, both("atomic-static-bounds", "atomic-static-bounds", "")),
+		both("counted-loop-latch", "Counted loop latch", "fold exact top-tested i32 countdown loops into an architecture-safe latch"),
+		both("straight-line-block", "Straight-line blocks", "retain operand residency through bounded fallthrough blocks and fully spliced private callees"),
+		both("loop-local-params", "Loop parameter locals", "transfer bounded integer loop parameters directly into pinned local homes"),
+		both("scalar-loop-unroll", "Scalar loop unrolling", "replicate bounded register-only integer loops and streamline short pinned-local loop backedges"),
+		arm64("cold-tuple-loop-exit", "Cold integer tuple loop exits", "defer local-only tuple exit arms so loop continuations fall through"),
+		arm64("guarded-div-rem", "Guarded integer division", "reuse an immediately preceding local zero guard for one integer division or remainder"),
+		both("tuple-if-select", "Integer pair selection", "select pinned integer pair operands without a structured merge"),
+		both("pure-integer-if-select", "Pure integer if selection", "select bounded nontrapping integer expressions without a structured merge"),
+		arm64("inline-integer-tuples", "Integer tuple inlining", "inline bounded numeric tuple leaves with structured control and private local homes"),
+		requiring(buildfeatures.BulkMemoryOperationsBit, both("bulk-fill-vector", "bulk-fill-vector", "")),
+		requiring(buildfeatures.BulkMemoryOperationsBit, both("bulk-copy-vector", "bulk-copy-vector", "")),
+		requiring(buildfeatures.BulkMemoryOperationsBit, both("bulk-memory-loops", "bulk-memory-loops", "")),
+		requiring(buildfeatures.BulkMemoryOperationsBit, both("bulk-fill-copy-forward", "bulk-fill-copy-forward", "")),
+		both("byte-reduce-loop", "Read-only byte reductions", "guard complete unsigned byte-reduction ranges and lower modular byte sums in native groups"),
+		requiring(buildfeatures.SIMDBit, both("simd-store-load-address", "simd-store-load-address", "")),
+		requiring(buildfeatures.SIMDBit, both("simd-load-extract", "simd-load-extract", "")),
+		both("memory-min-bounds", "Declared minimum memory bounds", "prove bounded integer address expressions fit the selected memory minimum"),
+		both("linear-integer-tree", "Repeated integer linear terms", "collect repeated pure local terms in bounded wrapping i32 expressions"),
+		both("linear-sum-loop", "Linear sum loops", "hoist bounds and split exact i64 memory reductions across four accumulators"),
+		{Name: "prepared-direct-entry", Label: "Direct prepared entry", Description: "enter compiler-proved integer functions through the register ABI", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+		arm64("prepared-light-entry", "Light prepared entry", "use caller-clobber proofs to select a smaller native entry thunk"),
+		{Name: "prepared-bounded-entry", Label: "Bounded prepared entry", Description: "keep compiler-proven bounded native invocations on the Go scheduler", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+		{Name: "native-leaf-host", Label: "Native scalar host leaves", Description: "lower proven pure Go scalar callbacks into native import trampolines", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+		both("direct-go-host-import", "Direct Go host imports", "bypass cross-instance marshaling for bound Go imports in bounded numeric functions"),
+		amd64("wide-loop-int-const", "Wide loop integer constants", "keep repeatedly materialized non-imm32 i64 loop constants in otherwise-idle registers"),
+		amd64("compact-loop-align32", "Compact loop alignment", "place small loop functions at 32-byte fetch-block boundaries"),
+		amd64("interval-scratch-lease", "Regional scratch leasing", "lend idle RDX to proved straight-line integer local regions"),
+		amd64("interval-r8-lease", "Regional R8 leasing", "lend R8 to signal-bounded straight-line integer regions after excluding fixed-register lowerings"),
+		amd64("interval-i64-weight", "Regional i64 weighting", "price packed 64-bit local reloads more heavily in regional eviction"),
+		both("interval-next-use", "Regional next-use eviction", "use a compact local-event tape to evict the farthest local version and elide dead stores"),
+		amd64("memsize-regional-lease", "Regional memory-size leasing", "lend the memory-size register to proved straight-line local regions"),
+		amd64("module-global-regional-lease", "Regional module-global leasing", "lend an unreferenced module-global register to proved straight-line local regions"),
+		{Name: "loop-memory-base", Label: "Loop memory page bases", Description: "hoist repeated linear-memory page bases into idle loop-constant registers", Default: true, Architectures: catalogARM64Architectures},
+		arm64("layout-padding-skip", "Skip layout padding", "branch over long alignment-preserving padding runs"),
+		arm64("loop-int-const", "Loop integer constants", "keep costly loop-invariant integer constants in otherwise-idle registers"),
+		{Name: "interval-call-regions", Label: "Local regions around calls", Description: "cache local integer values in bounded regions that canonicalize before calls and fixed-scratch helpers", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "scoped-loop-int-const", Label: "Scoped loop integer constants", Description: "lease invariant integer constants only inside proven call-free loops, including functions that call elsewhere", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "wide-reuse-pins", Label: "Wide repeated local pins", Description: "retain bounded integer locals whose loop-weighted reads exceed definitions", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "regional-memory-read", Label: "Regional memory address reads", Description: "borrow immediate regional memory addresses while pinning their leases against eviction", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "br-table-branch-vector", Label: "Branch table vectors", Description: "dispatch small unique zero-argument tables directly through executable branches", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "bounded-branch-index", Label: "Bounded branch indices", Description: "omit branch-vector bounds tests for direct i32 masks and constants proved in range", Default: true, Architectures: catalogARM64Architectures},
+		both("borrowed-div-rem", "Read-only division operands", "read concrete pinned integer division and remainder operands without copying"),
+		{Name: "bounded-signed-quotient", Label: "Bounded signed quotient", Description: "skip exact i32 division when a subsequent signed clamp saturates", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "taken-zero-branch", Label: "Known zero branch targets", Description: "thread direct zero branches through tests implied by their taken edge", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "common-exit-compare", Label: "Common-exit compares", Description: "combine consecutive integer comparison branches sharing an exit", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "guarded-boolean-xor", Label: "Guarded boolean XOR", Description: "if-convert pure bounded integer boolean XOR regions after exact clobber proofs", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "cset-lineage", Label: "Boolean comparison flags", Description: "reuse unchanged flags through exact CSET boolean copies for bounded integer selects", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "integer-select-local-read", Label: "Integer select local reads", Description: "borrow protected integer operands for materialized local select sinks", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "dominated-indexed-base", Label: "Dominated indexed addresses", Description: "reuse indexed addresses through proven bounded direct branch regions", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "dominated-indexed-key", Label: "Equivalent indexed addresses", Description: "merge bounded address facts by their exact register inputs", Default: true, Architectures: catalogARM64Architectures},
+		{Name: "ordinary-shifted-immediate", Label: "Shifted integer displacements", Description: "use exact shifted immediates for read-only ordinary displacement arithmetic", Default: true, Architectures: catalogARM64Architectures},
+		arm64("indexed-base-reuse", "Adjacent indexed base reuse", "reuse an unchanged base-plus-index address across adjacent memory accesses"),
+		arm64("convert-read", "Direct conversion reads", "read pinned integer conversion inputs without a temporary copy"),
+		arm64("cold-call-local-pins", "Cold-call local pins", "pin hot locals when every direct local call is outside loops"),
+		amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
+		amd64("direct-int-branch-merge", "Direct integer branch results", "deliver unconditional integer branch results directly to their merge register"),
+		amd64("wide-local-pins", "Bounded wide-function pins", "keep up to two locals per register bank in bounded numeric functions with loops"),
+		amd64("memory-compare-immediate", "Integer memory comparisons", "compare deferred integer loads with constants using the exact access width"),
+		amd64("float-store-borrow", "Read-only floating-point stores", "store pinned scalar floating-point locals and cached constants without scratch copies"),
+		amd64("float-frame-mem", "Float frame operands", "fold scalar frame locals and spills into exact-width SSE or AVX arithmetic"),
+		both("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),
+		amd64("addr-zext-elim", "Memory32 address cleanup", "skip redundant zero-extension of proven-clean memory32 addresses"),
+		amd64("canonical-i32", "Canonical i32 carriers", "reuse canonical regional-local and spill carriers for repeated 32-bit uses"),
+		amd64("commute-fixed-self-update", "Fixed-register self updates", "retain proved-safe fixed-register accumulators across commutative update trees"),
+		both("immutable-table", "Immutable tables", "specialize calls through never-written tables"),
+		both("immutable-table-type", "Immutable table types", "skip redundant immutable-table type checks"),
+		both("inline-callfree", "Call-free inline hints", "prioritize call-free functions for inlining"),
+		both("store-forward", "Store forwarding", "forward straight-line stores into loads"),
+		amd64("frame-elide", "Frame elision", "omit frames for small single-result functions"),
+		amd64("compact-i32-frame", "Compact i32 frames", "pack i32 locals in straight-line call-free functions"),
+		amd64("local-slot-order", "Symbolic local slot packing", "move exact referenced local homes into zero-reference compact slots"),
+		amd64("commute-self-update", "Commute self-updates", "make non-fixed destinations accumulate commutative self-update expressions in place"),
+		amd64("i64-mask32", "Low-32 mask lowering", "lower i64 low-32 masks to zero-extending 32-bit ANDs"),
+		amd64("accumulator-immediate", "Accumulator immediates", "use ModRM-free RAX/EAX imm32 encodings in size objectives"),
+		arm64("frame-elide-reghomed", "Register-homed frames", "omit frames when locals remain in registers"),
+		arm64("small-frame", "Small frames", "use compact stack adjustment forms"),
+		arm64("zero-branch", "Zero branches", "select direct zero-test branches when flags are not live"),
+		arm64("mul-add-fuse", "Multiply-add fusion", "fuse multiply-add and multiply-subtract expressions"),
+		requiring(buildfeatures.TailCallBit, both("tail-self-loop", "tail-self-loop", "")),
+		requiring(buildfeatures.TailCallBit, both("tail-loop-inline", "tail-loop-inline", "")),
+		arm64("entry-init-elision", "Entry initialization elision", "skip initialization of locals overwritten before their first read"),
+		requiring(buildfeatures.SIMDBit, arm64("v128-direct-results", "v128-direct-results", "")),
+		requiring(buildfeatures.GCBit, amd64("dead-gc-new", "dead-gc-new", "")),
+		requiring(buildfeatures.GCBit, amd64("gc-native-alloc", "gc-native-alloc", "")),
+		requiringOn("arm64", buildfeatures.SIMDBit, both("v128-const-cache", "Vector constant cache", "reserve repeated vector constants and target-specific masks")),
+		requiring(buildfeatures.SIMDBit, both("v128-pins", "v128-pins", "")),
+		{Name: "reg-abi", Label: "Register ABI", Description: "use Wago's internal register calling convention", Default: true, Architectures: []string{"amd64", "arm64", "riscv64"}},
+		requiring(buildfeatures.ReferenceTypesBit, amd64("direct-reference-abi", "direct-reference-abi", "")),
+		both("inline", "Inlining", "inline eligible callees"),
+		both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
+		both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
+	}
+	addProposalDescriptions(definitions)
+	return definitions
 }
 
 func both(name, label, description string) Definition {
@@ -596,8 +630,37 @@ func experimentalAMD64(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: catalogAMD64Architectures}
 }
 
+func requiring(features uint64, definition Definition) Definition {
+	definition.requiredFeatures = features
+	return definition
+}
+
+func requiringOn(arch string, features uint64, definition Definition) Definition {
+	definition.requiredArch = arch
+	return requiring(features, definition)
+}
+
+func (definition Definition) availableInBuild(arch string) bool {
+	return definition.requiredArch != "" && definition.requiredArch != arch || definition.requiredFeatures&^buildfeatures.Enabled == 0
+}
+
+// omitted reports whether the target recognizes a portable optimization whose
+// implementation was excluded from this build.
+func omitted(arch, name string) bool {
+	if !buildfeatures.Custom {
+		return false
+	}
+	for _, definition := range definitions() {
+		if definition.Name == name && supports(definition, arch) {
+			return !definition.availableInBuild(arch)
+		}
+	}
+	return false
+}
+
 // ForArch returns every optimization registered for arch in catalog order.
 func ForArch(arch string) []Definition {
+	catalog := definitions()
 	result := make([]Definition, 0, len(catalog))
 	for _, definition := range catalog {
 		if supports(definition, arch) {
@@ -609,6 +672,7 @@ func ForArch(arch string) []Definition {
 
 // All returns every registered optimization once in catalog order.
 func All() []Definition {
+	catalog := definitions()
 	result := make([]Definition, len(catalog))
 	for index, definition := range catalog {
 		result[index] = clone(definition)
@@ -621,6 +685,10 @@ func InfosForArch(arch string) []Info {
 	definitions := ForArch(arch)
 	result := make([]Info, len(definitions))
 	for index, definition := range definitions {
+		if !definition.availableInBuild(arch) {
+			definition.Label = definition.Name
+			definition.Description = ""
+		}
 		result[index] = info(definition, definition.Default)
 	}
 	return result
@@ -638,7 +706,7 @@ func Infos() []Info {
 
 // Lookup returns a registered optimization for arch.
 func Lookup(arch, name string) (Definition, bool) {
-	for _, definition := range catalog {
+	for _, definition := range definitions() {
 		if definition.Name == name && supports(definition, arch) {
 			return clone(definition), true
 		}
@@ -649,7 +717,7 @@ func Lookup(arch, name string) (Definition, bool) {
 // Exists reports whether name is registered for arch without copying the
 // public Definition's mutable architecture slice.
 func Exists(arch, name string) bool {
-	for _, definition := range catalog {
+	for _, definition := range definitions() {
 		if definition.Name == name && supports(definition, arch) {
 			return true
 		}

@@ -10,150 +10,180 @@
 package arm64
 
 import (
+	"os"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 )
 
 // The binding inventory is checked against the arm64 Optimization Definitions
 // during package initialization. Public sense is always "on = enabled".
-var optimizationBindings = optimization.NewBindings("arm64",
-	optimization.Bind("layout-padding-skip", &layoutPaddingSkipEnabled),
-	optimization.Bind("atomic-wait-zero-timeout", &atomicZeroWaitEnabled),
-	optimization.Bind("atomic-notify-empty", &atomicNotifyEmptyEnabled),
-	optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
-	optimization.Bind("atomic-static-bounds", &atomicStaticBoundsEnabled),
-	optimization.Bind("shared-memory-base", &sharedMemoryBaseEnabled),
-	optimization.Bind("atomic-lse", &atomicLSEEnabled),
-	optimization.Bind("bounds-facts", &boundsFactsEnabled),
-	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
-	optimization.Bind("simd-load-extract", &simdLoadExtractEnabled),
-	optimization.Bind("simd-store-load-address", &simdStoreLoadAddressEnabled),
-	optimization.Bind("bulk-fill-vector", &bulkFillVectorEnabled),
-	optimization.Bind("bulk-copy-vector", &bulkCopyVectorEnabled),
-	optimization.Bind("bulk-memory-loops", &bulkMemoryLoopsEnabled),
-	optimization.Bind("bulk-fill-copy-forward", &bulkFillCopyForwardEnabled),
-	optimization.Bind("byte-reduce-loop", &byteReduceLoopEnabled),
-	optimization.Bind("straight-line-block", &straightLineBlockEnabled),
-	optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
-	optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
-	optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
-	optimization.Bind("pure-integer-if-select", &pureIntegerIfSelectEnabled),
-	optimization.Bind("guarded-div-rem", &guardedDivRemEnabled),
-	optimization.Bind("cold-tuple-loop-exit", &coldTupleLoopExitEnabled),
-	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
-	optimization.Bind("interval-next-use", &intervalNextUseEnabled),
-	optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
-	optimization.Bind("interval-call-regions", &intervalCallRegionsEnabled),
-	optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
-	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
-	optimization.Bind("conditional-bounds-fallthrough", &conditionalBoundsEnabled),
-	optimization.Bind("repeated-native-address", &repeatedNativeAddressEnabled),
-	optimization.Bind("repeated-store-region", &repeatedStoreRegionEnabled),
-	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
-	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
-	optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
-	optimization.Bind("prepared-light-entry", &preparedLightEntryEnabled),
-	optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
-	optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
-	optimization.Bind("direct-go-host-import", &directGoImportEnabled),
-	optimization.Bind("loop-int-const", &loopIntConstEnabled),
-	optimization.Bind("scoped-loop-int-const", &scopedLoopConstsEnabled),
-	optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
-	optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
-	optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
-	optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
-	optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
-	optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
-	optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
-	optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
-	optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
-	optimization.Bind("cset-lineage", &csetLineageEnabled),
-	optimization.Bind("guarded-boolean-xor", &guardedBooleanXorEnabled),
-	optimization.Bind("integer-select-local-read", &integerSelectLocalReadEnabled),
-	optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
-	optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
-	optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
-	optimization.Bind("bounded-branch-index", &boundedBranchIndexEnabled),
-	optimization.Bind("convert-read", &convertReadEnabled),
-	optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
-	optimization.Bind("magic-div", &magicDivEnabled),
-	optimization.Bind("signed-quotient-direct", &signedQuotientDirectEnabled),
-	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
-	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
-	optimization.Bind("st-flags", &stFlagsEnabled),
-	optimization.Bind("reg-merge", &regMergeEnabled),
-	optimization.Bind("register-call-borrowed-args", &borrowedRegisterArgsEnabled),
-	optimization.Bind("tee-sink", &teeLocalSinkEnabled),
-	optimization.Bind("unary-sink", &unaryLocalSinkEnabled),
-	optimization.Bind("three-op-sink", &threeOperandSinkEnabled),
-	optimization.Bind("olddest-rhs-sink", &oldDestRHSSinkEnabled),
-	optimization.Bind("branch-fold", &branchFoldEnabled),
-	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
-	optimization.Bind("byte-store-pair", &byteStorePairEnabled),
-	optimization.Bind("float-memory-borrow", &floatMemoryBorrowEnabled),
-	optimization.Bind("select-subtract", &selectSubtractEnabled),
-	optimization.Bind("affine-bounds-loop", &affineBoundsLoopEnabled),
-	optimization.Bind("native-loop-const", &nativeLoopConstEnabled),
-	optimization.Bind("arithmetic-tee-branch", &arithmeticTeeBranchEnabled),
-	optimization.Bind("memcopy-tail4", &memcopyTail4Enabled),
-	optimization.Bind("memcopy-qpairs", &memcopyQPairsEnabled),
-	optimization.Bind("uxtw-add", &uxtwAddEnabled),
-	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
-	optimization.Bind("inverted-logical", &invertedLogicalEnabled),
-	optimization.Bind("select-group-guard", &selectGroupEnabled),
-	optimization.Bind("dot-loop-vector", &dotLoopEnabled),
-	optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
-	optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
-	optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
-	optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
-	optimization.Bind("crowded-products", &crowdedProductsEnabled),
-	optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
-	optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
-	optimization.Bind("select-source-read", &selectSourceReadEnabled),
-	optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
-	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
-	optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
-	optimization.Bind("value-facts", &valueFactsEnabled),
-	optimization.Bind("load-pair", &loadPairEnabled),
-	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
-	optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
-	optimization.Bind("counted-loop-body-align", &countedLoopBodyAlignEnabled),
-	optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
-	optimization.Bind("weighted-scalar-merge", &weightedScalarMergeEnabled),
-	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
-	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
-	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
-	optimization.Bind("x8-pin", &callFreeX8PinEnabled),
-	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
-	optimization.Bind("leaf-scratch-pins", &leafScratchPinsEnabled),
-	optimization.Bind("immutable-table", &immutableLocalTableEnabled),
-	optimization.Bind("immutable-table-type", &immutableTableTypeEnabled),
-	optimization.Bind("inline-callfree", &inlineCallFreeHintsEnabled),
-	optimization.Bind("store-forward", &linearStoreForwardEnabled),
-	optimization.Bind("frame-elide-reghomed", &frameElideRegHomed),
-	optimization.Bind("small-frame", &smallFrameAdjustEnabled),
-	optimization.Bind("zero-branch", &zeroBranchEnabled),
-	optimization.Bind("mul-add-fuse", &mulAddFuseEnabled),
-	optimization.Bind("entry-init-elision", &entryInitElisionEnabled),
-	optimization.Bind("v128-direct-results", &v128DirectResultEnabled),
-	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
-	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
-	optimization.Bind("tail-self-loop", &tailSelfLoopEnabled),
-	optimization.Bind("tail-loop-inline", &tailLoopInlineEnabled),
-	optimization.Bind("reg-abi", &regABIEnabled),
-	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("inline-integer-tuples", &inlineIntegerTuplesEnabled),
-	optimization.BindInverted("stack-fence", &noStackFence),
-	optimization.BindInverted("stack-reg", &noStackReg),
-)
+var optimizationBindings = newOptimizationBindings()
+
+func newOptimizationBindings() *optimization.Bindings {
+	specs := []optimization.BindingSpec{
+		optimization.Bind("layout-padding-skip", &layoutPaddingSkipEnabled),
+		optimization.Bind("memory-min-bounds", &memoryMinimumBoundsEnabled),
+		optimization.Bind("bounds-facts", &boundsFactsEnabled),
+		optimization.Bind("byte-reduce-loop", &byteReduceLoopEnabled),
+		optimization.Bind("straight-line-block", &straightLineBlockEnabled),
+		optimization.Bind("loop-local-params", &loopLocalParamsEnabled),
+		optimization.Bind("scalar-loop-unroll", &scalarLoopUnrollEnabled),
+		optimization.Bind("tuple-if-select", &tupleIfSelectEnabled),
+		optimization.Bind("pure-integer-if-select", &pureIntegerIfSelectEnabled),
+		optimization.Bind("guarded-div-rem", &guardedDivRemEnabled),
+		optimization.Bind("cold-tuple-loop-exit", &coldTupleLoopExitEnabled),
+		optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
+		optimization.Bind("interval-next-use", &intervalNextUseEnabled),
+		optimization.Bind("regional-memory-read", &regionalMemoryReadEnabled),
+		optimization.Bind("interval-call-regions", &intervalCallRegionsEnabled),
+		optimization.Bind("linear-sum-loop", &linearSumLoopEnabled),
+		optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
+		optimization.Bind("conditional-bounds-fallthrough", &conditionalBoundsEnabled),
+		optimization.Bind("repeated-native-address", &repeatedNativeAddressEnabled),
+		optimization.Bind("repeated-store-region", &repeatedStoreRegionEnabled),
+		optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
+		optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
+		optimization.Bind("prepared-direct-entry", &preparedDirectEntryEnabled),
+		optimization.Bind("prepared-light-entry", &preparedLightEntryEnabled),
+		optimization.Bind("prepared-bounded-entry", &preparedBoundedEntryEnabled),
+		optimization.Bind("native-leaf-host", &nativeLeafHostEnabled),
+		optimization.Bind("direct-go-host-import", &directGoImportEnabled),
+		optimization.Bind("loop-int-const", &loopIntConstEnabled),
+		optimization.Bind("scoped-loop-int-const", &scopedLoopConstsEnabled),
+		optimization.Bind("scoped-loop-float-const", &scopedLoopFloatConstsEnabled),
+		optimization.Bind("loop-memory-base", &loopMemoryBaseEnabled),
+		optimization.Bind("indexed-base-reuse", &indexedBaseReuseEnabled),
+		optimization.Bind("linear-integer-tree", &linearIntegerTreeEnabled),
+		optimization.Bind("dominated-indexed-base", &dominatedIndexedBaseEnabled),
+		optimization.Bind("dominated-indexed-key", &dominatedIndexedKeyEnabled),
+		optimization.Bind("ordinary-shifted-immediate", &ordinaryShiftedImmediateEnabled),
+		optimization.Bind("common-exit-compare", &commonExitCompareEnabled),
+		optimization.Bind("taken-zero-branch", &takenZeroBranchEnabled),
+		optimization.Bind("cset-lineage", &csetLineageEnabled),
+		optimization.Bind("guarded-boolean-xor", &guardedBooleanXorEnabled),
+		optimization.Bind("integer-select-local-read", &integerSelectLocalReadEnabled),
+		optimization.Bind("borrowed-div-rem", &borrowedDivRemEnabled),
+		optimization.Bind("bounded-signed-quotient", &boundedSignedQuotientEnabled),
+		optimization.Bind("br-table-branch-vector", &brTableBranchVectorEnabled),
+		optimization.Bind("bounded-branch-index", &boundedBranchIndexEnabled),
+		optimization.Bind("convert-read", &convertReadEnabled),
+		optimization.Bind("cold-call-local-pins", &coldCallLocalPinsEnabled),
+		optimization.Bind("magic-div", &magicDivEnabled),
+		optimization.Bind("signed-quotient-direct", &signedQuotientDirectEnabled),
+		optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
+		optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
+		optimization.Bind("st-flags", &stFlagsEnabled),
+		optimization.Bind("reg-merge", &regMergeEnabled),
+		optimization.Bind("register-call-borrowed-args", &borrowedRegisterArgsEnabled),
+		optimization.Bind("tee-sink", &teeLocalSinkEnabled),
+		optimization.Bind("unary-sink", &unaryLocalSinkEnabled),
+		optimization.Bind("three-op-sink", &threeOperandSinkEnabled),
+		optimization.Bind("olddest-rhs-sink", &oldDestRHSSinkEnabled),
+		optimization.Bind("branch-fold", &branchFoldEnabled),
+		optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
+		optimization.Bind("byte-store-pair", &byteStorePairEnabled),
+		optimization.Bind("float-memory-borrow", &floatMemoryBorrowEnabled),
+		optimization.Bind("select-subtract", &selectSubtractEnabled),
+		optimization.Bind("affine-bounds-loop", &affineBoundsLoopEnabled),
+		optimization.Bind("native-loop-const", &nativeLoopConstEnabled),
+		optimization.Bind("arithmetic-tee-branch", &arithmeticTeeBranchEnabled),
+		optimization.Bind("uxtw-add", &uxtwAddEnabled),
+		optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
+		optimization.Bind("inverted-logical", &invertedLogicalEnabled),
+		optimization.Bind("select-group-guard", &selectGroupEnabled),
+		optimization.Bind("dot-loop-vector", &dotLoopEnabled),
+		optimization.Bind("regional-condition-fusion", &regionalConditionFusionEnabled),
+		optimization.Bind("pure-reduce-vector", &pureReduceEnabled),
+		optimization.Bind("wide-reuse-pins", &wideReusePinsEnabled),
+		optimization.Bind("guarded-test-ccmp", &guardedTestCCMPEnabled),
+		optimization.Bind("crowded-products", &crowdedProductsEnabled),
+		optimization.Bind("streaming-i32-reduction", &streamReduceEnabled),
+		optimization.Bind("single-negative-move32", &singleNegativeMove32Enabled),
+		optimization.Bind("select-source-read", &selectSourceReadEnabled),
+		optimization.Bind("select-sink-pure-guard", &selectSinkPureGuardEnabled),
+		optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
+		optimization.Bind("fp-literal-pool", &floatLiteralPoolEnabled),
+		optimization.Bind("value-facts", &valueFactsEnabled),
+		optimization.Bind("load-pair", &loadPairEnabled),
+		optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+		optimization.Bind("counted-loop-latch", &countedLoopLatchEnabled),
+		optimization.Bind("counted-loop-body-align", &countedLoopBodyAlignEnabled),
+		optimization.Bind("callfree-loop-cold-exit", &callFreeLoopColdExitEnabled),
+		optimization.Bind("weighted-scalar-merge", &weightedScalarMergeEnabled),
+		optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
+		optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
+		optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
+		optimization.Bind("x8-pin", &callFreeX8PinEnabled),
+		optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
+		optimization.Bind("leaf-scratch-pins", &leafScratchPinsEnabled),
+		optimization.Bind("immutable-table", &immutableLocalTableEnabled),
+		optimization.Bind("immutable-table-type", &immutableTableTypeEnabled),
+		optimization.Bind("inline-callfree", &inlineCallFreeHintsEnabled),
+		optimization.Bind("store-forward", &linearStoreForwardEnabled),
+		optimization.Bind("frame-elide-reghomed", &frameElideRegHomed),
+		optimization.Bind("small-frame", &smallFrameAdjustEnabled),
+		optimization.Bind("zero-branch", &zeroBranchEnabled),
+		optimization.Bind("mul-add-fuse", &mulAddFuseEnabled),
+		optimization.Bind("entry-init-elision", &entryInitElisionEnabled),
+		optimization.Bind("reg-abi", &regABIEnabled),
+		optimization.Bind("inline", &inlineEnabled),
+		optimization.Bind("inline-integer-tuples", &inlineIntegerTuplesEnabled),
+		optimization.BindInverted("stack-fence", &noStackFence),
+		optimization.BindInverted("stack-reg", &noStackReg),
+	}
+	if buildfeatures.SIMD != 0 {
+		v128ConstCacheEnabled = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
+		simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
+		v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
+		v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
+		specs = append(specs,
+			optimization.BindOption("v128-const-cache", &v128ConstCacheEnabled, &optV128ConstCache),
+			optimization.BindOption("simd-superopt", &simdSuperoptEnabled, &optSIMDSuperopt),
+			optimization.BindOption("simd-load-extract", &simdLoadExtractEnabled, &optSIMDLoadExtract),
+			optimization.BindOption("simd-store-load-address", &simdStoreLoadAddressEnabled, &optSIMDStoreLoadAddress),
+			optimization.BindOption("v128-direct-results", &v128DirectResultEnabled, &optV128DirectResults),
+			optimization.BindOption("v128-pins", &v128LocalPinsEnabled, &optV128Pins),
+		)
+	}
+	if buildfeatures.Threads != 0 {
+		specs = append(specs,
+			optimization.BindOption("atomic-wait-zero-timeout", &atomicZeroWaitEnabled, &optAtomicZeroWait),
+			optimization.BindOption("atomic-notify-empty", &atomicNotifyEmptyEnabled, &optAtomicNotifyEmpty),
+			optimization.BindOption("atomic-static-bounds", &atomicStaticBoundsEnabled, &optAtomicStaticBounds),
+			optimization.BindOption("shared-memory-base", &sharedMemoryBaseEnabled, &optSharedMemoryBase),
+			optimization.BindOption("atomic-lse", &atomicLSEEnabled, &optAtomicLSE),
+		)
+	}
+	if buildfeatures.BulkMemoryOperations != 0 {
+		memcopyTail4Enabled = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
+		memcopyQPairsEnabled = os.Getenv("WAGO_ARM64_NO_MEMCOPY_QPAIRS") != "1"
+		specs = append(specs,
+			optimization.BindOption("bulk-fill-vector", &bulkFillVectorEnabled, &optBulkFillVector),
+			optimization.BindOption("bulk-copy-vector", &bulkCopyVectorEnabled, &optBulkCopyVector),
+			optimization.BindOption("bulk-memory-loops", &bulkMemoryLoopsEnabled, &optBulkMemoryLoops),
+			optimization.BindOption("bulk-fill-copy-forward", &bulkFillCopyForwardEnabled, &optBulkFillCopyForward),
+			optimization.BindOption("memcopy-tail4", &memcopyTail4Enabled, &optMemcopyTail4),
+			optimization.BindOption("memcopy-qpairs", &memcopyQPairsEnabled, &optMemcopyQPairs),
+		)
+	}
+	if buildfeatures.TailCall != 0 {
+		specs = append(specs,
+			optimization.BindOption("tail-self-loop", &tailSelfLoopEnabled, &optTailSelfLoop),
+			optimization.BindOption("tail-loop-inline", &tailLoopInlineEnabled, &optTailLoopInline),
+		)
+	}
+	return optimization.NewBindings("arm64", specs...)
+}
 
 var (
 	optMemoryMinimumBounds     = optimizationBindings.Option("memory-min-bounds")
-	optAtomicNotifyEmpty       = optimizationBindings.Option("atomic-notify-empty")
-	optAtomicStaticBounds      = optimizationBindings.Option("atomic-static-bounds")
-	optAtomicZeroWait          = optimizationBindings.Option("atomic-wait-zero-timeout")
-	optSharedMemoryBase        = optimizationBindings.Option("shared-memory-base")
-	optAtomicLSE               = optimizationBindings.Option("atomic-lse")
+	optAtomicNotifyEmpty       optimization.Option
+	optAtomicStaticBounds      optimization.Option
+	optAtomicZeroWait          optimization.Option
+	optSharedMemoryBase        optimization.Option
+	optAtomicLSE               optimization.Option
 	optBoundsFacts             = optimizationBindings.Option("bounds-facts")
 	optStraightLineBlock       = optimizationBindings.Option("straight-line-block")
 	optLoopLocalParams         = optimizationBindings.Option("loop-local-params")
@@ -162,10 +192,10 @@ var (
 	optPureIntegerIfSelect     = optimizationBindings.Option("pure-integer-if-select")
 	optGuardedDivRem           = optimizationBindings.Option("guarded-div-rem")
 	optColdTupleLoopExit       = optimizationBindings.Option("cold-tuple-loop-exit")
-	optBulkFillVector          = optimizationBindings.Option("bulk-fill-vector")
-	optSIMDStoreLoadAddress    = optimizationBindings.Option("simd-store-load-address")
-	optSIMDLoadExtract         = optimizationBindings.Option("simd-load-extract")
-	optSIMDSuperopt            = optimizationBindings.Option("simd-superopt")
+	optBulkFillVector          optimization.Option
+	optSIMDStoreLoadAddress    optimization.Option
+	optSIMDLoadExtract         optimization.Option
+	optSIMDSuperopt            optimization.Option
 	optIntervalRegionPins      = optimizationBindings.Option("interval-region-pins")
 	optIntervalNextUse         = optimizationBindings.Option("interval-next-use")
 	optRegionalMemoryRead      = optimizationBindings.Option("regional-memory-read")
@@ -221,8 +251,8 @@ var (
 	optArithmeticTeeBranch     = optimizationBindings.Option("arithmetic-tee-branch")
 	optFloatMemoryBorrow       = optimizationBindings.Option("float-memory-borrow")
 	optByteStorePair           = optimizationBindings.Option("byte-store-pair")
-	optMemcopyTail4            = optimizationBindings.Option("memcopy-tail4")
-	optMemcopyQPairs           = optimizationBindings.Option("memcopy-qpairs")
+	optMemcopyTail4            optimization.Option
+	optMemcopyQPairs           optimization.Option
 	optUXTWAdd                 = optimizationBindings.Option("uxtw-add")
 	optSelectGroupGuard        = optimizationBindings.Option("select-group-guard")
 	optDotLoopVector           = optimizationBindings.Option("dot-loop-vector")
@@ -261,20 +291,20 @@ var (
 	optZeroBranch              = optimizationBindings.Option("zero-branch")
 	optMulAddFuse              = optimizationBindings.Option("mul-add-fuse")
 	optEntryInitElision        = optimizationBindings.Option("entry-init-elision")
-	optV128DirectResults       = optimizationBindings.Option("v128-direct-results")
-	optV128ConstCache          = optimizationBindings.Option("v128-const-cache")
-	optV128Pins                = optimizationBindings.Option("v128-pins")
-	optTailSelfLoop            = optimizationBindings.Option("tail-self-loop")
-	optTailLoopInline          = optimizationBindings.Option("tail-loop-inline")
+	optV128DirectResults       optimization.Option
+	optV128ConstCache          optimization.Option
+	optV128Pins                optimization.Option
+	optTailSelfLoop            optimization.Option
+	optTailLoopInline          optimization.Option
 	optLayoutPaddingSkip       = optimizationBindings.Option("layout-padding-skip")
 	optRegABI                  = optimizationBindings.Option("reg-abi")
 	optInline                  = optimizationBindings.Option("inline")
 	optInlineIntegerTuples     = optimizationBindings.Option("inline-integer-tuples")
 	optStackFence              = optimizationBindings.Option("stack-fence")
 	optStackReg                = optimizationBindings.Option("stack-reg")
-	optBulkCopyVector          = optimizationBindings.Option("bulk-copy-vector")
-	optBulkMemoryLoops         = optimizationBindings.Option("bulk-memory-loops")
-	optBulkFillCopyForward     = optimizationBindings.Option("bulk-fill-copy-forward")
+	optBulkCopyVector          optimization.Option
+	optBulkMemoryLoops         optimization.Option
+	optBulkFillCopyForward     optimization.Option
 	optByteReduceLoop          = optimizationBindings.Option("byte-reduce-loop")
 )
 

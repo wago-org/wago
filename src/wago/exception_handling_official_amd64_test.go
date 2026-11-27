@@ -247,7 +247,7 @@ func replayStagedExceptionTagScript(t *testing.T, tmp string, script stagedSpecS
 		imports := testImports()
 		if c.memoryDir != nil {
 			for i := 0; i < c.tagImportCount(); i++ {
-				def := c.memoryDir.ehTags[i]
+				def := c.memoryDir.exceptionTags()[i]
 				mod, field := splitImportKey(def.ImportKey)
 				provider, ok := registered[mod]
 				if !ok || provider.in == nil {
@@ -554,7 +554,7 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 		}
 		if c.memoryDir != nil {
 			for i := 0; i < c.tagImportCount(); i++ {
-				def := c.memoryDir.ehTags[i]
+				def := c.memoryDir.exceptionTags()[i]
 				mod, field := splitImportKey(def.ImportKey)
 				provider, ok := registered[mod]
 				if !ok || provider.in == nil {

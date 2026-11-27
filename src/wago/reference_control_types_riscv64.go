@@ -41,7 +41,7 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				}
 				continue
 			}
-			if v.Kind != ValueTypeReference || v.Ref.Exact || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
+			if !referenceTypeDescriptorsForImage || !referenceSignaturesBuilt || v.Kind != ValueTypeReference || v.Ref.Exact || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) {
 				if v.Kind == ValueTypeReference && v.Ref.Exact {
 					return false, false, fmt.Errorf("%w: RV64 internal declared reference carrier", railshot.ErrUnsupported)
 				}
@@ -56,17 +56,12 @@ func rv64DeclaredControlSignatureProfile(c *Compiled, typ *DefinedTypeDescriptor
 				}
 			}
 			if !heap.Defined {
-				mutableVariant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
-				mutableCarrier := mutableVariant >= 19 && mutableVariant <= 28 && len(c.Funcs) == 6 && rv64MutableReferenceCarrierTarget(c, 0)
-				primitiveExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes)
-				executionExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefIsNullExecution(c) || rv64Core3RefIsNullExecutionCodecPrefix(c))
-				declarationExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3ReferenceDeclarationMetadata(c))
-				declarationNonNullExtern := heap.Abstract == AbstractHeapExtern && !v.Ref.Nullable && (rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c))
-				publicCallExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicReferenceCallBoundaryWithPlan(c, false) && rv64PublicReferenceCarrierSignature(c.Funcs[0])
-				publicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicHostReferenceBoundaryWithPlan(c, false)
-				publicDynamicHostExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && rv64PublicDynamicHostReferenceBoundaryWithPlan(c, false)
-				mutableExtern := heap.Abstract == AbstractHeapExtern && v.Ref.Nullable && mutableCarrier
-				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !primitiveExtern && !executionExtern && !declarationExtern && !declarationNonNullExtern && !publicCallExtern && !publicHostExtern && !publicDynamicHostExtern && !mutableExtern {
+				// Nullable externref needs only the reference-types check above.
+				// Non-null externref still requires a retained declaration witness.
+				extern := heap.Abstract == AbstractHeapExtern && (v.Ref.Nullable ||
+					rv64Core3ReferenceWitnessesForImage &&
+						(rv64Core3RefDeclarationMetadata(c) || rv64Core3RefAsNonNullDeclarationMetadata(c) || rv64Core3RefIsNullDeclarationMetadata(c)))
+				if heap.TypeIndex != 0 || heap.Abstract != AbstractHeapFunc && !extern {
 					return false, false, fmt.Errorf("RV64 internal abstract function reference required")
 				}
 				continue
@@ -118,7 +113,7 @@ func rv64ValidateDeclaredControlTypes(c *Compiled) error {
 
 func rv64ValidateDeclarativeControlTypes(c *Compiled) (bool, error) {
 	if compiledFunctionOnlyTypeGraph(c) || rv64PrimitiveReferenceDeclarations(c) {
-		return rv64PrimitiveUsesTypedSignatures(c), nil
+		return compiledUsesTypedSignatures(c), nil
 	}
 	typed := false
 	for i := range c.Types {

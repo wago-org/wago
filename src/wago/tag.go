@@ -8,10 +8,8 @@
 package wago
 
 import (
-	"encoding/binary"
 	"fmt"
 	"sync"
-	"unsafe"
 )
 
 // Tag is the identity-bearing handle for an instance-exported exception tag.
@@ -90,34 +88,12 @@ func (im resolvedImports) tag(key string) (*Tag, bool) {
 	return tag, ok && tag != nil
 }
 
-type tagImportAttachments struct {
-	set importDedup[*Tag]
-}
-
-func (a *tagImportAttachments) attach(tag *Tag, requiredType uint32, requiredTypes []DefinedTypeDescriptor) error {
-	if tag == nil {
-		return fmt.Errorf("tag owner is nil")
-	}
-	if a.set.contains(tag) {
-		return tag.validateImport(requiredType, requiredTypes)
-	}
-	if err := tag.attachImporter(requiredType, requiredTypes); err != nil {
-		return err
-	}
-	a.set.push(tag)
-	return nil
-}
-
-func (a *tagImportAttachments) detachAll() {
-	a.set.drain((*Tag).detachImporter)
-}
-
 func (c *Compiled) tagImportCount() int {
-	if c == nil || c.memoryDir == nil {
+	if !tagImportsForImage || c == nil || c.memoryDir == nil {
 		return 0
 	}
 	n := 0
-	for _, tag := range c.memoryDir.ehTags {
+	for _, tag := range c.memoryDir.exceptionTags() {
 		if tag.ImportKey == "" {
 			break
 		}
@@ -126,72 +102,17 @@ func (c *Compiled) tagImportCount() int {
 	return n
 }
 
-// ExportedTag returns the exact identity-bearing tag exported under name.
-// Duplicate aliases of one tag return the same handle. Re-exports forward the
-// original producer handle rather than manufacturing a consumer identity.
 // TagImports returns imported exception-tag keys in declaration order.
 func (c *Compiled) TagImports() []string {
 	if c == nil || c.memoryDir == nil {
 		return nil
 	}
-	out := make([]string, 0, len(c.memoryDir.ehTags))
-	for _, tag := range c.memoryDir.ehTags {
+	out := make([]string, 0, len(c.memoryDir.exceptionTags()))
+	for _, tag := range c.memoryDir.exceptionTags() {
 		if tag.ImportKey == "" {
 			break
 		}
 		out = append(out, tag.ImportKey)
 	}
 	return out
-}
-
-func detachImportedTags(in *Instance) {
-	if in == nil || in.c == nil || in.c.memoryDir == nil {
-		return
-	}
-	var cleanup resourceCleanup
-	var seen importDedup[*Tag]
-	importCount := in.c.tagImportCount()
-	for i := 0; i < importCount; i++ {
-		tag, ok := in.imports.tag(in.c.tagImportBindingKey(i))
-		if ok && seen.add(tag) {
-			cleanup.run(tag.detachImporter)
-		}
-	}
-	cleanup.finish()
-}
-
-func (in *Instance) ExportedTag(name string) (*Tag, error) {
-	if in == nil || in.c == nil || in.c.memoryDir == nil {
-		return nil, fmt.Errorf("instance has no exported tag %q", name)
-	}
-	index, ok := in.c.memoryDir.ehTagExports[name]
-	if !ok || index < 0 || index >= len(in.c.memoryDir.ehTags) {
-		return nil, fmt.Errorf("no exported tag %q", name)
-	}
-	def := in.c.memoryDir.ehTags[index]
-	if def.ImportKey != "" {
-		tag, ok := in.imports[in.c.tagImportBindingKey(index)].(*Tag)
-		if !ok || tag == nil {
-			return nil, fmt.Errorf("exported tag %q imported binding is invalid", name)
-		}
-		return tag, nil
-	}
-	state := in.ensurePluginState()
-	in.lifeMu.Lock()
-	defer in.lifeMu.Unlock()
-	if in.closed || in.resourcesClosed {
-		return nil, fmt.Errorf("tag owner instance is closed")
-	}
-	if state.tagExports == nil {
-		state.tagExports = make(map[int]*Tag)
-	}
-	if tag := state.tagExports[index]; tag != nil {
-		return tag, nil
-	}
-	if state.tagIdentityBase == 0 {
-		return nil, fmt.Errorf("tag owner instance has no native identity directory")
-	}
-	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(state.tagIdentityBase+uintptr(index*8))), 8))}
-	state.tagExports[index] = tag
-	return tag, nil
 }

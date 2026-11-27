@@ -12,6 +12,7 @@ package riscv64
 import (
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -110,7 +111,7 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if opts.NativeTailCalls && opts.tailModule != m || !opts.NativeTailCalls && opts.tailModule != nil {
 		return nil, unsupported("closed reference staged source identity")
 	}
-	tails, indirect, calls, control, err := admitProductionDynamicTails(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, vector, true)
+	tails, indirect, calls, control, err := admitProductionControlTransfers(m, opts.NativeReferenceCalls, opts.dynamicTailCalls, vector, true)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +137,10 @@ func stageClosedReferenceProductionModule(c *Compiled, opts CompileOptions, m *w
 	if c.state.importTailCalls != opts.importTailCalls || c.state.localTailCalls != opts.localTailCalls || c.state.dynamicTailCalls != opts.dynamicTailCalls {
 		return nil, unsupported("closed reference staged tail state")
 	}
-	if err := admitClosedReferenceImportTailPlans(c, opts, m, vector); err != nil {
-		return nil, err
+	if buildfeatures.TailCall != 0 {
+		if err := admitClosedReferenceImportTailPlans(c, opts, m, vector); err != nil {
+			return nil, err
+		}
 	}
 	return stageAdmittedProductionModule(c, opts)
 }
@@ -192,7 +195,8 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				return unsupported("closed reference imported-tail target binding")
 			}
 		case enc.NativeTailIndirect:
-			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 || !primitive && len(m.Tables) != 1 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
+			if !opts.dynamicTailCalls || !opts.indirectTailInstructions || p.importIndex != 0 ||
+				!primitive && len(m.Tables) != 1 && !(buildfeatures.Table64 != 0 && admitLegacyTable64IndirectTail(m)) {
 				return unsupported("closed reference numeric indirect-tail binding")
 			}
 			target, ok = directory.function(p.typeIndex)
@@ -254,7 +258,7 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 				if !valid || !types.publicFunctionReference(wasm.RefVal(table.Ref)) || table.Ref.Heap().Kind() == wasm.HeapAbs && table.Ref.Heap().Abs() != wasm.HeapFunc && table.Ref.Heap().Abs() != wasm.HeapNoFunc {
 					return unsupported("closed reference tail source function table")
 				}
-			} else if tableIndex != 0 && !admitOwnedTwoTable64IndirectTail(m, true, true) && !admitMixedTable64ActiveIndirectTail(m, true, true) && !admitImportedTable64IndirectTail(m, true, true) {
+			} else if tableIndex != 0 && !(buildfeatures.Table64 != 0 && admitLegacyTable64IndirectTail(m)) {
 				return unsupported("closed reference tail source table immediate")
 			}
 		}
@@ -275,4 +279,17 @@ func admitClosedReferenceImportTailPlans(c *Compiled, opts CompileOptions, m *wa
 		}
 	}
 	return nil
+}
+
+func admitReferenceWire(data []byte) bool {
+	return admitCore3RefDeclarationsWire(data) ||
+		isCore3RefIsNullExecutionWire(data) ||
+		admitCore3BrOnNullDeclarationsWire(data) ||
+		admitCore3BrOnNonNullDeclarationsWire(data) ||
+		admitCore3RefAsNonNullDeclarationsWire(data) ||
+		admitCore3RefIsNullDeclarationsWire(data) ||
+		admitPublicReferenceCallBoundaryWire(data) ||
+		admitPublicHostReferenceBoundaryWire(data) ||
+		admitPublicDynamicHostReferenceBoundaryWire(data) ||
+		admitMutableFunctionGlobalLocalCallWire(data)
 }

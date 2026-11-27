@@ -98,7 +98,7 @@ func TestRV64PublicImportOnlyTailOwners(t *testing.T) {
 				}
 				defer scope.release()
 				if err := rv64GenerationLockedForTest(func() error {
-					view, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true)
+					view, err := rv64PublishedCodeView(owner, true)
 					if err != nil || len(view) != 0 {
 						return fmt.Errorf("import-only physical image: %v", err)
 					}
@@ -134,7 +134,7 @@ func TestRV64PublicImportOnlyTailOwners(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, limits := range []rv64NativeTailGenerationLimits{{exact.code - 1, exact.metadata}, {exact.code, exact.metadata - 1}} {
-					if err := create(limits); g != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailBudget.count != 0 {
+					if err := create(limits); g != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailForTest().budget.count != 0 {
 						t.Fatal("import-only below exact charge allocated", err)
 					}
 				}
@@ -231,7 +231,7 @@ func TestRV64PublicImportOnlyTailParkedReentry(t *testing.T) {
 					} else if err != nil || !slices.Equal(got, []uint64{41}) {
 						t.Fatal("import-only host resume", got, err)
 					}
-					if caller.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(caller) != 0 {
+					if caller.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(caller) != 0 {
 						t.Fatal("import-only reentry retained generation")
 					}
 				}

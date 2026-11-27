@@ -106,7 +106,7 @@ func TestRV64PublicDynamicHostTailParkedGraphGrowth(t *testing.T) {
 				second := rv64DynamicHostBinding(t, rt, owned, func(v int32) int32 {
 					calls++
 					scope := railshotCurrentNativeTableTargets(caller).targets
-					if scope == nil || len(scope.tailGenerations) <= len(scope.tailActive) || producer.resourcesClosed {
+					if scope == nil || len(scope.tailForTest().generations) <= len(scope.tailForTest().active) || producer.resourcesClosed {
 						panic("resumed graph lost old host generation")
 					}
 					return v + 2
@@ -137,7 +137,7 @@ func TestRV64PublicDynamicHostTailParkedGraphGrowth(t *testing.T) {
 				if got, err := caller.Invoke("call", 40); err != nil || !slices.Equal(got, []uint64{42}) || calls != 2 || replacement == nil {
 					t.Fatal("parked host graph replacement", got, calls, err)
 				}
-				if state := &caller.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.tableDepth != 0 || rv64EntryCapability(caller) != 0 {
+				if state := &caller.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tableDepth != 0 || rv64EntryCapability(caller) != 0 {
 					t.Fatal("host graph growth retained entry generations")
 				}
 			})

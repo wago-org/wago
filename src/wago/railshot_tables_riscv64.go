@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -34,7 +35,7 @@ func rv64StateOnlyTable64(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		return false
 	}
-	return c.memoryDir == nil || len(c.memoryDir.ehTags) == 0
+	return c.memoryDir == nil || len(c.memoryDir.exceptionTags()) == 0
 }
 
 func rv64OwnedTable64ActiveElement(c *Compiled) bool {
@@ -44,7 +45,7 @@ func rv64OwnedTable64ActiveElement(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -94,7 +95,7 @@ func rv64MixedTable64ActiveElement(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 1 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -150,7 +151,7 @@ func rv64MixedTable64DualActiveElements(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -210,7 +211,7 @@ func rv64MixedTable64DualActiveVectors(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -280,7 +281,7 @@ func rv64StateOnlyTable32ScalarGlobals(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 4 || len(c.GlobalImports) != 0 || len(c.GlobalExports) != 4 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	if c.requiredFeatures != 0 || compiledStructuralRequiredFeatures(c) != 0 || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || !c.NeedsFuncRefDescs {
@@ -322,44 +323,6 @@ func rv64StateOnlyTable32ScalarGlobals(c *Compiled) bool {
 	return exported[0] && exported[1] && exported[2] && exported[3]
 }
 
-// rv64StateOnlyTwoTable32 is the persisted-artifact witness for two bounded
-// owned table32 declarations with no executable or initializer-bearing state.
-// Keep the export directory exact so hostile artifacts cannot alias one table
-// or smuggle a third resource through the state-only path.
-func rv64StateOnlyTwoTable32(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64NoABI || c.TableAddr64 || !c.hasNoFunctionCode() || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 0 || len(c.Exports) != 0 || len(c.tableExports) != 2 || len(c.Types) != 0 || len(c.GCTypeDescs) != 0 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if c.requiredFeatures != CoreFeatureReferenceTypes || c.nativeReferenceFunctionABI || len(c.FuncTypeID) != 0 {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	if len(c.ValueTypes) != 1 || c.ValueTypes[0] != plain {
-		return false
-	}
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || !def.HasValueType || def.ValueTypeIndex != 0 || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-	}
-	var tables [2]bool
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 || tables[index] {
-			return false
-		}
-		tables[index] = true
-	}
-	return tables[0] && tables[1]
-}
-
 func rv64OwnedTable64Size(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64SizeABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 1 || len(c.Exports) == 0 {
 		return false
@@ -367,7 +330,7 @@ func rv64OwnedTable64Size(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	sig := c.Funcs[0]
@@ -382,267 +345,6 @@ func rv64OwnedTable64Size(c *Compiled) bool {
 	return true
 }
 
-func rv64OwnedTwoTable32Size(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64SizeABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		sig := c.Funcs[index]
-		if len(sig.Params) != 0 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
-			return false
-		}
-	}
-	var functions [2]bool
-	var tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
-func rv64OwnedTwoTable32GetSet(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64GetSetABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		sig := c.Funcs[index]
-		if len(sig.Params) != 1 || sig.Params[0] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
-			return false
-		}
-	}
-	var functions, tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
-func rv64OwnedTwoTable32Grow(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64GrowABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		sig := c.Funcs[index]
-		if len(sig.Params) != 1 || sig.Params[0] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
-			return false
-		}
-	}
-	var functions, tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
-func rv64OwnedTwoTable32Fill(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64FillABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		sig := c.Funcs[index]
-		if len(sig.Params) != 2 || sig.Params[0] != ValI32 || sig.Params[1] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
-			return false
-		}
-	}
-	var functions, tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
-func rv64OwnedTwoTable32Copy(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64CopyABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		sig := c.Funcs[index]
-		if len(sig.Params) != 3 || sig.Params[0] != ValI32 || sig.Params[1] != ValI32 || sig.Params[2] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
-			return false
-		}
-	}
-	var functions, tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
-func rv64OwnedTwoTable32InitDrop(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64InitDropABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 3 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		init := c.Funcs[index]
-		if len(init.Params) != 3 || init.Params[0] != ValI32 || init.Params[1] != ValI32 || init.Params[2] != ValI32 || len(init.Results) != 1 || init.Results[0] != ValI32 {
-			return false
-		}
-	}
-	drop := c.Funcs[2]
-	if len(drop.Params) != 0 || len(drop.Results) != 1 || drop.Results[0] != ValI32 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
-		return false
-	}
-	e := c.passiveElems[0]
-	if e.Mode != ElemModePassive || e.TableIndex != 0 || e.RefType != ValFuncRef || !e.HasValueType || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) != 1 {
-		return false
-	}
-	elementType, err := c.elemExactType(e)
-	if err != nil || elementType != plain {
-		return false
-	}
-	v := e.Values[0]
-	if !v.Null || v.FuncIndex != 0 || v.GlobalIndex != 0 || v.HasGlobal || v.I31Wrap || v.RepeatPrevious || len(v.Expr) != 0 {
-		return false
-	}
-	var functions [3]bool
-	var tables [2]bool
-	for _, index := range c.Exports {
-		if index < 0 || index > 2 {
-			return false
-		}
-		functions[index] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && functions[2] && tables[0] && tables[1]
-}
-
 func rv64OwnedTwoTable64Size(c *Compiled) bool {
 	if c == nil || c.nativeTable64ABI != nativeTable64SizeABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 2 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
 		return false
@@ -650,7 +352,7 @@ func rv64OwnedTwoTable64Size(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -688,7 +390,7 @@ func rv64MixedTable64Size(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -736,7 +438,7 @@ func rv64MixedTable64GetSet(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -784,7 +486,7 @@ func rv64MixedTable64Grow(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -832,7 +534,7 @@ func rv64MixedTable64Fill(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -890,7 +592,7 @@ func rv64MixedTable64CopyProfile(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -942,7 +644,7 @@ func rv64MixedTable64NullInitDrop(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1004,7 +706,7 @@ func rv64MixedTable64PassiveVector(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1095,7 +797,7 @@ func rv64OwnedTwoTable64GetSet(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1133,7 +835,7 @@ func rv64OwnedTwoTable64Grow(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1171,7 +873,7 @@ func rv64OwnedTwoTable64Fill(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1209,7 +911,7 @@ func rv64OwnedTwoTable64Copy(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1247,7 +949,7 @@ func rv64ImportedTable64Size(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1273,7 +975,7 @@ func rv64ImportedTable64GetSet(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1299,7 +1001,7 @@ func rv64ImportedTable64Grow(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1325,7 +1027,7 @@ func rv64ImportedTable64Fill(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1351,7 +1053,7 @@ func rv64ImportedTable64Copy(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1377,7 +1079,7 @@ func rv64ImportedTable64InitDrop(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -1413,7 +1115,7 @@ func rv64OwnedTable64Grow(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	sig := c.Funcs[0]
@@ -1435,7 +1137,7 @@ func rv64OwnedTable64GetSet(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	sig := c.Funcs[0]
@@ -1470,10 +1172,10 @@ func rv64OwnedTable64IndirectTailPlanShape(c *Compiled) bool {
 }
 
 func rv64OwnedTable64IndirectTailProduct(c *Compiled, beforeGCDescriptors bool) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 2 || len(c.tableExports) != 1 {
+	if buildfeatures.TailCall == 0 || c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 1 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 2 || len(c.tableExports) != 1 {
 		return false
 	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1554,7 +1256,7 @@ func rv64OwnedTable64IndirectCommon(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	target, caller := c.Funcs[0], c.Funcs[1]
@@ -1572,58 +1274,15 @@ func rv64OwnedTable64IndirectCommon(c *Compiled) bool {
 	return true
 }
 
-func rv64OwnedTwoTable32Indirect(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 3 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
-		return false
-	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
-		return false
-	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return false
-	}
-	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
-	for index := 0; index < 2; index++ {
-		def := c.tableDef(index)
-		exact, err := c.tableExactType(index)
-		if err != nil || exact != plain || def.ImportKey != "" || def.HasInitFunc || def.InitFunc != 0 || def.Addr64 || !def.HasMax || def.Size < 0 || def.Size > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.Max < uint64(def.Size) || c.tableRuntimeCapacity(index) < def.Size || c.tableRuntimeCapacity(index) > railshot.MaxOwnedTableEntries {
-			return false
-		}
-		caller := c.Funcs[index+1]
-		if len(caller.Params) != 1 || caller.Params[0] != ValI32 || len(caller.Results) != 1 || caller.Results[0] != ValI32 {
-			return false
-		}
-	}
-	target := c.Funcs[0]
-	if len(target.Params) != 0 || len(target.Results) != 1 || target.Results[0] != ValI32 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes|CoreFeatureBulkMemoryOperations) || c.requiredFeatures.IsEnabled(CoreFeatureTable64) || c.nativeReferenceFunctionABI || !c.NeedsFuncRefDescs || len(c.FuncTypeID) != 3 {
-		return false
-	}
-	var functions [2]bool
-	var tables [2]bool
-	for _, index := range c.Exports {
-		if index < 1 || index > 2 {
-			return false
-		}
-		functions[index-1] = true
-	}
-	for _, index := range c.tableExports {
-		if index < 0 || index > 1 {
-			return false
-		}
-		tables[index] = true
-	}
-	return functions[0] && functions[1] && tables[0] && tables[1]
-}
-
 func rv64OwnedTwoTable64Indirect(c *Compiled) bool {
 	return rv64OwnedTwoTable64IndirectCall(c) || rv64OwnedTwoTable64IndirectTail(c)
 }
 
 func rv64OwnedTwoTable64IndirectTail(c *Compiled) bool {
-	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 5 || len(c.Exports) != 4 || len(c.tableExports) != 2 {
+	if buildfeatures.TailCall == 0 || c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 0 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 5 || len(c.Exports) != 4 || len(c.tableExports) != 2 {
 		return false
 	}
-	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1690,7 +1349,7 @@ func rv64OwnedTwoTable64IndirectCall(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1736,7 +1395,7 @@ func rv64MixedTable64Indirect(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1788,7 +1447,7 @@ func rv64MixedTable64ActiveIndirectCall(c *Compiled) bool {
 }
 
 func rv64MixedTable64ActiveIndirectTail(c *Compiled) bool {
-	return rv64MixedTable64ActiveIndirectProduct(c, true, false)
+	return buildfeatures.TailCall != 0 && rv64MixedTable64ActiveIndirectProduct(c, true, false)
 }
 
 // The native-tail appendix precedes GC descriptors in the artifact. Its plan
@@ -1796,10 +1455,12 @@ func rv64MixedTable64ActiveIndirectTail(c *Compiled) bool {
 // descriptor vector is not decoded yet; complete retained admission still
 // requires the full classifier above after decoding finishes.
 func rv64MixedTable64ActiveIndirectTailPlanShape(c *Compiled) bool {
-	return rv64MixedTable64ActiveIndirectProduct(c, true, true)
+	return buildfeatures.TailCall != 0 && rv64MixedTable64ActiveIndirectProduct(c, true, true)
 }
 
 func rv64MixedTable64ActiveIndirectProduct(c *Compiled, tail, beforeGCDescriptors bool) bool {
+	tail = buildfeatures.TailCall != 0 && tail
+	beforeGCDescriptors = buildfeatures.TailCall != 0 && beforeGCDescriptors
 	if c == nil || c.nativeTable64ABI != nativeTable64IndirectABI || !c.TableAddr64 || c.tableCount() != 2 || c.tableImportCount() != 1 || c.NumImports != 0 || len(c.Imports) != 0 || len(c.Funcs) != 4 || len(c.Exports) != 2 || len(c.tableExports) != 2 {
 		return false
 	}
@@ -1810,7 +1471,7 @@ func rv64MixedTable64ActiveIndirectProduct(c *Compiled, tail, beforeGCDescriptor
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 2 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -1931,7 +1592,7 @@ func rv64ImportedTable64IndirectTailPlanShape(c *Compiled) bool {
 }
 
 func rv64ImportedTable64IndirectTailProduct(c *Compiled, beforeGCDescriptors bool) bool {
-	if !rv64ImportedTable64IndirectCommon(c) {
+	if buildfeatures.TailCall == 0 || !rv64ImportedTable64IndirectCommon(c) {
 		return false
 	}
 	def, _ := c.tableImportAt(0)
@@ -1991,7 +1652,7 @@ func rv64ImportedTable64IndirectCommon(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	def, imported := c.tableImportAt(0)
@@ -2020,7 +1681,7 @@ func rv64OwnedTable64Fill(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	sig := c.Funcs[0]
@@ -2042,7 +1703,7 @@ func rv64OwnedTable64Copy(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	sig := c.Funcs[0]
@@ -2064,7 +1725,7 @@ func rv64OwnedTable64InitDrop(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	init, drop := c.Funcs[0], c.Funcs[1]
@@ -2096,7 +1757,7 @@ func rv64OwnedTwoTable64InitDrop(c *Compiled) bool {
 	if c.memoryCount() != 0 || len(c.Globals) != 0 || len(c.GlobalImports) != 0 || c.tagImportCount() != 0 || c.HasStart || c.HasTableInitFunc || c.TableInitFunc != 0 {
 		return false
 	}
-	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 1 || c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
 		return false
 	}
 	plain, _ := valueTypeDescriptorFromValType(ValFuncRef)
@@ -2145,95 +1806,125 @@ func rv64OwnedTwoTable64InitDrop(c *Compiled) bool {
 }
 
 func rv64QualifiedTable64(c *Compiled) bool {
-	if rv64GenericTable64(c) {
-		return true
+	return rv64GenericTable64(c) || legacyTable64ForImage && rv64QualifiedLegacyTable64(c)
+}
+
+func rv64QualifiedLegacyTable64(c *Compiled) bool {
+	return rv64StateOnlyTable64(c) ||
+		rv64OwnedTable64ActiveElement(c) ||
+		rv64OwnedTable64Size(c) ||
+		rv64OwnedTable64GetSet(c) ||
+		rv64OwnedTable64Grow(c) ||
+		rv64OwnedTable64Fill(c) ||
+		rv64OwnedTable64Copy(c) ||
+		rv64OwnedTable64InitDrop(c) ||
+		rv64OwnedTable64Indirect(c) ||
+		multiTableForImage && rv64OwnedTwoTable64Witness(c) ||
+		tableImportsForImage && rv64QualifiedTable64WithImports(c)
+}
+
+func rv64QualifiedTable64WithImports(c *Compiled) bool {
+	return multiTableForImage && rv64MixedTable64Witness(c) ||
+		rv64ImportedTable64Size(c) ||
+		rv64ImportedTable64GetSet(c) ||
+		rv64ImportedTable64Grow(c) ||
+		rv64ImportedTable64Fill(c) ||
+		rv64ImportedTable64Copy(c) ||
+		rv64ImportedTable64InitDrop(c) ||
+		rv64ImportedTable64Indirect(c)
+}
+
+// Declarative and passive reference state can exist without a table.
+func rv64ValidateTableFreeReferenceState(c *Compiled) error {
+	// Fresh rooted receipts authenticate exact table-free GC element types,
+	// values, and segment bounds, including i31 immediates and expressions.
+	if rv64FreshRootedGC(c) {
+		if len(c.passiveElems) != 0 && (!c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled) {
+			return fmt.Errorf("rooted elements require the framed retained reference ABI")
+		}
+		return nil
 	}
-	return rv64StateOnlyTable64(c) || rv64OwnedTable64ActiveElement(c) || rv64MixedTable64ActiveElement(c) || rv64MixedTable64DualActiveElements(c) || rv64MixedTable64DualActiveVectors(c) || rv64OwnedTable64Size(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64CrossCopy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64MixedTable64ActiveIndirect(c) || rv64OwnedTable64Grow(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTable64GetSet(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTable64Indirect(c) || rv64OwnedTwoTable64Indirect(c) || rv64ImportedTable64Indirect(c) || rv64OwnedTable64Fill(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTable64Copy(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTable64InitDrop(c) || rv64OwnedTwoTable64InitDrop(c) || rv64ImportedTable64Size(c) || rv64ImportedTable64GetSet(c) || rv64ImportedTable64Grow(c) || rv64ImportedTable64Fill(c) || rv64ImportedTable64Copy(c) || rv64ImportedTable64InitDrop(c)
+	if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.tableExports) != 0 {
+		return fmt.Errorf("table metadata requires a declared table")
+	}
+	if passiveElementsForImage && (len(c.passiveElems) > railshot.MaxPublicElementSegments ||
+		len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations)) {
+		return fmt.Errorf("element directory count/feature")
+	}
+	remaining := railshot.MaxOwnedTableEntries
+	hasLegacyPassive := false
+	hasLegacyDescriptorPayload := false
+	for index := 0; passiveElementsForImage && index < len(c.passiveElems); index++ {
+		e := c.passiveElems[index]
+		collectorNulls := false
+		if wasmGCBuilt && c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+			exact, err := c.elemExactType(e)
+			if err == nil && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined {
+				switch exact.Ref.Heap.Abstract {
+				case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNoExtern:
+					collectorNulls = true
+				}
+				for _, value := range e.Values {
+					collectorNulls = collectorNulls && value.Null && value.FuncIndex == 0 && !value.HasGlobal && value.GlobalIndex == 0 && !value.I31Wrap && !value.RepeatPrevious && len(value.Expr) == 0
+				}
+			}
+		}
+		if (e.Mode != ElemModeDeclarative && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != ValFuncRef && e.RefType != 0 && !collectorNulls || len(e.Values) > remaining || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 {
+			return fmt.Errorf("bounded table-free passive/declarative funcref state required")
+		}
+		if e.Mode == ElemModeDeclarative && len(e.Values) != 0 {
+			return fmt.Errorf("declarative state must start dropped")
+		}
+		remaining -= len(e.Values)
+		if collectorNulls {
+			continue
+		}
+		if err := rv64ValidateElementPayload(c, e); err != nil {
+			return err
+		}
+		hasLegacyPassive = hasLegacyPassive || e.Mode == ElemModePassive && !e.HasValueType
+		hasLegacyDescriptorPayload = hasLegacyDescriptorPayload || e.Mode == ElemModePassive && !e.HasValueType && len(e.Values) != 0
+	}
+	hasReferenceGlobal := false
+	for _, global := range c.Globals {
+		hasReferenceGlobal = hasReferenceGlobal || global.Type == ValFuncRef
+	}
+	if !hasReferenceGlobal && !c.needsFuncRefDescs() && len(c.passiveElems) == 0 {
+		return nil
+	}
+	if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled {
+		return fmt.Errorf("references require the framed retained reference ABI")
+	}
+	// Legacy passive function-index payloads belong to bulk memory and
+	// materialize descriptors even without reference instructions. Explicit
+	// reference globals, expression payloads and descriptor-only bodies
+	// still require their ReferenceTypes witness.
+	if (hasReferenceGlobal || !hasLegacyPassive || c.needsFuncRefDescs() && !hasLegacyDescriptorPayload) && c.requiredFeatures&(CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0 {
+		return fmt.Errorf("references require the reference-types feature")
+	}
+	if structuralCallKeysForImage && c.needsFuncRefDescs() {
+		return rv64ValidateReferenceFunctionKeys(c)
+	}
+	return nil
 }
 
 // One bounded owned or imported table is qualified. Exact metadata prevents the legacy
 // ExportedTable fallback from exposing an undeclared table handle.
 func rv64ValidateOwnedTable(c *Compiled) error {
-	if rv64GenericTable64(c) {
+	if table64ForImage && rv64GenericTable64(c) {
 		return rv64ValidateGenericTable64(c)
 	}
-	if rv64Core3RefIsNullExecution(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialAnyTable(c) || rv64I31RefEqPilot(c) || rv64OfficialGCRefEq(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+	if tablesForImage && rv64Core3ReferenceWitnessesForImage && rv64Core3RefIsNullExecution(c) ||
+		(wasmGCBuilt || rv64LegacyI31ProductsForImage) && rv64LegacyGCOwnedTable(c) {
 		return nil
 	}
-	if c.tableCount() == 0 {
-		// Fresh rooted receipts authenticate exact table-free GC element types,
-		// values, and segment bounds, including i31 immediates and expressions.
-		if rv64FreshRootedGC(c) {
-			if len(c.passiveElems) != 0 && (!c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled) {
-				return fmt.Errorf("rooted elements require the framed retained reference ABI")
-			}
-			return nil
-		}
-		if c.HasTableInitFunc || c.TableInitFunc != 0 || c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || c.TableAddr64 || c.TableType != 0 || c.TableHasValueType || len(c.Elems) != 0 || len(c.tableExports) != 0 {
-			return fmt.Errorf("table metadata requires a declared table")
-		}
-		if len(c.passiveElems) > railshot.MaxPublicElementSegments || len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
-			return fmt.Errorf("element directory count/feature")
-		}
-		remaining := railshot.MaxOwnedTableEntries
-		hasLegacyPassive := false
-		hasLegacyDescriptorPayload := false
-		for _, e := range c.passiveElems {
-			collectorNulls := false
-			if c.requiredFeatures.IsEnabled(CoreFeatureGC) {
-				exact, err := c.elemExactType(e)
-				if err == nil && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined {
-					switch exact.Ref.Heap.Abstract {
-					case AbstractHeapNone, AbstractHeapAny, AbstractHeapEq, AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray, AbstractHeapNoExtern:
-						collectorNulls = true
-					}
-					for _, value := range e.Values {
-						collectorNulls = collectorNulls && value.Null && value.FuncIndex == 0 && !value.HasGlobal && value.GlobalIndex == 0 && !value.I31Wrap && !value.RepeatPrevious && len(value.Expr) == 0
-					}
-				}
-			}
-			if (e.Mode != ElemModeDeclarative && e.Mode != ElemModePassive) || e.TableIndex != 0 || e.RefType != ValFuncRef && e.RefType != 0 && !collectorNulls || len(e.Values) > remaining || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 {
-				return fmt.Errorf("bounded table-free passive/declarative funcref state required")
-			}
-			if e.Mode == ElemModeDeclarative && len(e.Values) != 0 {
-				return fmt.Errorf("declarative state must start dropped")
-			}
-			remaining -= len(e.Values)
-			if collectorNulls {
-				continue
-			}
-			if err := rv64ValidateElementPayload(c, e); err != nil {
-				return err
-			}
-			hasLegacyPassive = hasLegacyPassive || e.Mode == ElemModePassive && !e.HasValueType
-			hasLegacyDescriptorPayload = hasLegacyDescriptorPayload || e.Mode == ElemModePassive && !e.HasValueType && len(e.Values) != 0
-		}
-		hasReferenceGlobal := false
-		for _, global := range c.Globals {
-			hasReferenceGlobal = hasReferenceGlobal || global.Type == ValFuncRef
-		}
-		if !hasReferenceGlobal && !c.needsFuncRefDescs() && len(c.passiveElems) == 0 {
-			return nil
-		}
-		if !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled {
-			return fmt.Errorf("references require the framed retained reference ABI")
-		}
-		// Legacy passive function-index payloads belong to bulk memory and
-		// materialize descriptors even without reference instructions. Explicit
-		// reference globals, expression payloads and descriptor-only bodies
-		// still require their ReferenceTypes witness.
-		if (hasReferenceGlobal || !hasLegacyPassive || c.needsFuncRefDescs() && !hasLegacyDescriptorPayload) && c.requiredFeatures&(CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0 {
-			return fmt.Errorf("references require the reference-types feature")
-		}
-		if c.needsFuncRefDescs() {
-			return rv64ValidateReferenceFunctionKeys(c)
-		}
-		return nil
+	if !tablesForImage || c.tableCount() == 0 {
+		return rv64ValidateTableFreeReferenceState(c)
 	}
 	if !c.nativeTableContextABI || !c.nativeTableReferenceABI {
 		return fmt.Errorf("retained native table context and reference ABI are required")
 	}
-	if rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c) {
+	if i31ExecutionForImage && (rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c)) {
 		return nil
 	}
 	if rv64FreshRootedGC(c) {
@@ -2241,22 +1932,25 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 		// table types, all initializer values, limits and structural keys.
 		return nil
 	}
-	if (c.tableCount() > 1 || rv64HasExternTable32(c) || c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && rv64PrimitiveReferenceContract(c)) && rv64PlainReferenceTable32Directory(c) {
+	if buildfeatures.ReferenceTypes != 0 && (c.tableCount() > 1 || rv64HasExternTable32(c) || c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) && rv64PrimitiveReferenceContract(c)) && rv64PlainReferenceTable32Directory(c) {
 		return rv64ValidateFunctionTable32Directory(c)
 	}
-	stateOnlyLocalDeclarations := c.hasNoFunctionCode() && c.tableImportCount() == 0 && len(c.GlobalImports) == 0 && c.memoryImportCount() == 0 && c.tagImportCount() == 0
-	if stateOnlyLocalDeclarations && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
+	stateOnlyLocalDeclarations := c.hasNoFunctionCode() && c.declaredImportCount() == 0
+	if globalsForImage && stateOnlyLocalDeclarations && len(c.Globals) != 0 && !rv64StateOnlyTable32ScalarGlobals(c) {
 		return fmt.Errorf("table/scalar globals require the exact state-only literal profile")
 	}
-	qualifiedTable64 := rv64QualifiedTable64(c)
-	qualifiedMultiTable := c.tableCount() > 1 && rv64FreshRootedGC(c) || rv64MixedTable64ActiveElement(c) || rv64MixedTable64DualActiveElements(c) || rv64MixedTable64DualActiveVectors(c) || rv64StateOnlyTwoTable32(c) || rv64OwnedTwoTable32Size(c) || rv64OwnedTwoTable32GetSet(c) || rv64OwnedTwoTable32Grow(c) || rv64OwnedTwoTable32Fill(c) || rv64OwnedTwoTable32Copy(c) || rv64OwnedTwoTable32InitDrop(c) || rv64OwnedTwoTable32Indirect(c) || rv64OwnedTwoTable64Size(c) || rv64MixedTable64Size(c) || rv64MixedTable64GetSet(c) || rv64MixedTable64Grow(c) || rv64MixedTable64Fill(c) || rv64MixedTable64Copy(c) || rv64MixedTable64CrossCopy(c) || rv64MixedTable64InitDrop(c) || rv64MixedTable64Indirect(c) || rv64MixedTable64ActiveIndirect(c) || rv64OwnedTwoTable64GetSet(c) || rv64OwnedTwoTable64Grow(c) || rv64OwnedTwoTable64Fill(c) || rv64OwnedTwoTable64Copy(c) || rv64OwnedTwoTable64InitDrop(c) || rv64OwnedTwoTable64Indirect(c)
+	qualifiedTable64 := table64ForImage && rv64QualifiedTable64(c)
+	qualifiedMultiTable := multiTableForImage && (c.tableCount() > 1 && rv64FreshRootedGC(c) ||
+		buildfeatures.ReferenceTypes != 0 && (stateOnlyTable32ForImage && rv64StateOnlyTwoTable32(c) ||
+			legacyTable32InstructionsForImage && rv64IndexedTable32InstructionWitness(c)) ||
+		legacyTable64ForImage && rv64LegacyIndexedTable64(c))
 	qualifiedGenericGCRefTable := false
 	if rv64FreshRootedGC(c) {
 		for tableIndex := 0; tableIndex < c.tableCount(); tableIndex++ {
 			qualifiedGenericGCRefTable = qualifiedGenericGCRefTable || isGCRefValType(c.tableElementType(tableIndex)) || c.compactExternFrameRoots() && c.tableElementType(tableIndex) == ValExternRef
 		}
 	}
-	qualifiedGCRefTable := qualifiedGenericGCRefTable || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c)
+	qualifiedGCRefTable := qualifiedGenericGCRefTable || rv64LegacyGCProductsForImage && rv64LegacyGCReferenceTable(c)
 	if c.tableCount() != 1 && !qualifiedMultiTable && !qualifiedGCRefTable || !c.hasTableExportMetadata || len(c.tableExports) > railshot.MaxModuleExports || !c.registerABIDisabled || c.TableAddr64 && !qualifiedTable64 || (c.TableType != 0 && c.TableType != ValFuncRef && !qualifiedGCRefTable) {
 		return fmt.Errorf("one framed nullable funcref table32 or exact qualified table64/multi-table profile required")
 	}
@@ -2269,7 +1963,7 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if qualifiedMultiTable {
 		return rv64ValidateReferenceFunctionKeys(c)
 	}
-	if c.HasTableInitFunc {
+	if tableInitializersForImage && c.HasTableInitFunc {
 		if c.tableImportCount() != 0 || !c.requiredFeatures.IsEnabled(CoreFeatureReferenceTypes) || uint64(c.TableInitFunc) >= uint64(c.NumImports+len(c.Funcs)) {
 			return fmt.Errorf("table initializer requires owned storage, reference metadata and a valid function")
 		}
@@ -2288,21 +1982,25 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 	if c.TableSize < 0 || uint64(c.TableSize) > uint64(^uint32(0)) || c.TableMax > uint64(^uint32(0)) || (c.TableHasMax && c.TableMax < uint64(c.TableSize)) || c.tableRuntimeCapacity(0) < c.TableSize || uint64(c.tableRuntimeCapacity(0)) > uint64(^uint32(0)) {
 		return fmt.Errorf("private table capacity bound")
 	}
-	if def, imported := c.tableImportAt(0); imported {
-		if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || def.Min > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.HasMax && def.Max < def.Min {
-			return fmt.Errorf("bounded imported table declaration with no local limits required")
+	if tableImportsForImage {
+		if def, imported := c.tableImportAt(0); imported {
+			if c.TableSize != 0 || c.TableMax != 0 || c.TableHasMax || def.Min > railshot.MaxOwnedTableEntries || def.Max > railshot.MaxOwnedTableEntries || def.HasMax && def.Max < def.Min {
+				return fmt.Errorf("bounded imported table declaration with no local limits required")
+			}
 		}
 	}
-	if len(c.Elems) > railshot.MaxPublicElementSegments || len(c.passiveElems) > railshot.MaxPublicElementSegments {
+	if activeElementsForImage && len(c.Elems) > railshot.MaxPublicElementSegments ||
+		passiveElementsForImage && len(c.passiveElems) > railshot.MaxPublicElementSegments {
 		return fmt.Errorf("element descriptor bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
 	activeOffsetType := ValI32
-	if rv64OwnedTable64ActiveElement(c) || rv64MixedTable64ActiveElement(c) {
+	if activeElementsForImage && legacyTable64ForImage && (rv64OwnedTable64ActiveElement(c) || multiTableForImage && tableImportsForImage && rv64MixedTable64ActiveElement(c)) {
 		activeOffsetType = ValI64
 	}
 
-	for _, e := range c.Elems {
+	for index := 0; activeElementsForImage && index < len(c.Elems); index++ {
+		e := c.Elems[index]
 		if e.Mode != ElemModeActive || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || len(e.Values) > remaining {
 			return fmt.Errorf("bounded active funcref elements required")
 		}
@@ -2322,10 +2020,11 @@ func rv64ValidateOwnedTable(c *Compiled) error {
 			return err
 		}
 	}
-	if len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+	if passiveElementsForImage && len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 		return fmt.Errorf("element state requires bulk feature metadata")
 	}
-	for _, e := range c.passiveElems {
+	for index := 0; passiveElementsForImage && index < len(c.passiveElems); index++ {
+		e := c.passiveElems[index]
 		if (e.Mode != ElemModeActive && e.Mode != ElemModePassive && e.Mode != ElemModeDeclarative) || e.TableIndex != 0 || (e.RefType != 0 && e.RefType != ValFuncRef) || e.Offset.Base != 0 || e.Offset.HasGlobal || len(e.Offset.Expr) != 0 || len(e.Values) > remaining {
 			return fmt.Errorf("bounded private element state required")
 		}
@@ -2345,6 +2044,9 @@ func rv64ValidateElementPayload(c *Compiled, e ElemInit) error {
 	exact := plain
 	typed := false
 	if e.HasValueType {
+		if !referenceSignaturesBuilt {
+			return fmt.Errorf("expression elements require exact nullable funcref metadata")
+		}
 		var err error
 		exact, err = c.elemExactType(e)
 		typed = err == nil && exact != plain && rv64PrimitiveReferenceContract(c) && rv64PrimitiveReferenceValue(c, exact)
@@ -2357,7 +2059,7 @@ func rv64ValidateElementPayload(c *Compiled, e ElemInit) error {
 			return fmt.Errorf("element requires structural null/ref.func/global payload")
 		}
 		if v.HasGlobal {
-			if (e.Mode != ElemModeActive && e.Mode != ElemModePassive) || !e.HasValueType || v.Null || v.FuncIndex != 0 || !rv64InitializerGlobal(c, int(v.GlobalIndex), ValFuncRef, len(c.Globals)) {
+			if !elementGlobalsForImage || (e.Mode != ElemModeActive && e.Mode != ElemModePassive) || !e.HasValueType || v.Null || v.FuncIndex != 0 || !rv64InitializerGlobal(c, int(v.GlobalIndex), ValFuncRef, len(c.Globals)) {
 				return fmt.Errorf("element global requires an available immutable funcref and expression metadata")
 			}
 			globalType, err := c.globalExactType(int(v.GlobalIndex))
@@ -2392,42 +2094,26 @@ func rv64ValidateElementPayload(c *Compiled, e ElemInit) error {
 }
 
 func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
-	if len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
+	if len(c.importFuncSigs) != c.NumImports || len(c.FuncTypeID) != c.NumImports+len(c.Funcs) {
 		return fmt.Errorf("private table signature-key count")
 	}
-	if rv64FreshRootedGC(c) {
+	if nativeCollectorBuilt && rv64FreshRootedGC(c) {
 		return nil // The rooted type receipt verifies local and imported keys.
 	}
 	var params, results [256]wasm.ValType
-	primitive := rv64PrimitiveReferenceContract(c)
-	if primitive && rv64PrimitiveUsesTypedSignatures(c) {
+	primitive := referenceSignaturesBuilt && rv64PrimitiveReferenceContract(c)
+	if referenceSignaturesBuilt && primitive && compiledUsesTypedSignatures(c) {
+		if !typedCallKeysForImage {
+			return fmt.Errorf("RV64 typed call keys exceed the standalone runtime profile")
+		}
 		return rv64ValidatePrimitiveFunctionKeys(c)
 	}
 	for i := range c.FuncTypeID {
-		if !primitive && rv64RootedClosedCallableFunction(c, i) {
+		if nativeCollectorBuilt && !primitive && rv64RootedClosedCallableFunction(c, i) {
 			continue // Fresh proof binds exact collector signatures and keys.
 		}
-		if !primitive && railshotNonCallableFunction(c, i) {
+		if referenceSignaturesBuilt && !primitive && railshotNonCallableFunction(c, i) {
 			continue // Source-attested internal signature has no callable row.
-		}
-		publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || rv64MutableReferenceCarrierTarget(c, i)
-		publicDynamicHostReferenceCarrier := i <= 1 && rv64PublicDynamicHostReferenceBoundary(c)
-		if publicReferenceCarrier || publicDynamicHostReferenceCarrier {
-			sig := c.Funcs[0]
-			if publicDynamicHostReferenceCarrier && i == 0 {
-				sig = c.importFuncSigs[0]
-			}
-			for j, t := range sig.Params {
-				params[j] = rv64ReferenceWasmType(t)
-			}
-			for j, t := range sig.Results {
-				results[j] = rv64ReferenceWasmType(t)
-			}
-			key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(sig.Params)], Results: results[:len(sig.Results)]})
-			if c.FuncTypeID[i] != key {
-				return fmt.Errorf("public reference-carrier target signature key differs from its exact type")
-			}
-			continue
 		}
 		var sig FuncSig
 		if i < c.NumImports {
@@ -2435,20 +2121,45 @@ func rv64ValidateReferenceFunctionKeys(c *Compiled) error {
 		} else {
 			sig = c.Funcs[i-c.NumImports]
 		}
+		publicCarrier := false
+		if referenceSignaturesBuilt {
+			publicReferenceCarrier := i == 0 && rv64PublicReferenceCallBoundary(c) && rv64PublicReferenceCarrierSignature(c.Funcs[0]) || rv64MutableReferenceCarrierTarget(c, i)
+			publicDynamicHostReferenceCarrier := i <= 1 && rv64PublicDynamicHostReferenceBoundary(c)
+			publicCarrier = publicReferenceCarrier || publicDynamicHostReferenceCarrier
+			if publicCarrier {
+				sig = c.Funcs[0]
+				if publicDynamicHostReferenceCarrier && i == 0 {
+					sig = c.importFuncSigs[0]
+				}
+			}
+		}
+		if len(sig.Params) > len(params) || len(sig.Results) > len(results) {
+			return fmt.Errorf("private table signature-key arity")
+		}
+		referenceCarrier := primitive || publicCarrier
 		for j, t := range sig.Params {
+			if !referenceSignaturesBuilt && t > ValV128 {
+				return fmt.Errorf("private table signature-key carrier")
+			}
 			params[j] = rv64NumericWasmType(t)
-			if primitive {
+			if referenceSignaturesBuilt && referenceCarrier {
 				params[j] = rv64ReferenceWasmType(t)
 			}
 		}
 		for j, t := range sig.Results {
+			if !referenceSignaturesBuilt && t > ValV128 {
+				return fmt.Errorf("private table signature-key carrier")
+			}
 			results[j] = rv64NumericWasmType(t)
-			if primitive {
+			if referenceSignaturesBuilt && referenceCarrier {
 				results[j] = rv64ReferenceWasmType(t)
 			}
 		}
 		key := wasm.StructuralFuncTypeKey(&wasm.CompType{Kind: wasm.CompFunc, Params: params[:len(sig.Params)], Results: results[:len(sig.Results)]})
 		if c.FuncTypeID[i] != key {
+			if referenceSignaturesBuilt && publicCarrier {
+				return fmt.Errorf("public reference-carrier target signature key differs from its exact type")
+			}
 			return fmt.Errorf("private table signature key differs from numeric type")
 		}
 	}

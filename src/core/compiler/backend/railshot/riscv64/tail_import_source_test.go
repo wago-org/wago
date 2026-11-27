@@ -110,7 +110,7 @@ func tailImportPortableFunctions(t *testing.T, i *tailImportImage) []tailRAFunct
 	for n, info := range i.functions {
 		x := f
 		x.snapshot = snapshot
-		x.info = info
+		x.info = info.tailInfo()
 		x.signature = i.signatures[i.imports+n]
 		out = append(out, x)
 	}

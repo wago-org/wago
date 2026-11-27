@@ -15,7 +15,7 @@ import (
 )
 
 type hookRegistry struct {
-	operationGates      []*pluginCallGate
+	operationGates      pluginOperationGates
 	onRuntimeClose      []func(RuntimeCloseEvent)
 	internalClose       []func() error
 	internalBeforeClose []func(*Instance)
@@ -31,6 +31,11 @@ type hookRegistry struct {
 	afterClose          []func(InstanceCloseEvent)
 	beforeInvoke        []func(InvocationRequest) error
 	afterInvoke         []func(InvocationEvent)
+}
+
+func (h *hookRegistry) hasInstantiationHooks() bool {
+	return pluginRuntimeBuilt && (len(h.beforeInstantiate) != 0 || len(h.afterCreate) != 0 ||
+		len(h.afterInstantiate) != 0 || len(h.onInstantiateError) != 0)
 }
 
 // InstanceIdentity is an opaque comparable identity. It conveys no invocation,
@@ -122,19 +127,19 @@ type ModuleCloseEvent struct{ Module ModuleView }
 type InstantiationRequest struct {
 	Module      ModuleView
 	Origin      InstantiateOrigin
-	reservation *pluginOperationReservation
+	reservation pluginReservation
 }
 type InstantiationEvent struct {
 	Module      ModuleView
 	Instance    InstanceIdentity
 	Origin      InstantiateOrigin
-	reservation *pluginOperationReservation
+	reservation pluginReservation
 }
 type InstantiationErrorEvent struct {
 	Module      ModuleView
 	Origin      InstantiateOrigin
 	Err         error
-	reservation *pluginOperationReservation
+	reservation pluginReservation
 }
 type InstanceCloseEvent struct {
 	Module   ModuleView
@@ -150,7 +155,7 @@ type InvocationRequest struct {
 	Export      string
 	Args        []Value
 	Start       time.Time
-	reservation *pluginOperationReservation
+	reservation pluginReservation
 }
 type InvocationEvent struct {
 	Operation   OperationIdentity
@@ -159,7 +164,7 @@ type InvocationEvent struct {
 	Results     []Value
 	Err         error
 	Start       time.Time
-	reservation *pluginOperationReservation
+	reservation pluginReservation
 }
 
 type InstantiateOrigin uint8
@@ -174,7 +179,7 @@ func (h *hookRegistry) clone() *hookRegistry {
 		return &hookRegistry{}
 	}
 	return &hookRegistry{
-		operationGates:      append([]*pluginCallGate(nil), h.operationGates...),
+		operationGates:      clonePluginOperationGates(h.operationGates),
 		onRuntimeClose:      append([]func(RuntimeCloseEvent){}, h.onRuntimeClose...),
 		internalClose:       append([]func() error{}, h.internalClose...),
 		internalBeforeClose: append([]func(*Instance){}, h.internalBeforeClose...),
@@ -197,7 +202,7 @@ func (h *hookRegistry) appendGated(src *hookRegistry, gate *pluginCallGate) {
 	if src == nil {
 		return
 	}
-	h.operationGates = append(h.operationGates, gate)
+	addPluginOperationGate(&h.operationGates, gate)
 	for _, fn := range src.onRuntimeClose {
 		fn := fn
 		h.onRuntimeClose = append(h.onRuntimeClose, func(event RuntimeCloseEvent) { withPluginHook(gate, func() { fn(event) }) })
@@ -292,16 +297,16 @@ func withPluginHookError(gate *pluginCallGate, fn func() error) error {
 	return fn()
 }
 
-func withReservedPluginHook(gate *pluginCallGate, reservation *pluginOperationReservation, fn func()) {
-	if reservation != nil && reservation.allows(gate) {
+func withReservedPluginHook(gate *pluginCallGate, reservation pluginReservation, fn func()) {
+	if pluginReservationAllows(reservation, gate) {
 		fn()
 		return
 	}
 	withPluginHook(gate, fn)
 }
 
-func withReservedPluginHookError(gate *pluginCallGate, reservation *pluginOperationReservation, fn func() error) error {
-	if reservation != nil && reservation.allows(gate) {
+func withReservedPluginHookError(gate *pluginCallGate, reservation pluginReservation, fn func() error) error {
+	if pluginReservationAllows(reservation, gate) {
 		return fn()
 	}
 	return withPluginHookError(gate, fn)

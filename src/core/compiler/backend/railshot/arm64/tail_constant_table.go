@@ -9,14 +9,17 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Reuse the ordinary-call proof: one private, unmodified local table whose
 // non-null entries all have the same local target and structural signature.
 // No host function can intervene. Mutable/exported/imported tables retain the
 // ordinary dynamic path, including its bounds/null/signature checks.
 func (f *fn) privateMonomorphicTailTarget(typ, table uint32) (int, bool) {
-	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
+	if !(buildfeatures.TailCall != 0 && f.opt(optTailSelfLoop)) || !f.opt(optRegABI) || profileEnabled || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 ||
 		table != 0 || !f.immutableLocalTable || !f.immutableTableTyped || f.monomorphicTarget < 0 || len(f.m.Tables) != 1 || f.m.ImportedFuncCount() != 0 ||
 		f.m.Tables[0].Init != nil || f.m.Tables[0].Type.Limits.Addr64 {
 		return 0, false

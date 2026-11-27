@@ -10,6 +10,7 @@ package config
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 
 	"github.com/wago-org/wago/cli/internal/settings"
@@ -69,7 +70,28 @@ func Print(w io.Writer, config settings.Config, includeExperimental bool, scope,
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("WebAssembly features"))
 	for _, setting := range settings.Features() {
-		printSetting(w, setting.Name(), onOff(setting.Value(config)), setting.Key, overridden)
+		value := "unavailable"
+		if setting.Available {
+			value = onOff(setting.Value(config))
+		}
+		printSetting(w, setting.Name(), value, setting.Key, overridden)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, ui.Bold("WebAssembly build profile"))
+	core, _ := settings.Get(config, "build.core")
+	if core == "inherit" {
+		core = "auto"
+	}
+	printSetting(w, "core", core, "build.core", overridden)
+	if config.Build != nil {
+		names := make([]string, 0, len(config.Build.Features))
+		for name := range config.Build.Features {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			printSetting(w, name, onOff(config.Build.Features[name]), "build.features."+name, overridden)
+		}
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, ui.Bold("Compiler optimizations"))

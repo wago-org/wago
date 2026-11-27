@@ -18,8 +18,8 @@ import (
 )
 
 // freezeExecution captures metadata before compiler/loader publication, or on
-// the first use of a hand-built Compiled. Instances never read the public view.
-// Code ownership and validation are shared; public containers are deeply copied.
+// the first use of a hand-built Compiled. Code ownership and validation are
+// shared. Mutable public metadata is deeply copied.
 func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
 	return c.freezeExecutionWithNativeData(limit, false)
 }
@@ -43,17 +43,38 @@ func (c *Compiled) freezeExecutionWithNativeData(limit uint64, nativeData bool) 
 		limit = memo.snapshotLimit
 	}
 	limit = normalizeSnapshotLimit(limit)
-	if snapshot := memo.executionView(); snapshot != nil {
-		if memo.snapshotBytes > limit {
-			return nil, snapshotLimitError(limit)
-		}
+	size := memo.snapshotBytes
+	snapshot := memo.executionView()
+	if (standaloneBareImage || snapshot != nil) && size > limit {
+		return nil, snapshotLimitError(limit)
+	}
+	if snapshot != nil {
 		return snapshot, nil
 	}
-	size, err := snapshotMetadataBytes(c, limit)
-	if err != nil {
-		return nil, err
+	if !nameSectionForImage && c.Names != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: name section exceeds the standalone runtime profile")
 	}
-	snapshot := cloneCompiledMetadataWithDataPolicy(c, true, nativeData)
+	if standaloneBareImage {
+		// The compiler sizes the snapshot for this image before emitting it.
+		// A generated image without that size cannot satisfy the quota.
+		if size == 0 {
+			return nil, fmt.Errorf("compiled metadata invalid: standalone snapshot size is missing")
+		}
+		if err := c.validateCompactData(); err != nil {
+			return nil, err
+		}
+		// The generated launcher privately owns the image and its metadata.
+		// Keep the execution header separate from the finalizable code owner.
+		snapshot = new(Compiled)
+		*snapshot = *c
+	} else {
+		var err error
+		size, err = snapshotMetadataBytes(c, limit)
+		if err != nil {
+			return nil, err
+		}
+		snapshot = cloneCompiledMetadataWithDataPolicy(c, true, nativeData)
+	}
 	if err := railshotInitializeExecutionSnapshot(snapshot); err != nil {
 		return nil, joinPrimary(err, snapshot.closeNativeActiveData())
 	}
@@ -143,7 +164,11 @@ func cloneCompiledMetadataWithDataPolicy(c *Compiled, compactExecution, nativeDa
 	out.Types, out.ValueTypes = cloneDefinedTypeDescriptorsAndValues(c.Types, c.ValueTypes)
 	out.Imports = slices.Clone(c.Imports)
 	out.Exports = cloneExportMap(c.Exports)
-	out.Names = cloneCompiledNames(c.Names)
+	if nameSectionForImage {
+		out.Names = cloneCompiledNames(c.Names)
+	} else {
+		out.Names = nil
+	}
 	out.GlobalImports = slices.Clone(c.GlobalImports)
 	out.Globals = slices.Clone(c.Globals)
 	for i := range out.Globals {

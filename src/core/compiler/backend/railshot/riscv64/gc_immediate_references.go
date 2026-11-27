@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Immediate-reference modules cannot create or receive a collector object.
 // Their any/eq storage contains only null and i31 values. Extern conversions
@@ -160,7 +163,7 @@ func admitRV64ImmediateReferenceModule(m *wasm.Module) bool {
 }
 
 func immediateCollectorType(typ wasm.ValType) bool {
-	if typ.Kind() != wasm.ValRef || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapAbs {
+	if buildfeatures.GC == 0 || typ.Kind() != wasm.ValRef || typ.Ref().Exact() || typ.Ref().Heap().Kind() != wasm.HeapAbs {
 		return false
 	}
 	heap := typ.Ref().Heap().Abs()

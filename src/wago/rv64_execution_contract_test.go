@@ -23,8 +23,11 @@ func rv64PortableRootedModule() []byte {
 }
 
 func TestRV64StateOnlyExceptionFrameMapIsEmpty(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires compiled native frame roots")
+	}
 	roots := &compiledGCFrameRoots{}
-	c := &Compiled{requiredFeatures: CoreFeatureExceptionHandling, validateMemo: &validateMemo{gcFrameRoots: roots}}
+	c := &Compiled{requiredFeatures: CoreFeatureExceptionHandling, validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(roots)}}
 	c.ensureCodeCache()
 	c.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
 	defer c.Close()

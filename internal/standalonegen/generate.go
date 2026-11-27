@@ -72,7 +72,7 @@ func Generate(compiled any, factory string) ([]byte, error) {
 		out.WriteString(")\n")
 	}
 	fmt.Fprintf(&out, "func %s() *Compiled {\nc := %s\n", factory, literal)
-	out.WriteString("for i := range c.GCTypeDescs { c.GCTypeDescs[i].PrepareScanPlan() }\ninstallCompilerCompiledFinalizer(c)\nreturn c\n}\n")
+	out.WriteString("if collectorRuntimeForImage { for i := range c.GCTypeDescs { c.GCTypeDescs[i].PrepareScanPlan() } }\ninstallCompilerCompiledFinalizer(c)\nreturn c\n}\n")
 	result, err := format.Source(out.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("format standalone initializer: %w", err)
@@ -111,7 +111,12 @@ func omit(t reflect.Type, field string) bool {
 		case "Compiled":
 			return field == "customInstructions" || field == "gcCodeTelemetry" || field == "hasGCCodeTelemetry"
 		case "compiledCodeCache":
-			return field == "profileCacheState" || field == "mu" || field == "mem" || field == "base" || field == "refs" || field == "closed" || field == "sealed"
+			return field == "profileCacheState" || field == "standaloneCodeProfile" ||
+				field == "mu" || field == "mem" || field == "base" || field == "refs" || field == "closed" || field == "sealed"
+		case "compactActiveData":
+			// The literal embeds the payload in bytes. Arena ownership belongs
+			// to the compiler process that backed the source slice.
+			return field == "arena" || field == "nativePayloadSize"
 		case "validateMemo":
 			return field == "execution" || field == "once" || field == "err" || field == "hostThunks" || field == "structuralCallIdentities"
 		case "compiledCacheIndexes":

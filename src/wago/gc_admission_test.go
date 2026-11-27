@@ -28,8 +28,8 @@ func TestGCAdmissionOrderedCancellation(t *testing.T) {
 			}
 			in := &Instance{gc: set.at(0).collector}
 			topology := &gcDomainTopology{first: set.at(0), last: set.at(5), n: 6}
-			in.refStore = &referenceStore{gcDomains: topology, instances: map[*Instance]*referenceStoreInstance{
-				in: {gcDomain: set.at(0), invocationDomains: &set, dynamicInvocationDomains: dynamic},
+			in.refStore = &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, topology), instances: map[*Instance]*referenceStoreInstance{
+				in: {gcInstanceRegistration: testGCInstanceRegistration(t, set.at(0), &set, dynamic)},
 			}}
 			if dynamic {
 				in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)
@@ -57,10 +57,10 @@ func TestGCAdmissionOrderedCancellation(t *testing.T) {
 			if !held.ownedBy(owner) {
 				t.Fatal("waiter changed the original owner")
 			}
-			if !topology.TryLock() {
+			if !topology.gate.TryLock() {
 				t.Fatal("waiter retained the topology read lease")
 			}
-			topology.Unlock()
+			topology.gate.Unlock()
 			for i := 0; i < set.len(); i++ {
 				if i == 4 {
 					continue
@@ -77,14 +77,14 @@ func TestGCAdmissionOrderedCancellation(t *testing.T) {
 func TestGCAdmissionSameOwnerBorrowing(t *testing.T) {
 	in := &Instance{gc: new(gc.Collector)}
 	domain := &gcStoreDomain{collector: in.gc}
-	in.refStore = &referenceStore{instances: map[*Instance]*referenceStoreInstance{in: {gcDomain: domain}}}
+	in.refStore = &referenceStore{instances: map[*Instance]*referenceStoreInstance{in: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, false)}}}
 	owner := newInvocationID()
 	held := in.lockGCInvocation(owner)
 	defer held.unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	borrowed, err := in.lockGCInvocationContext(ctx, owner)
-	if err != nil || borrowed.acquired {
+	if err != nil || borrowed.isAcquired() {
 		t.Fatalf("borrowed lease = %+v, %v", borrowed, err)
 	}
 	borrowed.unlock()
@@ -142,7 +142,7 @@ func TestGCTopologyAdmissionCancellation(t *testing.T) {
 func TestGCAdmissionUncontendedAllocations(t *testing.T) {
 	in := &Instance{gc: new(gc.Collector)}
 	domain := &gcStoreDomain{collector: in.gc}
-	in.refStore = &referenceStore{instances: map[*Instance]*referenceStoreInstance{in: {gcDomain: domain}}}
+	in.refStore = &referenceStore{instances: map[*Instance]*referenceStoreInstance{in: {gcInstanceRegistration: testGCInstanceRegistration(t, domain, nil, false)}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for _, ctx := range []context.Context{nil, context.Background(), ctx} {
@@ -161,14 +161,14 @@ func TestGCAdmissionUncontendedAllocations(t *testing.T) {
 
 func TestGCInvocationNoDomainFastPathPreservesDynamicTopology(t *testing.T) {
 	plain := &Instance{refStore: &referenceStore{}}
-	if lease := plain.lockGCInvocation(newInvocationID()); lease.acquired || lease.topology != nil {
+	if lease := plain.lockGCInvocation(newInvocationID()); lease.isAcquired() || lease.leasedTopology() != nil {
 		t.Fatalf("plain no-domain admission acquired a lease: %+v", lease)
 	}
 
-	dynamic := &Instance{refStore: &referenceStore{gcDomains: &gcDomainTopology{}}}
+	dynamic := &Instance{refStore: &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{})}}
 	dynamic.executionFlags.Store(executionFlagDynamicGCDomain)
 	lease := dynamic.lockGCInvocation(newInvocationID())
-	if !lease.acquired || !lease.dynamic || lease.topology != dynamic.refStore.gcDomains {
+	if !lease.isAcquired() || !lease.isDynamic() || lease.leasedTopology() != dynamic.refStore.gcTopologyLocked() {
 		lease.unlock()
 		t.Fatalf("dynamic empty-domain admission lost topology lease: %+v", lease)
 	}
@@ -185,8 +185,8 @@ func BenchmarkGCInvocationAdmission(b *testing.B) {
 			in := &Instance{gc: new(gc.Collector)}
 			domain := &gcStoreDomain{collector: in.gc}
 			in.refStore = &referenceStore{
-				gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1},
-				instances: map[*Instance]*referenceStoreInstance{in: {gcDomain: domain, dynamicInvocationDomains: dynamic}},
+				gcDomainStoreState: testGCDomainStoreState(b, &gcDomainTopology{first: domain, last: domain, n: 1}),
+				instances:          map[*Instance]*referenceStoreInstance{in: {gcInstanceRegistration: testGCInstanceRegistration(b, domain, nil, dynamic)}},
 			}
 			if dynamic {
 				in.executionFlags.Store(executionFlagDynamicGCDomain | executionFlagImportedGCDomain)

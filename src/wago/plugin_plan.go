@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
+//go:build !wago_standalone || !wago_standalone_no_plugins
+
 package wago
 
 import (
@@ -34,21 +36,6 @@ type immutablePlan struct {
 	providers  map[string]PluginProvider
 	selections map[string]PluginSelection
 	digests    map[string]string
-}
-
-// PluginPlan is a side-effect-free report built exclusively from immutable
-// provider definitions and reviewed selections. No factory or plugin code runs.
-type PluginPlan struct {
-	Plugins []PluginPlanEntry `json:"plugins"`
-}
-
-type PluginPlanEntry struct {
-	ID               string                `json:"id"`
-	DefinitionDigest string                `json:"definitionDigest"`
-	Grants           []AuthorityGrant      `json:"grants,omitempty"`
-	Provides         []ContractSpec        `json:"provides,omitempty"`
-	Consumes         []ContractRequirement `json:"consumes,omitempty"`
-	Contracts        []ContractBinding     `json:"contracts,omitempty"`
 }
 
 // InspectPluginPlan verifies and resolves only immutable metadata. It never
@@ -103,7 +90,7 @@ func ValidatePluginSet(set PluginSet) error {
 	if err != nil {
 		return err
 	}
-	return validatePluginCommitConflicts(planned, nil, NoPluginOverrides)
+	return validatePluginCommitConflicts(planned, emptyPluginInstructions(), NoPluginOverrides)
 }
 
 // LoadPlugins validates, registers, and commits a complete PluginSet atomically,
@@ -210,11 +197,11 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 		}
 		frozen, err := freezeDefinition(provider.Definition)
 		if err != nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseValidate, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseValidate, Err: err})
 		}
 		digest, err := definitionDigestCanonical(frozen)
 		if err != nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseValidate, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseValidate, Err: err})
 		}
 		provider.Definition = frozen
 		plan.providers[id], plan.digests[id] = provider, digest
@@ -231,21 +218,21 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 			return nil, fmt.Errorf("wago: plugin %q is selected but not linked", selection.ID)
 		}
 		if selection.DefinitionDigest != plan.digests[selection.ID] {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseValidate, Path: "definitionDigest", Err: fmt.Errorf("linked definition digest %q does not match reviewed digest %q", plan.digests[selection.ID], selection.DefinitionDigest)}
+			return nil, newPluginDiagnostic(PluginError{Plugin: selection.ID, Phase: PluginPhaseValidate, Path: "definitionDigest", Err: fmt.Errorf("linked definition digest %q does not match reviewed digest %q", plan.digests[selection.ID], selection.DefinitionDigest)})
 		}
 		if len(selection.Config) != 0 {
 			if err := jsonstrict.ValidateUniqueJSON(selection.Config); err != nil {
-				return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+				return nil, newPluginDiagnostic(PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err})
 			}
 		}
 		if err := validateGrants(provider.Definition, selection.Grants); err != nil {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseAuthorize, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: selection.ID, Phase: PluginPhaseAuthorize, Err: err})
 		}
 		if err := checkCompat(provider.Definition.Compatibility); err != nil {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseResolve, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: selection.ID, Phase: PluginPhaseResolve, Err: err})
 		}
 		if err := validateReviewedDependencies(provider.Definition.Requires, selection.Dependencies); err != nil {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseResolve, Path: "dependencies", Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: selection.ID, Phase: PluginPhaseResolve, Path: "dependencies", Err: err})
 		}
 		plan.selections[selection.ID] = freezeSelection(selection)
 	}
@@ -265,19 +252,19 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 		def := plan.providers[id].Definition
 		for _, requirement := range def.Requires {
 			if requirement.Version == "" {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("plugin %q dependency version constraint is empty", requirement.ID)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("plugin %q dependency version constraint is empty", requirement.ID)})
 			}
 			dependency, ok := plan.providers[requirement.ID]
 			if !ok {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("requires missing plugin %q", requirement.ID)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("requires missing plugin %q", requirement.ID)})
 			}
 			if _, selected := plan.selections[requirement.ID]; !selected {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("requires unselected plugin %q", requirement.ID)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("requires unselected plugin %q", requirement.ID)})
 			}
 			constraint, err := semver.ParseConstraint(requirement.Version)
 			version, versionErr := semver.Parse(dependency.Definition.Version)
 			if err != nil || versionErr != nil || !constraint.Check(version) {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("plugin %q version %q does not satisfy %q", requirement.ID, dependency.Definition.Version, requirement.Version)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("plugin %q version %q does not satisfy %q", requirement.ID, dependency.Definition.Version, requirement.Version)})
 			}
 			addEdge(requirement.ID, id)
 		}
@@ -303,7 +290,7 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 		for _, binding := range plan.selections[id].Contracts {
 			key := contractKeyString(ContractSpec{ID: binding.ID, Major: binding.Major})
 			if _, duplicate := bindings[key]; duplicate {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("duplicate contract binding %q", key)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("duplicate contract binding %q", key)})
 			}
 			binding.Providers = append([]string(nil), binding.Providers...)
 			bindings[key] = binding
@@ -312,7 +299,7 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 			bindingKey := contractKeyString(ContractSpec{ID: requirement.ID, Major: requirement.Major})
 			binding, ok := bindings[bindingKey]
 			if !ok {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q has no reviewed binding", bindingKey)}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q has no reviewed binding", bindingKey)})
 			}
 			owners := binding.Providers
 			switch requirement.Mode {
@@ -320,36 +307,36 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 				if len(owners) != 1 {
 					if len(owners) == 0 {
 						if len(exactProviders[bindingKey]) != 0 {
-							return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q must bind exactly one provider", bindingKey)}
+							return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q must bind exactly one provider", bindingKey)})
 						}
 						if len(majors[requirement.ID]) != 0 {
-							return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q major %d is incompatible with linked providers", requirement.ID, requirement.Major)}
+							return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q major %d is incompatible with linked providers", requirement.ID, requirement.Major)})
 						}
-						return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q major %d has no provider", requirement.ID, requirement.Major)}
+						return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q major %d has no provider", requirement.ID, requirement.Major)})
 					}
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q must bind exactly one provider, got %d", bindingKey, len(owners))}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("required contract %q must bind exactly one provider, got %d", bindingKey, len(owners))})
 				}
 			case ContractOptional:
 				if len(owners) > 1 {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("optional contract %q may bind at most one provider, got %d", bindingKey, len(owners))}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("optional contract %q may bind at most one provider, got %d", bindingKey, len(owners))})
 				}
 			case ContractMany:
 				if len(owners) != len(exactProviders[bindingKey]) {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("many contract %q must bind every selected provider, got %d of %d", bindingKey, len(owners), len(exactProviders[bindingKey]))}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("many contract %q must bind every selected provider, got %d of %d", bindingKey, len(owners), len(exactProviders[bindingKey]))})
 				}
 			}
 			seenOwners := make(map[string]struct{}, len(owners))
 			for _, owner := range owners {
 				if _, duplicate := seenOwners[owner]; duplicate {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds provider %q more than once", bindingKey, owner)}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds provider %q more than once", bindingKey, owner)})
 				}
 				seenOwners[owner] = struct{}{}
 				provider, selected := plan.providers[owner]
 				if !selected {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds unlinked provider %q", bindingKey, owner)}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds unlinked provider %q", bindingKey, owner)})
 				}
 				if _, selected = plan.selections[owner]; !selected {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds unselected provider %q", bindingKey, owner)}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds unselected provider %q", bindingKey, owner)})
 				}
 				provides := false
 				for _, spec := range provider.Definition.Provides {
@@ -359,21 +346,21 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 					}
 				}
 				if !provides {
-					return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds provider %q which does not declare it", bindingKey, owner)}
+					return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q binds provider %q which does not declare it", bindingKey, owner)})
 				}
 				addEdge(owner, id)
 			}
 			if requirement.Mode == ContractMany {
 				for _, owner := range exactProviders[bindingKey] {
 					if _, bound := seenOwners[owner]; !bound {
-						return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("many contract %q omits selected provider %q", bindingKey, owner)}
+						return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("many contract %q omits selected provider %q", bindingKey, owner)})
 					}
 				}
 			}
 			delete(bindings, bindingKey)
 		}
 		if len(bindings) != 0 {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("selection contains undeclared contract binding")}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Err: fmt.Errorf("selection contains undeclared contract binding")})
 		}
 	}
 	if err := validateDirectReachability(plan); err != nil {
@@ -474,7 +461,7 @@ func validateDirectReachability(plan *immutablePlan) error {
 	}
 	for _, id := range sortedSelectionIDs(plan.selections) {
 		if _, ok := reachable[id]; !ok {
-			return &PluginError{Plugin: id, Phase: PluginPhaseResolve, Path: "direct", Err: fmt.Errorf("selected plugin is unreachable from every reviewed direct root")}
+			return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseResolve, Path: "direct", Err: fmt.Errorf("selected plugin is unreachable from every reviewed direct root")})
 		}
 	}
 	return nil
@@ -553,7 +540,7 @@ func registerPlan(immutable *immutablePlan) ([]plannedPlugin, error) {
 	for _, id := range immutable.ordered {
 		provider, selection := immutable.providers[id], immutable.selections[id]
 		if provider.New == nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: fmt.Errorf("nil plugin factory")}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: fmt.Errorf("nil plugin factory")})
 		}
 		if provider.ValidateConfig != nil {
 			var configErr error
@@ -561,25 +548,25 @@ func registerPlan(immutable *immutablePlan) ([]plannedPlugin, error) {
 				configErr = provider.ValidateConfig(append(json.RawMessage(nil), selection.Config...))
 			})
 			if err := joinPrimary(configErr, panicErr); err != nil {
-				return nil, &PluginError{Plugin: id, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+				return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseConfigure, Path: "config", Err: err})
 			}
 		}
 		var plugin Plugin
 		if err := callSafely("plugin factory", func() { plugin = provider.New() }); err != nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err})
 		}
 		if plugin == nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: fmt.Errorf("factory returned nil plugin")}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: fmt.Errorf("factory returned nil plugin")})
 		}
 		reg := newRegistrar(provider.Definition, selection)
 		var registerErr error
 		panicErr := callSafely("plugin Register", func() { registerErr = plugin.Register(reg) })
 		if err := joinPrimary(registerErr, panicErr); err != nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err})
 		}
 		reg.sealed = true
 		if err := validateRegistration(reg); err != nil {
-			return nil, &PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err}
+			return nil, newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseRegister, Err: err})
 		}
 		planned = append(planned, plannedPlugin{provider: provider, selection: selection, digest: immutable.digests[id], plugin: plugin, reg: reg})
 	}
@@ -703,16 +690,16 @@ func stageContracts(plan []plannedPlugin) error {
 			key := contractKeyString(binder.contractSpec())
 			binding, ok := contractBindingFor(p.selection, binder.contractSpec())
 			if !ok {
-				return &PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q has no reviewed binding", key)}
+				return newPluginDiagnostic(PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q has no reviewed binding", key)})
 			}
 			values := make([]any, 0, len(binding.Providers))
 			for _, owner := range binding.Providers {
 				provision, exists := providers[owner][key]
 				if !exists {
-					return &PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q provider %q did not register its declared provision", key, owner)}
+					return newPluginDiagnostic(PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q provider %q did not register its declared provision", key, owner)})
 				}
 				if binder.contractType() != nil && !provision.typ.AssignableTo(binder.contractType()) {
-					return &PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q type mismatch: provider has %v, consumer wants %v", binder.contractSpec().ID, provision.typ, binder.contractType())}
+					return newPluginDiagnostic(PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseResolve, Err: fmt.Errorf("contract %q type mismatch: provider has %v, consumer wants %v", binder.contractSpec().ID, provision.typ, binder.contractType())})
 				}
 				values = append(values, provision.value)
 			}
@@ -731,37 +718,6 @@ func contractBindingFor(selection PluginSelection, spec ContractSpec) (ContractB
 	return ContractBinding{}, false
 }
 
-func pluginRunsFor(plan []plannedPlugin) []registeredPluginRun {
-	runs := make([]registeredPluginRun, len(plan))
-	for i := range plan {
-		p := &plan[i]
-		run := registeredPluginRun{
-			name: p.provider.Definition.ID, lifecycle: p.reg.lifecycle,
-			closeInstances: append([]func() error(nil), p.reg.closeInstances...),
-			drainInstances: append([]func() error(nil), p.reg.drainInstances...),
-			callbacks:      p.reg.callGate,
-			handles:        append([]func() error(nil), p.reg.revoke...),
-		}
-		for _, binder := range p.reg.consumes {
-			run.consumed = append(run.consumed, binder.contractSlotValue())
-		}
-		for j := range plan {
-			consumer := &plan[j]
-			for _, binder := range consumer.reg.consumes {
-				binding, _ := contractBindingFor(consumer.selection, binder.contractSpec())
-				for _, owner := range binding.Providers {
-					if owner == run.name {
-						run.provided = append(run.provided, binder.contractSlotValue())
-						break
-					}
-				}
-			}
-		}
-		runs[i] = run
-	}
-	return runs
-}
-
 func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -773,7 +729,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	}
 	rt.writableImportsLocked()
 	needsInstructionABI := false
-	hooks := rt.hooks.clone()
+	hooks := rt.clonePluginHooks()
 	for _, p := range plan {
 		id := p.provider.Definition.ID
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
@@ -788,7 +744,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 				}
 				rt.imports[key] = gated
 			}
-			rt.importMeta[key] = cloneRegisteredImport(imp)
+			setPluginImport(&rt.importMeta, key, cloneRegisteredImport(imp))
 			rt.importOwner[key] = id
 			rt.moduleOwner[imp.module] = id
 		}
@@ -799,27 +755,27 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 			rt.caps[cap.cap] = id
 		}
 		for _, ins := range p.reg.instructions {
-			rt.instructions[instructionKey{ins.spec.Module, ins.spec.Name}] = ins
+			addPluginInstruction(&rt.instructions, ins)
 		}
 		for _, binder := range p.reg.consumes {
 			slot := binder.contractSlotValue()
 			values := append([]any(nil), slot.values...)
 			slot.values = nil
 			if err := slot.activate(values); err != nil {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: err}
+				return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: err})
 			}
 		}
 		hooks.appendGated(p.reg.hooks, p.reg.callGate)
 		for _, activate := range p.reg.activate {
 			activate(rt)
 		}
-		rt.plugins = append(rt.plugins, p.provider.Definition)
+		rt.registerPluginDefinition(p.provider.Definition)
 	}
 	if needsInstructionABI {
 		for _, imp := range instructionABIImports() {
 			key := imp.key()
 			rt.imports[key] = imp.fn
-			rt.importMeta[key] = cloneRegisteredImport(imp)
+			setPluginImport(&rt.importMeta, key, cloneRegisteredImport(imp))
 			rt.importOwner[key] = "wago:core"
 			rt.moduleOwner[imp.module] = "wago:core"
 		}
@@ -831,27 +787,27 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	return nil
 }
 
-func validatePluginCommitConflicts(plan []plannedPlugin, existing map[instructionKey]*registeredInstruction, policy ImportOverridePolicy) error {
+func validatePluginCommitConflicts(plan []plannedPlugin, existing pluginInstructions, policy ImportOverridePolicy) error {
 	moduleOwner, importOwner := map[string]string{}, map[string]string{}
 	instructionOwner := map[instructionKey]string{}
 	for _, p := range plan {
 		id := p.provider.Definition.ID
 		for _, imp := range p.reg.imports {
 			if owner, exists := moduleOwner[imp.module]; exists && owner != id && policy != AllowTestOverrides {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import module %q already owned by plugin %q: %w", imp.module, owner, ErrPluginConflict)}
+				return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import module %q already owned by plugin %q: %w", imp.module, owner, ErrPluginConflict)})
 			}
 			if owner, exists := importOwner[imp.key()]; exists && policy != AllowTestOverrides {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import %q already provided by plugin %q: %w", imp.displayName(), owner, ErrPluginConflict)}
+				return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("import %q already provided by plugin %q: %w", imp.displayName(), owner, ErrPluginConflict)})
 			}
 			moduleOwner[imp.module], importOwner[imp.key()] = id, id
 		}
 		for _, ins := range p.reg.instructions {
 			key := instructionKey{ins.spec.Module, ins.spec.Name}
 			if owner, exists := instructionOwner[key]; exists {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q already provided by plugin %q: %w", ins.spec.Module+"."+ins.spec.Name, owner, ErrPluginConflict)}
+				return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q already provided by plugin %q: %w", ins.spec.Module+"."+ins.spec.Name, owner, ErrPluginConflict)})
 			}
-			if _, exists := existing[key]; exists {
-				return &PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q conflicts: %w", ins.spec.Module+"."+ins.spec.Name, ErrPluginConflict)}
+			if hasPluginInstruction(existing, key) {
+				return newPluginDiagnostic(PluginError{Plugin: id, Phase: PluginPhaseCommit, Err: fmt.Errorf("instruction %q conflicts: %w", ins.spec.Module+"."+ins.spec.Name, ErrPluginConflict)})
 			}
 			instructionOwner[key] = id
 		}
@@ -862,13 +818,13 @@ func validatePluginCommitConflicts(plan []plannedPlugin, existing map[instructio
 func (rt *Runtime) startPluginPlan(ctx context.Context, plan []plannedPlugin) error {
 	for i, p := range plan {
 		rt.mu.Lock()
-		rt.pluginRuns[i].shouldStop = true
+		markPluginStarted(rt.pluginRuns, i)
 		rt.mu.Unlock()
 		if p.reg.lifecycle.Start != nil {
 			var startErr error
 			panicErr := callSafely("plugin Start", func() { startErr = p.reg.lifecycle.Start(ctx) })
 			if err := joinPrimary(startErr, panicErr); err != nil {
-				return &PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseStart, Err: err}
+				return newPluginDiagnostic(PluginError{Plugin: p.provider.Definition.ID, Phase: PluginPhaseStart, Err: err})
 			}
 		}
 	}

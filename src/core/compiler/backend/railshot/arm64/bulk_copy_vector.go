@@ -9,13 +9,15 @@
 
 package arm64
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 var bulkCopyVectorEnabled = true
 var bulkMemoryLoopsEnabled = true
 
 // Load the complete source before writing any destination bytes. Overlapping
 // final vectors stay inside the checked span, including for unaligned lengths.
 func (f *fn) emitBulkCopyVector(n int, srcBase, src, dstBase, dst Reg) bool {
-	if n < 16 || !f.opt(optBulkCopyVector) {
+	if n < 16 || !(buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkCopyVector)) {
 		return false
 	}
 	count := (n + 15) / 16

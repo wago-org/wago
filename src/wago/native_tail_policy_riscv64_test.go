@@ -21,10 +21,10 @@ func rv64DynamicTailCharge(t *testing.T, in *Instance) (code, metadata int, base
 	}
 	defer in.unlockNativeEntry(entry)
 	scope := entry.tables.targets
-	if scope == nil || len(scope.tailActive) == 0 {
+	if scope == nil || len(scope.tailForTest().active) == 0 {
 		t.Fatal("missing actual generation")
 	}
-	return scope.tailBudget.code, scope.tailBudget.metadata, in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase
+	return scope.tailForTest().budget.code, scope.tailForTest().budget.metadata, in.pluginState.Load().railshotInvocation.tail.get().policy.metadataBase
 }
 
 // rv64ConfigureDynamicTailQuota probes and then configures the exact physical
@@ -35,7 +35,7 @@ func rv64ConfigureDynamicTailQuota(t *testing.T, in *Instance, kind string) (cod
 	t.Helper()
 	code, metadata, base = rv64DynamicTailCharge(t, in)
 	state := &in.pluginState.Load().railshotInvocation
-	captured := state.tailPolicy
+	captured := state.tail.get().policy
 	policy := captured
 	policy.limits.code = code
 	policy.limits.metadata = metadata
@@ -50,8 +50,8 @@ func rv64ConfigureDynamicTailQuota(t *testing.T, in *Instance, kind string) (cod
 	default:
 		t.Fatalf("unknown dynamic tail quota kind %q", kind)
 	}
-	state.tailPolicy = policy
-	restore = func() { state.tailPolicy = captured }
+	state.tail.get().policy = policy
+	restore = func() { state.tail.get().policy = captured }
 	t.Cleanup(restore)
 	return code, metadata, base, restore
 }
@@ -75,7 +75,7 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 	root := rv64HostTailInstantiate(t, rt, c, imports)
 	code, metadata, base := rv64DynamicTailCharge(t, root)
 	state := &root.pluginState.Load().railshotInvocation
-	captured := state.tailPolicy
+	captured := state.tail.get().policy
 	if !captured.ready || !captured.codeConfigured || !captured.metadataConfigured || captured.limits.code != int(configuredCode) || captured.metadataBase != base || captured.limits.metadata != int(configuredMetadata-base) {
 		t.Fatal("Runtime destination allocation policy was not captured exactly", captured)
 	}
@@ -86,14 +86,14 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 	// Address-valued Constant64 sequences make import thunk lengths specific to
 	// the physical instance. Probe its real charge, then exercise that instance's
 	// entry ledger at exact limits; another instance need not have equal bytes.
-	defer func() { state.tailPolicy = captured }()
+	defer func() { state.tail.get().policy = captured }()
 	for _, limits := range []struct{ code, metadata uint64 }{{uint64(code), base + uint64(metadata)}, {uint64(code) - static, base + uint64(metadata)}, {uint64(code), base + uint64(metadata) - 1}} {
 		policy := captured
 		policy.limits.code = int(limits.code)
 		policy.limits.metadata = int(limits.metadata - base)
-		state.tailPolicy = policy // low-level captured-policy ledger control
+		state.tail.get().policy = policy // low-level captured-policy ledger control
 		got, err := root.Invoke("call", 0xcafe123480000001)
-		state.tailPolicy = captured // public entry has already retired its scope
+		state.tail.get().policy = captured // public entry has already retired its scope
 		if limits.code == uint64(code) && limits.metadata == base+uint64(metadata) {
 			if err != nil || len(got) != 1 || got[0] != 0x80000001 {
 				t.Fatal("exact aggregate static/dynamic quota", got, err)
@@ -110,7 +110,7 @@ func TestRV64DynamicTailStaticImporterAggregatePolicy(t *testing.T) {
 				t.Fatal("metadata omitted from exact aggregate", quota)
 			}
 		}
-		if state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) || producer.pluginState.Load().railshotInvocation.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) || state.tableDepth != 0 {
+		if state.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) || producer.pluginState.Load().railshotInvocation.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) || state.tableDepth != 0 {
 			t.Fatal("failed/completed scope retained caller or root reservation")
 		}
 	}
@@ -155,7 +155,7 @@ func TestRV64DynamicTailForeignCallerPolicy(t *testing.T) {
 		t.Fatal("entry widened producer authority", err)
 	}
 	for _, in := range []*Instance{caller, producer} {
-		if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+		if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 			t.Fatal("partial graph allocation was not retired")
 		}
 	}
@@ -232,7 +232,7 @@ func rv64DynamicTailConfiguredPolicy(t *testing.T, reference bool) {
 					}
 				}
 				state := &instance.pluginState.Load().railshotInvocation
-				if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(instance) != 0 {
+				if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(instance) != 0 {
 					t.Fatal("failed or completed call retained generation")
 				}
 			})

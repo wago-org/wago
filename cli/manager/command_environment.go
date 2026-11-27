@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wago-org/wago/cli/internal/automation"
@@ -81,6 +82,18 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	if err != nil {
 		fatal("compile: %v", err)
 	}
+	features := selection.CoreFeatures()
+	builtFeatures, err := selection.Build.FeaturesMask()
+	if err != nil {
+		fatal("compile: %v", err)
+	}
+	if missing := features &^ builtFeatures; selection.Core != 0 && missing != 0 {
+		fatal("compile: core %d requires features excluded by the build profile: %s", selection.Core, missing)
+	}
+	tags, err := selection.Build.Tags()
+	if err != nil {
+		fatal("compile: %v", err)
+	}
 	if automation.DryRun() {
 		var core any = selection.Core
 		if selection.Core == 0 {
@@ -89,6 +102,9 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 		plan := map[string]any{
 			"input": options.Input, "output": output, "target": target.String(), "core": core,
 			"functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
+		}
+		if len(tags) != 0 {
+			plan["buildTags"] = tags
 		}
 		if options.TinyGo {
 			plan["toolchain"] = "tinygo"
@@ -111,7 +127,7 @@ func (commandEnvironment) Compile(options compilecmd.Options) {
 	result, err := managerstandalone.Build(managerstandalone.Request{
 		Input: options.Input, Output: output, Target: target, Invoke: options.Invoke, Core: selection.Core, Verbose: options.Verbose,
 		DeferredBoundsChecking: selection.DeferredBoundsChecking, FunctionWorkers: selection.FunctionWorkers, Optimizations: selection.Optimizations,
-		Features: selection.CoreFeatures(), FeaturesSet: true, TinyGo: options.TinyGo,
+		Features: features & builtFeatures, FeaturesSet: true, BuildTags: tags, TinyGo: options.TinyGo,
 	})
 	if err != nil {
 		progress.Fail("Standalone build failed")
@@ -157,6 +173,12 @@ func (commandEnvironment) Configure(request configoptions.Request) {
 	config := target.Config()
 	scope, path := target.Scope(), displayPath(target.Path())
 	switch request.Action {
+	case configoptions.BuildTags:
+		tags, err := config.Build.Tags()
+		if err != nil {
+			fatal("config build-tags: %v", err)
+		}
+		fmt.Println(strings.Join(tags, ","))
 	case configoptions.Interactive:
 		updated, changed, err := managerconfig.Interactive(config, target.ResetBase(), scope, request.Experimental)
 		if err != nil {

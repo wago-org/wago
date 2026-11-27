@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 var tailSelfLoopEnabled = true
 
@@ -25,7 +28,7 @@ func (f *fn) onlyLocalTailTransfers(body []byte) bool {
 }
 
 func (f *fn) integerTailTransfers(body []byte, selfOnly bool) bool {
-	if !f.opt(optTailSelfLoop) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) || len(f.ft.Results) > 1 {
+	if !(buildfeatures.TailCall != 0 && f.opt(optTailSelfLoop)) || !f.opt(optRegABI) || profileEnabled || f.interruptible || f.moduleEH || f.gcFrameRoots != nil || len(f.customInstructions) != 0 || !sigFitsRegABI(f.ft) || !sigIsIntOnly(f.ft) || len(f.ft.Results) > 1 {
 		return false
 	}
 	for _, run := range f.m.Code[int(f.traceFuncIdx)-f.importedFunctionCount()].Locals.Runs {

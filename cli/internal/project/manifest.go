@@ -217,7 +217,7 @@ func validateManifestSettings(raw any) error {
 	if err != nil {
 		return err
 	}
-	if err := rejectUnknown(settings, "settings", "features", "optimizations", "runtime"); err != nil {
+	if err := rejectUnknown(settings, "settings", "features", "optimizations", "runtime", "build"); err != nil {
 		return err
 	}
 	for _, field := range []struct {
@@ -240,6 +240,36 @@ func validateManifestSettings(raw any) error {
 			}
 			if _, ok := rawValue.(bool); !ok {
 				return fmt.Errorf("settings.%s.%s must be a boolean", field.name, name)
+			}
+		}
+	}
+	if rawBuild, ok := settings["build"]; ok {
+		build, err := manifestObject(rawBuild, "settings.build")
+		if err != nil {
+			return err
+		}
+		if err := rejectUnknown(build, "settings.build", "core", "features"); err != nil {
+			return err
+		}
+		if value, ok := build["core"]; ok {
+			switch core, _ := value.(string); core {
+			case "auto", "1.0", "2.0", "3.0":
+			default:
+				return fmt.Errorf("settings.build.core must be auto, 1.0, 2.0, or 3.0")
+			}
+		}
+		if features, ok := build["features"]; ok {
+			values, err := manifestObject(features, "settings.build.features")
+			if err != nil {
+				return err
+			}
+			for name, value := range values {
+				if _, ok := manifestFeatureNames[name]; !ok && name != "relaxed-simd" {
+					return fmt.Errorf("settings.build.features contains unknown setting %q", name)
+				}
+				if _, ok := value.(bool); !ok {
+					return fmt.Errorf("settings.build.features.%s must be a boolean", name)
+				}
 			}
 		}
 	}

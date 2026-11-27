@@ -133,7 +133,7 @@ func rv64ReferenceFunctionNumericCallsRetiredRelays(t *testing.T, tableStage int
 						}
 						for _, owner := range []*Instance{selected, bridge} {
 							state := &owner.pluginState.Load().railshotInvocation
-							if state.tableDepth != 0 || state.tailGenerationBudget.count != 0 {
+							if state.tableDepth != 0 || state.tailForTest().generationBudget.count != 0 {
 								t.Fatal("relay reference activation leaked")
 							}
 						}

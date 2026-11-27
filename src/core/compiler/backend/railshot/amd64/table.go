@@ -11,6 +11,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -124,6 +125,9 @@ func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
 }
 
 func (f *fn) tableAddr64(tableIdx uint32) bool {
+	if buildfeatures.Table64 == 0 {
+		return false
+	}
 	tt, ok := f.m.TableType(tableIdx)
 	return ok && tt.Limits.Addr64
 }

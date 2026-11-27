@@ -92,6 +92,10 @@ func (snapshot rv64TableDependencySnapshot) matches(current rv64TableDependencyS
 }
 
 func railshotPrepareTableDependencies(b *instanceBuilder, cleanup *resourceCleanup) error {
+	var collector *gc.Collector
+	if state := b.collectorBuildState(); state != nil {
+		collector = state.collector
+	}
 	for index := 0; index < b.c.tableImportCount(); index++ {
 		def, _ := b.c.tableImportAt(index)
 		table, ok := b.imports.table(b.c.tableImportBindingKey(index))
@@ -102,7 +106,7 @@ func railshotPrepareTableDependencies(b *instanceBuilder, cleanup *resourceClean
 		if err != nil {
 			return fmt.Errorf("imported table %q exact type: %w", def.Key, err)
 		}
-		if err = rv64AcquireTableDependency(&b.tableAttachments, table, b.c.tableElementType(index), exact, b.c.Types, b.opts.store, b.collector, def.Addr64, nil, cleanup); err != nil {
+		if err = rv64AcquireTableDependency(&b.tableAttachments, table, b.c.tableElementType(index), exact, b.c.Types, b.opts.store, collector, def.Addr64, nil, cleanup); err != nil {
 			return fmt.Errorf("imported table %q: %w", def.Key, err)
 		}
 	}

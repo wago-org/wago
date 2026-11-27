@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 var directReferenceABIEnabled = true
 
@@ -19,7 +22,7 @@ var directReferenceABIEnabled = true
 // private direct-only targets may acquire a new internal entry. A reference pair
 // needs a separate result-capture proof.
 func (f *fn) directReferenceRegABI(localIdx int, ft *wasm.CompType) bool {
-	if !f.opt(optDirectReferenceABI) || f.moduleEH ||
+	if !(buildfeatures.ReferenceTypes != 0 && f.opt(optDirectReferenceABI)) || f.moduleEH ||
 		localIdx < 0 || localIdx >= len(f.referenceWrapperTargets) || f.referenceWrapperTargets[localIdx] ||
 		!sigFitsDirectReferenceRegABI(ft) {
 		return false
@@ -42,7 +45,7 @@ func sigFitsDirectReferenceRegABI(ft *wasm.CompType) bool {
 // Keep source reachability separate from emitted adapters. Compact adapter and
 // trap-body sharing must see every actual adapter as a layout boundary.
 func directReferenceHostAdapters(m *wasm.Module, hints []funcHints, policy CodegenPolicy, wrappers []bool) []bool {
-	if !policy.EnabledOption(optRegABI) || !policy.EnabledOption(optDirectReferenceABI) {
+	if !policy.EnabledOption(optRegABI) || !(buildfeatures.ReferenceTypes != 0 && policy.EnabledOption(optDirectReferenceABI)) {
 		return wrappers
 	}
 	emitted := wrappers

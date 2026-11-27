@@ -208,12 +208,21 @@ func TestConfigValidationRejectsUnsupported(t *testing.T) {
 	if _, err := Compile(cfg, signExtModule()); err == nil {
 		t.Fatal("enabling an unknown feature bit should error")
 	}
+	if currentBackendAvailable() {
+		var unsupported *UnsupportedFeatureError
+		if err := ValidateStandaloneExecutionConfig(cfg); !errors.As(err, &unsupported) {
+			t.Fatalf("standalone validation accepted or misdiagnosed an unknown feature: %v", err)
+		}
+	}
 }
 
 func TestConfigValidationRejectsUnknownBoundsCheckMode(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsCheckMode(99))
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "bounds-check mode") {
 		t.Fatalf("Validate unknown bounds-check mode = %v", err)
+	}
+	if err := ValidateStandaloneExecutionConfig(cfg); err == nil || !strings.Contains(err.Error(), "bounds-check mode") {
+		t.Fatalf("standalone validation of unknown bounds-check mode = %v", err)
 	}
 }
 
@@ -614,7 +623,11 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 func TestRuntimeRejectsInvalidNativeStackBeforeInstantiation(t *testing.T) {
 	compiled := MustCompile(wasmtest.Module())
 	defer compiled.Close()
-	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes + 1)))
+	config := NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes + 1)
+	if err := ValidateStandaloneExecutionConfig(config); err == nil || !strings.Contains(err.Error(), "16-byte aligned") {
+		t.Fatalf("standalone validation of invalid native stack = %v", err)
+	}
+	rt := NewRuntime(WithRuntimeConfig(config))
 	defer rt.Close()
 	module, err := rt.Module(compiled)
 	if err != nil {

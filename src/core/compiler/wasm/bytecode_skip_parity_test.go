@@ -9,7 +9,7 @@ import (
 func checkImmediateSkipParity(t *testing.T, op byte, data []byte) {
 	t.Helper()
 	for _, multi := range []bool{false, true} {
-		for _, widths := range []memargWidths{{}, {fixed64: true}, {indexed64: []uint64{2, 1}}} {
+		for _, widths := range parityMemargWidths {
 			classifier := ModuleInstructionClassifier{widths: widths, multiMemory: multi}
 			for _, start := range []int{0, 3} {
 				encoded := append(make([]byte, start), data...)

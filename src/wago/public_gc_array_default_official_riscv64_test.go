@@ -73,12 +73,12 @@ func TestRV64PublicGCArrayDefaultOfficialExecutionAndArtifact(t *testing.T) {
 					state := in.pluginState.Load()
 					var roots []gcGlobalRootMapping
 					if state != nil {
-						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+						roots = append(roots, state.stagedGlobalRoots()...)
 					}
 					public := in.publicGCState()
-					roots = append(roots, public.globalRoots...)
+					roots = append(roots, public.globalRootMappings()...)
 					if len(roots) != 2 {
-						t.Fatalf("default official array roots staged/generic = %d/%d", len(roots)-len(public.globalRoots), len(public.globalRoots))
+						t.Fatalf("default official array roots staged/generic = %d/%d", len(roots)-len(public.globalRootMappings()), len(public.globalRootMappings()))
 					}
 					var seen [2]bool
 					for _, mapping := range roots {

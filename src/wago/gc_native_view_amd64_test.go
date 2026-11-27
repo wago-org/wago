@@ -21,21 +21,21 @@ func TestNativeGCViewVersionAndAllocationRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if in.gcNativeView == nil || in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(in.gcNativeView)) {
-		t.Fatalf("native GC instance view = %p, basedata = %#x", in.gcNativeView, in.jm.GCNativeViewPtr())
+	if in.gcNativeView() == nil || in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(in.gcNativeView())) {
+		t.Fatalf("native GC instance view = %p, basedata = %#x", in.gcNativeView(), in.jm.GCNativeViewPtr())
 	}
 	collectorView := in.gc.NativeView()
-	if collectorView == nil || in.gcNativeView.Collector != uintptr(unsafe.Pointer(collectorView)) {
-		t.Fatalf("native GC collector view = %p, instance pointer = %#x", collectorView, in.gcNativeView.Collector)
+	if collectorView == nil || in.gcNativeView().Collector != uintptr(unsafe.Pointer(collectorView)) {
+		t.Fatalf("native GC collector view = %p, instance pointer = %#x", collectorView, in.gcNativeView().Collector)
 	}
 
-	in.gcNativeView.Version = gc.NativeABIVersion + 1
-	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "instance ABI version") {
+	in.gcNativeView().Version = gc.NativeABIVersion + 1
+	if err := gc.ValidateNativeInstanceView(in.gcNativeView(), in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "instance ABI version") {
 		t.Fatalf("instance-view preflight mismatch = %v", err)
 	}
-	in.gcNativeView.Version = gc.NativeABIVersion
+	in.gcNativeView().Version = gc.NativeABIVersion
 	collectorView.Version = gc.NativeABIVersion + 1
-	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "collector ABI version") {
+	if err := gc.ValidateNativeInstanceView(in.gcNativeView(), in.gc, uint32(len(in.c.Types))); err == nil || !strings.Contains(err.Error(), "collector ABI version") {
 		t.Fatalf("collector-view preflight mismatch = %v", err)
 	}
 	collectorView.Version = gc.NativeABIVersion

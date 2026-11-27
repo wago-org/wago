@@ -184,7 +184,7 @@ func TestRV64PublicReferenceFunctionLocalCellsParked(t *testing.T) {
 						if start == 2 {
 							wantCalls++
 						}
-						if calls != wantCalls || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || gate.state.Load() != 0 || active.pluginState.Load().railshotInvocation.tailDispatcher != nil || readGlobalObject(provider.globalCells[1], ValI32) != 12 {
+						if calls != wantCalls || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || gate.state.Load() != 0 || active.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || readGlobalObject(provider.globalCells[1], ValI32) != 12 {
 							t.Fatal("private cell join retained scope/effects")
 						}
 						rv64ReferenceImportedStartRetired(t, native, nc)

@@ -14,18 +14,6 @@ var rv64GCTypeSubtypingExtendedRecursiveLinkWires = [][]byte{
 	mustDecodeGCTypeSubtypingExtendedRecursiveLinkWire("0061736d0100000001c780808000044e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e025001026000016470500106600001640602c98080800008024d39036731310000024d39036731310002024d39036731320000024d39036731320002024d39036731310004024d39036731310006024d39036731320005024d39036731320007"),
 }
 
-var rv64GCTypeSubtypingExtendedRecursiveLinkModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingExtendedRecursiveLinkWires))
-	for i, wire := range rv64GCTypeSubtypingExtendedRecursiveLinkWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingExtendedRecursiveLinkWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

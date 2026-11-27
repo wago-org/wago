@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -138,47 +138,6 @@ func (s *compactExternCollector) preparePersistent(word uint64, roots gc.RootSet
 	return compactExternPreparedWord{word: normalized, ref: ref}, nil
 }
 
-type compactExternPreparedRoots struct {
-	parent gc.RootSet
-	values []compactExternPreparedWord
-}
-
-func (r *compactExternPreparedRoots) RangeRoots(fn func(gc.RootSlot) bool) {
-	if r.parent != nil {
-		more := true
-		r.parent.RangeRoots(func(slot gc.RootSlot) bool { more = fn(slot); return more })
-		if !more {
-			return
-		}
-	}
-	for i := range r.values {
-		if !fn((*gc.Root)(&r.values[i].ref)) {
-			return
-		}
-	}
-}
-func (r *compactExternPreparedRoots) RangeRootRefs(sink gc.RootRefSink) bool {
-	if r.parent != nil {
-		if direct, ok := r.parent.(gc.DirectRootRefSet); ok {
-			if !direct.RangeRootRefs(sink) {
-				return false
-			}
-		} else {
-			more := true
-			r.parent.RangeRoots(func(slot gc.RootSlot) bool { more = sink.VisitRootRef(slot.GetRef()); return more })
-			if !more {
-				return false
-			}
-		}
-	}
-	for _, value := range r.values {
-		if !sink.VisitRootRef(value.ref) {
-			return false
-		}
-	}
-	return true
-}
-
 // A false result leaves the prepared pin with its caller. Existing indexes
 // remain stable while Tiny can hold an object/owner root cursor.
 func (s *compactExternCollector) storePrepared(owner *Instance, key uintptr, value *compactExternPreparedWord) bool {
@@ -238,7 +197,7 @@ func rangeLocalCompactExternRoots(in *Instance, fn func(gc.RootSlot) bool, sink 
 }
 
 func releaseInstanceCompactExtern(in *Instance) {
-	if in == nil || compactExternCollectorCount.Load() == 0 {
+	if !nativeCollectorFrameRootsBuilt || in == nil || compactExternCollectorCount.Load() == 0 {
 		return
 	}
 	value, ok := compactExternCollectors.Load(in.gc)
@@ -260,8 +219,6 @@ func releaseInstanceCompactExtern(in *Instance) {
 	unlockNative()
 	s.drain()
 }
-
-const gcExternGlobalSet uint32 = 47
 
 func (in *Instance) dispatchCompactExternStore(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) bool {
 	if helper != gcExternGlobalSet {
@@ -287,7 +244,9 @@ func (in *Instance) dispatchCompactExternStore(ctrl uintptr, helper, safepoint u
 	public := in.publicGCState()
 	public.mu.Lock()
 	defer public.mu.Unlock()
-	defer func() { public.frameRoots.physicalStack = nil }()
+	if nativeCollectorFrameRootsBuilt {
+		defer public.frameRoots.clearPhysicalStack()
+	}
 	roots := in.gcHelperRoots(ctrl, public, safepoint, stack)
 	storageOwner := in
 	if owner := in.globalCells[index].owner; owner != nil && owner.instance != nil {

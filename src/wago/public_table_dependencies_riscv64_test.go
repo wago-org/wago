@@ -107,7 +107,7 @@ func TestRV64PublicTableDependenciesSourceArtifact(t *testing.T) {
 						t.Fatal("actual terminal table cleanup", err)
 					}
 					if host {
-						if len(table.owner.funcrefStores) != 0 || acquiredStore != nil && len(acquiredStore.gcDomains.funcrefTables) != 0 {
+						if len(table.owner.funcrefStores) != 0 || acquiredStore != nil && len(tableTestGCRows(acquiredStore)) != 0 {
 							t.Fatal("host topology leaked its acquired store")
 						}
 						if err := table.Close(); err != nil {

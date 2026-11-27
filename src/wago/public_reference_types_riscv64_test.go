@@ -188,7 +188,7 @@ func TestRV64PublicReferenceTypesRetiredGlobalOwner(t *testing.T) {
 					}
 					rv64ReferenceTypesInvoke(t, in, vector)
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailDispatcher != nil {
+					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailForTest().dispatcher != nil {
 						t.Fatal("type carrier retained scope")
 					}
 					if err := in.Close(); err != nil {

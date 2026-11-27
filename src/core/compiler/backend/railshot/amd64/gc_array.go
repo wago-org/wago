@@ -11,6 +11,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -78,7 +79,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocUniform)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			length, bytes, static := nativeGCStaticArraySize(f, layout)
 			if !static || bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeUniform, dynamic: !static}
@@ -188,7 +189,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		params = append(params, wasm.I32, wasm.I32)
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocFixed)
-		if layout, native := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native {
+		if layout, native := nativeGCArrayLayout(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc), f.m, typeIndex); native {
 			bytes := uint64(gc.PayloadOffset) + uint64(count)*uint64(layout.elemSize)
 			bytes = (bytes + 7) &^ 7
 			if bytes <= uint64(gc.NativeArrayAllocMaxBytes) {
@@ -220,7 +221,7 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 		helper := uint32(gcArrayAllocDefault)
-		if layout, native := nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
+		if layout, native := nativeGCDefaultArrayLayout(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc), f.m, typeIndex); native && (!layout.ref || layout.nullable) {
 			if length, bytes, static := nativeGCStaticArraySize(f, layout); static && bytes <= uint64(gc.NativeLargeArrayAllocMaxBytes) {
 				f.nativeArrayAlloc = gcArrayAllocStubSite{typeIndex: typeIndex, count: length, mode: gcArrayNativeDefault, large: bytes > uint64(gc.NativeArrayAllocMaxBytes)}
 				helper = gcArrayAllocDefaultNative

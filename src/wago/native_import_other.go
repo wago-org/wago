@@ -86,7 +86,7 @@ func railshotAdoptFrozenGlobalDependencies(*Instance, bool) error               
 func railshotImportedGlobalValue(*Instance, *Global) (Value, bool, error) {
 	return Value{}, false, nil
 }
-func railshotCanonicalGlobalFuncref(*referenceStore, *Instance, uint64) (*Instance, uint64, bool) {
+func railshotCanonicalForeignFuncref(*referenceStore, *Instance, uint64) (*Instance, uint64, bool) {
 	return nil, 0, false
 }
 

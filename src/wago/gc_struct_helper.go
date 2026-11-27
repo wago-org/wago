@@ -8,7 +8,6 @@
 package wago
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -34,17 +33,10 @@ const (
 	gcStructAllocOne                 = 11
 	gcStructFinalCastGet             = 12
 	gcStructFinalCastArrayLen        = 13
-	gcFuncRefTest                    = 14
 	gcStructReserveDead              = 15
 	gcStructReserveDeadNative        = 40 // dead reservation followed by native batch preparation
 	gcStructReserveDeadBatch         = 42
-	gcArrayReserveDeadBatch          = 43
 )
-
-type gcStructHelperError struct{ err error }
-type gcStructHelperTrap struct{ code coreruntime.TrapCode }
-
-func (e gcStructHelperError) Error() string { return e.err.Error() }
 
 func (in *Instance) gcObjectTypeMatches(actual gc.TypeID, want uint32) bool {
 	if in == nil || in.gc == nil {
@@ -74,50 +66,9 @@ func gcHelperMayAllocate(helper uint32) bool {
 	}
 }
 
-func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
-	if in == nil || (in.gc == nil && helper != gcFuncRefTest) {
-		panic(gcHelperFailuref("gc struct helper %d has no live collector", helper))
-	}
-	defer drainExceptionReclaims(in.gc)
-	var lockedDomain *gcStoreDomain
-	if in.gc != nil && helper != gcFuncRefTest {
-		lockedDomain = in.lockGCCollector()
-	}
-	defer unlockGCCollector(lockedDomain)
-	var state *gcPublicState
-	var frameRoots gc.RootSet = gc.EmptyRoots{}
-	compactConversion := compiledArchitecture == 4 && (helper == gcAnyConvertExtern || helper == gcExternConvertAny) && in.c.compactExternFrameRoots()
-	if gcHelperMayAllocate(helper) || compactConversion || in.managedFunctionAggregateMayAllocate(helper, args) || in.compactExternPersistentMayAllocate(helper, args) {
-		// Native batches own unpublished handles and a top nursery chunk. Cancel
-		// them before any Go allocation, trap, or collecting fallback so the helper
-		// sees the exact used bump and cannot overlap reserved bytes.
-		in.gc.CancelNativeAllocationBatch()
-		state = in.publicGCState()
-		state.mu.Lock()
-		defer state.mu.Unlock()
-		defer func() { state.frameRoots.physicalStack = nil }()
-		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
-	}
-
-	if in.dispatchManagedFunctionAggregate(helper, args, results, frameRoots, state) {
-		return
-	}
-
-	switch helper {
-	case gcFuncRefTest:
-		in.dispatchGCFunctionRefTest(in, args, results)
-	case gcArrayReserveDeadBatch:
-		if len(args) != 2 || len(results) != 0 {
-			panic(gcHelperFailuref("gc array batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
-		}
-		typeID, length, count := uint32(args[1]>>32), uint32(args[1]), uint32(args[0])
-		if err := in.gc.ReserveDeadArrayAllocationsWithPoll(in.requireGCDomainType(typeID), length, count, frameRoots, in.pollGCBatchInterrupt); err != nil {
-			panic(gcHelperFailure(err))
-		}
-		if gc.NativeDeadBatchSupported {
-			in.prepareNativeDeadArrayBatch(typeID, length, count)
-		}
-	case gcStructReserveDeadBatch:
+func (in *Instance) dispatchGCStructHelperLocked(helper uint32, args, results []uint64, state *gcPublicState, frameRoots gc.RootSet) {
+	switch {
+	case gcHelperMaskForImage&(1<<gcStructReserveDeadBatch) != 0 && helper == gcStructReserveDeadBatch:
 		if len(args) != 2 || len(results) != 0 {
 			panic(gcHelperFailuref("gc struct batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
 		}
@@ -127,7 +78,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if gc.NativeDeadBatchSupported {
 			in.prepareNativeDeadStructBatch(uint32(args[1]), uint32(args[0]))
 		}
-	case gcStructReserveDead, gcStructReserveDeadNative:
+	case gcHelperMaskForImage&(1<<gcStructReserveDead) != 0 && helper == gcStructReserveDead,
+		gcHelperMaskForImage&(1<<gcStructReserveDeadNative) != 0 && helper == gcStructReserveDeadNative:
 		if len(args) != 1 {
 			panic(gcHelperFailuref("gc struct dead reservation helper arity = %d, want 1", len(args)))
 		}
@@ -138,10 +90,10 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if len(results) != 0 {
 			results[0] = uint64(ref)
 		}
-		if helper == gcStructReserveDeadNative {
+		if gcHelperMaskForImage&(1<<gcStructReserveDeadNative) != 0 && helper == gcStructReserveDeadNative {
 			in.prepareNativeDeadStructHandle(uint32(args[0]))
 		}
-	case gcStructAllocDefault:
+	case gcHelperMaskForImage&(1<<gcStructAllocDefault) != 0 && helper == gcStructAllocDefault:
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcHelperFailuref("gc struct alloc helper arity = %d/%d, want 1/at-least-1", len(args), len(results)))
 		}
@@ -154,7 +106,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailure(err))
 		}
 		results[0] = uint64(ref)
-	case gcStructAllocOne:
+	case gcHelperMaskForImage&(1<<gcStructAllocOne) != 0 && helper == gcStructAllocOne:
 		if len(args) < 1 || len(results) < 1 {
 			panic(gcHelperFailuref("gc struct alloc helper arity = %d/%d, want at-least-1/at-least-1", len(args), len(results)))
 		}
@@ -186,13 +138,15 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		if cursor != len(args)-1 {
 			panic(gcHelperFailuref("gc struct type %d initializer uses %d slots, args = %d", typeID, cursor, len(args)))
 		}
-		ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), args[:len(args)-1], frameRoots, &state.initializerRoots)
+		ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), args[:len(args)-1], frameRoots, state.structInitializerScratch())
 		if err != nil {
 			panic(gcHelperFailure(err))
 		}
 		results[0] = uint64(ref)
 		in.prepareNativeStructHandles(typeID)
-	case gcStructGet, gcStructGetS, gcStructGetU:
+	case gcHelperMaskForImage&(1<<gcStructGet) != 0 && helper == gcStructGet,
+		gcHelperMaskForImage&(1<<gcStructGetS) != 0 && helper == gcStructGetS,
+		gcHelperMaskForImage&(1<<gcStructGetU) != 0 && helper == gcStructGetU:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc struct get helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
 		}
@@ -217,8 +171,8 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			results[0] = uint64(value.Ref)
 			break
 		}
-		switch helper {
-		case gcStructGetS:
+		switch {
+		case gcHelperMaskForImage&(1<<gcStructGetS) != 0 && helper == gcStructGetS:
 			switch value.Kind {
 			case gc.StorageI8:
 				results[0] = uint64(uint32(int32(int8(value.Bits))))
@@ -227,7 +181,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			default:
 				panic(gcHelperFailuref("gc struct.get_s field kind %d is not packed", value.Kind))
 			}
-		case gcStructGetU:
+		case gcHelperMaskForImage&(1<<gcStructGetU) != 0 && helper == gcStructGetU:
 			switch value.Kind {
 			case gc.StorageI8:
 				results[0] = uint64(uint32(uint8(value.Bits)))
@@ -245,7 +199,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 				results[1] = value.BitsHi
 			}
 		}
-	case gcStructRefTest:
+	case gcHelperMaskForImage&(1<<gcStructRefTest) != 0 && helper == gcStructRefTest:
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc ref.test helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
@@ -274,7 +228,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		} else {
 			results[0] = 0
 		}
-	case gcStructRefCast:
+	case gcHelperMaskForImage&(1<<gcStructRefCast) != 0 && helper == gcStructRefCast:
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc ref.cast helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
@@ -313,7 +267,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperFailure(err))
 		}
 		results[0] = value
-	case gcStructFinalCastGet:
+	case gcHelperMaskForImage&(1<<gcStructFinalCastGet) != 0 && helper == gcStructFinalCastGet:
 		if len(args) != 5 || len(results) < 1 {
 			panic(gcHelperFailuref("gc final cast/get helper arity = %d/%d, want 5/at-least-1", len(args), len(results)))
 		}
@@ -389,7 +343,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 				}
 			}
 		}
-	case gcStructFinalCastArrayLen:
+	case gcHelperMaskForImage&(1<<gcStructFinalCastArrayLen) != 0 && helper == gcStructFinalCastArrayLen:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc final cast/array.len helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
 		}
@@ -425,65 +379,7 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 			panic(gcHelperTrap(coreruntime.TrapCastFailure))
 		}
 		results[0] = uint64(length)
-	case gcStructTableSet:
-		if len(args) != 3 {
-			panic(gcHelperFailuref("gc ref.test table-set helper args = %v, want index/ref/table", args))
-		}
-		state := in.existingGCRefTestTableState()
-		table, index := args[2], args[0]
-		if in.storeCompactExternTable(table, index, args[1], lockedDomain, frameRoots) {
-			break
-		}
-		if state == nil {
-			if table >= uint64(in.c.tableCount()) || !isGCRefValType(in.c.tableElementType(int(table))) {
-				panic(gcHelperFailuref("gc ref.test table state is unavailable"))
-			}
-			descriptor := in.tableDescriptor(int(table))
-			if len(descriptor) < 8 {
-				panic(gcHelperFailuref("generic GC table %d descriptor is unavailable", table))
-			}
-			if index >= uint64(binary.LittleEndian.Uint32(descriptor)) {
-				panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
-			}
-			word := args[1]
-			ref := gc.Ref(uint32(word))
-			if word != uint64(ref) {
-				panic(gcHelperFailuref("generic GC table set contains non-compact reference %#x", word))
-			}
-			binary.LittleEndian.PutUint64(descriptor[8+index*8:], word)
-			in.gc.WriteBarrierRoot(ref)
-			break
-		}
-		if table >= uint64(len(state.Descriptors)) || index >= uint64(binary.LittleEndian.Uint32(state.Descriptors[table])) {
-			panic(gcHelperTrap(coreruntime.TrapIndirectOutOfBounds))
-		}
-		if err := state.setTable(in.gc, table, index, args[1]); err != nil {
-			panic(gcHelperFailure(err))
-		}
-	case gcAnyConvertExtern, gcExternConvertAny:
-		if len(args) != 1 || len(results) < 1 {
-			panic(gcHelperFailuref("gc extern conversion helper arity = %d/%d, want 1/at-least-1", len(args), len(results)))
-		}
-		if compactConversion {
-			results[0] = in.dispatchCompactExternConversion(lockedDomain, helper, args[0], frameRoots)
-			break
-		}
-		state := in.existingGCRefTestTableState()
-		if state == nil || state.Conversion == nil {
-			panic(gcHelperFailuref("gc extern conversion state is unavailable"))
-		}
-		var value uint64
-		var err error
-		if helper == gcAnyConvertExtern {
-			value, err = state.Conversion.anyFromExtern(args[0])
-		} else {
-			value, err = state.Conversion.externFromAny(args[0])
-		}
-		if err != nil {
-			panic(gcHelperFailure(err))
-		}
-		results[0] = value
-	case gcStructSet:
+	case gcHelperMaskForImage&(1<<gcStructSet) != 0 && helper == gcStructSet:
 		if len(args) < 4 {
 			panic(gcHelperFailuref("gc struct set helper arity = %d, want at least 4", len(args)))
 		}
@@ -520,6 +416,9 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 // isForeignAnyref reports whether bits is the anyref word of a host externref
 // (any.convert_extern), which no defined struct/array type admits.
 func (in *Instance) isForeignAnyref(bits uint64) bool {
+	if !gcExternConversionForImage {
+		return false
+	}
 	conversion := in.existingGCExternConversionState()
 	if conversion == nil {
 		return false
@@ -686,42 +585,6 @@ func (in *Instance) gcStructValueKnown(typeID, fieldID uint32, kind gc.StorageKi
 func (in *Instance) gcStructValue(typeID, fieldID uint32, words []uint64) gc.Value {
 	kind := in.gcStructFieldKind(typeID, fieldID)
 	return in.gcStructValueKnown(typeID, fieldID, kind, in.c.Types[typeID].Fields[fieldID].Storage.Value, words)
-}
-
-// entryOwner owns the physical entry lease when a native callee parks on a
-// different instance control block. No unretained descriptor is dereferenced.
-func (in *Instance) dispatchGCFunctionRefTest(entryOwner *Instance, args, results []uint64) {
-	if len(args) != 3 || len(results) < 1 {
-		panic(gcHelperFailuref("function ref.test helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
-	}
-	bits, targetType, nullable := args[0], uint32(args[1]), args[2] != 0
-	if int(targetType) >= len(in.c.Types) || in.c.Types[targetType].Kind != CompositeTypeFunction {
-		panic(gcHelperFailuref("function ref.test target type %d is unavailable", targetType))
-	}
-	if bits == 0 {
-		if nullable {
-			results[0] = 1
-		} else {
-			results[0] = 0
-		}
-		return
-	}
-	actual, actualTypes, ok := in.attachedFuncrefExactType(bits)
-	if !ok {
-		actual, actualTypes, ok = railshotRetainedFunctionExactType(in, bits)
-	}
-	if !ok && entryOwner != nil && entryOwner != in {
-		actual, actualTypes, ok = railshotRetainedFunctionExactType(entryOwner, bits)
-	}
-	if !ok && in.refStore != nil {
-		actual, actualTypes, ok = in.refStore.descriptorFuncrefExactType(in, bits)
-	}
-	want := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: nullable, Heap: HeapTypeDescriptor{Defined: true, TypeIndex: targetType}}}
-	if ok && valueTypeSubtype(actual, actualTypes, want, in.c.Types) {
-		results[0] = 1
-	} else {
-		results[0] = 0
-	}
 }
 
 // Reduced loops remain in Go across collecting boundaries, so native interrupt

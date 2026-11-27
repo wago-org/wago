@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -47,7 +47,7 @@ func TestRV64ManagedFunctionAggregateTransactions(t *testing.T) {
 			field := FieldTypeDescriptor{Mutable: true, Storage: StorageTypeDescriptor{Value: ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}}}
 			in.c.Types = append(in.c.Types, DefinedTypeDescriptor{Kind: CompositeTypeArray, Array: field}, DefinedTypeDescriptor{Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field}})
 			in.c.GCTypeDescs = []gc.TypeDesc{{}, arrayDesc, structDesc}
-			in.gcTypeMap = &gcTypeMapping{localToDomain: []gc.TypeID{0, 1, 2}}
+			in.instanceCollectorMetadata = newInstanceCollectorMetadata(&gcTypeMapping{localToDomain: []gc.TypeID{0, 1, 2}}, in.gcNativeView())
 			in.c.requiredFeatures |= CoreFeatureExceptionHandling
 			in.c.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
 			public := in.publicGCState()

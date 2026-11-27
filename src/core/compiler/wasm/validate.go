@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // ValidationFeatures enables release-specific validation rules without making
@@ -384,39 +386,24 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
 
+// Initialize the instruction effects before validating bodies or starting workers.
+func ensureValidationEffects() {
+	scalarEffectsOnce.Do(fillScalarEffects)
+	ensureSIMDEffects()
+}
+
 func (v *moduleValidator) validateModule() error {
+	ensureValidationEffects()
 	if len(v.m.FuncTypes) != len(v.m.Code) {
 		return v.err(ErrUnknownFunc, "function and code section counts differ")
 	}
-	if v.m.UsesCompactImports && !v.features.CompactImports {
+	if v.m.UsesCompactImports && (buildfeatures.CompactImports == 0 || !v.features.CompactImports) {
 		return v.err(ErrUnsupportedFeature, "compact imports")
 	}
-	v.collectDeclaredFuncs()
-	for gi, rt := range v.m.Types {
-		for si, st := range rt.SubTypes {
-			if len(st.Supers) > 1 {
-				return v.err(ErrTypeMismatch, "multiple supertypes")
-			}
-			for _, sup := range st.Supers {
-				if !v.validTypeIdxInRecGroup(sup, gi) {
-					return v.err(ErrUnknownType, "supertype")
-				}
-				if sup.Rec && sup.Index >= uint32(si) {
-					return v.err(ErrTypeMismatch, "supertype must precede subtype")
-				}
-			}
-			if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
-				return v.err(ErrUnknownType, "describes")
-			}
-			if descriptor, present := st.Metadata.Descriptor.Get(); present && !v.validTypeIdxInRecGroup(descriptor, gi) {
-				return v.err(ErrUnknownType, "descriptor")
-			}
-			if err := v.validateCompTypeInRecGroup(st.Comp, gi); err != nil {
-				return err
-			}
-		}
+	if buildfeatures.ReferenceSignatures {
+		v.collectDeclaredFuncs()
 	}
-	if err := v.validateSubtypeMetadata(); err != nil {
+	if err := v.validateTypeGraph(); err != nil {
 		return err
 	}
 	for _, im := range v.m.Imports {
@@ -432,6 +419,12 @@ func (v *moduleValidator) validateModule() error {
 	for i, t := range v.m.Tables {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
+		}
+		if !buildfeatures.ReferenceSignatures {
+			if t.Init != nil || v.direct != nil && i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i] {
+				return v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+			}
+			continue
 		}
 		globalLimit := len(v.importsOfKind(ExternGlobal))
 		hasInit := t.Init != nil
@@ -456,16 +449,20 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if (len(v.importsOfKind(ExternMem))+len(v.m.Memories)) > 1 && !v.features.MultiMemory {
+	if (len(v.importsOfKind(ExternMem))+len(v.m.Memories)) > 1 && (buildfeatures.MultiMemory == 0 || !v.features.MultiMemory) {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
 	if uint64((len(v.importsOfKind(ExternMem)) + len(v.m.Memories))) > uint64(v.limits.MaxMemoriesPerModule) {
 		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", (len(v.importsOfKind(ExternMem))+len(v.m.Memories)), v.limits.MaxMemoriesPerModule))
 	}
-	for _, tag := range v.m.Tags {
-		if err := v.validateTagType(tag, "tag"); err != nil {
-			return err
+	if buildfeatures.ExceptionHandling != 0 {
+		for _, tag := range v.m.Tags {
+			if err := v.validateTagType(tag, "tag"); err != nil {
+				return err
+			}
 		}
+	} else if len(v.m.Tags) != 0 {
+		return v.err(ErrUnsupportedFeature, "exception-handling is disabled in this build")
 	}
 	for i, g := range v.m.Globals {
 		if err := v.validateGlobalType(g.Type); err != nil {
@@ -524,7 +521,7 @@ func (v *moduleValidator) validateModule() error {
 				return v.err(ErrUnknownMemory, "data")
 			}
 			want := I32
-			if flags&externTypeAddr64 != 0 {
+			if buildfeatures.Memory64 != 0 && flags&externTypeAddr64 != 0 {
 				want = I64
 			}
 			if v.direct != nil {
@@ -631,33 +628,15 @@ func (v *moduleValidator) validateExternType(et ExternType) error {
 			return v.err(ErrUnknownType, "import func")
 		}
 	case ExternTable:
-		if err := v.validateRefType(et.value.Ref()); err != nil {
-			return err
-		}
-		if et.flags&externTypeAddr64 == 0 && (et.min > maxTable32Limit || et.flags&externTypeHasMax != 0 && et.max > maxTable32Limit) {
-			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
-		}
-		if et.flags&externTypeHasMax != 0 && et.max < et.min {
-			return v.err(ErrInvalidLimitRange, "table max < min")
-		}
+		return v.validateTableType(et.TableType())
 	case ExternMem:
-		hasMax := et.flags&externTypeHasMax != 0
-		if et.flags&externTypeShared != 0 && !hasMax {
-			return v.err(ErrInvalidSharedMemory, "")
-		}
-		if et.flags&externTypeAddr64 != 0 {
-			if et.min > maxMemory64Pages || hasMax && et.max > maxMemory64Pages {
-				return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
-			}
-		} else if et.min > maxMemory32Pages || hasMax && et.max > maxMemory32Pages {
-			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
-		}
-		if hasMax && et.max < et.min {
-			return v.err(ErrInvalidLimitRange, "memory max < min")
-		}
+		return v.validateMemType(et.MemType())
 	case ExternGlobal:
 		return v.validateValType(et.value)
 	case ExternTag:
+		if buildfeatures.ExceptionHandling == 0 {
+			return v.err(ErrUnsupportedFeature, "exception-handling is disabled in this build")
+		}
 		return v.validateTagType(et.TagType(), "import tag")
 	}
 	return nil
@@ -674,10 +653,18 @@ func (v *moduleValidator) validateTagType(tag TagType, detail string) error {
 	return nil
 }
 func (v *moduleValidator) validateTableType(tt TableType) error {
-	if err := v.validateRefType(tt.Ref); err != nil {
+	if !buildfeatures.ReferenceSignatures {
+		heap := tt.Ref.Heap()
+		if !tt.Ref.Nullable() || tt.Ref.Exact() || heap.Kind() != HeapAbs || heap.Abs() != HeapFunc {
+			return v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
+	} else if err := v.validateRefType(tt.Ref); err != nil {
 		return err
 	}
-	if !tt.Limits.Addr64 {
+	if buildfeatures.Table64 == 0 && tt.Limits.Addr64 {
+		return v.err(ErrUnsupportedFeature, "table64 is disabled in this build")
+	}
+	if buildfeatures.Table64 == 0 || !tt.Limits.Addr64 {
 		// Table32 limits are u32 in the binary format; keep oversized values out
 		// even though the shared Limits representation stores proposal limits as u64.
 		if tt.Limits.Min > maxTable32Limit || (tt.Limits.HasMax && tt.Limits.Max > maxTable32Limit) {
@@ -708,12 +695,18 @@ func (v *moduleValidator) validateCompTypeInRecGroup(ct CompType, recGroup int) 
 			}
 		}
 	case CompStruct:
+		if buildfeatures.GC == 0 {
+			return v.err(ErrUnsupportedFeature, "gc is disabled in this build")
+		}
 		for _, f := range ct.Fields {
 			if err := v.validateFieldTypeInRecGroup(f, recGroup); err != nil {
 				return err
 			}
 		}
 	case CompArray:
+		if buildfeatures.GC == 0 {
+			return v.err(ErrUnsupportedFeature, "gc is disabled in this build")
+		}
 		return v.validateFieldTypeInRecGroup(ct.Array, recGroup)
 	default:
 		return v.err(ErrUnknownType, "component type")
@@ -752,6 +745,9 @@ func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) err
 			return nil
 		}
 	case ValRef:
+		if !buildfeatures.ReferenceSignatures {
+			return v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
 		return v.validateRefTypeInRecGroup(t.Ref(), recGroup)
 	}
 	return v.err(ErrUnknownType, "value type")
@@ -793,21 +789,23 @@ func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) 
 	}
 }
 func (v *moduleValidator) validateMemType(mt MemType) error {
+	if buildfeatures.Memory64 == 0 && mt.Limits.Addr64 {
+		return v.err(ErrUnsupportedFeature, "memory64 is disabled in this build")
+	}
+	if buildfeatures.Threads == 0 && mt.Shared {
+		return v.err(ErrUnsupportedFeature, "threads is disabled in this build")
+	}
 	if mt.Shared && !mt.Limits.HasMax {
 		return v.err(ErrInvalidSharedMemory, "")
 	}
-	if mt.Limits.Addr64 {
-		// Core 3 memory64 limits are bounded to 2^48 pages even though their
-		// binary representation and the common Limits storage are uint64.
-		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory64Pages) {
-			return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
-		}
-	} else {
-		// Memory32 limits are page counts bounded to the 4 GiB address space.
-		// Reject values that only fit because the common Limits storage is uint64.
-		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.HasMax && mt.Limits.Max > maxMemory32Pages) {
-			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
-		}
+	// The common Limits representation stores page counts as uint64. Both
+	// address widths still have a bound derived from their address space.
+	maxPages, limitDetail := maxMemory32Pages, "memory32 limit out of range"
+	if buildfeatures.Memory64 != 0 && mt.Limits.Addr64 {
+		maxPages, limitDetail = maxMemory64Pages, "memory64 limit out of range"
+	}
+	if mt.Limits.Min > maxPages || mt.Limits.HasMax && mt.Limits.Max > maxPages {
+		return v.err(ErrInvalidLimitRange, limitDetail)
 	}
 	if mt.Limits.HasMax && mt.Limits.Max < mt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "memory max < min")
@@ -958,16 +956,12 @@ func (v *moduleValidator) validateElem(e Elem) error {
 		if !ok {
 			return v.err(ErrUnknownTable, "elem")
 		}
-		want := I32
-		if tt.Limits.Addr64 {
-			want = I64
-		}
-		if err := v.validateConstExpr(e.Mode.Offset, want); err != nil {
+		if err := v.validateConstExpr(e.Mode.Offset, tableAddrType(tt)); err != nil {
 			return err
 		}
 		// Active segments initialize a table directly, so their element reference
 		// type must be assignment-compatible with the target table element type.
-		if !v.refSubtype(elemRef, tt.Ref) {
+		if buildfeatures.ReferenceSignatures && !v.refSubtype(elemRef, tt.Ref) {
 			return v.err(ErrTypeMismatch, "element type does not match table")
 		}
 	}
@@ -984,6 +978,9 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 		}
 		return Ref(false, AbsHeap(HeapFunc), false), nil
 	case ElemFuncExprs:
+		if !buildfeatures.ReferenceSignatures {
+			return RefType{}, v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, FuncRef); err != nil {
 				return RefType{}, err
@@ -991,6 +988,9 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 		}
 		return FuncRef.Ref(), nil
 	case ElemTypedExprs:
+		if !buildfeatures.ReferenceSignatures {
+			return RefType{}, v.err(ErrUnsupportedFeature, "reference-types is disabled in this build")
+		}
 		// Validate the declared element reference type even when the segment has no
 		// initializer expressions; empty typed segments still carry type indexes.
 		if err := v.validateRefType(e.Kind.Ref); err != nil {
@@ -1447,6 +1447,9 @@ func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 		}
 		return nil, singleValTypeSlice(bt.Val), nil
 	case BlockTypeIndex:
+		if buildfeatures.MultiValue == 0 {
+			return nil, nil, v.verr(ErrUnsupportedFeature, "multi-value is disabled in this build")
+		}
 		ft := v.funcTypeFromTypeIdx(bt.Type)
 		if ft == nil {
 			return nil, nil, v.verr(ErrUnknownType, "block")

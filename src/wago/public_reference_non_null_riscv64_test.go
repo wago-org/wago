@@ -68,7 +68,7 @@ func TestRV64PublicReferenceNonNullStandalone(t *testing.T) {
 							t.Fatal("non-null source/artifact trap and cold reuse", err)
 						}
 					}
-					if state := &in.pluginState.Load().railshotInvocation; state.tailDispatcher != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+					if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().dispatcher != nil || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("non-null-only entry acquired tail generation")
 					}
 				})

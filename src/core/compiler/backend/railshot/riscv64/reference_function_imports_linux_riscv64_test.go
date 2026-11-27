@@ -79,11 +79,11 @@ func TestReferenceFunctionImportsRV64ExactCarriers(t *testing.T) {
 							t.Fatal(err)
 						}
 						typ, _ := m.LocalFuncType(i)
-						locals[i] = tailRAFunction{code: code, snapshot: image.Code, signature: typ, job: f.a, context: f.ca, directory: f.da, info: FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(typ.Params), Results: swarSignatureSlots(typ.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: uint32(2 + i)}}}
+						locals[i] = tailRAFunction{code: code, snapshot: image.Code, signature: typ, job: f.a, context: f.ca, directory: f.da, info: tailRAFunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(typ.Params), Results: swarSignatureSlots(typ.Results), production: true, interruptible: true, invocationContext: true, functionIndex: uint32(2 + i)}}
 					}
 					proxy, _ := tailDynamicProxyForTest(t, locals[0], remote, 0)
 					hostCode := HostIndirectSyncThunk(1, 1, 1)
-					host := tailRAFunction{code: tailRAProofBuffer(t, hostCode), snapshot: hostCode, signature: sig, job: f.a, context: f.ca, directory: f.da, info: FunctionInfo{CodeBytes: len(hostCode)}}
+					host := tailRAFunction{code: tailRAProofBuffer(t, hostCode), snapshot: hostCode, signature: sig, job: f.a, context: f.ca, directory: f.da, info: tailRAFunctionInfo{CodeBytes: len(hostCode)}}
 					o := tailDynamicOwnerForTest(t, append([]tailRAFunction{proxy, host}, locals...))
 					f.da = o.descriptors
 					for _, i := range []int{3, 4, 5} {

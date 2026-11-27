@@ -70,6 +70,17 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
 }
 
+// Helper zero is reserved. Use its bit to distinguish known empty use from
+// a compiler or artifact that did not record helper calls.
+const GCHelperUsesKnown uint64 = 1
+
+func GCHelperUseBit(helper uint32) uint64 {
+	if helper >= 64 {
+		return ^uint64(0)
+	}
+	return uint64(1) << helper
+}
+
 // GCFrameRootPlan is an optional compile-time handshake for exact-typed native
 // roots in one candidate function. The caller precomputes collector-reference
 // local indexes/offsets; architecture backends add site-specific operand spills,

@@ -53,6 +53,7 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, memoryIndex uint32,
 	outOfBounds := f.a.Bcond(condA)
 	var slow int
 	if helper == railshared.AtomicHelperNotify {
+		f.atomicHelperUses |= railshared.AtomicHelperUsesNotifyPending
 		f.a.SubImm64(X16, X10, abi.SharedNotifyPendingOffset)
 		// Order prior guest stores before observing wait's SC announcement.
 		// Acquire alone cannot provide the required store/load ordering.

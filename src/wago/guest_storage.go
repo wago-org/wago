@@ -168,8 +168,8 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 		defer unlockGCCollector(lockedDomain)
 	}
 	var types []DefinedTypeDescriptor
-	if h.ephemeralGCResults != nil && h.ephemeralGCResults.exactTypes != nil {
-		types = *h.ephemeralGCResults.exactTypes
+	if h.referenceCall != nil && h.referenceCall.exactTypes != nil {
+		types = *h.referenceCall.exactTypes
 	} else if h.in.c != nil {
 		types = h.in.c.Types
 	}
@@ -263,11 +263,11 @@ func (v *guestStorageView) GCRef(slot uint64) (GuestGCRef, error) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	v.in.refStore.mu.Lock()
-	entry, ok := v.in.refStore.gcByToken[slot]
+	entry, ok := v.in.refStore.objectTokensLocked()[slot]
 	_, registered := v.in.refStore.instances[v.in]
 	v.in.refStore.mu.Unlock()
 	ownerIndex := entry.ownerIndex
-	if !ok || entry.owner != v.in || !registered || ownerIndex >= state.resultRootsMade || state.resultToken(ownerIndex) != slot || state.resultRootSlot(ownerIndex) != entry.slot {
+	if !ok || entry.owner != v.in || !registered || !state.resultSlots().matches(ownerIndex, slot, entry.slot) {
 		return GuestGCRef{}, fmt.Errorf("wago: invalid, stale, or foreign GC reference token")
 	}
 	ref := v.in.gc.GlobalSlot(entry.slot)

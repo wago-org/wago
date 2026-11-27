@@ -33,7 +33,7 @@ func railshotTransferTableDependency(*Instance, *Table) bool              { retu
 func railshotTransferredTableDependency(*Instance, *Table) (bool, bool)   { return false, false }
 
 func railshotAcquireGlobalDependency(_ *globalImportAttachments, global *Global, store *referenceStore, collector *gc.Collector, _ *resourceCleanup) error {
-	if isReferenceValType(global.Type) {
+	if referenceSignaturesBuilt && isReferenceValType(global.Type) {
 		return global.attachReferenceImporterWithCollector(store, collector)
 	}
 	return global.attachNumericImporter()

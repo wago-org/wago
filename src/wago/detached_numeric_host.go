@@ -61,7 +61,7 @@ func detachedNumericDispatchCaller(context unsafe.Pointer, args, results []uint6
 }
 
 func detachedNumericGoDispatch(memory *wruntime.JobMemory) bool {
-	ptr := memory.CaptureInstanceContext().ImportDispatch
+	ptr := memory.ImportDispatchPtr()
 	if ptr == 0 {
 		return false
 	}

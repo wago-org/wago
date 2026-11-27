@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Ordinary signatures borrow validated module storage. Only recursive-local
 // heap indexes need normalized signatures, held once per flattened type.
@@ -29,7 +32,7 @@ func sourceNeedsFunctionTypeDirectory(m *wasm.Module) bool {
 		}
 		for index := range group.SubTypes {
 			sub := &group.SubTypes[index]
-			if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || sub.Comp.Kind == wasm.CompFunc && sourceFunctionTypeNeedsResolution(&sub.Comp) {
+			if !sub.Final || sub.HasPrefix || len(sub.Supers) != 0 || buildfeatures.ReferenceSignatures && sub.Comp.Kind == wasm.CompFunc && sourceFunctionTypeNeedsResolution(&sub.Comp) {
 				return true
 			}
 		}
@@ -49,20 +52,38 @@ func sourceFunctionTypeNeedsResolution(typ *wasm.CompType) bool {
 }
 
 func newSourceFunctionTypeDirectory(m *wasm.Module) (sourceFunctionTypeDirectory, error) {
-	d := sourceFunctionTypeDirectory{module: m, foreignFunctions: sourceMayReceiveForeignFunctions(m)}
+	d := sourceFunctionTypeDirectory{module: m}
 	if m == nil {
 		return d, unsupported("nil source type directory")
 	}
-	d.localNumericTails = !d.foreignFunctions && m.ImportedFuncCount() == 0
-	count, resolved := 0, 0
+	count := 0
 	for _, group := range m.Types {
 		if len(group.SubTypes) > MaxPublicCodeBytes/8-count {
 			return d, unsupported("source type directory storage bound")
 		}
 		count += len(group.SubTypes)
+	}
+	if buildfeatures.ReferenceSignatures || buildfeatures.TailCall != 0 {
+		d.foreignFunctions = sourceMayReceiveForeignFunctions(m)
+		d.localNumericTails = !d.foreignFunctions
+	}
+	if buildfeatures.ReferenceSignatures {
+		if err := d.resolveReferenceSignatures(count); err != nil {
+			return sourceFunctionTypeDirectory{}, err
+		}
+	}
+	return d, nil
+}
+
+func (d *sourceFunctionTypeDirectory) resolveReferenceSignatures(count int) error {
+	resolved := 0
+	for _, group := range d.module.Types {
 		for index := range group.SubTypes {
 			typ := &group.SubTypes[index].Comp
-			if d.localNumericTails && typ.Kind == wasm.CompFunc {
+			if typ.Kind != wasm.CompFunc {
+				continue
+			}
+			if d.localNumericTails {
 				for _, values := range [][]wasm.ValType{typ.Params, typ.Results} {
 					for _, value := range values {
 						if value.Kind() == wasm.ValRef {
@@ -71,29 +92,29 @@ func newSourceFunctionTypeDirectory(m *wasm.Module) (sourceFunctionTypeDirectory
 					}
 				}
 			}
-			if typ.Kind == wasm.CompFunc && sourceFunctionTypeNeedsResolution(typ) {
+			if sourceFunctionTypeNeedsResolution(typ) {
 				resolved++
 			}
 		}
 	}
 	if resolved == 0 {
-		return d, nil
+		return nil
 	}
 	d.normalized = make([]*wasm.CompType, count)
 	d.storage = make([]wasm.CompType, resolved)
 	position := 0
 	for index := 0; index < count; index++ {
-		typ, function := m.TypeFunc(uint32(index))
+		typ, function := d.module.TypeFunc(uint32(index))
 		if !function || !sourceFunctionTypeNeedsResolution(typ) {
 			continue
 		}
-		if !m.ResolveTypeFunc(uint32(index), &d.storage[position]) {
-			return sourceFunctionTypeDirectory{}, unsupported("source function type resolution")
+		if !d.module.ResolveTypeFunc(uint32(index), &d.storage[position]) {
+			return unsupported("source function type resolution")
 		}
 		d.normalized[index] = &d.storage[position]
 		position++
 	}
-	return d, nil
+	return nil
 }
 
 func (d sourceFunctionTypeDirectory) function(index uint32) (*wasm.CompType, bool) {
@@ -138,6 +159,10 @@ func (d sourceFunctionTypeDirectory) subtypeKeys(index uint32) ([]uint64, bool) 
 // NeedsFunctionSubtypeHelpers selects exact owner-backed checks only where a
 // nonfinal declared function type can accept subtypes absent from this image.
 func NeedsFunctionSubtypeHelpers(m *wasm.Module) bool {
+	return buildfeatures.ReferenceSignatures && needsFunctionSubtypeHelpers(m)
+}
+
+func needsFunctionSubtypeHelpers(m *wasm.Module) bool {
 	if m == nil || !sourceMayReceiveForeignFunctions(m) {
 		return false
 	}
@@ -191,20 +216,26 @@ func sourceMayReceiveForeignFunctions(m *wasm.Module) bool {
 	if m.ImportedFuncCount() != 0 || m.ImportedTableCount() != 0 || m.ImportedGlobalCount() != 0 || m.TagCount() != 0 {
 		return true
 	}
-	functionStorage := wasm.ModuleFunctionReferenceStorage(m)
+	functionStorage := buildfeatures.ReferenceSignatures && wasm.ModuleFunctionReferenceStorage(m)
 	for _, export := range m.Exports {
 		switch export.Index.Kind {
 		case wasm.ExternTable:
 			table, ok := m.TableType(export.Index.Index)
-			if ok && wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref)) {
+			if ok && (table.Ref == wasm.FuncRef.Ref() || buildfeatures.ReferenceSignatures && wasm.FunctionReferenceType(m, wasm.RefVal(table.Ref))) {
 				return true
 			}
 		case wasm.ExternGlobal:
+			if !buildfeatures.ReferenceSignatures {
+				continue
+			}
 			global, ok := m.GlobalTypeByIndex(export.Index.Index)
 			if ok && global.Mutable && (wasm.FunctionReferenceType(m, global.Type) || functionStorage && global.Type.Kind() == wasm.ValRef) {
 				return true
 			}
 		case wasm.ExternFunc:
+			if !buildfeatures.ReferenceSignatures {
+				continue
+			}
 			sig, ok := m.FuncSignature(export.Index.Index)
 			if !ok {
 				continue

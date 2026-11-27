@@ -5,11 +5,15 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
+
+type managedFunctionExceptionState struct {
+	exception *managedFunctionExceptionScratch
+}
 
 // This scratch exists only after a non-null opaque-reference capture. Ordinary
 // numeric exceptions keep their160-byte object and16-byte weak record layout.

@@ -16,11 +16,45 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 const rv64NativeImportTransportBytes = railshot.MaxNativeCallSlots * 8
+
+func rv64NativeCallSignatureValues(sig FuncSig, referenceCarriers, collectorProof bool) (int, error) {
+	for _, list := range [][]ValType{sig.Params, sig.Results} {
+		if len(list) > 256 {
+			return 0, fmt.Errorf("%w: RV64 native owner signature count", railshot.ErrUnsupported)
+		}
+		cells := 0
+		for _, typ := range list {
+			switch typ {
+			case ValI32, ValI64, ValF32, ValF64:
+				cells++
+			case ValV128:
+				cells += 2
+			case ValAnyRef, ValI31Ref, ValExnRef:
+				if buildfeatures.TailCall == 0 || !collectorProof {
+					return 0, fmt.Errorf("%w: RV64 native collector owner signature proof", railshot.ErrUnsupported)
+				}
+				cells++
+			case ValFuncRef, ValExternRef:
+				if !referenceCarriers {
+					return 0, fmt.Errorf("%w: RV64 native owner signature type", railshot.ErrUnsupported)
+				}
+				cells++
+			default:
+				return 0, fmt.Errorf("%w: RV64 native owner signature type", railshot.ErrUnsupported)
+			}
+		}
+		if cells > railshot.MaxNativeCallSlots {
+			return 0, fmt.Errorf("%w: RV64 native owner physical signature bound", railshot.ErrUnsupported)
+		}
+	}
+	return len(sig.Params) + len(sig.Results), nil
+}
 
 // Native imported starts enter the constructor's already published owned bridge,
 // with the same invocation identity, cancellation and stack used by local starts.
@@ -53,7 +87,7 @@ func railshotCheckImportedStartCompletion(in *Instance, ctx context.Context) err
 	// An admitted plugin operation retains its terminal observers through runtime
 	// shutdown. A normal imported-start return must reach those observers before
 	// Runtime.instantiateOrigin rejects publication of the closed instance.
-	if in.rt != nil && in.rt.isClosed() && in.constructionReservationSnapshot() != nil {
+	if in.rt != nil && in.rt.isClosed() && hasPluginReservation(in.constructionReservationSnapshot()) {
 		return nil
 	}
 	if in.isLogicallyClosed() || in.rt != nil && in.rt.isClosed() {
@@ -112,34 +146,15 @@ func railshotValidateNativeExport(c *Compiled, index int, export *InstanceExport
 	if producer.jm == nil || producer.base == 0 || producer.nativeContext == 0 || export.localIdx < 0 || export.localIdx >= len(producer.c.Entry) || export.localIdx >= len(producer.c.Funcs) {
 		return fmt.Errorf("native instance export has no retained framed entry")
 	}
-	consumerProduct := c.stagedGCTypeSubtypingProduct()
-	if expectedProvider := consumerProduct.linkProviderProduct(); expectedProvider != 0 && producer.c.stagedGCTypeSubtypingProduct() != expectedProvider {
-		return fmt.Errorf("native instance export signature mismatch: producer is outside the exact gc/type-subtyping link product")
+	if wasmGCBuilt {
+		consumerProduct := c.stagedGCTypeSubtypingProduct()
+		if expectedProvider := consumerProduct.linkProviderProduct(); expectedProvider != 0 && producer.c.stagedGCTypeSubtypingProduct() != expectedProvider {
+			return fmt.Errorf("native instance export signature mismatch: producer is outside the exact gc/type-subtyping link product")
+		}
 	}
 	allowSubtype := rv64PrimitiveReferenceContract(c) && rv64PrimitiveReferenceContract(producer.c) ||
 		(c.usesDynamicFuncRefTest() && rv64FreshRootedGC(c) && (rv64FreshRootedGC(producer.c) || rv64PrimitiveReferenceContract(producer.c))) ||
-		(rv64GCTypeSubtypingLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkConsumer &&
-			rv64GCTypeSubtypingLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingLinkProvider) ||
-		(rv64GCTypeSubtypingFinalityLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkConsumer &&
-			rv64GCTypeSubtypingFinalityLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingFinalityLinkProvider) ||
-		(rv64GCTypeSubtypingStructLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructLinkConsumer &&
-			rv64GCTypeSubtypingStructLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructLinkProvider) ||
-		(rv64GCTypeSubtypingStructProjectionLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructProjectionLinkConsumer &&
-			rv64GCTypeSubtypingStructProjectionLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructProjectionLinkProvider) ||
-		(rv64GCTypeSubtypingStructMismatchLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructMismatchLinkConsumer &&
-			rv64GCTypeSubtypingStructMismatchLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingStructMismatchLinkProvider) ||
-		(rv64GCTypeSubtypingIndependentStructLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingIndependentStructLinkConsumer &&
-			rv64GCTypeSubtypingIndependentStructLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingIndependentStructLinkProvider) ||
-		(rv64GCTypeSubtypingExtendedProjectionLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedProjectionLinkConsumer &&
-			rv64GCTypeSubtypingExtendedProjectionLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedProjectionLinkProvider) ||
-		(rv64GCTypeSubtypingDuplicateRecursiveLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingDuplicateRecursiveLinkConsumer &&
-			rv64GCTypeSubtypingDuplicateRecursiveLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingDuplicateRecursiveLinkProvider) ||
-		(rv64GCTypeSubtypingExtendedRecursiveLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedRecursiveLinkConsumer &&
-			rv64GCTypeSubtypingExtendedRecursiveLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingExtendedRecursiveLinkProvider) ||
-		(rv64GCTypeSubtypingCrossGroupMismatchLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingCrossGroupMismatchLinkConsumer &&
-			rv64GCTypeSubtypingCrossGroupMismatchLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingCrossGroupMismatchLinkProvider) ||
-		(rv64GCTypeSubtypingTransitiveMismatchLink(c) && c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingTransitiveMismatchLinkConsumer &&
-			rv64GCTypeSubtypingTransitiveMismatchLink(producer.c) && producer.c.stagedGCTypeSubtypingProduct() == stagedGCTypeSubtypingTransitiveMismatchLinkProvider)
+		rv64LegacyGCProductsForImage && rv64LegacyGCImportSubtype(c, producer.c)
 	if index < 0 || index >= len(c.importFuncSigs) || !sigMatches(c.importFuncSigs[index], c.Types, export, allowSubtype) {
 		return fmt.Errorf("native instance export signature mismatch")
 	}
@@ -207,6 +222,12 @@ func railshotTrapOwner(root *Instance, trap *coreruntime.TrapError) (*Instance, 
 }
 
 func railshotAttachedNativeOwner(root *Instance, identity uintptr) *Instance {
+	if !foreignHostControlForImage {
+		if root != nil && root.nativeContext == identity {
+			return root
+		}
+		return nil
+	}
 	if owner := rv64ActiveTableTrapOwner(root, identity); owner != nil {
 		return owner
 	}
@@ -256,7 +277,7 @@ func railshotAttachedNativeOwner(root *Instance, identity uintptr) *Instance {
 var rv64NativeHostOwners = struct {
 	sync.Mutex
 	values map[uintptr]rv64NativeHostOwner
-}{values: make(map[uintptr]rv64NativeHostOwner)}
+}{}
 
 type rv64NativeHostOwner struct {
 	owner   *Instance
@@ -267,8 +288,14 @@ func railshotRegisterNativeHostOwner(in *Instance) error {
 	if in.nativeContext == 0 {
 		return fmt.Errorf("RV64 host owner has no native context")
 	}
+	if !foreignHostControlForImage {
+		return nil
+	}
 	rv64NativeHostOwners.Lock()
 	defer rv64NativeHostOwners.Unlock()
+	if rv64NativeHostOwners.values == nil {
+		rv64NativeHostOwners.values = make(map[uintptr]rv64NativeHostOwner)
+	}
 	entry := rv64NativeHostOwners.values[in.nativeContext]
 	if entry.owner != nil && entry.owner != in {
 		return fmt.Errorf("RV64 host owner context already registered")
@@ -304,9 +331,12 @@ func railshotResolveNativeHostControl(root *Instance, ctrl uintptr) *Instance {
 		return nil
 	}
 	identity := uintptr(binary.LittleEndian.Uint64(view))
-	rv64NativeHostOwners.Lock()
-	owner := rv64NativeHostOwners.values[identity].owner
-	rv64NativeHostOwners.Unlock()
+	owner := root
+	if foreignHostControlForImage {
+		rv64NativeHostOwners.Lock()
+		owner = rv64NativeHostOwners.values[identity].owner
+		rv64NativeHostOwners.Unlock()
+	}
 	if owner == nil {
 		return nil
 	}
@@ -362,7 +392,7 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 	if err := in.collectGenericGCAtBoundary(); err != nil {
 		return nil, true, err
 	}
-	if hasReferenceValType(sig.Params) {
+	if referenceSignaturesBuilt && hasReferenceValType(sig.Params) {
 		owners, err := railshotBeginPublicFuncrefArguments(in)
 		if err != nil {
 			return nil, true, err
@@ -389,11 +419,11 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 		defer stop()
 	}
 	var executionErr error
-	if in.syncMode {
+	if syncHostControlForImage && in.syncMode {
 		executionErr = in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback)
 	} else {
 		executionErr = in.callNativeAsync(entry, false)
-		if executionErr == nil {
+		if hostFunctionImportsBuilt && executionErr == nil {
 			executionErr = in.replayHostLog()
 		}
 	}
@@ -416,7 +446,7 @@ func railshotInvokeNativeReexport(in *Instance, name string, index int, args []u
 			slot++
 		}
 	}
-	if hasReferenceValType(sig.Results) {
+	if referenceSignaturesBuilt && hasReferenceValType(sig.Results) {
 		_, exact, err := exactFuncSignatureView(sig, in.c.Types)
 		if err != nil {
 			return nil, true, err
@@ -448,6 +478,11 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		params = max(params, 3)
 		results = max(results, 1)
 	}
+	if c.usesAtomicWaitHelpers() {
+		// The atomic bridge stages operands in the instance's call buffers.
+		// A function can wait or notify using constants and drop the result.
+		params, results = max(params, 4), max(results, 1)
+	}
 	for _, index := range c.Exports {
 		if index < 0 || index >= c.NumImports+len(c.Funcs) {
 			return 0, 0, fmt.Errorf("RV64 function export index out of range")
@@ -464,62 +499,14 @@ func railshotImportedCallSlots(c *Compiled, params, results int) (int, int, erro
 		}
 		params, results = max(params, p), max(results, r)
 	}
-	if rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) {
-		// The generated helper bridge stages array, destination, source, length,
-		// type, and element indexes in the ordinary wrapper argument arena. This
-		// internal six-slot call can exceed every exported function signature;
-		// retain its complete capacity before allocating adjacent result/trap
-		// buffers so helper staging cannot cross an arena boundary.
-		params = max(params, 6)
+	if rv64LegacyGCProductsForImage {
+		params, results = rv64LegacyGCHelperSlots(c, params, results)
 	}
-	if rv64GCStructNull(c) || rv64GCStructPacked(c) || rv64GCStructBasic(c) {
-		// struct.set stages the reference, value, exact type, and field index.
-		params = max(params, 4)
+	if !tablesForImage && c.tableCount() != 0 || !rv64ReferenceCallsForImage && c.nativeReferenceCallABI {
+		return 0, 0, fmt.Errorf("RV64 indirect call directory exceeds the standalone runtime profile")
 	}
-	if rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefTestAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCBrOnCastNullability(c) || rv64GCBrOnCastFailNullability(c) {
-		// ref.test stages the candidate word, signed heap type, nullability, and
-		// exactness. Preserve all four cells even when every exported function is
-		// parameterless so the helper cannot cross into results/trap storage.
-		params = max(params, 4)
-	}
-	if rv64GCRefCastConcrete(c) {
-		// Concrete ref.cast uses the same four arguments and returns one reference.
-		params = max(params, 4)
-		results = max(results, 1)
-	}
-	if rv64GCExtern(c) {
-		// table.set stages the zero-normalized index, full-width reference, and
-		// exact table index. Conversion helpers use one slot.
-		params = max(params, 3)
-	}
-	if rv64GCRefCastAbstract(c) {
-		// ref.cast stages the reference, heap code, nullability, and exactness.
-		params = max(params, 4)
-		results = max(results, 1)
-	}
-	if rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCBrOnCastNullability(c) || rv64GCBrOnCastFailNullability(c) {
-		// Branch casts use the four-input ref.test bridge and one predicate result.
-		params = max(params, 4)
-		results = max(results, 1)
-	}
-	if rv64GCArrayFill(c) {
-		// The packed fill bridge adds the exact type index after the array,
-		// destination, value, and length operands.
-		params = max(params, 5)
-	}
-	if rv64GCArrayCopy(c) {
-		// The copy bridge carries both arrays, both offsets, length, and both
-		// exact type indexes.
-		params = max(params, 7)
-	}
-	if c.tableCount() != 0 || c.nativeReferenceCallABI {
-		// The exact allocating gc/ref_eq checkpoint has an eqref table but no
-		// indirect calls. The exact array.init_elem checkpoint pins its sole
-		// indirect signature to type 0, which has no parameters or results. Their
-		// complete retained classifiers pin the non-function type graph; only the
-		// local function signatures already counted above contribute to transport
-		// capacity.
-		if rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCBrOnCastNullability(c) || rv64GCBrOnCastFailNullability(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCArrayInitElem(c) || rv64GCTypeSubtypingRuntimeCallCast(c) || rv64GCTypeSubtypingRuntimeFinalityCallCast(c) || rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+	if tablesForImage && c.tableCount() != 0 || rv64ReferenceCallsForImage && c.nativeReferenceCallABI {
+		if rv64LegacyGCProductsForImage && rv64LegacyGCTableUsesLocalSignatures(c) {
 			return params, results, nil
 		}
 		if len(c.Types) > railshot.MaxFunctions {
@@ -621,19 +608,15 @@ func rv64IndirectSignatureSlots(values []ValueTypeDescriptor) (int, error) {
 // Callback authority and ownership of the producer's public gate differ for a
 // foreign activation. Only its actual gate owner may swap parked public scratch.
 type railshotInvocationState struct {
-	nativeImports        *railshotNativeImportConstruction
-	tailDispatcher       *railshot.NativeTailDispatcher
-	tailPolicy           rv64TailAllocationPolicy
-	tailGenerationBudget rv64NativeTailGenerationBudget
-	activeTailGeneration *rv64NativeTailGeneration
-	definedTailOwner     *railshot.NativeTailDefinedOwner
-	tailTargets          []byte // immutable instance-arena storage; retained with its descriptor owner
-	gateOwner            invocationID
-	longImportKeysOnce   sync.Once
-	longImportKeys       []string
-	tableTargets         [rv64MaxTableEntryDepth]*rv64NativeTableTargets
-	argumentOwners       [rv64MaxTableEntryDepth]*rv64InvocationArgumentOwners
-	tableDepth           int
+	nativeImports      *railshotNativeImportConstruction
+	tail               rv64NativeTailInvocationStorage
+	tailTargets        []byte // immutable instance-arena storage; retained with its descriptor owner
+	gateOwner          invocationID
+	longImportKeysOnce sync.Once
+	longImportKeys     []string
+	tableTargets       [rv64MaxTableEntryDepth]*rv64NativeTableTargets
+	argumentOwners     [rv64MaxTableEntryDepth]*rv64InvocationArgumentOwners
+	tableDepth         int
 }
 
 func railshotSetInvocationGateOwner(state *instancePluginState, id invocationID) {
@@ -649,26 +632,6 @@ func railshotCanReenter(in *Instance, id invocationID) bool {
 	state.activations.mu.Lock()
 	defer state.activations.mu.Unlock()
 	return id != 0 && state.railshotInvocation.gateOwner == id
-}
-
-// Select the scope while native serialization still protects the active tail
-// generation. The parked entry retains that generation until this callback has
-// resumed, so retained Caller values can safely refer to its durable storage.
-func railshotRetainedCallbackHostScope(in *Instance, ctrl uintptr, state *instancePluginState, parent context.Context) *hostCallScope {
-	if in == nil || state == nil || ctrl == 0 || ctrl == offHeapSlicePtr(in.ctrl) {
-		return nil
-	}
-	generation := state.railshotInvocation.activeTailGeneration
-	if generation == nil || generation.caller != in {
-		return nil
-	}
-	scope := &generation.hostScope
-	scope.parentMu.Lock()
-	if scope.active.Load() == 0 {
-		scope.parent = parent
-	}
-	scope.parentMu.Unlock()
-	return scope
 }
 
 // Independent roots can park in one producer simultaneously. Each foreign

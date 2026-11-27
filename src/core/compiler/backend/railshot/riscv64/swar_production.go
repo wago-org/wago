@@ -12,6 +12,7 @@ package riscv64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -25,7 +26,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 		return nil, fmt.Errorf("rv64: nil module")
 	}
 	admissionModule := m
-	if opts.ExceptionHandlingSource {
+	if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 		admissionModule = exceptionAdmissionProjection(m)
 	}
 	if err := admitSWARDecodedBudgetReferences(pluginBudgetModule(admissionModule, opts.pluginDirectory), true, true, opts.NativeReferenceCalls || opts.gcRootedScalar, opts.gcRootedScalar); err != nil {
@@ -36,7 +37,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 	}
 	integerFunctions := make([]bool, len(m.Code))
 	var integerState *moduleState
-	if opts.gcRootedScalar && !opts.pluginDirectory.hasCustom() {
+	if buildfeatures.RISCV64CollectorFrameRoots && opts.gcRootedScalar && !opts.pluginDirectory.hasCustom() {
 		for i := range m.Code {
 			usesSWAR, err := functionUsesSWAR(m, i)
 			if err != nil {
@@ -52,7 +53,7 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 			if err != nil {
 				return nil, err
 			}
-			if opts.ExceptionHandlingSource {
+			if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 				state.exceptionModule = m
 				restoreExceptionStateTypes(m, &state)
 			}
@@ -81,17 +82,17 @@ func compileSWARProductionModule(m *wasm.Module, opts CompileOptions) (*enc.Comp
 		policy = swarModuleHosts
 	}
 	exceptionModule := (*wasm.Module)(nil)
-	if opts.ExceptionHandlingSource {
+	if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 		exceptionModule = m
 	}
-	image, err := compileSWARDecodedModuleProfile(m, emissionMode{tableModuleSource: m, exceptionModule: exceptionModule, exceptionOperands: opts.exceptionOperands, ownedExceptionReferences: opts.OwnedExceptionReferences, gcFunctionEnvironments: opts.gcFunctionEnvironments, profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, threadedMemory: moduleThreadedMemory(m), elideBounds: opts.ElideBoundsChecks, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase, customInstructions: opts.pluginDirectory, customMemory: m.ImportedMemCount()+len(m.Memories) > 0}, policy, swarStateProfile{moduleByteLimit: publicModuleByteLimit(opts), maxFunctionLocals: publicFunctionLocalLimit(opts), publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameRoots: opts.GCFrameRoots, integerState: integerState, integerFunctions: integerFunctions})
+	image, err := compileSWARDecodedModuleProfile(m, emissionMode{tableModuleSource: m, exceptionModule: exceptionModule, ownedExceptionReferences: opts.OwnedExceptionReferences, gcFunctionEnvironments: opts.gcFunctionEnvironments, profileMode: newProfileModule(opts.Profile, opts.SourceMaps, len(m.Code)).baseProfileMode(), production: true, threadedMemory: moduleThreadedMemory(m), elideBounds: opts.ElideBoundsChecks, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, referenceFunctions: opts.referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase, customInstructions: opts.pluginDirectory, customMemory: m.ImportedMemCount()+len(m.Memories) > 0}, policy, swarStateProfile{moduleByteLimit: publicModuleByteLimit(opts), maxFunctionLocals: publicFunctionLocalLimit(opts), publicInitializers: true, publicStarts: true, exports: true, importedMemory: true, indexedMemories: true, importedGlobals: true, importedTable: opts.Interruptible && opts.ForeignTableCalls, functionTableImports: opts.Interruptible && opts.ForeignTableCalls, gcFrameModuleState: newGCFrameModuleState(&opts), integerState: integerState, integerFunctions: integerFunctions})
 	if err != nil {
 		return nil, err
 	}
-	c := &Compiled{profileModuleState: image.profileModuleState, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls}}
+	c := &Compiled{profileModuleState: image.profileModuleState, gcHelperUses: image.gcHelperUses, atomicHelperUses: image.atomicHelperUses, code: image.code, functions: image.functions, state: moduleState{importedFunctions: len(image.hosts), referenceFunctions: opts.referenceFunctions, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls}}
 	c.finalizedReferenceImportTails = image.finalizedReferenceImportTails
 	c.referenceImportTailsFinalized = image.referenceImportTailsFinalized
-	if opts.referenceFunctions && !opts.ExceptionHandlingSource {
+	if buildfeatures.ReferenceSignatures && opts.referenceFunctions && !opts.ExceptionHandlingSource {
 		return stageClosedReferenceProductionModule(c, opts, m, true)
 	}
 	return stageProductionModule(c, opts)

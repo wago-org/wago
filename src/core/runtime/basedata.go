@@ -79,6 +79,23 @@ var jobMemoryCache struct {
 	warmStart, warmEnd int // byte offsets in the parked reservation
 }
 
+// NewInstanceControlMemory maps the native control fields for an instance
+// without a linear memory. The native-facing view has one addressable byte
+// so slice-based entry can still obtain the base. Guest-visible sizes stay zero.
+func NewInstanceControlMemory() (*JobMemory, error) {
+	const anchorBytes = 1
+	mem, err := mmapRW(basedataSize + anchorBytes)
+	if err != nil {
+		return nil, err
+	}
+	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: anchorBytes}
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
+	return j, nil
+}
+
 // NewJobMemory lays out basedata immediately before a fixed-size (non-growable)
 // linear memory. memory.grow on it always fails (max == initial).
 func NewJobMemory(linBytes int) (*JobMemory, error) {
@@ -483,6 +500,9 @@ func (j *JobMemory) ClearEHHandler() { j.putU64(abi.EHHandlerPtrOffset, 0) }
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 
+// CustomCtx returns the active host control pointer.
+func (j *JobMemory) CustomCtx() uintptr { return uintptr(j.getU64(offCustomCtx)) }
+
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 
@@ -516,6 +536,9 @@ func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(
 
 // SetImportDispatchPtr writes the imported-function target array pointer.
 func (j *JobMemory) SetImportDispatchPtr(v uintptr) { j.putU64(offImportDispatchPtr, uint64(v)) }
+
+// ImportDispatchPtr returns the active instance's import dispatch directory.
+func (j *JobMemory) ImportDispatchPtr() uintptr { return uintptr(j.getU64(offImportDispatchPtr)) }
 
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }

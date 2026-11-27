@@ -84,7 +84,7 @@ func stagedGCStructLeaderDeltaFor(data []byte, line int) (stagedGCStructLeaderDe
 	}
 	return stagedGCStructLeaderDelta{
 		Filename: pin.Filename, CommandLine: pin.CommandLine, SourceLine: pin.SourceLine,
-		Size: pin.Size, SHA256: pin.SHA256, Class: pin.Product.String(), Gate: pin.Product.gateReason(),
+		Size: pin.Size, SHA256: pin.SHA256, Class: fmt.Sprint(pin.Product), Gate: pin.Product.gateReason(),
 		TypeGraph: stagedGCStructTypeGraph(m), StateGraph: stagedGCStructStateGraph(m), Opcodes: opcodes,
 		Actions: append([]string(nil), pin.Actions...),
 	}, pin, nil
@@ -148,7 +148,7 @@ func replayStagedGCStructScript(t *testing.T, tmp string, script stagedSpecScrip
 				if executable, ok := stagedGCStructExecutionProduct(latestDefinition); ok {
 					counts.Failures++
 					counts.UnexpectedCompileRejects++
-					t.Errorf("gc/struct.wast:%d executable leader %s (%s) rejected: %v", cmd.Line, pin.Filename, executable, compileErr)
+					t.Errorf("gc/struct.wast:%d executable leader %s (%v) rejected: %v", cmd.Line, pin.Filename, executable, compileErr)
 					continue
 				}
 				counts.ExpectedFeatureRejects++

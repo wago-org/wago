@@ -169,7 +169,7 @@ func TestForeignRuntimeGCGraphClonePreservesCycle(t *testing.T) {
 	}
 	defer target.ReleaseGCRef(cloned)
 	target.refStore.mu.Lock()
-	entry := target.refStore.gcByToken[cloned.token]
+	entry := target.refStore.objectTokensLocked()[cloned.token]
 	target.refStore.mu.Unlock()
 	root := target.gc.GlobalSlot(entry.slot)
 	self, err := target.gc.StructGet(root, 0)

@@ -9,12 +9,24 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Primitive references use opaque full-width carriers. Actual descriptor
 // targets carry exact primitive signatures; ordinary direct local calls
 // may pass the validated nullable carriers through the existing frame ABI.
 func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
+	return buildfeatures.ReferenceSignatures && admitPublicFunctionCarrierModule(m, vector)
+}
+
+// Numeric tails share the callable-signature and source-budget checks.
+func admitPublicTailFunctionCarriers(m *wasm.Module, vector bool) bool {
+	return (buildfeatures.ReferenceSignatures || buildfeatures.TailCall != 0) && admitPublicFunctionCarrierModule(m, vector)
+}
+
+func admitPublicFunctionCarrierModule(m *wasm.Module, vector bool) bool {
 	if m == nil || len(m.Code) > MaxPublicCodeBytes/16 || len(m.FuncTypes) != len(m.Code) || len(m.Imports) > MaxPublicImports || len(m.Types) > MaxPublicCodeBytes/8 || len(m.Tables)+m.ImportedTableCount() > MaxModuleTables || len(m.Elements) > MaxPublicElementSegments || len(m.Tags) != 0 || len(m.StringRefs) != 0 {
 		return false
 	}
@@ -37,7 +49,7 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 			if len(sub.Supers) > 1 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
 				return false
 			}
-			if sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray {
+			if buildfeatures.ReferenceSignatures && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
 				opaqueAggregates = true
 				flat++
 				continue
@@ -69,11 +81,11 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 				return false
 			}
 		case wasm.ExternGlobal:
-			if value := imported.Type.GlobalType().Type; value.Kind() == wasm.ValRef && !types.publicFunctionReference(value) {
+			if value := imported.Type.GlobalType().Type; value.Kind() == wasm.ValRef && (!buildfeatures.ReferenceSignatures || !types.publicFunctionReference(value)) {
 				return false
 			}
 		case wasm.ExternTable:
-			if !types.publicFunctionReference(wasm.RefVal(imported.Type.TableType().Ref)) {
+			if !primitiveFunctionCarrierTable(imported.Type.TableType().Ref, types) {
 				return false
 			}
 		case wasm.ExternMem:
@@ -85,7 +97,7 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 		if global.Type.Type.Kind() != wasm.ValRef {
 			continue
 		}
-		if !admitPrimitiveReferenceGlobalInitializer(global, m, m.ImportedGlobalCount()+index) {
+		if !buildfeatures.ReferenceSignatures || !admitPrimitiveReferenceGlobalInitializer(global, m, m.ImportedGlobalCount()+index) {
 			return false
 		}
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) && len(global.Init.BodyBytes) > 0 && global.Init.BodyBytes[0] == 0xd2 {
@@ -96,10 +108,13 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 		}
 	}
 	for _, table := range m.Tables {
-		if !types.publicFunctionReference(wasm.RefVal(table.Type.Ref)) {
+		if !primitiveFunctionCarrierTable(table.Type.Ref, types) {
 			return false
 		}
 		if table.Init != nil {
+			if !buildfeatures.ReferenceSignatures {
+				return false
+			}
 			value, err := elementInitializerExpression(*table.Init, m, wasm.ElemActive, true)
 			if err != nil || !value.Null && !value.HasGlobal && !numeric(value.FuncIndex) {
 				return false
@@ -114,6 +129,9 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 				}
 			}
 			continue
+		}
+		if !buildfeatures.ReferenceSignatures {
+			return false
 		}
 		if segment.Kind.Kind == wasm.ElemTypedExprs && !types.publicFunctionReference(wasm.RefVal(segment.Kind.Ref)) {
 			return false
@@ -132,7 +150,7 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 		}
 		remaining -= len(function.BodyBytes)
 		for _, run := range function.Locals.Runs {
-			if run.Type.Kind() == wasm.ValRef && !types.publicFunctionReference(run.Type) {
+			if run.Type.Kind() == wasm.ValRef && (!buildfeatures.ReferenceSignatures || !types.publicFunctionReference(run.Type)) {
 				return false
 			}
 		}
@@ -143,10 +161,10 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 				return false
 			}
 			var immediate wasm.InstructionImmediate
-			if classifier.ClassifyInto(&reader, op, &immediate) != nil || op == 0xd2 && !numeric(immediate.Index) {
+			if classifier.ClassifyInto(&reader, op, &immediate) != nil || op == 0xd2 && (!buildfeatures.ReferenceSignatures || !numeric(immediate.Index)) {
 				return false
 			}
-			if opaqueAggregates && op == 0xfb {
+			if buildfeatures.ReferenceSignatures && opaqueAggregates && op == 0xfb {
 				if (immediate.Kind != wasm.InstrRefTest && immediate.Kind != wasm.InstrRefCast) || !immediate.HasHeapType || immediate.HeapType.Kind() != wasm.HeapTypeIndex || immediate.HeapType.Type().Rec {
 					return false
 				}
@@ -155,6 +173,9 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 				}
 			}
 			if op == 0x11 || op == 0x13 || op == 0x14 || op == 0x15 {
+				if !buildfeatures.ReferenceSignatures && (op == 0x14 || op == 0x15) {
+					return false
+				}
 				signature, ok := directory.function(immediate.Index)
 				if !ok || !primitiveReferenceTargetWithTypes(signature, types, vector) {
 					return false
@@ -163,6 +184,13 @@ func admitPublicPrimitiveReferenceModule(m *wasm.Module, vector bool) bool {
 		}
 	}
 	return true
+}
+
+func primitiveFunctionCarrierTable(ref wasm.RefType, types internalReferenceTypes) bool {
+	if buildfeatures.ReferenceSignatures {
+		return types.publicFunctionReference(wasm.RefVal(ref))
+	}
+	return ref == wasm.FuncRef.Ref()
 }
 
 func primitiveReferenceTable(typ wasm.RefType) bool {
@@ -187,6 +215,10 @@ func AdmitPrimitiveReferenceGlobalInitializer(global wasm.Global, m *wasm.Module
 }
 
 func admitPrimitiveReferenceInitializer(expr wasm.Expr, m *wasm.Module, expected wasm.ValType, limit int) bool {
+	return buildfeatures.ReferenceSignatures && validatePrimitiveReferenceInitializer(expr, m, expected, limit)
+}
+
+func validatePrimitiveReferenceInitializer(expr wasm.Expr, m *wasm.Module, expected wasm.ValType, limit int) bool {
 	if !(internalReferenceTypes{publicReferences: true, sourceDirectory: sourceFunctionTypeDirectory{module: m}}).publicFunctionReference(expected) {
 		return false
 	}

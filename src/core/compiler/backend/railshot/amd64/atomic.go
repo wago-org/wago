@@ -11,6 +11,7 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 
 	railshared "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -53,13 +54,13 @@ func (f *fn) emitFE(r *wasm.Reader) error {
 }
 
 func (f *fn) atomicWaitHelper(d railshared.Atomic) error {
-	if d.Class == railshared.AtomicNotify && f.opt(optAtomicNotifyEmpty) && d.MemoryIndex == 0 && f.threadedMemory0 && !f.memoryAddr64(0) {
+	if d.Class == railshared.AtomicNotify && buildfeatures.Threads != 0 && f.opt(optAtomicNotifyEmpty) && d.MemoryIndex == 0 && f.threadedMemory0 && !f.memoryAddr64(0) {
 		top := f.s.back()
 		if top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
 			return f.atomicZeroNotify(d)
 		}
 	}
-	if d.Class == railshared.AtomicWait && f.opt(optAtomicZeroWait) {
+	if d.Class == railshared.AtomicWait && buildfeatures.Threads != 0 && f.opt(optAtomicZeroWait) {
 		mt, ok := f.memoryType(d.MemoryIndex)
 		top := f.s.back()
 		if ok && mt.Shared && top.elemKind() == ekValue && top.st.kind == stConst && top.st.cval == 0 {
@@ -214,7 +215,7 @@ func (f *fn) atomicMem(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 	if base, ea, ok := f.staticAtomicMem(memoryIndex, off, size); ok {
 		return base, ea, 0
 	}
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		if f.memoryAddr64(0) {
 			ea, _, _, disp = f.memAddr64(off, size)
 		} else {

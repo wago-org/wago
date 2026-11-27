@@ -11,8 +11,8 @@ package amd64
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"math"
-	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
@@ -24,7 +24,7 @@ import (
 // accessed without entering the parked Go helper. Reference writes and v128
 // storage use separate checked barrier/vector paths.
 // Keep the shared-leaf path available for differential qualification.
-var gcInlineCastsEnabled = os.Getenv("WAGO_AMD64_NO_GC_CAST_INLINE") != "1"
+var gcInlineCastsEnabled bool
 
 func (f *fn) inlineGCCastPreserveMask() uint8 {
 	var mask uint8
@@ -1722,9 +1722,9 @@ func (f *fn) emitModuleGCTrustedFinalCastFailureStub() {
 // reference initializers are validated before publication, and the complete
 // payload is initialized before the handle's space byte becomes visible.
 func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
-	layout, ok := nativeGCArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
+	layout, ok := nativeGCArrayLayout(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc), f.m, site.typeIndex)
 	if site.mode == gcArrayNativeDefault {
-		layout, ok = nativeGCDefaultArrayLayout(f.opt(optGCNativeAlloc), f.m, site.typeIndex)
+		layout, ok = nativeGCDefaultArrayLayout(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc), f.m, site.typeIndex)
 	}
 	if !ok || site.mode == gcArrayNativeNone {
 		panic("amd64: invalid native array allocation layout")

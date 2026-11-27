@@ -25,7 +25,7 @@ func tailImportNativeFunctions(t *testing.T, i *tailImportImage, job *coreruntim
 	snapshot := bytes.Clone(i.code)
 	var functions []tailRAFunction
 	for n, info := range i.functions {
-		functions = append(functions, tailRAFunction{code: code, snapshot: snapshot, info: info, signature: i.signatures[i.imports+n], job: job, context: ctx, directory: dir})
+		functions = append(functions, tailRAFunction{code: code, snapshot: snapshot, info: info.tailInfo(), signature: i.signatures[i.imports+n], job: job, context: ctx, directory: dir})
 	}
 	return functions
 }

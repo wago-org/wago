@@ -9,12 +9,15 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+)
 
 // Exact, non-overlapping tails avoid making a later narrow store overlap an
 // earlier copy store. Every source chunk is loaded before any destination store.
 func (f *fn) emitBulkCopyChunks(n int, base, src, dst Reg, srcDisp, dstDisp int32) bool {
-	if !f.opt(optBulkCopyVector) || n < 16 || n > 64 {
+	if !(buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkCopyVector)) || n < 16 || n > 64 {
 		return false
 	}
 	type chunk struct {
@@ -83,7 +86,7 @@ func (f *fn) emitBulkCopyChunks(n int, base, src, dst Reg, srcDisp, dstDisp int3
 // fit the declared minimum. The normal checked lowering handles every other
 // case, including large unsigned displacements and register pressure.
 func (f *fn) emitFixedBulkCopy(n int, dstMemory, srcMemory uint32) bool {
-	if !f.opt(optBulkCopyVector) || !f.opt(optMemoryMinimumBounds) || n < 16 || n > 64 || dstMemory != 0 || srcMemory != 0 || f.memoryAddr64(0) {
+	if !(buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkCopyVector)) || !f.opt(optMemoryMinimumBounds) || n < 16 || n > 64 || dstMemory != 0 || srcMemory != 0 || f.memoryAddr64(0) {
 		return false
 	}
 	count := f.s.back()

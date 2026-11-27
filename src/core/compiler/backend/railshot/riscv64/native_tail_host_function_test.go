@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -259,6 +260,12 @@ func TestNativeTailHostCollectorFunctionCertificate(t *testing.T) {
 		t.Fatal("collector constructor accepted unowned callback")
 	}
 	f, err := NewNativeTailHostCollectorFunction(image, cert, source.job, source.context, source.directory, 0, 37, true, sig)
+	if buildfeatures.GC == 0 {
+		if err == nil || f != nil {
+			t.Fatal("collector constructor accepted a callback with WasmGC disabled")
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

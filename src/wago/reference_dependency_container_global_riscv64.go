@@ -65,6 +65,9 @@ type globalDescriptorDependencyBatch struct {
 // The caller already owns the row's concrete bootstrap. Record its immutable
 // identity under the container lock, but perform no graph/lifetime operation.
 func railshotRecordGlobalDescriptorDependencyLocked(owner *globalOwner, producer *Instance, mapState *retainedInstanceRoot, batch *globalDescriptorDependencyBatch) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	// Instance-owned cells are torn down with their instance and need an
 	// authoritative instance-side holder before receipts can safely survive a
 	// denied terminal claim. Unbound synthetic owners remain on the legacy path.
@@ -83,7 +86,7 @@ func railshotRecordGlobalDescriptorDependencyLocked(owner *globalOwner, producer
 }
 
 func railshotPublishGlobalDescriptorDependencyLocked(owner *globalOwner, mapState *retainedInstanceRoot, batch *globalDescriptorDependencyBatch) {
-	if mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
+	if !crossInstanceDependenciesForImage || mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
 		return
 	}
 	if row := owner.descriptorDependencies.rows[mapState]; row != nil && (row.phase == rv64GlobalDescriptorBootstrap || row.phase == rv64GlobalDescriptorFailed) {
@@ -94,6 +97,10 @@ func railshotPublishGlobalDescriptorDependencyLocked(owner *globalOwner, mapStat
 // Retirement only marks the exact map acquisition. Publication, graph claims,
 // and physical release are completed after native/container locks are dropped.
 func railshotRetireGlobalDescriptorDependencyLocked(owner *globalOwner, producer *Instance, mapState *retainedInstanceRoot, batch *globalDescriptorDependencyBatch) {
+	if !crossInstanceDependenciesForImage {
+		batch.legacy.add(producer)
+		return
+	}
 	row := owner.descriptorDependencies.rows[mapState]
 	if row == nil {
 		// Synthetic/legacy rows have no receipt identity and retain the historical
@@ -109,6 +116,9 @@ func railshotRetireGlobalDescriptorDependencyLocked(owner *globalOwner, producer
 }
 
 func railshotRetryGlobalDescriptorDependenciesLocked(owner *globalOwner, batch *globalDescriptorDependencyBatch) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	for _, row := range owner.descriptorDependencies.rows {
 		row.retireRequested = true
 		batch.retirements.add(row)
@@ -117,15 +127,17 @@ func railshotRetryGlobalDescriptorDependenciesLocked(owner *globalOwner, batch *
 
 func railshotFlushGlobalDescriptorDependencies(batch *globalDescriptorDependencyBatch) {
 	var cleanup resourceCleanup
-	cleanup.run(func() { batch.publications.drain((*rv64GlobalDescriptorDependency).publish) })
-	cleanup.run(func() { batch.retirements.drain((*rv64GlobalDescriptorDependency).release) })
+	if crossInstanceDependenciesForImage {
+		cleanup.run(func() { batch.publications.drain((*rv64GlobalDescriptorDependency).publish) })
+		cleanup.run(func() { batch.retirements.drain((*rv64GlobalDescriptorDependency).release) })
+	}
 	cleanup.run(func() { batch.legacy.drain((*Instance).releaseResourceRoot) })
 	cleanup.finish()
 }
 
 // Caller holds in.lifeMu and has not published owner through g.owner yet.
 func railshotLinkOwnedGlobalDescriptorHolderLocked(in *Instance, owner *globalOwner) {
-	if in == nil || owner == nil || owner.instance != in || owner.typ != ValFuncRef || owner.descriptorDependencies.holder != nil {
+	if !crossInstanceDependenciesForImage || in == nil || owner == nil || owner.instance != in || owner.typ != ValFuncRef || owner.descriptorDependencies.holder != nil {
 		return
 	}
 	ownership := rv64FunctionDependencyOwnershipForLocked(in)
@@ -152,6 +164,9 @@ func railshotOwnedGlobalDescriptorDependenciesComplete(ownership *rv64FunctionDe
 // Traverse the immutable owner chain one node at a time. Never retain an owner
 // or traversal lock across graph work, physical release, or callbacks.
 func railshotReleaseOwnedGlobalDescriptorDependencies(in *Instance) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	ownership := rv64ExistingFunctionDependencyOwnership(in)
 	if ownership == nil {
 		return

@@ -82,13 +82,13 @@ func (e *Engine) callWithHostLoopView(code uintptr, serArgs []byte, linMemBase u
 			n := int(raw & 0xffff)
 			nres := int(raw >> 16)
 			if n > maxHostArity || nres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
+				if !wideHostControlForImage {
+					return hostCtrlFixedArityError(n, nres)
+				}
+				args, wideResults, err := prepareWideHostCall(ctrl, n, nres)
 				if err != nil {
 					return err
 				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)[:n]
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)[:nres]
-				clear(wideResults)
 				if view(ctrlPtr, imp, args, wideResults) {
 					continue
 				}

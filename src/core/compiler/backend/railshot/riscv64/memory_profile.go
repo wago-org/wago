@@ -9,7 +9,12 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+const memory64WidthWords = ((MaxProductionMemories + 63) / 64) * (buildfeatures.Memory64 / buildfeatures.Memory64Bit)
 
 // One immutable imported-first directory drives operand types and memarg
 // grammar in both admission and emission. Mixed modules cannot use one global
@@ -18,15 +23,17 @@ type memoryProfile struct {
 	shared     bool
 	count      int
 	indexed    bool
-	address64  [2]uint64
+	address64  [memory64WidthWords]uint64
 	classifier wasm.ModuleInstructionClassifier
 }
 
 func makeMemoryProfile(memories []wasm.MemType, indexed bool) memoryProfile {
 	p := memoryProfile{shared: len(memories) == 1 && memories[0].Shared, count: len(memories), indexed: indexed}
-	for i, memory := range memories {
-		if memory.Limits.Addr64 {
-			p.address64[i>>6] |= uint64(1) << (uint(i) & 63)
+	if buildfeatures.Memory64 != 0 {
+		for i, memory := range memories {
+			if memory.Limits.Addr64 {
+				p.address64[i>>6] |= uint64(1) << (uint(i) & 63)
+			}
 		}
 	}
 	p.classifier = wasm.NewModuleInstructionClassifier(&wasm.Module{Memories: memories}, indexed)
@@ -34,12 +41,15 @@ func makeMemoryProfile(memories []wasm.MemType, indexed bool) memoryProfile {
 }
 
 func (p memoryProfile) wide(index uint32) bool {
-	return uint64(index) < uint64(p.count) && p.address64[index>>6]&(uint64(1)<<(index&63)) != 0
+	return buildfeatures.Memory64 != 0 && uint64(index) < uint64(p.count) && p.address64[index>>6]&(uint64(1)<<(index&63)) != 0
 }
 
 // The caller has already admitted both memory indices. init's data source and
 // count stay I32; copy's count is I64 only when both addresses are I64.
 func (p memoryProfile) bulkWidths(kind wasm.InstrKind, dst, src uint32) [3]bool {
+	if buildfeatures.Memory64 == 0 {
+		return [3]bool{}
+	}
 	d := p.wide(dst)
 	switch kind {
 	case wasm.InstrMemoryInit:

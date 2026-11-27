@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -125,9 +126,13 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt32:
 		f.a.Movsxd(result, src)
 	case opSExt8:
-		f.a.Movsx8(result, src, node.valueType().is64())
+		if buildfeatures.SignExtensionOps != 0 {
+			f.a.Movsx8(result, src, node.valueType().is64())
+		}
 	case opSExt16:
-		f.a.Movsx16(result, src, node.valueType().is64())
+		if buildfeatures.SignExtensionOps != 0 {
+			f.a.Movsx16(result, src, node.valueType().is64())
+		}
 	}
 	if srcOwned && result != src {
 		f.release(src)

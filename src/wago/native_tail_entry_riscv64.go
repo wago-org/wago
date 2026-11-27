@@ -9,12 +9,7 @@
 
 package wago
 
-import (
-	"errors"
-	"fmt"
-
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
-)
+import railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 
 // Compiled cleanup owns only detached mappings and their charges. It never
 // retains instance contexts or writes a native-mutex-protected entry ledger.
@@ -24,15 +19,24 @@ type rv64RetiredTailGeneration struct {
 	code, metadata int
 }
 
+type rv64NativeTailTableState struct {
+	budget      rv64NativeTailGenerationBudget
+	generations []*rv64NativeTailGeneration // all versions, including suspended code
+	active      []*rv64NativeTailGeneration
+	ownerCount  int
+	retiring    bool
+}
+
 // The caller holds native serialization. All candidates remain detached until
 // the complete graph is built and checked, so a failed growth attempt preserves
 // existing bindings. Old code stays alive through parks and cold decoration.
 func (s *rv64NativeTableTargets) refreshTailGenerations() error {
-	if s.tailOwnerCount == s.count {
-		if len(s.tailActive) == 0 {
+	tail := s.tail.get()
+	if tail.ownerCount == s.count {
+		if len(tail.active) == 0 {
 			return nil
 		}
-		return rv64ActivateNativeTailGenerations(s.tailActive)
+		return rv64ActivateNativeTailGenerations(tail.active)
 	}
 	var candidates [rv64MaxTailGenerations]*rv64NativeTailGeneration
 	n := 0
@@ -60,8 +64,8 @@ func (s *rv64NativeTableTargets) refreshTailGenerations() error {
 		if err != nil {
 			return err
 		}
-		scopePolicy := s.owners[0].ensurePluginState().railshotInvocation.tailPolicy
-		callerPolicy := caller.ensurePluginState().railshotInvocation.tailPolicy
+		scopePolicy := s.owners[0].ensurePluginState().railshotInvocation.tail.get().policy
+		callerPolicy := caller.ensurePluginState().railshotInvocation.tail.get().policy
 		if !scopePolicy.ready || !callerPolicy.ready {
 			return rv64TailGenerationError("missing captured allocation policy")
 		}
@@ -69,7 +73,7 @@ func (s *rv64NativeTableTargets) refreshTailGenerations() error {
 		if g != nil {
 			// This owns partial construction too. It is intentionally retained
 			// on error until the entry's ordinary retirement path runs.
-			s.tailGenerations = append(s.tailGenerations, g)
+			tail.generations = append(tail.generations, g)
 		}
 		if err != nil {
 			return rv64TailPolicyError(err, scopePolicy, callerPolicy)
@@ -82,37 +86,8 @@ func (s *rv64NativeTableTargets) refreshTailGenerations() error {
 			return err
 		}
 	}
-	s.tailActive = append(s.tailActive[:0], candidates[:n]...)
-	s.tailOwnerCount = s.count
-	return nil
-}
-
-// Detach/retire while native execution is still serialized. Mapping-only
-// failures transfer into compiled cleanup; a changed capability slot retains
-// this exact lease instead, so its arena cannot be freed or its slot reused.
-func railshotRetireNativeTableTargets(lease railshotTableEntryLease) error {
-	s := lease.targets
-	if s == nil {
-		return nil
-	}
-	s.tailRetiring = true
-	var errs []error
-	for _, g := range s.tailGenerations {
-		if g == nil || !g.reserved {
-			continue
-		}
-		if err := g.retire(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if err := errors.Join(errs...); err != nil {
-		return err
-	}
-	clear(s.tailGenerations)
-	clear(s.tailActive)
-	// Their backing arrays were charged to the retired generations.
-	s.tailGenerations, s.tailActive = nil, nil
-	s.tailOwnerCount = 0
+	tail.active = append(tail.active[:0], candidates[:n]...)
+	tail.ownerCount = s.count
 	return nil
 }
 
@@ -136,72 +111,11 @@ func (g *rv64NativeTailGeneration) finishDetachedRetirement(closeErr error) {
 	if closeErr != nil {
 		cc := g.caller.c.loadCodeCache()
 		cc.mu.Lock()
-		state := &g.caller.c.ensureCompileIndexes().railshotTail
+		state := g.caller.c.ensureCompileIndexes().railshotTail.tailCode.get()
 		state.retiredGenerations = append(state.retiredGenerations, rv64RetiredTailGeneration{g.factory, g.codeBytes, g.metadataBytes})
 		state.retiredGenerationCode += g.codeBytes
 		state.retiredGenerationMetadata += g.metadataBytes
 		cc.mu.Unlock()
 	}
 	g.releaseReservation()
-}
-
-// A failed Detach quarantines the exact top lease. Only the root's invocation
-// gate may retry it, before acquiring a fresh native entry. Physical release
-// still happens after unlocking, including when the last root finalizes.
-func railshotRetryNativeTableRetirement(root *Instance) error {
-	state := root.pluginState.Load()
-	if state == nil {
-		return nil
-	}
-	pool := &state.railshotInvocation
-	for pool.tableDepth != 0 {
-		slot := pool.tableDepth - 1
-		targets := pool.tableTargets[slot]
-		if !targets.tailRetiring {
-			break
-		}
-		locked, err := root.lockAndBindNativeEntry()
-		if err != nil {
-			return err
-		}
-		lease := railshotTableEntryLease{root: root, targets: targets, slot: slot}
-		err = railshotRetireNativeTableTargets(lease)
-		locked.unlockExecution() // no table lease on this temporary lock
-		if err != nil {
-			return err
-		}
-		railshotReleaseNativeTableTargets(lease)
-	}
-	return nil
-}
-
-// A logically closed, quiescent root cannot admit another public entry. Repeated
-// Close can nevertheless retry its quarantined lease without calling guest
-// code. The invocation gate serializes competing close retries; the closed bit
-// and zero count exclude active or parked root invocations without waiting for
-// callbacks. Physical root release may finalize the instance during the retry.
-func railshotRetryClosedNativeTableRetirement(root *Instance) (err error) {
-	if root == nil || root.invocationState.Load() != instanceInvocationClosed {
-		return nil
-	}
-	state := root.pluginState.Load()
-	if state == nil {
-		return nil
-	}
-	// Close callbacks and concurrent closes join promptly rather than waiting
-	// on the cleanup that may itself be releasing their final physical root.
-	gate := &state.invokeMu
-	if !gate.state.CompareAndSwap(0, invocationGateHeld) && !gate.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
-		return nil
-	}
-	// Physical finalizers can run while the final scoped roots drain. Journal
-	// gate release after retirement so Close completes and reports even a legacy
-	// panic(nil), including when this retry runs inside Close's recovery defer.
-	var cleanup resourceCleanup
-	cleanup.run(func() { err = railshotRetryNativeTableRetirement(root) })
-	cleanup.run(gate.Unlock)
-	if cleanup.panicked {
-		return fmt.Errorf("wago: RV64 closed table retirement: %w", ErrCallbackPanic)
-	}
-	return err
 }

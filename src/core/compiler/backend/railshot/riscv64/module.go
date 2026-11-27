@@ -16,6 +16,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -50,10 +51,12 @@ type FunctionInfo struct {
 // Every function/type/export was admitted before any instruction was emitted.
 type Compiled struct {
 	profileModuleState
-	code      []byte
-	functions []FunctionInfo
-	exports   map[string]int
-	state     moduleState
+	gcHelperUses     uint64
+	atomicHelperUses uint8
+	code             []byte
+	functions        []FunctionInfo
+	exports          map[string]int
+	state            moduleState
 	// Selected staging compares the caller's symbolic plans with the directory
 	// that actually emitted tail sites, including zero sites and source homes.
 	// This bounded compile-time witness never becomes runtime metadata.
@@ -123,6 +126,10 @@ func compileOptions(data []byte, regs []uint8, opts CompileOptions) (*Compiled, 
 	return compileDecodedModule(m, regs, opts)
 }
 
+type legacyGCModuleSelection struct {
+	i31, referenceCalls, referenceFunctions bool
+}
+
 // The public frontend has already validated its configured limits and retains
 // the decoded source. Lowering still enforces the bounded RV64 module policy.
 func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*Compiled, error) {
@@ -152,10 +159,13 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	if m == nil {
 		return nil, fmt.Errorf("rv64: nil module")
 	}
-	if opts.GCFrameRoots != nil && !validateGCFrameRootPlansOwned(m, opts.GCFrameRoots, opts.OwnedExceptionReferences, opts.CustomInstructions) {
+	if opts.GCFrameRoots != nil && (!buildfeatures.RISCV64CollectorFrameRoots || !validateGCFrameRootPlansOwned(m, opts.GCFrameRoots, opts.OwnedExceptionReferences, opts.CustomInstructions)) {
 		return nil, unsupported("GC frame-root source plan")
 	}
 	if opts.referenceFunctions {
+		if !buildfeatures.ReferenceSignatures {
+			return nil, unsupported("reference ABI is disabled in this build")
+		}
 		if !opts.production || !opts.publicStarts || !opts.Interruptible || !opts.ForeignTableCalls || !opts.InvocationContext || opts.dynamicTailCalls && !opts.NativeTailCalls || opts.Profile && !profileEnabled || (opts.SourceMaps || opts.UnwindMaps) && !opts.Profile {
 			return nil, unsupported("closed reference module requires private cooperative production")
 		}
@@ -172,13 +182,18 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	}
 	var err error
 	admissionModule := m
-	if opts.ExceptionHandlingSource {
+	if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 		if !AdmitExceptionHandlingModule(m) {
 			return nil, unsupported("exception source profile")
 		}
 		admissionModule = exceptionAdmissionProjection(m)
 	}
-	if err = admitShapeProfileFunctions(admissionModule, opts.production, opts.publicStarts, opts.production && opts.publicStarts, opts.ExceptionHandlingSource || opts.NativeReferenceCalls || opts.gcRootedScalar || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.i31Core || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy, opts.referenceFunctions || opts.gcRootedScalar || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.i31Core || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy); err != nil {
+	legacyGC := selectLegacyGCModule(&opts)
+	rootedScalar := buildfeatures.RISCV64CollectorFrameRoots && opts.gcRootedScalar
+	referenceFunctions := opts.referenceFunctions || legacyGC.referenceFunctions
+	referenceTypes := rootedScalar || legacyGC.referenceFunctions || legacyGC.i31
+	if err = admitShapeProfileFunctions(admissionModule, opts.production, opts.publicStarts, opts.production && opts.publicStarts,
+		opts.ExceptionHandlingSource || opts.NativeReferenceCalls || referenceTypes, opts.referenceFunctions || referenceTypes); err != nil {
 		return nil, err
 	}
 	state, err := admitStatePolicy(admissionModule, opts.production, opts.hostImports, opts.publicStarts, opts.production && opts.publicStarts && opts.Interruptible && opts.ForeignTableCalls)
@@ -189,15 +204,15 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.foreignTableCalls = opts.ForeignTableCalls
 	state.importTailCalls = opts.importTailCalls
 	state.dynamicTailCalls = opts.dynamicTailCalls
-	state.referenceCalls = opts.NativeReferenceCalls || opts.gcRootedScalar || opts.gcTypeSubtypingRecursiveFunctions || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructBasic || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
-	state.referenceFunctions = opts.referenceFunctions || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0
-	state.gcRootedScalar = opts.gcRootedScalar
-	if opts.ExceptionHandlingSource {
+	state.referenceCalls = opts.NativeReferenceCalls || rootedScalar || legacyGC.referenceCalls
+	state.referenceFunctions = referenceFunctions
+	state.gcRootedScalar = rootedScalar
+	if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 		state.exceptionModule = m
 		restoreExceptionStateTypes(m, &state)
 		state.referenceFunctions = opts.referenceFunctions
 	}
-	if state.gcRootedScalar && !(opts.OwnedExceptionReferences && m.FuncCount() == 0 && len(m.Types) == 0) {
+	if buildfeatures.RISCV64CollectorFrameRoots && state.gcRootedScalar && !(opts.OwnedExceptionReferences && m.FuncCount() == 0 && len(m.Types) == 0) {
 		var ok bool
 		state.recTypeDir, ok = newInternalReferenceTypeDirectory(m.Types)
 		if !ok {
@@ -205,61 +220,14 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 	}
 	state.publicReferenceCarriers = opts.referenceFunctions && (admitPublicReferenceCarrierBoundary(m) && publicReferenceCarrierTarget(&m.Types[0].SubTypes[0].Comp) || admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp))
-	state.publicDynamicHostReferenceCarriers = state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
-	state.i31Core = opts.gcRootedScalar || opts.i31Core || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy
-	state.i31RefTest = opts.i31Core && admitRV64I31OfficialRefTest(m)
-	state.i31RefEq = opts.gcRootedScalar || (opts.i31Core && (admitRV64ImmediateReferenceModule(m) || admitRV64I31RefEqPilot(m))) || opts.gcRefEq
-	state.gcRefEq = opts.gcRefEq
-	state.gcRefTestTable = opts.gcRefTestTable
-	state.gcRefTestConcrete = opts.gcRefTestConcrete
-	state.gcRefTestAbstract = opts.gcRefTestAbstract
-	state.gcBrOnCastNullability = opts.gcBrOnCastNullability
-	state.gcStructGet = opts.gcStructGet
-	state.gcStructMutation = opts.gcStructMutation
-	state.gcStructNull = opts.gcStructNull
-	state.gcStructPacked = opts.gcStructPacked
-	state.gcStructBasic = opts.gcStructBasic
-	state.gcStructGlobals = opts.gcStructGlobals
-	state.gcArrayLocal = opts.gcArrayLocal
-	state.gcArrayUniform = opts.gcArrayUniform
-	state.gcArrayFixedLocal = opts.gcArrayFixedLocal
-	state.gcArrayFixedOfficial = opts.gcArrayFixedOfficial
-	state.gcArrayPackedData = opts.gcArrayPackedData
-	state.gcArrayReference = opts.gcArrayReference
-	state.gcArrayInitElem = opts.gcArrayInitElem
-	state.gcArrayInitData = opts.gcArrayInitData
-	state.gcArrayInitDataWide = opts.gcArrayInitData && admitRV64GCArrayInitDataWide(m)
-	state.gcArrayFill = opts.gcArrayFill
-	state.gcArrayCopy = opts.gcArrayCopy
-	state.gcTypeSubtypingRecursiveFunctions = opts.gcTypeSubtypingRecursiveFunctions
-	state.gcTypeSubtypingRefFuncGlobals = opts.gcTypeSubtypingRefFuncGlobals
-	state.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast
-	state.gcTypeSubtypingFinalityCallCast = opts.gcTypeSubtypingFinalityCallCast
-	state.gcTypeSubtypingTypedTableCall = opts.gcTypeSubtypingTypedTableCall
-	state.gcTypeSubtypingRefTestSingle = opts.gcTypeSubtypingRefTestSingle
-	state.gcTypeSubtypingRefTestVariant = opts.gcTypeSubtypingRefTestVariant
-	state.gcTypeSubtypingLink = opts.gcTypeSubtypingLink
-	state.gcTypeSubtypingDuplicateRecursive = opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0
-	// Internal GC bridges stage their arguments in the same serialized arena as
-	// ordinary Wasm calls. A module whose public functions take fewer arguments
-	// must still retain the complete helper shape; otherwise helper staging can
-	// overwrite the adjacent result and trap cells before the host park.
-	helperSlots := 0
-	switch {
-	case opts.gcRootedScalar:
+	state.publicDynamicHostReferenceCarriers = buildfeatures.ReferenceSignatures && state.publicReferenceCarriers && admitPublicDynamicHostReferenceBoundary(m)
+	state.i31Core = rootedScalar || legacyGC.i31
+	state.i31RefEq = rootedScalar
+	// Internal bridges share the serialized arena with ordinary Wasm calls,
+	// whose signatures may need fewer slots than a helper.
+	helperSlots := state.configureLegacyGCModule(m, &opts)
+	if rootedScalar {
 		helperSlots = rootedScalarHelperSlots(m)
-	case opts.gcArrayCopy:
-		helperSlots = 7
-	case opts.gcArrayInitElem || opts.gcArrayInitData:
-		helperSlots = 6
-	case opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayFill:
-		helperSlots = 5
-	case opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayPackedData || opts.gcArrayReference:
-		helperSlots = 4
-	case opts.gcStructGet:
-		helperSlots = 3
-	case opts.gcRefEq:
-		helperSlots = 2
 	}
 	if NeedsFunctionSubtypeHelpers(m) {
 		helperSlots = max(helperSlots, 3)
@@ -269,7 +237,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	state.declarationExternRefs = opts.referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	state.declarationNonnullRefs = opts.referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
 	var primitiveTailTypes *sourceFunctionTypeDirectory
-	if opts.publicStarts && (state.gcRootedScalar || admitPublicPrimitiveReferenceModule(admissionModule, false)) {
+	if opts.publicStarts && (state.gcRootedScalar || admitPublicTailFunctionCarriers(admissionModule, false)) {
 		primitiveTailTypes = state.sourceFunctions
 		if primitiveTailTypes == nil {
 			directory, err := newSourceFunctionTypeDirectory(m)
@@ -289,7 +257,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 			ft = state.functions[state.importedFunctions+i].signature
 		}
 		summaries[i] = shared.AdmitScalarFunction(&m.Code[i], ft)
-		fallback[i] = opts.ForceFallback || opts.gcRootedScalar || opts.referenceFunctions || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.i31Core || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy || !summaries[i].Eligible
+		fallback[i] = opts.ForceFallback || rootedScalar || referenceFunctions || legacyGC.i31 || !summaries[i].Eligible
 		if fallback[i] {
 			integerSummaries[i], err = walkInteger(&m.Code[i], ft, &state, nil)
 			if err != nil {
@@ -321,6 +289,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 	}
 	var worker shared.ScalarState
 	var relocations []directCall
+	frameState := newGCFrameModuleState(&opts)
 	defer worker.FinishWorker()
 	for i := range m.Code {
 		ft, _ := m.LocalFuncType(i)
@@ -330,7 +299,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		var code []byte
 		var info FunctionInfo
 		var calls []directCall
-		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || opts.gcRootedScalar, gcRootedScalar: opts.gcRootedScalar, gcTypeSubtypingRuntimeCallCast: opts.gcTypeSubtypingRuntimeCallCast, referenceFunctions: opts.referenceFunctions || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase, customInstructions: opts.pluginDirectory, customMemory: m.ImportedMemCount()+len(m.Memories) > 0}
+		mode := emissionMode{profileMode: c.newFunctionProfile(&m.Code[i], uint32(i+state.importedFunctions)), production: opts.production, interruptible: opts.Interruptible, foreignTableCalls: opts.ForeignTableCalls, invocationContext: opts.InvocationContext, localTailCalls: opts.localTailCalls, importTailCalls: opts.importTailCalls, dynamicTailCalls: opts.dynamicTailCalls, referenceCalls: opts.NativeReferenceCalls || rootedScalar, gcRootedScalar: rootedScalar, gcTypeSubtypingRuntimeCallCast: state.gcTypeSubtypingRuntimeCallCast, referenceFunctions: referenceFunctions, tailPlans: opts.tailPlans, tailSiteBase: opts.tailSiteBase, customInstructions: opts.pluginDirectory, customMemory: m.ImportedMemCount()+len(m.Memories) > 0}
 		mode.threadedMemory = moduleThreadedMemory(m)
 		mode.primitiveTailTypes = primitiveTailTypes
 		mode.elideBounds = opts.ElideBoundsChecks
@@ -340,15 +309,12 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		if mode.gcFunctionEnvironments || mode.gcRootedScalar {
 			mode.tableModuleSource = m
 		}
-		mode.exceptionOperands = opts.exceptionOperands
 		if opts.production {
 			mode.functionIndex = uint32(i + state.importedFunctions)
 			mode.entryPC = uint32(m.Code[i].LocalDeclBytes)
 		}
-		if opts.GCFrameRoots != nil {
-			mode.gcFrameRoots = opts.GCFrameRoots.Function(i)
-		}
-		if mode.gcFrameRoots != nil && !fallback[i] {
+		frameState.bindFunction(&mode, i)
+		if mode.gcFramePlan() != nil && !fallback[i] {
 			return nil, unsupported("GC frame roots require framed integer lowering")
 		}
 		if fallback[i] {
@@ -393,82 +359,15 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		}
 		relocations = append(relocations, calls...)
 	}
-	// Append exact internal helper bridges only when an admitted checkpoint
-	// references them. They are ordinary image-relative RV64 code;
-	// no executable address or alternate-backend implementation is retained.
-	type helperBridge struct {
-		helper    uint32
-		slots     int
-		safepoint uint32
+	var helperEntries map[helperBridge]int
+	c.code, helperEntries, err = appendInternalHelperBridges(c.code, relocations, codeLimit, opts.OwnedExceptionReferences)
+	if err != nil {
+		return nil, err
 	}
-	helperEntries := make(map[helperBridge]int, 12)
-	bridges := []helperBridge{{helper: gcExternGlobalSet, slots: 2}, {helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcFunctionSubtypeTest, slots: 3}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: gcTableFill, slots: 4}, {helper: gcTableCopy, slots: 5}, {helper: gcTableGrow, slots: 3}, {helper: gcTableInit, slots: 5}, {helper: gcTableElemDrop, slots: 1}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
-	if opts.OwnedExceptionReferences {
-		bridges = append(bridges, helperBridge{helper: gcExceptionPayload, slots: 1})
-	}
-	// Keep the historical zero-safepoint bridge order byte-for-byte stable. Exact
-	// root plans add only the distinct helper/safepoint pairs actually referenced
-	// by this image.
-	for _, call := range relocations {
-		if call.helper == 0 || call.safepoint == 0 {
-			continue
-		}
-		slots, ok := gcAllocHelperSlots(call.helper, call.helperSlots)
-		if !ok {
-			return nil, unsupported("missing canonical GC helper bridge shape")
-		}
-		key := helperBridge{helper: call.helper, slots: slots, safepoint: call.safepoint}
-		seen := false
-		for _, bridge := range bridges {
-			if bridge == key {
-				seen = true
-				break
-			}
-		}
-		if !seen {
-			bridges = append(bridges, key)
-		}
-	}
-	for _, bridge := range bridges {
-		used := false
-		for _, call := range relocations {
-			used = used || call.helper == bridge.helper && call.safepoint == bridge.safepoint && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == bridge.slots)
-		}
-		if !used {
-			continue
-		}
-		padding := (-len(c.code)) & 15
-		for ; padding > 0; padding -= 4 {
-			c.code = append(c.code, 0x13, 0, 0, 0)
-		}
-		paramSlots, resultSlots := bridge.slots, 1
-		if bridge.helper == gcExternGlobalSet || bridge.helper == gcStructSet || bridge.helper == gcStructTableSet || bridge.helper == gcArraySet || bridge.helper == gcArrayDropElem || bridge.helper == gcArrayFill || bridge.helper == gcArrayCopy || bridge.helper == gcArrayInitData || bridge.helper == gcArrayInitElem || bridge.helper == gcTableFill || bridge.helper == gcTableCopy || bridge.helper == gcTableInit || bridge.helper == gcTableElemDrop {
-			resultSlots = 0
-		}
-		dispatch := guestGlobalStoreDispatch
-		if bridge.helper != guestGlobalClear && bridge.helper != guestGlobalStore && bridge.helper != guestGlobalStoreIndexed {
-			payload, ok := shared.EncodeGCDispatch(bridge.helper, bridge.safepoint)
-			if !ok {
-				return nil, unsupported("GC helper dispatch encoding")
-			}
-			dispatch = gcStructDispatchBit | payload
-		} else {
-			resultSlots = 0
-		}
-		stub := HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)
-		if len(stub) == 0 || len(stub) > codeLimit-len(c.code) {
-			return nil, unsupported("internal helper bridge image bound")
-		}
-		key := bridge
-		if key.helper != gcArrayAllocFixed && key.helper != gcStructAllocOne {
-			key.slots = 0
-		}
-		helperEntries[key] = len(c.code)
-		c.code = append(c.code, stub...)
-	}
+	c.gcHelperUses = emittedGCHelperUses(helperEntries)
 	// All framed entries are now known. These remain image-relative transfers;
 	// no executable addresses or alternate-backend code are retained.
-	c.code, err = appendAtomicHelpers(c.code, relocations)
+	c.code, c.atomicHelperUses, err = appendAtomicHelpers(c.code, relocations)
 	if err != nil {
 		return nil, err
 	}
@@ -480,11 +379,7 @@ func compileDecodedModule(m *wasm.Module, regs []uint8, opts CompileOptions) (*C
 		target := 0
 		if call.helper != 0 {
 			var ok bool
-			keySlots := 0
-			if call.helper == gcArrayAllocFixed || call.helper == gcStructAllocOne {
-				keySlots = call.helperSlots
-			}
-			target, ok = helperEntries[helperBridge{helper: call.helper, slots: keySlots, safepoint: call.safepoint}]
+			target, ok = helperEntries[call.bridgeKey()]
 			if !ok {
 				return nil, unsupported("missing GC helper bridge")
 			}
@@ -679,13 +574,10 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 	if referenceFunctions && admitRV64GCRootedScalarModule(m) {
 		return nil
 	}
-	if admitRV64GCTypeSubtypingDeclarations(m) != 0 || admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || admitRV64GCTypeSubtypingRefTestSingle(m) || admitRV64GCTypeSubtypingLink(m) != 0 || admitRV64GCTypeSubtypingFinalityLink(m) != 0 || admitRV64GCTypeSubtypingStructLink(m) != 0 || admitRV64GCTypeSubtypingStructProjectionLink(m) != 0 || admitRV64GCTypeSubtypingStructMismatchLink(m) != 0 || admitRV64GCTypeSubtypingIndependentStructLink(m) != 0 || admitRV64GCTypeSubtypingExtendedProjectionLink(m) != 0 || admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0 || admitRV64GCTypeSubtypingExtendedRecursiveLink(m) != 0 || admitRV64GCTypeSubtypingCrossGroupMismatchLink(m) != 0 || admitRV64GCTypeSubtypingTransitiveMismatchLink(m) != 0 || admitRV64GCTypeSubtypingNonFlatExport(m) {
+	if buildfeatures.GC != 0 && admitLegacyGCShape(m, referenceFunctions) {
 		return nil
 	}
-	if referenceFunctions && (admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m) || admitRV64GCStructGet(m) || admitRV64GCStructMutation(m) || admitRV64GCStructNull(m) || admitRV64GCStructPacked(m) || admitRV64GCStructBasic(m) || admitRV64GCStructNumericGlobals(m) || admitRV64GCArrayLocal(m) || admitRV64GCArrayUniform(m) || admitRV64GCArrayFixedLocal(m) || admitRV64GCArrayOfficial(m) || admitRV64GCArrayPackedData(m) || admitRV64GCArrayReference(m) || admitRV64GCArrayInitElem(m) || admitRV64GCArrayInitData(m) || admitRV64GCArrayFill(m) || admitRV64GCArrayCopy(m)) {
-		return nil
-	}
-	i31Core := referenceFunctions && admitRV64I31Core(m)
+	i31Core := buildfeatures.GC != 0 && referenceFunctions && admitRV64I31Core(m)
 	declarationExtern := referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3BrOnNullDeclarations(m) || admitCore3BrOnNonNullDeclarations(m))
 	executionExtern := referenceFunctions && isCore3RefIsNullExecution(m)
 	declarationNonNullExtern := referenceFunctions && (admitCore3RefDeclarations(m) || admitCore3RefAsNonNullDeclarations(m) || admitCore3RefIsNullDeclarations(m))
@@ -725,7 +617,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 		}
 	}
 	flatIndex := uint32(0)
-	primitiveDeclarations := publicStarts && admitPublicPrimitiveReferenceModule(m, false)
+	primitiveDeclarations := buildfeatures.ReferenceSignatures && publicStarts && admitPublicPrimitiveReferenceModule(m, false)
 	for _, rec := range m.Types {
 		if len(rec.SubTypes) != 1 && !publicStarts {
 			return unsupported("recursive type group")
@@ -768,7 +660,7 @@ func admitShapeProfileFunctions(m *wasm.Module, floating, publicStarts, referenc
 	}
 	if referencesAllowed {
 		imported := m.ImportedFuncCount()
-		primitiveImports := publicStarts && referenceFunctions && admitPublicPrimitiveReferenceModule(m, false)
+		primitiveImports := buildfeatures.ReferenceSignatures && publicStarts && referenceFunctions && admitPublicPrimitiveReferenceModule(m, false)
 		for i := 0; i < m.FuncCount(); i++ {
 			ft, ok := m.FuncSignature(uint32(i))
 			if publicStarts && ok {
@@ -920,18 +812,8 @@ func frameFunctionCalls(body []byte, widths []bool, nparams, slots int, initiali
 		calls[j].site += entry.Position()
 	}
 	prefixBytes := entry.Position()
-	if roots := info.mode.gcFrameRoots; roots != nil {
-		if !roots.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
-			off := uint64(callsite.ReturnOffset()) + uint64(prefixBytes)
-			if off > uint64(^uint32(0)) {
-				return false
-			}
-			callsite.SetReturnOffset(uint32(off))
-			return true
-		}) {
-			roots.Exact = false
-			return nil, FunctionInfo{}, unsupported("invalid GC frame-root callsite")
-		}
+	if err := info.mode.relocateGCFrameCallsites(prefixBytes); err != nil {
+		return nil, FunctionInfo{}, err
 	}
 	entry.a.B = append(entry.a.B, body...)
 	entry.a.Ld(enc.RA, enc.SP, 0)

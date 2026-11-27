@@ -74,7 +74,7 @@ func TestRV64PublicDynamicHostTailTransport(t *testing.T) {
 						})
 						binding := rv64DynamicHostBinding(t, rt, owned, host, c.importFuncSigs[0])
 						in := rv64HostTailInstantiate(t, rt, c, NewImports().Function("env", "target", binding))
-						if in.pluginState.Load().railshotInvocation.tailDispatcher != nil {
+						if in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil {
 							t.Fatal("mixed dynamic module constructed competing static factory")
 						}
 						selectors := []uint64{0, 1, 2}
@@ -86,7 +86,7 @@ func TestRV64PublicDynamicHostTailTransport(t *testing.T) {
 							if err != nil || !slices.Equal(got, want) {
 								t.Fatal("dynamic host transport", selector, got, want, err)
 							}
-							if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+							if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 								t.Fatal("dynamic host cold exit retained generation")
 							}
 						}
@@ -123,7 +123,7 @@ func TestRV64PublicDynamicHostTailReentry(t *testing.T) {
 							view := rv64InvocationViewForTest(in)
 							before := bytes.Clone(view)
 							state := &in.pluginState.Load().railshotInvocation
-							if railshotParkedNativeInvocation(in) == 0 || state.tableDepth == 0 || state.tailGenerationBudget.count == 0 || rv64EntryCapability(in) == 0 {
+							if railshotParkedNativeInvocation(in) == 0 || state.tableDepth == 0 || state.tailForTest().generationBudget.count == 0 || rv64EntryCapability(in) == 0 {
 								panic("dynamic host lost parked generation")
 							}
 							depth++
@@ -156,7 +156,7 @@ func TestRV64PublicDynamicHostTailReentry(t *testing.T) {
 						} else if err != nil || !slices.Equal(got, []uint64{8}) {
 							t.Fatal("dynamic host resume", got, err)
 						}
-						if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+						if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 							t.Fatal("nested generation escaped cold exit")
 						}
 					}
@@ -203,7 +203,7 @@ func TestRV64PrivateTailHostGeneration(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, limits := range []rv64NativeTailGenerationLimits{{exact.code - 1, exact.metadata}, {exact.code, exact.metadata - 1}} {
-				if err := create(limits); g != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailBudget.count != 0 {
+				if err := create(limits); g != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailForTest().budget.count != 0 {
 					t.Fatal("host quota failed before construction", g, err)
 				}
 			}
@@ -401,7 +401,7 @@ func TestRV64PublicDynamicHostTailCancellationAndClose(t *testing.T) {
 					} else {
 						cancel()
 					}
-					if in.jm == nil || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0 {
+					if in.jm == nil || in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count == 0 {
 						t.Fatal("parked dynamic host lost generation")
 					}
 					if owner, ok := binding.(*HostFuncRef); ok && owner.Close() == nil {
@@ -428,7 +428,7 @@ func TestRV64PublicDynamicHostTailCancellationAndClose(t *testing.T) {
 					case <-time.After(5 * time.Second):
 						t.Fatal("dynamic host failed to unwind")
 					}
-					if flag.Get() != 0 || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || in.nativeContext != 0 && rv64EntryCapability(in) != 0 {
+					if flag.Get() != 0 || in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || in.nativeContext != 0 && rv64EntryCapability(in) != 0 {
 						t.Fatal("interrupted tail ran continuation or leaked generation")
 					}
 					if err := in.Close(); err != nil {

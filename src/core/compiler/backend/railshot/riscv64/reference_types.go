@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // A borrowed directory reuses the signatures admitted by the module profile.
 // Exactly one view is used; resolving an annotation never allocates or converts
@@ -140,7 +143,7 @@ func (directory internalReferenceTypeDirectory) lookup(index uint32) (*wasm.SubT
 }
 
 func (types internalReferenceTypes) rootedStruct(index uint32) bool {
-	if !types.gcRootedScalar {
+	if !buildfeatures.RISCV64CollectorFrameRoots || !types.gcRootedScalar {
 		return false
 	}
 	signature := types.rootedStructType(index)
@@ -209,7 +212,7 @@ func (types internalReferenceTypes) rootedStructDefaultable(index uint32) bool {
 }
 
 func (types internalReferenceTypes) rootedArray(index uint32) bool {
-	if !types.gcRootedScalar {
+	if !buildfeatures.RISCV64CollectorFrameRoots || !types.gcRootedScalar {
 		return false
 	}
 	signature := types.rootedAggregateType(index, wasm.CompArray)
@@ -567,6 +570,16 @@ func internalFunctionReferenceWithTypes(typ wasm.ValType, typed bool, types inte
 	return typed && heap.Kind() == wasm.HeapTypeIndex && !heap.Type().Rec && types.function(heap.Type().Index)
 }
 
+func internalBlockType(r *wasm.Reader, typed bool, types internalReferenceTypes) (int64, error) {
+	if buildfeatures.ReferenceSignatures {
+		return internalReferenceBlockType(r, typed, types)
+	}
+	if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+		return 0, unsupported("reference block type is disabled in this build")
+	}
+	return r.S33()
+}
+
 // Explicit nullable syntax has the same ReferenceTypes semantics as bare
 // funcref for the abstract heap. Non-null results and all indexed annotations
 // additionally require the private typed profile.
@@ -593,6 +606,9 @@ func internalReferenceBlockType(r *wasm.Reader, typed bool, types internalRefere
 	}
 	if !ok || lead != 0x63 && lead != 0x64 {
 		return r.S33()
+	}
+	if !buildfeatures.ReferenceSignatures {
+		return 0, unsupported("reference block type is disabled in this build")
 	}
 	_, err := internalExplicitBlockReferenceType(r, typed, types)
 	return -16, err
@@ -662,6 +678,9 @@ func internalSelectType(r *wasm.Reader, typed bool, types internalReferenceTypes
 		return 0x70, nil
 	}
 	if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+		if !buildfeatures.ReferenceSignatures {
+			return 0, unsupported("reference select type is disabled in this build")
+		}
 		_, err := internalExplicitReferenceType(r, typed, types)
 		return 0x70, err
 	}

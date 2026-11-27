@@ -64,6 +64,9 @@ func TestGCArrayReductionSelection(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer cm.CodeImage.Close()
+			if got := cm.GCHelperUses&(1<<gcArrayReserveDeadBatch) != 0; got != tc.want {
+				t.Fatalf("recorded array reservation helper = %v, want %v", got, tc.want)
+			}
 			if got := directPreparedMarked(cm.DirectPreparedBounded, 0); got != tc.want {
 				t.Fatalf("bounded=%v want%v", got, tc.want)
 			}

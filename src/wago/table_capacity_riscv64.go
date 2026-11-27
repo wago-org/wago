@@ -71,6 +71,13 @@ func railshotValidateTableCapacities(c *Compiled) error {
 	if len(values) == 0 {
 		return nil
 	}
+	if !rv64TableCapacitiesForImage {
+		return fmt.Errorf("RV64 table reservation directory count")
+	}
+	return validateRV64TableCapacityDirectory(c, values)
+}
+
+func validateRV64TableCapacityDirectory(c *Compiled, values []uint32) error {
 	if len(values) != c.tableCount() || len(values) > railshot.MaxModuleTables {
 		return fmt.Errorf("RV64 table reservation directory count")
 	}
@@ -90,6 +97,9 @@ func railshotValidateTableCapacities(c *Compiled) error {
 }
 
 func railshotTableReservedCapacity(c *Compiled, index int) (int, bool) {
+	if !rv64TableCapacitiesForImage {
+		return 0, false
+	}
 	values := c.rv64ExecutionTableCapacities()
 	if index >= 0 && index < len(values) {
 		return int(values[index]), true
@@ -102,8 +112,10 @@ func railshotTableCapacitySnapshotBytes(c *Compiled) uintptr {
 		return 0
 	}
 	bytes := unsafe.Sizeof((*rv64TableCapacities)(nil))
-	if values := c.rv64ExecutionTableCapacities(); len(values) != 0 {
-		bytes += unsafe.Sizeof(rv64TableCapacities{}) + uintptr(len(values))*unsafe.Sizeof(uint32(0))
+	if rv64TableCapacitiesForImage {
+		if values := c.rv64ExecutionTableCapacities(); len(values) != 0 {
+			bytes += unsafe.Sizeof(rv64TableCapacities{}) + uintptr(len(values))*unsafe.Sizeof(uint32(0))
+		}
 	}
 	return bytes
 }

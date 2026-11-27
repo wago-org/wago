@@ -138,7 +138,7 @@ func TestStagedGCStructBasicNumericActionsAndPublicResultToken(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer in.Close()
-			if state := in.pluginState.Load(); state == nil || state.gcGlobalRootCount != 2 {
+			if state := in.pluginState.Load(); state == nil || len(state.stagedGlobalRoots()) != 2 {
 				t.Fatalf("basic GC root mapping = %#v", state)
 			}
 			for _, name := range []string{"get_0_0", "get_vec_0", "get_0_y", "get_vec_y"} {
@@ -194,12 +194,12 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}) - unsafe.Sizeof(profileCacheState{}); got != 64 {
 		t.Fatalf("compiledCodeCache non-profiling size = %d, want 64", got)
 	}
-	// Raising the activation bound from 8 to 33 adds 25 records (96 bytes
-	// each), two 64-entry root-slot arrays and four tracking bytes per level,
-	// plus four bytes of final alignment: 7864 + 25*(96+512+4) + 4.
-	const wantGCState = 23168
+	// Each of the 33 activations retains its 96-byte frame record. The sparse
+	// journal cache adds one pointer on profiles with public object tokens.
+	const wantGCState = 4160 + unsafe.Sizeof(gcArgumentRootState{}) + unsafe.Sizeof(gcCloneRootState{}) + unsafe.Sizeof(parkedHostRootCache{}) + unsafe.Sizeof(gcGlobalRootState{}) +
+		unsafe.Sizeof(gcArrayConstructorState{}) + unsafe.Sizeof(gcStructConstructorState{})
 	if got := unsafe.Sizeof(gcPublicState{}); got != wantGCState {
-		t.Fatalf("gcPublicState size = %d, want %d with RV64 roots and full-depth host activation storage", got, wantGCState)
+		t.Fatalf("gcPublicState size = %d, want %d with on-demand host root journals", got, wantGCState)
 	}
 	if got := unsafe.Sizeof(gcRefTokenEntry{}); got != 48 {
 		t.Fatalf("gcRefTokenEntry size = %d, want 48", got)

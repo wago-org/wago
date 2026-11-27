@@ -60,7 +60,7 @@ func TestRV64PublicGCArrayFillExecutionAndArtifact(t *testing.T) {
 			compiled := rv64PublicGCArrayFillCompile(t, artifact)
 			view := compiled.executionView()
 			if err := railshotValidateCompiled(view); !rv64SourceContractValid(view) || err != nil {
-				t.Fatalf("missing exact array.fill witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals)
+				t.Fatalf("missing exact array.fill witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals())
 			}
 			if params, results, err := railshotImportedCallSlots(view, 3, 1); err != nil || params != 3 || results != 1 {
 				t.Fatalf("array.fill call arena=%d/%d,%v, want 3/1", params, results, err)

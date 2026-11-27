@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -22,7 +23,7 @@ import (
 var rv64MutableFuncrefLocalCopyCodeDigest = [sha256.Size]byte{0x17, 0x99, 0xa7, 0xc0, 0xec, 0xd2, 0x44, 0x10, 0xa5, 0xc3, 0x6e, 0x78, 0xa8, 0xd2, 0x9f, 0x50, 0x13, 0x25, 0xf2, 0x57, 0x8d, 0x9b, 0xa6, 0xb7, 0xf8, 0x39, 0xa6, 0x75, 0xcc, 0x28, 0x8e, 0xf2}
 
 func rv64MutableFuncrefGlobalLocalCopyExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 876 && sha256.Sum256(c.code) == rv64MutableFuncrefLocalCopyCodeDigest
+	return rv64MutableFuncrefGlobalsForImage && buildfeatures.MutableGlobal != 0 && c != nil && len(c.code) == 876 && sha256.Sum256(c.code) == rv64MutableFuncrefLocalCopyCodeDigest
 }
 
 // rv64MutableFuncrefGlobalLocalCopy authenticates the first mixed local/imported
@@ -30,7 +31,7 @@ func rv64MutableFuncrefGlobalLocalCopyExecutionCode(c *Compiled) bool {
 // zero and can only be copied into imported mutable target zero through the
 // parked ownership transaction.
 func rv64MutableFuncrefGlobalLocalCopy(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 1 || len(c.FuncTypeID) != 1 || len(c.Exports) != 1 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
@@ -45,7 +46,7 @@ func rv64MutableFuncrefGlobalLocalCopy(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	sig := c.Funcs[0]

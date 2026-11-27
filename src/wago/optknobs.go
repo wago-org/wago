@@ -21,13 +21,15 @@ func OptKnobs() []OptKnobInfo { return railshotOptKnobs() }
 
 // OptimizationInfosForArch returns the registered optimization surface for a
 // target architecture. Unlike OptKnobs, On reports the built-in default because
-// a cross-target backend is not active in this process.
+// a cross-target backend is not active in this process. Entries whose proposal
+// was disabled at build time retain their names and defaults with no description.
 func OptimizationInfosForArch(arch string) []OptKnobInfo {
 	return optimization.InfosForArch(arch)
 }
 
 // OptimizationInfos returns every registered optimization once, including
 // target-specific entries used by standalone cross-compilation.
+// Disabled proposals retain their portable names and defaults.
 func OptimizationInfos() []OptKnobInfo {
 	return optimization.Infos()
 }

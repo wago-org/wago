@@ -9,7 +9,19 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+func availableInitializerGlobal(m *wasm.Module, index uint32, limit int) (wasm.GlobalType, bool) {
+	if uint64(index) >= uint64(limit) ||
+		buildfeatures.ExtendedConstExpressions == 0 && uint64(index) >= uint64(m.ImportedGlobalCount()) {
+		return wasm.GlobalType{}, false
+	}
+	typ, ok := m.GlobalTypeByIndex(index)
+	return typ, ok && !typ.Mutable
+}
 
 // Production initializer values are resolved by the normal runtime after import
 // attachment. The zero returned for global.get is typing metadata only; isolated
@@ -72,12 +84,12 @@ func admitGlobalExpression(expr wasm.Expr, m *wasm.Module, expected wasm.ValType
 	if err != nil || end != 0x0b || r.HasNext() {
 		return unsupported("initializer global expression")
 	}
-	typ, ok := m.GlobalTypeByIndex(index)
+	typ, ok := availableInitializerGlobal(m, index, limit)
 	compatible := ok && wasm.EqualValType(typ.Type, expected)
 	if ok && !compatible && typ.Type.Kind() == wasm.ValRef && expected.Kind() == wasm.ValRef {
 		compatible = m.ReferenceTypeSubtype(typ.Type.Ref(), expected.Ref())
 	}
-	if !ok || typ.Mutable || !compatible {
+	if !compatible {
 		return unsupported("initializer requires a compatible immutable global")
 	}
 	return nil

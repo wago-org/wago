@@ -15,6 +15,9 @@ import "github.com/wago-org/wago/src/core/codeimage"
 // (the Asm type); the wasm→native code generator lives in backend/railshot, which
 // drives this encoder and returns a *CompiledModule.
 type CompiledModule struct {
+	// GCHelperUses records native dispatch IDs. Zero means no compiler proof.
+	GCHelperUses     uint64
+	AtomicHelperUses uint8
 	// GCDeadInductionLayouts proves the complete function charges max(n,1)
 	// nonescaping pointer-free objects and returns i32(n*(n-1)/2).
 	// Low/high words hold object size/alignment. Zero means no proof.

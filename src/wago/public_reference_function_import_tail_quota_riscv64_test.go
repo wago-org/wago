@@ -73,7 +73,7 @@ func TestRV64PublicReferenceFunctionImportedTailsQuota(t *testing.T) {
 					if got, err := in.Invoke("run", args...); err != nil || !slices.Equal(got, append(payload, 0xfffffffe, 113)) {
 						t.Fatal("exact static factory execution", got, err)
 					}
-					if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 {
+					if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 {
 						t.Fatal("static instance unexpectedly charged a generation")
 					}
 					if err := in.Close(); err != nil {

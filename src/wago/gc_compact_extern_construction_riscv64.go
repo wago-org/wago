@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -13,8 +13,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"unsafe"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Only constant construction uses this journal. Local cells transfer their

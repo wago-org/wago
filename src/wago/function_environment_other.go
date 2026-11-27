@@ -5,25 +5,16 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !linux || !riscv64 || tinygo || wago_target_tinygo
+//go:build !linux || !riscv64 || tinygo || wago_target_tinygo || (wago_no_reference_types && wago_no_gc && wago_no_exception_handling)
 
 package wago
 
 import gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
-func managedFunctionRegisteredLocked(*referenceStore, *Instance)     {}
-func managedFunctionLifetimeLocked(*referenceStore, *Instance, bool) {}
-func managedFunctionPrepareRegistration(*referenceStore, *Instance)  {}
+func (*Compiled) functionEnvironmentFrameRoots() bool { return false }
+func (*Compiled) usesManagedFunctionStorage() bool    { return false }
 
-func managedFunctionBindInvocationState(*Instance, *instancePluginState)      {}
-func managedFunctionAfterInvocationUnlock(*instancePluginState, invocationID) {}
-func managedFunctionAfterClose(*Instance)                                     {}
-func drainManagedFunctionStoreReclaims(*referenceStore)                       {}
-
-func compiledManagedFunctionReachability(*Compiled) bool { return false }
-func (in *Instance) lockManagedFunctionCollectionInvocation(id invocationID) gcInvocationLease {
-	return in.lockGCInvocation(id)
-}
+func compiledManagedFunctionReachability(*Compiled) bool                        { return false }
 func collectManagedFunctionGraph(*Instance, *gcPublicState, bool) (bool, error) { return false, nil }
 
 func managedFunctionOwnerRootsStrong(*Instance, *gc.Collector) bool { return true }
@@ -42,15 +33,3 @@ func (*Instance) managedFunctionAggregateMayAllocate(uint32, []uint64) bool { re
 func (*Instance) dispatchManagedFunctionAggregate(uint32, []uint64, []uint64, gc.RootSet, *gcPublicState) bool {
 	return false
 }
-
-type managedFunctionConstruction struct{}
-
-func newManagedFunctionConstruction(*Compiled, *gc.Collector, *gc.Slots) *managedFunctionConstruction {
-	return nil
-}
-func (*managedFunctionConstruction) roots(fallback gc.Slots) gc.RootSet          { return fallback }
-func (*managedFunctionConstruction) close()                                      {}
-func (*managedFunctionConstruction) bind(*Instance, *gcStoreDomain) error        { return nil }
-func recordManagedFunctionConstruction(*gc.Collector, *Compiled, gc.Ref, uint32) {}
-
-func managedFunctionDeferFinalization(*Instance) bool { return false }

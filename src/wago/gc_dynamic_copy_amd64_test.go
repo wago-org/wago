@@ -231,7 +231,7 @@ func testGCDynamicCopyPressureSites(t *testing.T, sites int) {
 				t.Fatalf("count%d: %x,%v", count, got, err)
 			}
 			for i := 0; i < 2; i++ {
-				entry, ok := in.refStore.gcByToken[got[i]]
+				entry, ok := in.refStore.objectTokensLocked()[got[i]]
 				want := readGlobalObject(in.globalCells[i], in.c.Globals[i].Type)
 				if !ok || entry.owner != in || uint64(entry.ref) != want {
 					t.Fatalf("count%d reference%d: %x", count, i, got[i])

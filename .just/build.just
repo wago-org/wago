@@ -14,6 +14,8 @@ runtime profile='standard' compiler='go' version=env('WAGO_VERSION', '0.0.0') sc
     #!/usr/bin/env bash
     set -euo pipefail
     case '{{ profile }}' in standard) tags=wago_runtime ;; minimal) tags=wago_runtime,wago_lean,wago_minimal ;; *) echo 'profile must be standard or minimal' >&2; exit 2 ;; esac
+    extra_tags=$(go run ./cli/wago config build-tags)
+    [[ -z "$extra_tags" ]] || tags="$tags,$extra_tags"
     case '{{ compiler }}' in
       go)
         CGO_ENABLED=0 go build -tags "$tags" -ldflags '-s -w -X main.version={{ version }}' -o 'wago-runtime-{{ profile }}-normal' ./cli/wago

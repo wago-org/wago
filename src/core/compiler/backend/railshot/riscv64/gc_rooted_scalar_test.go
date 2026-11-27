@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -2324,6 +2325,38 @@ func TestRV64RootedAggregateGlobalInitializerCompiles(t *testing.T) {
 	if admitRV64GCRootedScalarModule(m) {
 		t.Fatal("aggregate global initializer with a function constructor was admitted")
 	}
+}
+
+func TestRV64RootedAggregateInitializerBuildFeatures(t *testing.T) {
+	m, err := wasm.DecodeModule(rv64RootedAggregateGlobalInitializerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parser := newRootedScalarReferenceInitializer(m)
+	for _, tc := range []struct {
+		name    string
+		init    wasm.Expr
+		enabled bool
+	}{
+		{"literal", m.Globals[0].Init, true},
+		{"earlier global", m.Globals[1].Init, buildfeatures.ExtendedConstExpressions != 0},
+		{"integer arithmetic", wasm.Expr{BodyBytes: []byte{0x41, 30, 0x41, 3, 0x6a, 0xfb, 0x00, 0, 0x0b}}, buildfeatures.ExtendedConstArithmetic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parser.validateExpression(tc.init, m.Globals[1].Type.Type.Ref(), 1); got != tc.enabled {
+				t.Fatalf("admitted = %v, want %v", got, tc.enabled)
+			}
+		})
+	}
+	t.Run("vector literal", func(t *testing.T) {
+		m.Types[0].SubTypes[0].Comp.Fields[0] = wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)
+		body := append([]byte{0xfd, 12}, make([]byte, 16)...)
+		body = append(body, 0xfb, 0x00, 0, 0x0b)
+		expr := wasm.Expr{BodyBytes: body}
+		if got, want := parser.validateExpression(expr, m.Globals[1].Type.Type.Ref(), 1), buildfeatures.SIMD != 0; got != want {
+			t.Fatalf("admitted = %v, want %v", got, want)
+		}
+	})
 }
 
 func rv64RootedSelfRecursiveStructModule() []byte {

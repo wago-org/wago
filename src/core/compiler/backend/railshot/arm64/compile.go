@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
@@ -90,7 +91,7 @@ var weightedScalarMergeEnabled = os.Getenv("WAGO_ARM64_NO_WEIGHTED_SCALAR_MERGE"
 // memcopyQPairsEnabled halves the load/store instruction count in the 32- and
 // 64-byte dynamic memory.copy loops. WAGO_ARM64_NO_MEMCOPY_QPAIRS=1 restores
 // independent Q-register loads/stores for differential testing.
-var memcopyQPairsEnabled = os.Getenv("WAGO_ARM64_NO_MEMCOPY_QPAIRS") != "1"
+var memcopyQPairsEnabled bool
 
 // sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with eight-byte function-local target thunks plus one cold
@@ -155,7 +156,7 @@ var (
 	// function, exactly like the scalar-float pin pool. Calls spill and lazily
 	// restore the full 128 bits through the existing local-state machinery; the
 	// AAPCS64 callee-saved low half alone is not sufficient for a vector local.
-	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
+	v128LocalPinsEnabled bool
 )
 
 // mergeReg is the canonical register a single-int-result block's value is
@@ -184,6 +185,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	gcHelperUses            uint64
+	atomicHelperUses        uint8
 	cacheImportDispatch     bool
 	sharedNativePins        bool
 	cacheNativeImportTarget bool
@@ -544,10 +547,8 @@ type fn struct {
 	// linearSumLoop encodes the exact reduction's address and accumulator locals;
 	// its depth limits the state to the loop whose top test established it.
 	linearSumLoop      uint32
+	memory0Width       memory64WidthCache
 	linearSumLoopDepth uint16
-	// Module types are immutable throughout this function compilation.
-	memory0TypeKnown bool
-	memory0Is64      bool
 }
 
 func (f *fn) opt(option optimization.Option) bool {
@@ -1312,6 +1313,8 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
+	gcHelperUses     uint64
+	atomicHelperUses uint8
 	// Sparse capabilities avoid enlarging every parallel function result.
 	gcDeadBatchLayouts map[int]uint64
 	gcI31Inductions    map[int]bool
@@ -2026,7 +2029,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
-	inlineTargets := buildInlineTargets(m, allHints, policy, policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
+	inlineTargets := buildInlineTargets(m, allHints, policy, buildfeatures.TailCall != 0 && policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range allHints {
 		ft, ok := m.LocalFuncType(i)
@@ -2035,7 +2038,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			// A self-tail physical leaf uses the same pin-preserving ABI as an
 			// ordinary leaf. Publish that fact to callers without erasing its
 			// logical calls/loops from scheduling and work-bound analysis.
-			if !allHints[i].flags.has(hintPreservesCallerPins) && allHints[i].hasTailTransfer() {
+			if buildfeatures.TailCall != 0 && !allHints[i].flags.has(hintPreservesCallerPins) && allHints[i].hasTailTransfer() {
 				h := allHints[i]
 				h.flags.assign(hintHasCall, false)
 				if preservesCallerPins(ft, int(h.localCount), h) {
@@ -2119,6 +2122,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		}
 		pressureDone := false
 		var directPrepared, directPreparedLight, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+		gcHelperUses := shared.GCHelperUsesKnown
+		var atomicHelperUses uint8
 		var gcDeadBatchLayouts []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
@@ -2191,6 +2196,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if sc.directPreparedLight {
 				directPreparedLight = markDirectPrepared(directPreparedLight, n, i)
 			}
+			gcHelperUses |= sc.fnState.gcHelperUses
+			atomicHelperUses |= sc.fnState.atomicHelperUses
 			if sc.fnState.gcDeadBatchLayout != 0 {
 				if gcDeadBatchLayouts == nil {
 					gcDeadBatchLayouts = make([]uint64, n)
@@ -2235,7 +2242,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			moduleOther += sharedBytes
 		}
-		if needsGCObjectStub(&relocs) {
+		if buildfeatures.GC != 0 && needsGCObjectStub(&relocs) {
 			relocs.gcObjectEntry = len(codeBuffer.Bytes())
 			tail, err := codeBuffer.AppendTail(256)
 			if err != nil {
@@ -2269,10 +2276,10 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if err != nil {
 				return nil, fmt.Errorf("arm64: transfer heap code image: %w", err)
 			}
-			return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+			return &a64.CompiledModule{GCHelperUses: gcHelperUses, AtomicHelperUses: atomicHelperUses, GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 		}
 		keepCodeBuffer = true
-		return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+		return &a64.CompiledModule{GCHelperUses: gcHelperUses, AtomicHelperUses: atomicHelperUses, GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs, mapOperands)
@@ -2468,6 +2475,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 			}
 			results[i] = result
+			ws.gcHelperUses |= ws.scratch.fnState.gcHelperUses
+			ws.atomicHelperUses |= ws.scratch.fnState.atomicHelperUses
 			if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 				pressureOnce.Do(opts.MemoryPressure)
 			}
@@ -2501,6 +2510,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	code := make([]byte, 0, codeCap)
 	var directPrepared, directPreparedLight, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+	gcHelperUses := shared.GCHelperUsesKnown
+	var atomicHelperUses uint8
+	for i := range states {
+		gcHelperUses |= states[i].gcHelperUses
+		atomicHelperUses |= states[i].atomicHelperUses
+	}
 	var gcDeadBatchLayouts []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
@@ -2581,7 +2596,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		moduleOther += sharedBytes
 	}
-	if needsGCObjectStub(&relocs) {
+	if buildfeatures.GC != 0 && needsGCObjectStub(&relocs) {
 		relocs.gcObjectEntry = len(code)
 		code = emitGCObjectStub(code)
 		moduleOther += len(code) - relocs.gcObjectEntry
@@ -2606,7 +2621,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if diagnosticsEnabled && explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &a64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
+	return &a64.CompiledModule{GCHelperUses: gcHelperUses, AtomicHelperUses: atomicHelperUses, GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, RequiresARM64LSE: requiresLSE, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedLight: directPreparedLight, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: immutableTable.local}, nil
 }
 
 // finalizeOmittedInlineEntries closes the module-layout seam for standalone
@@ -2701,7 +2716,7 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocT
 			if !asm.PatchBranch26(site, target) {
 				return fmt.Errorf("arm64 direct call relocation from function %d at %#x to function %d at %#x exceeds BL range", i, site, rl.target, target)
 			}
-			if rl.tail && rl.internal && rl.at >= 12 && threadTailEntryTest(code, site, target) && diagnosticsEnabled && len(diagnostics) > 0 && diagnostics[0] != nil {
+			if buildfeatures.TailCall != 0 && rl.tail && rl.internal && rl.at >= 12 && threadTailEntryTest(code, site, target) && diagnosticsEnabled && len(diagnostics) > 0 && diagnostics[0] != nil {
 				ms := diagnostics[0]
 				if i < len(ms.Funcs) && ms.Funcs[i] != nil {
 					ms.Funcs[i].NativeSize.FrameAdjustmentBytes -= 8
@@ -2994,7 +3009,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 			allHints[i].flags.assign(hintModuleSIMD, moduleSIMD)
 		}
 	}
-	if moduleEH && !storageModuleEH {
+	if buildfeatures.ExceptionHandling != 0 && moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
 		localEventMeta = nil
@@ -3696,8 +3711,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.localFactsEnabled = policy.EnabledOption(optValueFacts)
 	f.loadDefinedLocals = loadDefinedLocalMaskForHints(hints)
 	f.shiftedALUAddressLocals = reusedAddressLocalMaskForHints(hints)
-	f.memcopyTail4 = policy.EnabledOption(optMemcopyTail4) && boundedMemcopy
-	f.memcopyQPairs = policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy
+	f.memcopyTail4 = buildfeatures.BulkMemoryOperations != 0 && policy.EnabledOption(optMemcopyTail4) && boundedMemcopy
+	f.memcopyQPairs = buildfeatures.BulkMemoryOperations != 0 && policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy
 	f.floatLiteralPool = policy.EnabledOption(optFPLiteralPool) && len(c.BodyBytes) <= 16<<10
 	sc.attemptStage = attemptHasFunction
 	// Private facts require a source global reference; the existing sparse
@@ -3723,7 +3738,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.relocs = make([]callReloc, 0, callRelocSites)
 	}
 	sc.attemptStage = attemptOwnsBuffers
-	if f.moduleEH {
+	if buildfeatures.ExceptionHandling != 0 && f.moduleEH {
 		shape, err := ehFrameShape(sc, c.BodyBytes)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("function %d: %w", funcIdx, err)
@@ -3757,7 +3772,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
-	if f.threadedMemory0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
+	if f.threadedMemory0 && buildfeatures.Threads != 0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = X27 // explicit bounds: X27 = memBytes for the whole module
 	}
 	if cap(f.localType) < nLocals {
@@ -3812,7 +3827,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
-	localTailLeaf := hasCall && hints.hasTailTransfer() && f.onlyLocalTailTransfers(c.BodyBytes)
+	localTailLeaf := buildfeatures.TailCall != 0 && hasCall && hints.hasTailTransfer() && f.onlyLocalTailTransfers(c.BodyBytes)
 	if localTailLeaf {
 		hasCall = false
 		if hints.flags.has(hintCallsSelf | hintHasNonDirectCall) {
@@ -4262,11 +4277,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 
 	f.prologue(hints.localScore)
 	f.preloadLoopIntConsts(hints)
-	f.preloadTailInlineDivConstants()
+	if buildfeatures.TailCall != 0 {
+		f.preloadTailInlineDivConstants()
+	}
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if hints.hasVectorConstCandidates() {
+	if buildfeatures.SIMD != 0 && (hints.hasVectorConstCandidates()) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	if err := f.runBody(c); err != nil {
@@ -4616,7 +4633,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	}
 	// Float and v128 locals share the V pin pool. Call boundaries home vector
 	// locals at full width and recover them lazily after the call.
-	pinV128 := f.opt(optV128Pins)
+	pinV128 := buildfeatures.SIMD != 0 && f.opt(optV128Pins)
 	hotV128Candidates := 0
 	if pinLocals && f.nLocals <= 64 {
 		for i := 0; i < f.nLocals; i++ {
@@ -5018,7 +5035,9 @@ func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 		// ScalarState owns zero values and establishes homes only when needed.
 		return
 	}
-	f.zeroEHGCRootLanes()
+	if buildfeatures.ExceptionHandling != 0 {
+		f.zeroEHGCRootLanes()
+	}
 	if f.nLocals <= f.nParams {
 		return
 	}
@@ -5347,12 +5366,14 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	if hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if intConstHints.hasVectorConstCandidates() {
+	if buildfeatures.SIMD != 0 && (intConstHints.hasVectorConstCandidates()) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	f.derivePinnedGlobals()
 	f.preloadLoopIntConsts(intConstHints)
-	f.preloadTailInlineDivConstants()
+	if buildfeatures.TailCall != 0 {
+		f.preloadTailInlineDivConstants()
+	}
 	if f.memSizeReg == X17 {
 		// X17 is caller-clobbered backend scratch, so establish this leaf-local
 		// cache after entry setup and immediately before the body that consumes it.

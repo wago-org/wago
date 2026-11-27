@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Qualification only. Public feature defaults and SupportedFeatures stay
@@ -27,24 +27,29 @@ type railshotRuntimeConfigState struct {
 	i31Products  bool
 }
 type railshotTailCompiledState struct {
-	tableCapacities       *rv64TableCapacities // immutable actual reservations; declared limits stay in table metadata
-	executionContract     *rv64ExecutionContract
-	ownedExceptions       bool
-	primitiveReferences   bool
-	storageFreeBodies     bool     // source-proved numeric/local/control bodies; bound by execution contract
-	primitiveTailTypeKeys []uint64 // immutable declared keys for qualified dynamic tails
-	nativeLeafHost        bool     // source-only callback policy; never encoded
+	tableCapacities     *rv64TableCapacities // immutable actual reservations; declared limits stay in table metadata
+	executionContract   *rv64ExecutionContract
+	ownedExceptions     bool
+	primitiveReferences bool
+	storageFreeBodies   bool // source-proved numeric/local/control bodies; bound by execution contract
+	nativeLeafHost      bool // source-only callback policy; never encoded
 	// Immutable classification for the published execution snapshot only.
 	// One bit per local function, bounded by railshot.MaxFunctions; never encoded.
-	rootedClosedCallables                            []uint64
-	sourceCodeLimit                                  uint64 // immutable compile-origin policy; never serialized
-	module                                           *encoder.NativeTailModule
-	retired                                          []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
-	retiredGenerations                               []rv64RetiredTailGeneration
-	retiredGenerationCode, retiredGenerationMetadata int
+	rootedClosedCallables []uint64
+	tailCode              rv64NativeTailCodeStorage
 	// Mapping-owned exact logical span, independent of readable execution views
 	// and page-rounded cleanup storage. Set once at mapping under codeCache.mu.
 	mappedCodeBytes int
+}
+
+// Native tail plans and failed dispatcher mappings exist only with Tail Call.
+type rv64NativeTailCode struct {
+	sourceCodeLimit                                  uint64 // immutable compile-origin policy; never serialized
+	module                                           *encoder.NativeTailModule
+	declaredTypeKeys                                 []uint64                         // immutable keys for qualified dynamic tails
+	retired                                          []*railshot.NativeTailDispatcher // codeCache.mu protects failed cleanup
+	retiredGenerations                               []rv64RetiredTailGeneration
+	retiredGenerationCode, retiredGenerationMetadata int
 }
 
 func railshotRecordMappedCodeBytes(c *Compiled, n int) {
@@ -65,6 +70,29 @@ func railshotStagedTailFeatures(c *RuntimeConfig) CoreFeatures {
 }
 
 func railshotNativeTailSource() bool { return true }
+
+func railshotStandaloneNativeTail(c *Compiled) standaloneNativeTailProfile {
+	var profile standaloneNativeTailProfile
+	m := rv64NativeTailModule(c)
+	if m == nil {
+		return profile
+	}
+	for _, plan := range m.Plans {
+		switch plan.Kind {
+		case encoder.NativeTailDirectImport:
+			profile.directImports = true
+		case encoder.NativeTailIndirect:
+			profile.indirect = true
+		case encoder.NativeTailReference:
+			profile.reference = true
+		}
+		if referenceSignaturesBuilt && !profile.legacyReferenceCarriers && rv64LegacyReferenceTailCarriers(c, plan) {
+			profile.legacyReferenceCarriers = true
+		}
+	}
+	return profile
+}
+
 func railshotStagedGCFeatures(c *RuntimeConfig) CoreFeatures {
 	if c != nil && c.railshotState.i31Products {
 		// The official i31 function signature uses an explicit abstract reference
@@ -81,19 +109,25 @@ func railshotI31Frontend(c *RuntimeConfig) bool {
 func railshotConfigureNativeTail(required CoreFeatures, cfg *RuntimeConfig, opts *railshotCompileOptions) {
 	opts.NativeTailCalls = required.IsEnabled(CoreFeatureTailCall)
 	opts.NativeReferenceCalls = required.IsEnabled(CoreFeatureTypedFunctionReferences)
-	opts.NativeReferenceFunctions = required.IsEnabled(CoreFeatureReferenceTypes) && !required.IsEnabled(CoreFeatureGC) && !required.IsEnabled(CoreFeatureExceptionHandling) || cfg != nil && cfg.railshotState.tailProducts
+	opts.NativeReferenceFunctions = referenceSignaturesBuilt && (required.IsEnabled(CoreFeatureReferenceTypes) && !required.IsEnabled(CoreFeatureGC) && !required.IsEnabled(CoreFeatureExceptionHandling) || cfg != nil && cfg.railshotState.tailProducts)
 }
 func rv64NativeTailModule(c *Compiled) *encoder.NativeTailModule {
+	if buildfeatures.TailCall == 0 {
+		return nil
+	}
 	if x := c.loadCompileIndexes(); x != nil {
-		return x.railshotTail.module
+		return x.railshotTail.tailCode.get().module
 	}
 	return nil
 }
 func rv64StoreNativeTailModule(c *Compiled, m *encoder.NativeTailModule) {
+	if buildfeatures.TailCall == 0 {
+		return
+	}
 	if c.validateMemo == nil {
 		c.validateMemo = &validateMemo{}
 	}
-	c.ensureCompileIndexes().railshotTail.module = m
+	c.ensureCompileIndexes().railshotTail.tailCode.get().module = m
 	c.ensureCodeCache()
 	// Validated dead reference tails retain syntax without an emitted plan.
 	// Native execution admission separately checks the complete image contract.
@@ -101,6 +135,9 @@ func rv64StoreNativeTailModule(c *Compiled, m *encoder.NativeTailModule) {
 }
 
 func rv64HasReferenceTail(c *Compiled) bool {
+	if !referenceNativeTailPlansForImage {
+		return false
+	}
 	if m := rv64NativeTailModule(c); m != nil {
 		for _, p := range m.Plans {
 			if p.Kind == encoder.NativeTailReference {
@@ -110,16 +147,22 @@ func rv64HasReferenceTail(c *Compiled) bool {
 	}
 	return false
 }
-func railshotStoreNativeTail(c *Compiled, image *railshotCompiledModule, cfg *RuntimeConfig) error {
+func railshotStoreCompileMetadata(c *Compiled, image *railshotCompiledModule, cfg *RuntimeConfig) error {
 	if cfg != nil {
-		c.ensureCompileIndexes().railshotTail.sourceCodeLimit = cfg.maxNativeCodeBytes
-		c.ensureCompileIndexes().railshotTail.nativeLeafHost = cfg.optimizations["native-leaf-host"] && c.NumImports == 1 && len(c.customInstructions) == 0
+		state := &c.ensureCompileIndexes().railshotTail
+		if buildfeatures.TailCall != 0 {
+			state.tailCode.get().sourceCodeLimit = cfg.maxNativeCodeBytes
+		}
+		state.nativeLeafHost = cfg.optimizations["native-leaf-host"] && c.NumImports == 1 && len(c.customInstructions) == 0
 	}
 	c.nativeReferenceCallABI = image.NativeReferenceCalls
 	c.nativeReferenceControlABI = image.NativeReferenceControl
 	c.nativeReferenceFunctionABI = image.NativeReferenceFunctions
 	if image.NativeTail == nil {
 		return nil
+	}
+	if buildfeatures.TailCall == 0 {
+		return fmt.Errorf("RV64 native tail feature/plan contract")
 	}
 	m := &encoder.NativeTailModule{Plans: slices.Clone(image.NativeTail.Plans)}
 	rv64StoreNativeTailModule(c, m)
@@ -169,6 +212,11 @@ func rv64MutableReferenceCarrierTailPlan(c *Compiled, p encoder.NativeTailPlan) 
 
 func rv64PublicDynamicHostReferencePlan(c *Compiled, p encoder.NativeTailPlan) bool {
 	return rv64PublicDynamicHostReferenceTailPlan(c, p, 19) || rv64PublicDynamicHostReferenceTailPlan(c, p, 36)
+}
+
+func rv64LegacyReferenceTailCarriers(c *Compiled, p encoder.NativeTailPlan) bool {
+	return rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0) ||
+		rv64MutableReferenceCarrierTailPlan(c, p) || rv64PublicHostReferenceTailPlan(c, p) || rv64PublicDynamicHostReferencePlan(c, p)
 }
 
 func rv64PublicReferenceTailDeclaredCarrier(v ValueTypeDescriptor, referenceCarriers bool) bool {
@@ -222,7 +270,7 @@ func rv64NativeTailIndexedTables(c *Compiled) bool {
 		}
 		hasFunction = hasFunction || exact == function
 		definition := c.tableDef(index)
-		if definition.Size < 0 || definition.HasMax && uint64(definition.Size) > definition.Max || definition.Addr64 && !c.requiredFeatures.IsEnabled(CoreFeatureTable64) {
+		if definition.Size < 0 || definition.HasMax && uint64(definition.Size) > definition.Max || definition.Addr64 && (!table64ForImage || !c.requiredFeatures.IsEnabled(CoreFeatureTable64)) {
 			return false
 		}
 	}
@@ -230,26 +278,29 @@ func rv64NativeTailIndexedTables(c *Compiled) bool {
 }
 
 func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64TailSignatureView, error) {
-	if p.Kind == encoder.NativeTailDirectImport {
+	if directNativeTailPlansForImage && p.Kind == encoder.NativeTailDirectImport {
 		if uint64(p.ImportIndex) >= uint64(len(c.importFuncSigs)) || p.TypeIndex != 0 || p.ReferenceBase != 0 {
 			return rv64TailSignatureView{}, fmt.Errorf("RV64 direct tail target/canonical fields")
 		}
 		sig := c.importFuncSigs[p.ImportIndex]
 		return rv64TailSignatureView{params: sig.Params, results: sig.Results}, nil
 	}
-	if p.Kind != encoder.NativeTailIndirect && p.Kind != encoder.NativeTailReference || p.ImportIndex != 0 || uint64(p.TypeIndex) >= uint64(len(c.Types)) || !c.needsFuncRefDescs() {
+	if !(indirectNativeTailPlansForImage && p.Kind == encoder.NativeTailIndirect ||
+		referenceNativeTailPlansForImage && p.Kind == encoder.NativeTailReference) || p.ImportIndex != 0 || uint64(p.TypeIndex) >= uint64(len(c.Types)) || !c.needsFuncRefDescs() {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail declared type/kind/descriptor contract")
 	}
-	if p.Kind == encoder.NativeTailIndirect && (c.tableCount() != 1 || c.TableAddr64) && !rv64NativeTailIndexedTables(c) && !rv64OwnedTable64IndirectTailPlanShape(c) && !rv64OwnedTwoTable64IndirectTail(c) && !rv64MixedTable64ActiveIndirectTailPlanShape(c) && !rv64ImportedTable64IndirectTailPlanShape(c) {
+	if indirectNativeTailPlansForImage && p.Kind == encoder.NativeTailIndirect && (c.tableCount() != 1 || c.TableAddr64) &&
+		!((multiTableForImage || table64ForImage) && rv64NativeTailIndexedTables(c)) &&
+		!(legacyTable64ForImage && rv64LegacyTable64IndirectTailPlanShape(c)) {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail table shape")
 	}
 	d := &c.Types[p.TypeIndex]
 	primitive := rv64PrimitiveReferenceDeclarations(c)
-	collectorCarriers := rv64CollectorTailMetadata(c)
+	collectorCarriers := rv64RootedReceiptsForImage && rv64CollectorTailMetadata(c)
 	if d.Kind != CompositeTypeFunction || !primitive && !collectorCarriers && (!d.Final || len(d.Supers) != 0) || d.HasDescribes || d.HasDescriptor || len(d.Params) > 256 || len(d.Results) > 256 {
 		return rv64TailSignatureView{}, fmt.Errorf("RV64 dynamic tail plain declared function type")
 	}
-	referenceCarriers := (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64MutableReferenceCarrierTailPlan(c, p) || rv64PublicHostReferenceTailPlan(c, p) || rv64PublicDynamicHostReferencePlan(c, p)
+	referenceCarriers := legacyNativeTailReferenceCarriersForImage && rv64LegacyReferenceTailCarriers(c, p)
 	for _, list := range [][]ValueTypeDescriptor{d.Params, d.Results} {
 		slots := 0
 		for _, v := range list {
@@ -268,25 +319,19 @@ func rv64NativeTailPlanSignature(c *Compiled, p encoder.NativeTailPlan) (rv64Tai
 	return rv64TailSignatureView{declared: d, types: c.Types}, nil
 }
 
-// This is a metadata grammar check, not execution permission. Encoding the
-// execution receipt validates tail metadata too, so it cannot call the full
-// receipt verifier recursively. Publication separately requires FreshRootedGC.
-func rv64CollectorTailMetadata(c *Compiled) bool {
-	return c != nil && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil && c.requiredFeatures.IsEnabled(CoreFeatureGC)
-}
-
-func rv64CollectorTailDeclaredCarrier(c *Compiled, value ValueTypeDescriptor) bool {
-	if value.Kind != ValueTypeReference {
-		return false
-	}
-	abi, ok := value.ABIType(c.Types)
-	return ok && isGCRefValType(abi) && !value.Ref.Exact
-}
+const errRV64NativeTailContract = sentinelError("RV64 native tail feature/plan contract")
 
 func rv64ValidateNativeTail(c *Compiled) error {
 	m := rv64NativeTailModule(c)
-	if c.requiredFeatures.IsEnabled(CoreFeatureTailCall) != (m != nil) {
-		return fmt.Errorf("RV64 native tail feature/plan contract")
+	usesTail := c.requiredFeatures.IsEnabled(CoreFeatureTailCall)
+	if !rv64NativeTailMetadataForImage {
+		if usesTail || m != nil {
+			return errRV64NativeTailContract
+		}
+		return nil
+	}
+	if usesTail != (m != nil) {
+		return errRV64NativeTailContract
 	}
 	if m == nil {
 		return nil
@@ -308,12 +353,21 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 	if !c.nativeContextTrapABI || len(plans) > 4096 {
 		return fmt.Errorf("RV64 native tail context/count contract")
 	}
+	if !nativeTailPlansForImage {
+		if len(plans) != 0 {
+			return fmt.Errorf("RV64 native tail plans exceed the standalone runtime profile")
+		}
+		if codeBytes < 0 || codeBytes > railshot.MaxCodeBytes {
+			return fmt.Errorf("%w: native tail instance budget", railshot.ErrUnsupported)
+		}
+		return nil
+	}
 	if _, _, err := railshot.NativeTailInstanceBudget(len(plans), codeBytes); err != nil {
 		return err
 	}
 	values := 0
 	primitive := rv64PrimitiveReferenceDeclarations(c)
-	collectorCarriers := rv64CollectorTailMetadata(c)
+	collectorCarriers := rv64RootedReceiptsForImage && rv64CollectorTailMetadata(c)
 	for _, p := range plans {
 		local := int(p.FunctionIndex) - c.NumImports
 		if local < 0 || local >= len(c.Funcs) || p.FrameBytes < 48 || p.FrameBytes > railshot.MaxFrameBytes || p.FrameBytes&15 != 0 || p.SourceBase < 48 || p.SourceBase > p.FrameBytes || p.SourceBase&7 != 0 || p.SourceStride != 8 && p.SourceStride != 16 {
@@ -326,7 +380,7 @@ func rv64ValidateNativeTailPlansWithCodeBytes(c *Compiled, plans []encoder.Nativ
 		if sig.paramCount() > 256 || sig.resultCount() > 256 {
 			return fmt.Errorf("RV64 native tail signature count")
 		}
-		referenceCarriers := primitive || (rv64PublicReferenceTailPlan(c, p) && rv64PublicReferenceCarrierTarget(c, 0)) || rv64MutableReferenceCarrierTailPlan(c, p) || rv64PublicHostReferenceTailPlan(c, p) || rv64PublicDynamicHostReferencePlan(c, p)
+		referenceCarriers := primitive || legacyNativeTailReferenceCarriersForImage && rv64LegacyReferenceTailCarriers(c, p)
 		for _, result := range []bool{false, true} {
 			count, slots := sig.paramCount(), 0
 			if result {
@@ -411,6 +465,9 @@ func railshotWriteNativeTail(w *compiledWriter, c *Compiled) error {
 	if err := rv64ValidateNativeTail(c); err != nil {
 		return err
 	}
+	if !rv64NativeTailMetadataForImage {
+		return nil
+	}
 	m := rv64NativeTailModule(c)
 	if m == nil {
 		return nil
@@ -466,17 +523,25 @@ func rv64StaticTailPlanCount(m *encoder.NativeTailModule) int {
 }
 
 func railshotNativeTailArenaBytes(c *Compiled) int {
+	if !nativeTailForImage {
+		return 0
+	}
 	bytes := rv64TailTargetsArenaBytes(c)
-	if n := rv64StaticTailPlanCount(rv64NativeTailModule(c)); n != 0 {
-		_, arena, err := railshot.NativeTailInstanceBudget(n, len(c.code))
-		if err == nil {
-			return bytes + arena
+	if staticNativeTailForImage {
+		if n := rv64StaticTailPlanCount(rv64NativeTailModule(c)); n != 0 {
+			_, arena, err := railshot.NativeTailInstanceBudget(n, len(c.code))
+			if err == nil {
+				return bytes + arena
+			}
 		}
 	}
 	return bytes
 }
 func railshotNativeCodeBytes(c *Compiled) uint64 {
 	size := len(c.code)
+	if !staticNativeTailForImage {
+		return uint64(size)
+	}
 	if n := rv64StaticTailPlanCount(rv64NativeTailModule(c)); n != 0 {
 		code, _, err := railshot.NativeTailInstanceBudget(n, size)
 		if err != nil {
@@ -488,6 +553,9 @@ func railshotNativeCodeBytes(c *Compiled) uint64 {
 }
 
 func railshotNativeTailImport(c *Compiled, index int) bool {
+	if !directNativeTailPlansForImage {
+		return false
+	}
 	m := rv64NativeTailModule(c)
 	if m != nil {
 		for _, p := range m.Plans {

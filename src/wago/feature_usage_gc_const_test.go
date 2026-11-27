@@ -50,6 +50,8 @@ func TestGCConstRequiredFeaturesGlobalScope(t *testing.T) {
 		wantArithmetic bool
 	}{
 		{name: "constructor", body: []byte{0x41, 1, 0xfb, 0, 0, 0x0b}},
+		{name: "default constructor", body: []byte{0xfb, 1, 0, 0x0b}},
+		{name: "fixed array constructor", body: []byte{0x41, 1, 0xfb, 8, 0, 1, 0x0b}},
 		{name: "imported-global-constructor", body: []byte{0x23, 0, 0xfb, 0, 0, 0x0b}},
 		{name: "local-global-constructor", body: []byte{0x23, 1, 0xfb, 0, 0, 0x0b}, wantExtended: true},
 		{name: "arithmetic-constructor", body: []byte{0x41, 1, 0x41, 2, 0x6a, 0xfb, 0, 0, 0x0b}, wantArithmetic: true},

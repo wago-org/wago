@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 type checkedDeadGCUse uint8
 
@@ -25,7 +28,7 @@ const (
 // operand. Nested reservations are limited to payloads whose omitted writes
 // cannot remove transitive roots before a later enclosing allocation.
 func (f *fn) checkedDeadGCConstructorUse(r *wasm.Reader, nestedPayloadSafe bool) checkedDeadGCUse {
-	if !f.opt(optDeadGCNew) {
+	if !(buildfeatures.GC != 0 && f.opt(optDeadGCNew)) {
 		return checkedDeadGCNone
 	}
 	if op, ok := r.Peek(); ok && op == 0x1a {

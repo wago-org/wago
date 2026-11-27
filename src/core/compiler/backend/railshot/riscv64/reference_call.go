@@ -10,6 +10,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -84,7 +85,9 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 	f.swarCallArguments(sig, base, spill)
 	returnOffset, stackAdjust := f.nativeTableCallKeysMode(keys, swarSignatureSlots(sig.Params), swarSignatureSlots(sig.Results), checkedType)
 	if f.mode.gcRootedScalar && returnOffset != 0 {
-		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		if buildfeatures.RISCV64CollectorFrameRoots {
+			f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		}
 	} else {
 		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	}
@@ -105,7 +108,7 @@ func (f *integerEmitter) referenceCall(sig *wasm.CompType, key uint64, base, ref
 }
 
 func referenceCallCarriesCollector(sig *wasm.CompType) bool {
-	if sig == nil {
+	if !buildfeatures.RISCV64CollectorFrameRoots || sig == nil {
 		return false
 	}
 	for _, values := range [][]wasm.ValType{sig.Params, sig.Results} {
@@ -245,7 +248,7 @@ func (f *integerEmitter) functionReferenceIdentityTest(base int, functionIndex u
 const gcFunctionSubtypeTest uint32 = 14
 
 func (f *integerEmitter) functionSubtypeHelper(types []uint32) bool {
-	return len(types) == 1 && f.mode.primitiveTailTypes != nil && f.mode.primitiveTailTypes.needsSubtypeHelper(types[0])
+	return buildfeatures.ReferenceSignatures && len(types) == 1 && f.mode.primitiveTailTypes != nil && f.mode.primitiveTailTypes.needsSubtypeHelper(types[0])
 }
 
 // This helper neither allocates collector objects nor invokes guest callbacks.

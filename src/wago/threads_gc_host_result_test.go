@@ -115,8 +115,10 @@ func TestThreadsSharedForeignGCResultsUseOwnActivation(t *testing.T) {
 	state := in.existingPublicGCState()
 	state.mu.Lock()
 	remainingRoots := uint8(0)
-	for _, count := range state.hostResultRootCount {
-		remainingRoots += count
+	for i := range gcHostActivationLimit {
+		if roots := state.parkedRoots(uint8(i)); roots != nil {
+			remainingRoots += roots.results.count
+		}
 	}
 	state.mu.Unlock()
 	if remainingRoots != 0 {

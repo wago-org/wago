@@ -109,7 +109,7 @@ func (r *CompilerTypeRegistrar) Define(spec CustomTypeSpec) (CustomType, error) 
 		}
 	}
 	if _, ok := r.namespaces[namespace]; !ok {
-		return CustomType{}, &PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerTypeDefine, Path: "scope.modules", Err: fmt.Errorf("type namespace %q is outside the grant: %w", namespace, ErrPermissionDenied)}
+		return CustomType{}, newPluginDiagnostic(PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerTypeDefine, Path: "scope.modules", Err: fmt.Errorf("type namespace %q is outside the grant: %w", namespace, ErrPermissionDenied)})
 	}
 	typ, err := coreplugins.PrepareCustomType(spec)
 	if err != nil {
@@ -184,7 +184,7 @@ func (r *CompilerInstructionRegistrar) Define(spec InstructionSpec) error {
 		return fmt.Errorf("wago: nil compiler instruction registrar")
 	}
 	if _, ok := r.modules[spec.Module]; !ok {
-		return &PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerInstructionDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", spec.Module, ErrPermissionDenied)}
+		return newPluginDiagnostic(PluginError{Plugin: r.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityCompilerInstructionDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", spec.Module, ErrPermissionDenied)})
 	}
 	if err := r.validateCustomSignature(spec.Custom); err != nil {
 		return err

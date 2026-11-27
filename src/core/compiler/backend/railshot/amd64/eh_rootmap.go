@@ -12,6 +12,7 @@ package amd64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
@@ -79,6 +80,9 @@ func catchAllPayloadRootKinds(m *wasm.Module) ([shared.EHPayloadLanes]nativeabi.
 // frame; funcref lanes describe identities whose producers the instance keeps
 // alive and are not scanned by the collector.
 func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return nil, nil
+	}
 	// Tag-free modules can still catch foreign exceptions through catch_all_ref.
 	// Scan their bodies so the dedicated GC payload lanes remain rooted.
 	if m == nil {

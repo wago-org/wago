@@ -47,10 +47,18 @@ func prepareNativeRuntime(buildDir string, environment []string) (string, error)
 
 func linkNativeModule(target string, generated map[string][]byte) error {
 	for name, body := range generated {
-		if name != "standalone_module.go" && name != "standalone_dispatcher.go" {
+		var directory string
+		switch name {
+		case "standalone_module.go", "standalone_dispatcher.go":
+			directory = "src/wago"
+		case "standalone_profile.go":
+			directory = "internal/buildfeatures"
+		case "standalone_registers.h":
+			directory = "src/core/runtime"
+		default:
 			return fmt.Errorf("unexpected generated standalone source %q", name)
 		}
-		if err := os.WriteFile(filepath.Join(target, "src/wago", name), body, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(target, directory, name), body, 0644); err != nil {
 			return err
 		}
 	}

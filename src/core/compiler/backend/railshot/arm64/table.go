@@ -12,6 +12,7 @@ package arm64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -127,6 +128,9 @@ func (f *fn) tableIsGCObjectRef(tableIdx uint32) bool {
 }
 
 func (f *fn) tableAddr64(tableIdx uint32) bool {
+	if buildfeatures.Table64 == 0 {
+		return false
+	}
 	tt, ok := f.m.TableType(tableIdx)
 	return ok && tt.Limits.Addr64
 }

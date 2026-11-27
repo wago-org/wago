@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build (linux || darwin) && arm64
+//go:build !wago_standalone_no_collector && ((linux || darwin) && arm64 && !wago_no_gc)
 
 package wago
 
@@ -19,12 +19,10 @@ import (
 
 type gcHostSavedControl [abi.ARM64SyncHostCallSavedBytes / 8]uint64
 
-type gcHostActivationToken struct {
-	state *gcPublicState
-	index uint8
-}
-
 func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
+	if !nativeCollectorBuilt {
+		return gcHostActivationToken{}
+	}
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
@@ -107,20 +105,26 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	state.hostRootPlan = plan
 	state.hostCodeBase = in.base
 	state.hostCodeBytes = uintptr(len(in.c.code))
-	return gcHostActivationToken{state: state, index: index}
+	return newGCHostActivationToken(state, index)
 }
 
-func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
-	state := token.state
+func popGCHostActivation(token gcHostActivationToken) {
+	if nativeCollectorBuilt {
+		restoreGCHostActivation(token)
+	}
+}
+
+func restoreGCHostActivation(token gcHostActivationToken) {
+	state, index := gcHostActivationRootState(token)
 	if state == nil {
 		return
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if token.index >= state.hostActivationCount || state.hostActivations[token.index].stack == nil {
+	if index >= state.hostActivationCount || state.hostActivations[index].stack == nil {
 		panic(gcHelperFailuref("generic GC host activation token is inactive"))
 	}
-	activation := &state.hostActivations[token.index]
+	activation := &state.hostActivations[index]
 	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), abi.ARM64SyncHostCallSavedBytes)
 	for i, value := range activation.savedControl {
 		binary.LittleEndian.PutUint64(control[i*8:], value)

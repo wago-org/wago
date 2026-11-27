@@ -33,7 +33,7 @@ func tailDynamicProxyForTest(t *testing.T, source, target tailRAFunction, index 
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: bytes.Clone(code), signature: target.signature, info: FunctionInfo{Entry: 0, CodeBytes: len(code)}, job: source.job, context: source.context, directory: source.directory}, p
+	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: bytes.Clone(code), signature: target.signature, info: tailRAFunctionInfo{Entry: 0, CodeBytes: len(code)}, job: source.job, context: source.context, directory: source.directory}, p
 }
 
 func tailDynamicProxyRowsForTest(o *tailRADynamicOwner, targets []tailRAFunction, proxies []*tailRADynamicProxy) {

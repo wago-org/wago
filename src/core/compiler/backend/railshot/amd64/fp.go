@@ -1136,7 +1136,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		xmm := f.allocFReg(0)
 		f.a.FLoadIdx(xmm, base, ea, disp, f64)
@@ -1186,7 +1186,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		xmm = f.materializeF(value)
 	}
 	f.fpinned = f.fpinned.add(xmm)
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
 		f.a.FStoreIdx(base, ea, xmm, disp, f64)
 		f.release(base)

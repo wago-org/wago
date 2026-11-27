@@ -93,7 +93,7 @@ func TestRV64PublicOwnedTwoTable64IndirectTail(t *testing.T) {
 				if got, callErr := in.Invoke(tc.tail, tc.index); callErr != nil || !slices.Equal(got, []uint64{7}) || !slices.Equal(tc.other.desc, other) {
 					t.Fatal("indexed table64 proper tail", tc, got, callErr)
 				}
-				if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
+				if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
 					t.Fatal("indexed table64 tail leaked generation")
 				}
 			}

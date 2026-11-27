@@ -11,12 +11,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync"
 )
 
-var simpleKindOpcode [numInstrKinds]byte
-var memKindOpcode [numInstrKinds]byte
+var simpleKindOpcode [InstrRefIsNull + 1]byte
+var memKindOpcode [InstrI64Store32 - InstrI32Load + 1]byte
+var encoderOpcodesOnce sync.Once
 
-func init() {
+func fillEncoderOpcodes() {
 	for op, k := range simpleOpcode {
 		// InstrSelect shares opcode 0x1b in the decode table but encodes as
 		// either 0x1b (untyped) or 0x1c (typed, with a result-type vector), so it
@@ -27,7 +29,7 @@ func init() {
 	}
 	for op, k := range memOpcodeKind {
 		if k != InstrInvalid {
-			memKindOpcode[k] = byte(op)
+			memKindOpcode[k-InstrI32Load] = byte(op)
 		}
 	}
 }
@@ -37,6 +39,7 @@ func init() {
 // validation/support filtering so it can keep its existing byte-oriented
 // single-pass code generator while wasm remains the sole decoder/validator.
 func EncodeExpr(e Expr) ([]byte, error) {
+	encoderOpcodesOnce.Do(fillEncoderOpcodes)
 	var out []byte
 	if err := appendInstrs(&out, e.Instrs); err != nil {
 		return nil, err
@@ -46,7 +49,7 @@ func EncodeExpr(e Expr) ([]byte, error) {
 }
 
 func lookupSimpleOpcode(kind InstrKind) (byte, bool) {
-	if kind >= numInstrKinds {
+	if kind >= InstrKind(len(simpleKindOpcode)) {
 		return 0, false
 	}
 	if kind == InstrUnreachable {
@@ -57,10 +60,11 @@ func lookupSimpleOpcode(kind InstrKind) (byte, bool) {
 }
 
 func lookupMemOpcode(kind InstrKind) (byte, bool) {
-	if kind >= numInstrKinds {
+	index := kind - InstrI32Load
+	if index >= InstrKind(len(memKindOpcode)) {
 		return 0, false
 	}
-	op := memKindOpcode[kind]
+	op := memKindOpcode[index]
 	return op, op != 0
 }
 
@@ -157,7 +161,7 @@ func appendInstr(out *[]byte, in Instruction) error {
 		appendU32(out, uint32(len(in.ValTypes())))
 		for _, vt := range in.ValTypes() {
 			if err := appendValType(out, vt); err != nil {
-				return fmt.Errorf("wasm encode: select value type %s: %w", vt, err)
+				return fmt.Errorf("wasm encode: select value type %s: %w", vt.String(), err)
 			}
 		}
 	case InstrLocalGet:
@@ -210,7 +214,7 @@ func appendInstr(out *[]byte, in Instruction) error {
 		appendU32(out, 11)
 		appendU32(out, in.Index)
 	default:
-		return fmt.Errorf("wasm encode: unsupported instruction %s", in.Kind)
+		return fmt.Errorf("wasm encode: unsupported instruction %s", in.Kind.String())
 	}
 	return nil
 }
@@ -221,7 +225,7 @@ func appendBlockType(out *[]byte, bt BlockType) error {
 		*out = append(*out, 0x40)
 	case BlockVal:
 		if err := appendValType(out, bt.Val); err != nil {
-			return fmt.Errorf("wasm encode: block value type %s: %w", bt.Val, err)
+			return fmt.Errorf("wasm encode: block value type %s: %w", bt.Val.String(), err)
 		}
 	case BlockTypeIndex:
 		if bt.Type.Rec {

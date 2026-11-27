@@ -12,6 +12,7 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math"
 	"os"
@@ -937,7 +938,7 @@ func (f *fn) v128Bitselect() {
 	maskElem := f.popValue()
 	bElem := f.popValue()
 	aElem := f.popValue()
-	if f.opt(optAVX512Ternary) && f.cpuHas(shared.AMD64AVX512) {
+	if buildfeatures.SIMD != 0 && f.opt(optAVX512Ternary) && f.cpuHas(shared.AMD64AVX512) {
 		oldPinned := f.fpinned
 		mask := f.materializeV128(maskElem)
 		f.fpinned = f.fpinned.add(mask)
@@ -1273,7 +1274,7 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 			prefix2 == 0xfd && orOp == 80 {
 			srcElem := f.popValue()
 			src, owned := f.operandRegV128(srcElem)
-			if f.opt(optAVX512VRotate) && f.cpuHas(shared.AMD64AVX512) {
+			if buildfeatures.SIMD != 0 && f.opt(optAVX512VRotate) && f.cpuHas(shared.AMD64AVX512) {
 				out := src
 				if !owned {
 					f.fpinned = f.fpinned.add(src)
@@ -2007,7 +2008,7 @@ var simdReductionBorrowEnabled = runtime.GOOS == "linux" && os.Getenv("WAGO_AMD6
 // Boolean reductions only inspect their input. Keep a pinned vector local in
 // place; the general materializer copies it because other consumers overwrite it.
 func (f *fn) reductionOperand(v *elem) (Reg, bool) {
-	if f.opt(optSIMDReductionBorrow) {
+	if buildfeatures.SIMD != 0 && f.opt(optSIMDReductionBorrow) {
 		x, owned := f.operandRegV128(v)
 		if !owned {
 			f.stats.peep("simd-reduction-borrow")
@@ -2184,7 +2185,7 @@ func (f *fn) tryV128BooleanTernary(r *wasm.Reader, inner uint32) bool {
 }
 
 func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) || !matchNextSIMDOp(r, 83) {
 		return false
 	}
 	b := f.popValue()
@@ -2211,7 +2212,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 // immediately by v128.and. The Wasm v128.andnot opcode and VPANDN use opposite
 // source order, so VPANDN(dst,b,a) is the exact one-instruction result.
 func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) || !matchNextSIMDOp(r, 78) {
 		return false
 	}
 	b := f.popValue()
@@ -2460,7 +2461,7 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 }
 
 func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32, baseOwned, eaOwned bool) {
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true
@@ -2758,38 +2759,89 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, opVPshufb)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128I32x4TruncSat(false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128I32x4TruncSat(false, false)
 	case 259: // i32x4.relaxed_trunc_f64x2_s_zero: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128I32x4TruncSat(true, true)
 	case 260: // i32x4.relaxed_trunc_f64x2_u_zero: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128I32x4TruncSat(true, false)
 	case 261: // f32x4.relaxed_madd: deterministic MULPS + ADDPS choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(false, false)
 	case 262: // f32x4.relaxed_nmadd: deterministic MULPS then subtract from addend.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(false, true)
 	case 263: // f64x2.relaxed_madd: deterministic MULPD + ADDPD choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(true, false)
 	case 264: // f64x2.relaxed_nmadd: deterministic MULPD then subtract from addend.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(true, true)
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bitselect()
 	case 269: // f32x4.relaxed_min: deterministic native MINPS choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, simdFloatBinary(0x5d, false, false))
 	case 270: // f32x4.relaxed_max: deterministic native MAXPS choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, simdFloatBinary(0x5f, false, false))
 	case 271: // f64x2.relaxed_min: deterministic native MINPD choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, simdFloatBinary(0x5d, true, false))
 	case 272: // f64x2.relaxed_max: deterministic native MAXPD choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, simdFloatBinary(0x5f, true, false))
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bin(r, opVPmulhrsw)
 	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.i16x8RelaxedDotI8x16I7x16S()
 	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.i32x4RelaxedDotI8x16I7x16AddS()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
@@ -3184,7 +3236,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		if f.tryV128AndAnyTrue(r) {
 			break
 		}
-		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 78) {
+		if buildfeatures.SIMD != 0 && f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 78) {
 			break
 		}
 		f.v128BinMem(r, opVPand)
@@ -3206,12 +3258,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		}
 		f.pushVReg(dst)
 	case 80: // v128.or
-		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 80) {
+		if buildfeatures.SIMD != 0 && f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 80) {
 			break
 		}
 		f.v128BinMem(r, opVPor)
 	case 81: // v128.xor
-		if f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 81) {
+		if buildfeatures.SIMD != 0 && f.opt(optAVX512Ternary) && f.tryV128BooleanTernary(r, 81) {
 			break
 		}
 		f.v128BinMem(r, opVPxor)

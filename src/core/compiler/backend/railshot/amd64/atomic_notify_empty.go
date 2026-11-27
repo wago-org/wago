@@ -9,7 +9,10 @@
 
 package amd64
 
-import "github.com/wago-org/wago/src/core/runtime/abi"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 var atomicNotifyEmptyEnabled = true
 
@@ -35,6 +38,7 @@ func (f *fn) notifyEmptyShortcut(memoryIndex uint32) int {
 	f.a.Cmp64(RAX, RCX)
 	cold(f.a.JccPlaceholder(condA))
 	if f.memoryShared(memoryIndex) {
+		f.atomicHelperUses |= shared.AtomicHelperUsesNotifyPending
 		// Pair with wait's SC pending publication before its value check.
 		// Earlier plain Wasm stores must become visible before testing waiters.
 		f.a.Mfence()

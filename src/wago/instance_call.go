@@ -80,20 +80,20 @@ func (in *Instance) InvokeValues(ctx context.Context, export string, args ...Val
 
 	// Fast path: no runtime or no invoke hooks — invoke directly under the one
 	// already-admitted invocation lease, with no plugin reservation allocation.
-	if in.rt == nil {
-		out, err := in.callInnerAdmitted(export, slots, results, contexts, nil)
+	if !pluginRuntimeBuilt || in.rt == nil {
+		out, err := in.callInnerAdmitted(export, slots, results, contexts, noPluginReservation())
 		return out, contextInterruptError(ctx, err)
 	}
 	hooks := in.rt.loadHooks()
 	if len(hooks.beforeInvoke) == 0 && len(hooks.afterInvoke) == 0 {
-		out, err := in.callInnerAdmitted(export, slots, results, contexts, nil)
+		out, err := in.callInnerAdmitted(export, slots, results, contexts, noPluginReservation())
 		return out, contextInterruptError(ctx, err)
 	}
 	reservation, err := reservePluginOperation(hooks.operationGates)
 	if err != nil {
 		return nil, err
 	}
-	defer reservation.release()
+	defer releasePluginReservation(reservation)
 
 	request := InvocationRequest{Operation: OperationIdentity{value: &operationIdentityToken{}}, Instance: InstanceIdentity{value: in}, Export: export, Args: append([]Value(nil), args...), Start: time.Now(), reservation: reservation}
 	emitAfter := func(event InvocationEvent) error {
@@ -164,12 +164,12 @@ func contextInterruptError(ctx context.Context, err error) error {
 
 // callInnerAdmitted performs the actual invocation and result decoding under
 // the invocation lease already held by InvokeValues.
-func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
+func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation pluginReservation) ([]Value, error) {
 	var raw []uint64
 	var err error
-	if !(codeProfileEnabled && in.boundaryProfile() != nil) && reservation == nil && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
+	if !(codeProfileEnabled && in.boundaryProfile() != nil) && !hasPluginReservation(reservation) && contexts.interrupt == nil && contexts.callback == nil && (in.refStore == nil || in.refStore.private) {
 		ic := in.findInvokeCache(export)
-		if ic != nil && (ic.directIntFast || preparedDirectFloatSupported && ic.directFloatFast) && len(slots) == int(ic.paramSlots) && in.lockPreparedFastState() {
+		if ic != nil && (directIntegerForImage && ic.directIntFast || directFloatOrMixedForImage && ic.directFloatFast) && len(slots) == int(ic.paramSlots) && in.lockPreparedFastState() {
 			defer in.unlockPreparedFastState()
 			entry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			raw, err = in.invokeCachedDirectNumeric(ic, entry, slots)
@@ -212,7 +212,7 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		return value, err
 	}
 	bits := readGlobalObject(cell, g.Type)
-	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+	if wasmGCBuilt && in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
 		exact, err := in.c.globalExactType(idx)
 		if err != nil {
 			return Value{}, fmt.Errorf("global %q exact type: %w", name, err)
@@ -385,7 +385,7 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
 	cell := in.globalCells[idx]
-	if in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
+	if wasmGCBuilt && in.c.usesGenericGCExecution() && (g.Type == ValAnyRef || g.Type == ValI31Ref) {
 		exact, exactErr := in.c.globalExactType(idx)
 		if exactErr != nil {
 			return fmt.Errorf("global %q exact type: %w", name, exactErr)
@@ -396,7 +396,7 @@ func (in *Instance) setGlobalValueNoLease(name string, v Value, roots *globalVal
 		}
 		var slot uint32
 		found := false
-		for _, mapping := range state.globalRoots {
+		for _, mapping := range state.globalRootMappings() {
 			if int(mapping.GlobalIndex) == idx {
 				slot, found = mapping.SlotIndex, true
 				break

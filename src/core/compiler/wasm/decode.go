@@ -7,6 +7,8 @@
 
 package wasm
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 const (
 	secCustom    = 0
 	secType      = 1
@@ -125,6 +127,9 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		}
 		m.Memories = v
 	case secTag:
+		if buildfeatures.ExceptionHandling == 0 {
+			return disabledInstruction("exception-handling", r.off())
+		}
 		v, err := readVec(r, decodeTagType)
 		if err != nil {
 			return err
@@ -247,9 +252,15 @@ func decodeValType(r *reader) (ValType, error) {
 		n, err := decodeNumType(r)
 		return newValType(ValNum, n), err
 	case 0x7b:
+		if buildfeatures.SIMD == 0 {
+			return ValType{}, disabledInstruction("simd", r.off())
+		}
 		_, _ = r.byte()
 		return V128, nil
 	case 0x63, 0x64, 0x6f, 0x70, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x69, 0x71, 0x72, 0x73, 0x74:
+		if !buildfeatures.ReferenceSignatures {
+			return ValType{}, disabledInstruction("reference-types", r.off())
+		}
 		rt, err := decodeRefType(r)
 		return RefVal(rt), err
 	default:
@@ -295,9 +306,15 @@ func decodeCompType(r *reader) (CompType, error) {
 	}
 	switch b {
 	case 0x5e:
+		if buildfeatures.GC == 0 {
+			return CompType{}, disabledInstruction("gc", r.off()-1)
+		}
 		ft, err := decodeFieldType(r)
 		return CompType{Kind: CompArray, Array: ft}, err
 	case 0x5f:
+		if buildfeatures.GC == 0 {
+			return CompType{}, disabledInstruction("gc", r.off()-1)
+		}
 		f, err := readVec(r, decodeFieldType)
 		return CompType{Kind: CompStruct, Fields: f}, err
 	case 0x60:
@@ -346,6 +363,9 @@ func decodeSubType(r *reader) (SubType, error) {
 	}
 	st := SubType{Final: true}
 	if b == 0x4f || b == 0x50 {
+		if buildfeatures.GC == 0 {
+			return st, disabledInstruction("gc", r.off())
+		}
 		_, _ = r.byte()
 		st.HasPrefix = true
 		st.Final = b == 0x4f
@@ -355,11 +375,15 @@ func decodeSubType(r *reader) (SubType, error) {
 		}
 		st.Supers = supers
 	}
-	meta, err := decodeTypeMetadata(r)
-	if err != nil {
-		return st, err
+	if buildfeatures.GC != 0 {
+		meta, err := decodeTypeMetadata(r)
+		if err != nil {
+			return st, err
+		}
+		st.Metadata = meta
+	} else if b == 0x4c || b == 0x4d {
+		return st, disabledInstruction("gc", r.off())
 	}
-	st.Metadata = meta
 	ct, err := decodeCompType(r)
 	if err != nil {
 		return st, err
@@ -402,6 +426,9 @@ func decodeLimits(r *reader) (Limits, error) {
 		}
 		return l, nil
 	case 0x04, 0x05:
+		if buildfeatures.Table64 == 0 {
+			return l, disabledInstruction("table64", r.off()-1)
+		}
 		l.Addr64 = true
 		min, err := r.u64()
 		if err != nil {
@@ -429,6 +456,9 @@ func decodeMemType(r *reader) (MemType, error) {
 	mt := MemType{}
 	switch flag {
 	case 0, 1, 2, 3:
+		if buildfeatures.Threads == 0 && flag >= 2 {
+			return mt, disabledInstruction("threads", flagOffset)
+		}
 		mt.Shared = flag == 2 || flag == 3
 		min, err := r.u32()
 		if err != nil {
@@ -447,6 +477,12 @@ func decodeMemType(r *reader) (MemType, error) {
 		}
 		return mt, nil
 	case 4, 5, 6, 7:
+		if buildfeatures.Memory64 == 0 {
+			return mt, disabledInstruction("memory64", flagOffset)
+		}
+		if buildfeatures.Threads == 0 && flag >= 6 {
+			return mt, disabledInstruction("threads", flagOffset)
+		}
 		mt.Shared = flag == 6 || flag == 7
 		mt.Limits.Addr64 = true
 		min, err := r.u64()
@@ -470,13 +506,31 @@ func decodeMemType(r *reader) (MemType, error) {
 	}
 }
 func decodeTableType(r *reader) (TableType, error) {
-	rt, err := decodeRefType(r)
+	rt, err := decodeTableRefType(r)
 	if err != nil {
 		return TableType{}, err
 	}
 	lim, err := decodeLimits(r)
 	return TableType{Ref: rt, Limits: lim}, err
 }
+func decodeTableRefType(r *reader) (RefType, error) {
+	if buildfeatures.ReferenceSignatures {
+		return decodeRefType(r)
+	}
+	b, err := r.byte()
+	if err != nil {
+		return RefType{}, err
+	}
+	switch {
+	case b == byte(HeapFunc):
+		return AbsRef(HeapFunc), nil
+	case b == 0x63 || b == 0x64 || b >= 0x69 && b <= 0x74:
+		return RefType{}, disabledInstruction("reference-types", r.off()-1)
+	default:
+		return RefType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+	}
+}
+
 func decodeGlobalType(r *reader) (GlobalType, error) {
 	vt, err := decodeValType(r)
 	if err != nil {
@@ -489,6 +543,9 @@ func decodeGlobalType(r *reader) (GlobalType, error) {
 	return GlobalType{Type: vt, Mutable: m == Var}, nil
 }
 func decodeTagType(r *reader) (TagType, error) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return TagType{}, disabledInstruction("exception-handling", r.off())
+	}
 	b, err := r.byte()
 	if err != nil {
 		return TagType{}, err
@@ -499,116 +556,6 @@ func decodeTagType(r *reader) (TagType, error) {
 	idx, err := decodeTypeIdx(r)
 	return TagType{Type: idx}, err
 }
-func decodeExternType(r *reader) (ExternType, error) {
-	k, err := r.byte()
-	if err != nil {
-		return ExternType{}, err
-	}
-	return decodeExternTypeKind(r, ExternKind(k))
-}
-
-func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
-	switch kind {
-	case ExternFunc:
-		t, err := decodeTypeIdx(r)
-		return NewFuncExternType(t), err
-	case ExternTable:
-		t, err := decodeTableType(r)
-		return NewTableExternType(t), err
-	case ExternMem:
-		t, err := decodeMemType(r)
-		return NewMemExternType(t), err
-	case ExternGlobal:
-		t, err := decodeGlobalType(r)
-		return NewGlobalExternType(t), err
-	case ExternTag:
-		t, err := decodeTagType(r)
-		return NewTagExternType(t), err
-	default:
-		return ExternType{Kind: kind}, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
-	}
-}
-
-func decodeImports(r *reader) ([]Import, bool, error) {
-	n, err := r.u32()
-	if err != nil {
-		return nil, false, err
-	}
-	if err := reserveDecodedSlice[Import](r, n); err != nil {
-		return nil, false, err
-	}
-	capHint := boundedVecCap(n, r.left())
-	imports := make([]Import, 0, capHint)
-	compact := false
-	// The section vector counts encoded groups, not expanded imports.
-	for group := uint32(0); group < n; group++ {
-		mod, err := r.name()
-		if err != nil {
-			return nil, compact, err
-		}
-		name, err := r.name()
-		if err != nil {
-			return nil, compact, err
-		}
-		kindByte, err := r.byte()
-		if err != nil {
-			return nil, compact, err
-		}
-		if name != "" || (kindByte != 0x7e && kindByte != 0x7f) {
-			et, err := decodeExternTypeKind(r, ExternKind(kindByte))
-			if err != nil {
-				return nil, compact, err
-			}
-			imports = append(imports, Import{Module: mod, Name: name, Type: et})
-			continue
-		}
-
-		compact = true
-		var sharedType ExternType
-		if kindByte == 0x7e {
-			k, err := r.byte()
-			if err != nil {
-				return nil, compact, err
-			}
-			sharedType, err = decodeExternTypeKind(r, ExternKind(k))
-			if err != nil {
-				return nil, compact, err
-			}
-		}
-		count, err := r.u32()
-		if err != nil {
-			return nil, compact, err
-		}
-		// Every item has at least a one-byte name length. Bound malformed
-		// counts by input bytes, and charge expansion before allocating metadata.
-		if uint64(count) > uint64(r.left()) {
-			return nil, compact, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
-		}
-		if err := reserveDecodedSlice[Import](r, count); err != nil {
-			return nil, compact, err
-		}
-		for i := uint32(0); i < count; i++ {
-			field, err := r.name()
-			if err != nil {
-				return nil, compact, err
-			}
-			et := sharedType
-			if kindByte == 0x7f {
-				k, err := r.byte()
-				if err != nil {
-					return nil, compact, err
-				}
-				et, err = decodeExternTypeKind(r, ExternKind(k))
-				if err != nil {
-					return nil, compact, err
-				}
-			}
-			imports = append(imports, Import{Module: mod, Name: field, Type: et})
-		}
-	}
-	return imports, compact, nil
-}
-
 func decodeExternIdx(r *reader) (ExternIdx, error) {
 	k, err := r.byte()
 	if err != nil {

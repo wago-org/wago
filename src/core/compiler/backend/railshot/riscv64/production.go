@@ -62,7 +62,7 @@ func stageProductionImage(c *Compiled, deferMapping bool) (*enc.CompiledModule, 
 	if len(c.code) == 0 && len(c.functions) == 0 && c.state.importedFunctions == 0 {
 		// State-only modules have nothing to publish. In particular, do not
 		// create the page-rounded empty code mapping used by imported bridges.
-		return &enc.CompiledModule{}, nil
+		return &enc.CompiledModule{GCHelperUses: c.gcHelperUses, AtomicHelperUses: c.atomicHelperUses}, nil
 	}
 	var err error
 	var image *coreruntime.CodeBuffer
@@ -96,5 +96,5 @@ func stageProductionImage(c *Compiled, deferMapping bool) (*enc.CompiledModule, 
 			}
 		}
 	}
-	return &enc.CompiledModule{Code: image.Bytes(), CodeImage: image, Entry: entries, InternalEntry: internal, DirectPrepared: direct, DirectPreparedBounded: bounded}, nil
+	return &enc.CompiledModule{GCHelperUses: c.gcHelperUses, AtomicHelperUses: c.atomicHelperUses, Code: image.Bytes(), CodeImage: image, Entry: entries, InternalEntry: internal, DirectPrepared: direct, DirectPreparedBounded: bounded}, nil
 }

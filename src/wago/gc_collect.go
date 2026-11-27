@@ -8,17 +8,18 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-func gcCollectFrameRoots(in *Instance, public *gcPublicState, frameLayout uint8, allowExternalReturn bool) gcNativeFrameRoots {
-	return gcNativeFrameRoots{
-		owner:               in,
-		frameLayout:         frameLayout,
-		allowExternalReturn: allowExternalReturn,
-		suspended:           public,
-	}
+var errGenericGCRootState = errors.New("generic GC boundary collection has no registered root state")
+
+func drainGCMetadataReclaims(collector *gc.Collector) {
+	drainCompactExternReclaims(collector)
+	drainExceptionReclaims(collector)
 }
 
 // CollectGC performs one full collection for this instance's exact Runtime GC
@@ -34,8 +35,10 @@ func (in *Instance) CollectGC() error {
 		return err
 	}
 	defer in.endInvocation()
-	defer func() { drainManagedFunctionStoreReclaims(in.refStore) }()
-	if in == nil || in.gc == nil || in.c == nil {
+	if managedFunctionLifetimeBuilt {
+		defer func() { drainManagedFunctionStoreReclaims(in.refStore) }()
+	}
+	if !nativeCollectorFrameRootsBuilt || in == nil || in.gc == nil || in.c == nil {
 		return fmt.Errorf("wago: instance has no live WasmGC collector")
 	}
 	if in.guestStorageBorrowed() {
@@ -47,7 +50,7 @@ func (in *Instance) CollectGC() error {
 	// invocation ID; GCHostModule.CollectGC handles lease ownership explicitly.
 	invocation := in.lockManagedFunctionCollectionInvocation(newInvocationID())
 	defer invocation.unlock()
-	return in.collectGCWithJoint(invocation.dynamic)
+	return in.collectGCWithJoint(invocation.isDynamic())
 }
 
 func (in *Instance) collectGC() error {
@@ -55,6 +58,12 @@ func (in *Instance) collectGC() error {
 }
 
 func (in *Instance) collectGCWithJoint(topologyLeased bool) error {
+	if !nativeCollectorBuilt {
+		return fmt.Errorf("wago: this build has no Wasm collector")
+	}
+	if !nativeCollectorFrameRootsBuilt {
+		return errGenericGCRootState
+	}
 	public := in.existingPublicGCState()
 	if public == nil {
 		return errGenericGCRootState
@@ -69,9 +78,11 @@ func (in *Instance) collectGCWithJoint(topologyLeased bool) error {
 	}
 	nativeMu.Lock()
 	defer nativeMu.Unlock()
-	defer drainExceptionReclaims(in.gc)
-	if handled, err := collectManagedFunctionGraph(in, public, topologyLeased); handled {
-		return err
+	defer drainGCMetadataReclaims(in.gc)
+	if managedFunctionLifetimeBuilt {
+		if handled, err := collectManagedFunctionGraph(in, public, topologyLeased); handled {
+			return err
+		}
 	}
 	lockedDomain := in.lockGCCollector()
 	defer unlockGCCollector(lockedDomain)
@@ -91,4 +102,17 @@ func (in *Instance) prepareGCCollectionRootsLocked(public *gcPublicState) error 
 	}
 	public.frameRoots = in.gcCollectFrameRoots(public)
 	return nil
+}
+
+// collectGenericGCAtBoundary runs the fallback collection between native entries.
+func (in *Instance) collectGenericGCAtBoundary() error {
+	if !wasmGCBuilt || in == nil || in.gc == nil || in.c == nil || !in.c.genericGCBoundaryCollectionSafe() {
+		return nil
+	}
+	// Exact native roots permit allocation-pressure and stress collections.
+	// Keep the boundary fallback when native collection is unavailable.
+	if in.c.genericGCFrameRoots() != nil && in.gc.CollectsOnAllocation() {
+		return nil
+	}
+	return in.collectGC()
 }

@@ -109,6 +109,9 @@ func TestGCNativeDefinedCastAndTestAcrossCollectorSpaces(t *testing.T) {
 }
 
 func TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease(t *testing.T) {
+	if !nativeCollectorBuilt {
+		t.Skip("requires a collector-enabled build")
+	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer rt.Close()
 	baseType := []byte{0x50, 0x00, 0x5f, 0x00}
@@ -193,7 +196,9 @@ func TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease(t *testing.T) {
 	domain.invocationMu.Lock()
 	locked = true
 	go func() {
-		builder := instanceBuilder{collector: domain.collector, gcDomain: domain}
+		var builder instanceBuilder
+		state := builder.collectorBuildState()
+		state.collector, state.domain = domain.collector, domain
 		_, err := builder.buildNativeGCInstanceView([]corergc.TypeID{0, 1})
 		viewDone <- err
 	}()

@@ -23,7 +23,6 @@ import (
 // railshotCompileModuleWith is unreachable in a wago_standalone executable.
 type railshotImportBinding = shared.ImportBinding
 type railshotKnobInfo = optimization.Info
-type railshotOptimizationSnapshot = optimization.Snapshot
 type railshotModuleStats struct{}
 
 type railshotCompileOptions struct {
@@ -59,14 +58,6 @@ type railshotCompileOptions struct {
 
 func railshotOptKnobs() []railshotKnobInfo {
 	return optimization.InfosForArch(runtime.GOARCH)
-}
-
-func railshotOptKnobSnapshot() ([]railshotKnobInfo, railshotOptimizationSnapshot) {
-	return railshotOptKnobs(), railshotOptimizationSnapshot{}
-}
-
-func railshotCurrentOptKnobSnapshot() railshotOptimizationSnapshot {
-	return railshotOptimizationSnapshot{}
 }
 
 func railshotSetOptKnob(string, bool) bool { return false }

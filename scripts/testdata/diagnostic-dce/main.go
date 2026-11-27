@@ -29,8 +29,9 @@ func main() {
 		return
 	}
 
-	if len(os.Args) != 3 {
-		panic("usage: diagnostic-dce module.wasm export")
+	prepared := len(os.Args) == 4 && os.Args[3] == "--prepared"
+	if len(os.Args) != 3 && !prepared {
+		panic("usage: diagnostic-dce module.wasm export [--prepared]")
 	}
 	data, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -46,7 +47,16 @@ func main() {
 		panic(err)
 	}
 	defer instance.Close()
-	result, err := instance.Invoke(os.Args[2])
+	var result []uint64
+	if prepared {
+		fn, prepareErr := instance.WasmFunc(os.Args[2])
+		if prepareErr != nil {
+			panic(prepareErr)
+		}
+		result, err = fn.Invoke()
+	} else {
+		result, err = instance.Invoke(os.Args[2])
+	}
 	if err != nil {
 		panic(err)
 	}

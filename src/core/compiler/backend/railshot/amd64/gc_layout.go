@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -80,7 +81,7 @@ type nativeGCStructAllocPlan struct {
 }
 
 func (f *fn) nativeGCStructAllocLayout(typeIndex uint32) (nativeGCStructAllocPlan, bool) {
-	if !f.opt(optGCNativeAlloc) {
+	if !(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc)) {
 		return nativeGCStructAllocPlan{}, false
 	}
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok {

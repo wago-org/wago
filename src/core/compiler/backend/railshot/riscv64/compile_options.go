@@ -82,8 +82,8 @@ type CompileOptions struct {
 	ForceFallback            bool
 	ExceptionHandlingSource  bool
 	OwnedExceptionReferences bool
-	exceptionOperands        *[]*wasm.CollectorOperandRoots
-	gcFunctionEnvironments   bool
+	gcFrameOperandPlanning
+	gcFunctionEnvironments bool
 	// I31CoreSource is an exact-wire provenance witness supplied by the public
 	// source frontend for a bounded i31 product. It never grants lowering by
 	// itself: CompileModuleWith independently rechecks the decoded module before
@@ -335,14 +335,3 @@ type ModuleStats struct {
 	ProfileRegions []jitprofile.Region
 	Funcs          []*CodegenStats
 }
-
-var optNativeLeafHost, optRegisterABI, optPreparedDirectEntry, optPreparedBoundedEntry = true, true, true, true
-
-var optimizationBindings = optimization.NewBindings("riscv64", optimization.BindingSpec{Name: "native-leaf-host", Value: &optNativeLeafHost}, optimization.BindingSpec{Name: "reg-abi", Value: &optRegisterABI}, optimization.BindingSpec{Name: "prepared-direct-entry", Value: &optPreparedDirectEntry}, optimization.BindingSpec{Name: "prepared-bounded-entry", Value: &optPreparedBoundedEntry})
-
-func OptKnobs() []KnobInfo { return optimizationBindings.Infos() }
-func OptKnobSnapshot() ([]KnobInfo, OptimizationSnapshot) {
-	return optimizationBindings.Snapshot()
-}
-func CurrentOptKnobSnapshot() OptimizationSnapshot { return optimizationBindings.CurrentSnapshot() }
-func SetOptKnob(name string, on bool) bool         { return optimizationBindings.Set(name, on) }

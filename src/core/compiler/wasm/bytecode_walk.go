@@ -7,6 +7,8 @@
 
 package wasm
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 // InstructionImmediate is the allocation-free classification returned while
 // consuming an instruction's encoded immediates.
 type InstructionImmediate struct {
@@ -93,6 +95,9 @@ func (c *ModuleInstructionClassifier) SkipImmediate(r *Reader, op byte) error {
 }
 
 func skipInstructionImmediateWithWidths(r *Reader, op byte, widths *memargWidths, multiMemory bool) error {
+	if feature := disabledCallFeature(op); feature != "" {
+		return disabledInstruction(feature, r.Offset()-1)
+	}
 	if simpleOpcode[op] != InstrInvalid {
 		return nil
 	}
@@ -135,6 +140,9 @@ func ClassifyInstructionImmediateIntoWithModuleFeatures(r *Reader, op byte, imm 
 
 func classifyInstructionImmediateIntoWithWidths(r *Reader, op byte, imm *InstructionImmediate, widths *memargWidths, multiMemory bool) error {
 	*imm = InstructionImmediate{}
+	if feature := disabledCallFeature(op); feature != "" {
+		return disabledInstruction(feature, r.Offset()-1)
+	}
 	if kind := simpleOpcode[op]; kind != InstrInvalid {
 		imm.Kind = kind
 		return nil
@@ -221,7 +229,7 @@ func skipScalarMemoryImmediate(r *reader, widths memargWidths, multiMemory bool)
 	index := uint32(0)
 	switch {
 	case alignment < 64:
-	case alignment < 128 && multiMemory:
+	case buildfeatures.MultiMemory != 0 && alignment < 128 && multiMemory:
 		index, err = r.u32()
 		if err != nil {
 			return err

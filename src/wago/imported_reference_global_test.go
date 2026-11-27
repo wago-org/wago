@@ -342,8 +342,8 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 	if got := unsafe.Sizeof(Compiled{}); got != 808 {
 		t.Fatalf("Compiled size = %d, want 808", got)
 	}
-	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
-		t.Fatalf("referenceStore size = %d, want 120 with shared GC domain", got)
+	if got, want := unsafe.Sizeof(referenceStore{}), 104+unsafe.Sizeof(gcObjectTokenIndex{})+unsafe.Sizeof(gcDomainStoreState{}); got != want {
+		t.Fatalf("referenceStore size = %d, want %d with shared GC domain", got, want)
 	}
 
 }

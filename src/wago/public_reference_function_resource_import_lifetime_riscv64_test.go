@@ -127,7 +127,7 @@ func TestRV64PublicReferenceFunctionResourceImportsCancellationAndClose(t *testi
 						} else {
 							cancel()
 						}
-						if caller.resourcesClosed || producer.resourcesClosed || native.resourcesClosed || resource.resourcesClosed || caller.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0 {
+						if caller.resourcesClosed || producer.resourcesClosed || native.resourcesClosed || resource.resourcesClosed || caller.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count == 0 {
 							t.Fatal("parked reference import lost physical roots")
 						}
 						if owned.(*HostFuncRef).Close() == nil {
@@ -159,7 +159,7 @@ func TestRV64PublicReferenceFunctionResourceImportsCancellationAndClose(t *testi
 						}
 						for _, in := range []*Instance{caller, producer, native} {
 							state := &in.pluginState.Load().railshotInvocation
-							if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil {
+							if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil {
 								t.Fatal("interrupted reference import leaked generation")
 							}
 						}

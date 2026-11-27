@@ -45,21 +45,23 @@ func rv64ValidatePlainReferenceTableDirectory(c *Compiled, allow64 bool) error {
 		if definition.Addr64 && (!allow64 || !c.requiredFeatures.IsEnabled(CoreFeatureTable64)) {
 			return fmt.Errorf("public table %d requires its exact table64 feature and execution ABI", index)
 		}
-		if imported, ok := c.tableImportAt(index); ok {
-			localLimits := definition.Size != 0 || definition.Max != 0 || definition.HasMax
-			if index != 0 {
-				localLimits = definition.Size < 0 || uint64(definition.Size) != imported.Min || definition.Max != imported.Max || definition.HasMax || definition.ImportHasMax != imported.HasMax
+		if tableImportsForImage {
+			if imported, ok := c.tableImportAt(index); ok {
+				localLimits := definition.Size != 0 || definition.Max != 0 || definition.HasMax
+				if index != 0 {
+					localLimits = definition.Size < 0 || uint64(definition.Size) != imported.Min || definition.Max != imported.Max || definition.HasMax || definition.ImportHasMax != imported.HasMax
+				}
+				if localLimits || definition.HasInitFunc || !definition.Addr64 && (imported.Min > uint64(^uint32(0)) || imported.Max > uint64(^uint32(0))) || imported.HasMax && imported.Max < imported.Min {
+					return fmt.Errorf("public table32 import %d has invalid limits or local initializer", index)
+				}
+				continue
 			}
-			if localLimits || definition.HasInitFunc || !definition.Addr64 && (imported.Min > uint64(^uint32(0)) || imported.Max > uint64(^uint32(0))) || imported.HasMax && imported.Max < imported.Min {
-				return fmt.Errorf("public table32 import %d has invalid limits or local initializer", index)
-			}
-			continue
 		}
 		capacity := c.tableRuntimeCapacity(index)
 		if definition.Size < 0 || uint64(definition.Size) > uint64(^uint32(0)) || !definition.Addr64 && definition.Max > uint64(^uint32(0)) || definition.HasMax && definition.Max < uint64(definition.Size) || capacity < definition.Size || uint64(capacity) > uint64(^uint32(0)) {
 			return fmt.Errorf("public table32 %d has invalid storage limits", index)
 		}
-		if definition.HasInitFunc && (definition.Type == ValExternRef || !c.needsFuncRefDescs() || uint64(definition.InitFunc) >= uint64(c.NumImports+len(c.Funcs))) {
+		if tableInitializersForImage && definition.HasInitFunc && (definition.Type == ValExternRef || !c.needsFuncRefDescs() || uint64(definition.InitFunc) >= uint64(c.NumImports+len(c.Funcs))) {
 			return fmt.Errorf("public table32 %d has an invalid initial function", index)
 		}
 	}
@@ -70,17 +72,22 @@ func rv64ValidatePlainReferenceTableDirectory(c *Compiled, allow64 bool) error {
 	}
 	// The indexed directory retains dropped placeholders for active segments;
 	// their live initializers are already counted in Elems.
-	segments := len(c.Elems)
-	for _, segment := range c.passiveElems {
-		if segment.Mode != ElemModeActive {
+	segments := 0
+	if activeElementsForImage {
+		segments = len(c.Elems)
+	}
+	for index := 0; passiveElementsForImage && index < len(c.passiveElems); index++ {
+		if c.passiveElems[index].Mode != ElemModeActive {
 			segments++
 		}
 	}
-	if len(c.passiveElems) > railshot.MaxOwnedElementSegments || segments > railshot.MaxOwnedElementSegments {
+	if passiveElementsForImage && len(c.passiveElems) > railshot.MaxOwnedElementSegments ||
+		(activeElementsForImage || passiveElementsForImage) && segments > railshot.MaxOwnedElementSegments {
 		return fmt.Errorf("public element directory exceeds its bound")
 	}
 	remaining := railshot.MaxOwnedTableEntries
-	for _, segment := range c.Elems {
+	for index := 0; activeElementsForImage && index < len(c.Elems); index++ {
+		segment := c.Elems[index]
 		if segment.Mode != ElemModeActive || uint64(segment.TableIndex) >= uint64(c.tableCount()) || len(segment.Values) > remaining || !rv64PlainTableElementType(segment.RefType) {
 			return fmt.Errorf("public active element has an invalid table, type or count")
 		}
@@ -109,10 +116,11 @@ func rv64ValidatePlainReferenceTableDirectory(c *Compiled, allow64 bool) error {
 			return err
 		}
 	}
-	if len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
+	if passiveElementsForImage && len(c.passiveElems) != 0 && !c.requiredFeatures.IsEnabled(CoreFeatureBulkMemoryOperations) {
 		return fmt.Errorf("public passive elements require bulk memory")
 	}
-	for _, segment := range c.passiveElems {
+	for index := 0; passiveElementsForImage && index < len(c.passiveElems); index++ {
+		segment := c.passiveElems[index]
 		activePlaceholder := segment.Mode == ElemModeActive && uint64(segment.TableIndex) < uint64(c.tableCount()) && len(segment.Values) == 0
 		if segment.Mode != ElemModePassive && segment.Mode != ElemModeDeclarative && !activePlaceholder || segment.Mode != ElemModeActive && segment.TableIndex != 0 || segment.Offset.Base != 0 || segment.Offset.HasGlobal || len(segment.Offset.Expr) != 0 || len(segment.Values) > remaining || !rv64PlainTableElementType(segment.RefType) || segment.Mode != ElemModePassive && len(segment.Values) != 0 {
 			return fmt.Errorf("public passive element has invalid metadata")
@@ -149,7 +157,7 @@ func rv64ValidatePlainTableElementPayload(c *Compiled, segment ElemInit) error {
 	}
 	for _, value := range segment.Values {
 		if value.HasGlobal {
-			if value.Null || value.FuncIndex != 0 || !rv64InitializerGlobal(c, int(value.GlobalIndex), ValExternRef, len(c.Globals)) || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
+			if !elementGlobalsForImage || value.Null || value.FuncIndex != 0 || !rv64InitializerGlobal(c, int(value.GlobalIndex), ValExternRef, len(c.Globals)) || value.I31Wrap || value.RepeatPrevious || len(value.Expr) != 0 {
 				return fmt.Errorf("external element requires an immutable compatible global")
 			}
 			global, err := c.globalExactType(int(value.GlobalIndex))

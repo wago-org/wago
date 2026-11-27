@@ -10,6 +10,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -224,7 +225,9 @@ func (flow *swarFlow) branch(label uint32, retainPayload bool) error {
 			}
 			flow.emit.swarStore(flow.spill(fr.base+i), pair)
 		}
-		flow.emit.restoreExceptionHandlers(flow.depth - 1 - int(label))
+		if buildfeatures.ExceptionHandling != 0 {
+			flow.emit.restoreExceptionHandlers(flow.depth - 1 - int(label))
+		}
 		site := flow.emit.Jump()
 		if fr.kind == 0x03 {
 			if err := flow.patch(site, fr.start); err != nil {
@@ -307,7 +310,10 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		flow.frames[flow.depth-1].unreachable = true
 		*flow.h = flow.floor()
 	case 0x02, 0x03, 0x04, 0x1f:
-		bt, e := internalReferenceBlockType(r, flow.privateRefs && flow.typedRefs, flow.referenceTypes)
+		if buildfeatures.ExceptionHandling == 0 && op == 0x1f {
+			return false, false, unsupported("exception-handling is disabled in this build")
+		}
+		bt, e := internalBlockType(r, flow.privateRefs && flow.typedRefs, flow.referenceTypes)
 		if e != nil {
 			return false, false, e
 		}
@@ -323,6 +329,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		var params, results []swarClass
 		if bt != -64 {
 			if bt >= 0 {
+				if buildfeatures.MultiValue == 0 {
+					return false, false, unsupported("multi-value is disabled in this build")
+				}
 				if bt >= int64(len(flow.types)) || flow.types[bt] == nil {
 					return false, false, unsupported("SWAR indexed control signature")
 				}
@@ -373,7 +382,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 				flow.emit.emitProductionInterruptPoll()
 			}
 		}
-		if op == 0x1f {
+		if buildfeatures.ExceptionHandling != 0 && op == 0x1f {
 			if flow.exceptionModule == nil {
 				return false, false, unsupported("SWAR try_table source proof")
 			}
@@ -475,7 +484,7 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		if err := flow.match(fr.base, fr.results, true); err != nil {
 			return false, false, err
 		}
-		if fr.kind == 0x1f {
+		if buildfeatures.ExceptionHandling != 0 && fr.kind == 0x1f {
 			control := flow.exceptionControls[flow.depth-1]
 			if flow.emit != nil && control.active {
 				skip := -1
@@ -532,6 +541,9 @@ func (flow *swarFlow) instruction(op byte, r *wasm.Reader) (done, trap bool, err
 		flow.depth--
 		done = flow.depth == 0
 	case 0x08, 0x0a:
+		if buildfeatures.ExceptionHandling == 0 {
+			return false, false, unsupported("exception-handling is disabled in this build")
+		}
 		if flow.exceptionModule == nil {
 			return false, false, unsupported("SWAR throw source proof")
 		}

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build !wago_standalone_no_collector && (linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling))
 
 package wago
 
@@ -33,14 +33,10 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 	topology := g.store.ensureGCTopology()
 	// Respect queued writers as ordinary RLock does, but do not wait while
 	// Close or an invocation-return path owns the cleanup boundary.
-	topology.mu.Lock()
-	if topology.writer || topology.writers != 0 {
-		topology.mu.Unlock()
+	if !topology.gate.TryRLock() {
 		return
 	}
-	topology.readers++
-	topology.mu.Unlock()
-	defer topology.RUnlock()
+	defer topology.gate.RUnlock()
 	g.store.mu.Lock()
 	var domains gcInvocationDomainSet
 	var requester *Instance
@@ -50,7 +46,7 @@ func (g *managedFunctionGraph) tryCollectAfterGate() {
 		if entry == nil || entry.resourcesReleased {
 			continue
 		}
-		domains.add(entry.gcDomain)
+		domains.add(entry.gcRegistration().domain)
 		if owner.gc != nil {
 			requester = owner
 		}

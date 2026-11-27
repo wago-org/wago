@@ -24,7 +24,7 @@ func (a *boundedViewHostActivation) context() hostInvocationContext {
 	var invocation hostInvocationContext
 	// The binding count is published before every map entry. With no bindings,
 	// the current admitted root supplies exactly the ordinary map fallback.
-	if activeHostInvocationBindings.Load() == 0 {
+	if !hasHostInvocationBindings() {
 		if id := a.root.currentInvocationID(); id != 0 {
 			invocation = hostInvocationContext{id: id, reservation: currentInvocationReservation(a.root)}
 		}

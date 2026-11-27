@@ -24,9 +24,6 @@ type Module struct {
 	compiledView *Compiled
 	imports      []ImportSpec
 	reqCaps      []Capability
-	// importIdentities is populated only when a declared component contains a
-	// dot and the flat binding namespace can therefore be ambiguous.
-	importIdentities map[string]importBindingKey
 
 	identity             atomic.Pointer[moduleIdentityToken]
 	ownsCompiled         bool
@@ -145,11 +142,11 @@ func (c *Compiled) tableImportBindingKey(index int) string {
 }
 
 func (c *Compiled) tagImportBindingKey(index int) string {
-	if c == nil || c.memoryDir == nil || index < 0 || index >= len(c.memoryDir.ehTags) {
+	if c == nil || c.memoryDir == nil || index < 0 || index >= len(c.memoryDir.exceptionTags()) {
 		return ""
 	}
 	_, _, _, ends, _ := c.importModuleEndSections()
-	def := c.memoryDir.ehTags[index]
+	def := c.memoryDir.exceptionTags()[index]
 	module, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(ends, index))
 	return importBindingMapKey(module, name)
 }
@@ -240,7 +237,7 @@ type ModuleMetadata struct {
 type moduleBindings struct {
 	rt                       *Runtime
 	imports                  resolvedImports
-	importMeta               map[string]*registeredImport
+	importMeta               pluginImportMetadata
 	independentInstances     bool
 	moduleIdentity           bool
 	maxCompiledMetadataBytes uint64
@@ -249,16 +246,20 @@ type moduleBindings struct {
 // snapshotModuleBindingsLocked captures one immutable import-policy generation.
 // The caller must hold rt.mu.
 func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
-	rt.importsShared = true
 	cfg := rt.cfg
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
 	bindings := moduleBindings{
-		rt: rt, imports: rt.imports, importMeta: rt.importMeta,
+		rt:                       rt,
 		independentInstances:     cfg.IndependentInstanceExecution(),
-		moduleIdentity:           hooks.needsModuleIdentity(),
 		maxCompiledMetadataBytes: cfg.MaxCompiledMetadataBytes(),
+	}
+	if !standaloneBareImage {
+		rt.importsShared = true
+		bindings.imports = rt.imports
+		bindings.importMeta = rt.importMeta
+		bindings.moduleIdentity = hooks.needsModuleIdentity()
 	}
 	return bindings
 }
@@ -267,26 +268,51 @@ func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindi
 // generation. Callers that already hold rt.mu should snapshot directly instead.
 func (rt *Runtime) buildModule(c *Compiled) (*Module, error) {
 	rt.mu.Lock()
-	hooks := rt.loadHooks()
+	var hooks *hookRegistry
+	if pluginRuntimeBuilt {
+		hooks = rt.loadHooks()
+	}
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
 	rt.mu.Unlock()
 	return buildModule(c, bindings)
 }
 
+func prepareModuleImage(c *Compiled, maxMetadataBytes uint64) (*Compiled, error) {
+	snapshot, err := c.freezeExecution(maxMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
+	if !moduleImportsBuilt && snapshot.declaredImportCount() != 0 {
+		return nil, errStandaloneModuleImports
+	}
+	return snapshot, nil
+}
+
 func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
-	snapshot, err := c.freezeExecution(bindings.maxCompiledMetadataBytes)
+	snapshot, err := prepareModuleImage(c, bindings.maxCompiledMetadataBytes)
 	if err != nil {
 		return nil, err
 	}
 	m := &Module{rt: bindings.rt, c: snapshot, compiledView: c, independentInstances: bindings.independentInstances}
-	c = m.c
-	m.imports = make([]ImportSpec, 0, len(c.Imports)+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount()+c.tagImportCount())
-	if bindings.moduleIdentity {
+	if !standaloneBareImage && bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
 	}
+	// Generated bare images use the linked import diagnostics.
+	if moduleImportsBuilt && !standaloneBareImage {
+		m.describeImports(bindings, snapshot.declaredImportCount())
+	}
+	return m, nil
+}
+
+func (m *Module) describeImports(bindings moduleBindings, importCount int) {
+	c := m.c
+	m.imports = make([]ImportSpec, 0, importCount)
 
 	funcModuleEnds, tableModuleEnds, memoryModuleEnds, tagModuleEnds, _ := c.importModuleEndSections()
-	capSeen := map[Capability]bool{}
+	var capSeen map[Capability]bool
+	if pluginRuntimeBuilt {
+		capSeen = map[Capability]bool{}
+	}
 	for i, key := range c.Imports { // function imports, in "module.name" form
 		mod, name := splitImportKeyAt(key, importModuleEndAt(funcModuleEnds, i))
 		spec := ImportSpec{Module: mod, Name: name, Kind: ImportFunc, Index: i}
@@ -301,72 +327,72 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 				spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
 			}
 		}
-		bindingKey := importBindingMapKey(mod, name)
-		meta := bindings.importMeta[bindingKey]
-		if _, ok := bindings.imports[bindingKey]; ok && registeredImportMatches(meta, mod, name) {
-			spec.Provided = true
-		}
-		if meta != nil && registeredImportMatches(meta, mod, name) {
-			spec.Capability, spec.HasCapability = meta.cap, meta.hasCap
-			spec.Docs = meta.docs
-			if meta.hasCap && !capSeen[meta.cap] {
-				capSeen[meta.cap] = true
-				m.reqCaps = append(m.reqCaps, meta.cap)
+		if pluginRuntimeBuilt {
+			bindingKey := importBindingMapKey(mod, name)
+			meta := lookupPluginImport(bindings.importMeta, bindingKey)
+			if _, ok := bindings.imports[bindingKey]; ok && registeredImportMatches(meta, mod, name) {
+				spec.Provided = true
+			}
+			if meta != nil && registeredImportMatches(meta, mod, name) {
+				spec.Capability, spec.HasCapability = meta.cap, meta.hasCap
+				spec.Docs = meta.docs
+				if meta.hasCap && !capSeen[meta.cap] {
+					capSeen[meta.cap] = true
+					m.reqCaps = append(m.reqCaps, meta.cap)
+				}
 			}
 		}
 		m.imports = append(m.imports, spec)
 	}
-	for i, gi := range c.GlobalImports {
+	for i := 0; globalImportsForImage && i < len(c.GlobalImports); i++ {
+		gi := c.GlobalImports[i]
 		key := importBindingMapKey(gi.Module, gi.Name)
 		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
-			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: bindings.imports[key] != nil,
+			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: pluginRuntimeBuilt && bindings.imports[key] != nil,
 		})
 	}
-	for i := 0; i < c.memoryImportCount(); i++ {
+	for i := 0; memoryImportsForImage && i < c.memoryImportCount(); i++ {
 		def, _ := c.memoryImportAt(i)
 		mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(memoryModuleEnds, i))
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportMemory, Index: i,
 			MemoryMin: def.Min, MemoryMax: def.Max, HasMax: def.HasMax, Addr64: def.Addr64, Shared: def.Shared,
-			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
+			Provided: pluginRuntimeBuilt && bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
-	for i := 0; i < c.tableImportCount(); i++ {
+	for i := 0; tableImportsForImage && i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
 		mod, name := splitImportKeyAt(def.Key, importModuleEndAt(tableModuleEnds, i))
 		exact, exactErr := exactValueType(def.Type, def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
-			Provided: bindings.imports[importBindingMapKey(mod, name)] != nil,
+			Provided: pluginRuntimeBuilt && bindings.imports[importBindingMapKey(mod, name)] != nil,
 		})
 	}
-	if c.memoryDir != nil {
+	if tagImportsForImage && c.memoryDir != nil {
 		for i := 0; i < c.tagImportCount(); i++ {
-			def := c.memoryDir.ehTags[i]
+			def := c.memoryDir.exceptionTags()[i]
 			mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: bindings.imports[importBindingMapKey(mod, name)] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: pluginRuntimeBuilt && bindings.imports[importBindingMapKey(mod, name)] != nil})
 		}
 	}
-	return m, nil
 }
 
-// indexDeclaredImportIdentities records exact identities independently of the
-// human-readable "module.name" spelling.
-func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBindingKey, error) {
-	if len(specs) == 0 {
-		return nil, nil
+func (c *Compiled) declaredImportCount() int {
+	tableCount := 0
+	if tableImportsForImage {
+		tableCount = c.tableImportCount()
 	}
-	exactIdentities := make(map[string]importBindingKey, len(specs))
-	for _, spec := range specs {
-		identity := importBindingKey{module: spec.Module, name: spec.Name}
-		exactIdentities[spec.bindingKey()] = identity
+	memoryCount := 0
+	if memoryImportsForImage {
+		memoryCount = c.memoryImportCount()
 	}
-	return exactIdentities, nil
+	return len(c.Imports) + len(c.GlobalImports) + memoryCount + tableCount + c.tagImportCount()
 }
 
 // registeredImportMatches verifies plugin declaration metadata.
@@ -375,12 +401,11 @@ func registeredImportMatches(meta *registeredImport, module, name string) bool {
 }
 
 func (h *hookRegistry) needsModuleIdentity() bool {
-	if h == nil {
+	if !pluginRuntimeBuilt || h == nil {
 		return false
 	}
 	return len(h.afterCompile) != 0 || len(h.onModuleClose) != 0 ||
-		len(h.beforeInstantiate) != 0 || len(h.afterCreate) != 0 ||
-		len(h.afterInstantiate) != 0 || len(h.onInstantiateError) != 0 ||
+		h.hasInstantiationHooks() ||
 		len(h.beforeClose) != 0 || len(h.afterClose) != 0
 }
 
@@ -481,10 +506,10 @@ func (m *Module) Metadata() ModuleMetadata {
 	}
 
 	var tags []TagMetadata
-	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		tagExports := exportsByIndex(c.memoryDir.ehTagExports, len(c.memoryDir.ehTags))
-		tags = make([]TagMetadata, len(c.memoryDir.ehTags))
-		for i, tag := range c.memoryDir.ehTags {
+	if c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
+		tagExports := exportsByIndex(c.memoryDir.exceptionTagExports(), len(c.memoryDir.exceptionTags()))
+		tags = make([]TagMetadata, len(c.memoryDir.exceptionTags()))
+		for i, tag := range c.memoryDir.exceptionTags() {
 			tags[i] = TagMetadata{Index: i, TypeIndex: tag.TypeIndex, Exports: tagExports[i]}
 			if tag.ImportKey != "" {
 				tags[i].ImportModule, tags[i].ImportName = splitImportKeyAt(tag.ImportKey, importModuleEndAt(tagModuleEnds, i))
@@ -583,18 +608,20 @@ func (m *Module) closeOwned() error {
 	}
 
 	var errs []error
-	if hooks, end := m.rt.beginModuleCloseCallbacks(); end != nil {
-		defer end()
-		if len(hooks.onModuleClose) != 0 {
-			event := ModuleCloseEvent{Module: moduleView(m)}
-			m.closeCallbacks.Add(1)
-			for i := len(hooks.onModuleClose) - 1; i >= 0; i-- {
-				observer := hooks.onModuleClose[i]
-				if err := callHookSafely("ModuleCloseObserver", func() { observer(event) }); err != nil {
-					errs = append(errs, err)
+	if pluginRuntimeBuilt {
+		if hooks, end := m.rt.beginModuleCloseCallbacks(); end != nil {
+			defer end()
+			if len(hooks.onModuleClose) != 0 {
+				event := ModuleCloseEvent{Module: moduleView(m)}
+				m.closeCallbacks.Add(1)
+				for i := len(hooks.onModuleClose) - 1; i >= 0; i-- {
+					observer := hooks.onModuleClose[i]
+					if err := callHookSafely("ModuleCloseObserver", func() { observer(event) }); err != nil {
+						errs = append(errs, err)
+					}
 				}
+				m.closeCallbacks.Add(^uint32(0))
 			}
-			m.closeCallbacks.Add(^uint32(0))
 		}
 	}
 	m.identity.Store(nil)
@@ -686,8 +713,14 @@ func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags 
 		ends = memo.importModuleEnds
 	}
 	functionCount := len(c.Imports)
-	tableCount := c.tableImportCount()
-	memoryCount := c.memoryImportCount()
+	tableCount := 0
+	if tableImportsForImage {
+		tableCount = c.tableImportCount()
+	}
+	memoryCount := 0
+	if memoryImportsForImage {
+		memoryCount = c.memoryImportCount()
+	}
 	tagCount := c.tagImportCount()
 	total := functionCount + tableCount + memoryCount + tagCount
 	if total == 0 {
@@ -707,9 +740,18 @@ func (c *Compiled) validateImportModuleEnds() error {
 	if memo == nil || len(memo.importModuleEnds) == 0 {
 		return nil
 	}
+	if !moduleImportsBuilt {
+		return errors.New("compiled metadata invalid: import names exceed the standalone runtime profile")
+	}
 	functionEnds, tableEnds, memoryEnds, tagEnds, exact := c.importModuleEndSections()
 	if !exact {
-		want := len(c.Imports) + c.tableImportCount() + c.memoryImportCount() + c.tagImportCount()
+		want := len(c.Imports) + c.tagImportCount()
+		if memoryImportsForImage {
+			want += c.memoryImportCount()
+		}
+		if tableImportsForImage {
+			want += c.tableImportCount()
+		}
 		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(memo.importModuleEnds), want)
 	}
 	for i, key := range c.Imports {
@@ -717,37 +759,28 @@ func (c *Compiled) validateImportModuleEnds() error {
 			return fmt.Errorf("compiled metadata invalid: function import %d: %w", i, err)
 		}
 	}
-	for i := range tableEnds {
-		def, _ := c.tableImportAt(i)
-		if err := validateImportModuleEnd(def.Key, tableEnds[i]); err != nil {
-			return fmt.Errorf("compiled metadata invalid: table import %d: %w", i, err)
+	if tableImportsForImage {
+		for i := range tableEnds {
+			def, _ := c.tableImportAt(i)
+			if err := validateImportModuleEnd(def.Key, tableEnds[i]); err != nil {
+				return fmt.Errorf("compiled metadata invalid: table import %d: %w", i, err)
+			}
 		}
 	}
-	for i := range memoryEnds {
-		def, _ := c.memoryImportAt(i)
-		if err := validateImportModuleEnd(def.ImportKey, memoryEnds[i]); err != nil {
-			return fmt.Errorf("compiled metadata invalid: memory import %d: %w", i, err)
+	if memoryImportsForImage {
+		for i := range memoryEnds {
+			def, _ := c.memoryImportAt(i)
+			if err := validateImportModuleEnd(def.ImportKey, memoryEnds[i]); err != nil {
+				return fmt.Errorf("compiled metadata invalid: memory import %d: %w", i, err)
+			}
 		}
 	}
-	if c.memoryDir != nil {
+	if tagImportsForImage && c.memoryDir != nil {
 		for i := range tagEnds {
-			if err := validateImportModuleEnd(c.memoryDir.ehTags[i].ImportKey, tagEnds[i]); err != nil {
+			if err := validateImportModuleEnd(c.memoryDir.exceptionTags()[i].ImportKey, tagEnds[i]); err != nil {
 				return fmt.Errorf("compiled metadata invalid: tag import %d: %w", i, err)
 			}
 		}
 	}
 	return nil
-}
-
-func declaredImportIdentity(specs []ImportSpec, index map[string]importBindingKey, key string) (importBindingKey, bool) {
-	if index != nil {
-		identity, ok := index[key]
-		return identity, ok
-	}
-	for _, spec := range specs {
-		if spec.bindingKey() == key {
-			return importBindingKey{module: spec.Module, name: spec.Name}, true
-		}
-	}
-	return importBindingKey{}, false
 }

@@ -9,6 +9,7 @@ package shared
 
 import (
 	"fmt"
+	"github.com/wago-org/wago/internal/buildfeatures"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -47,6 +48,36 @@ const (
 	AtomicHelperWait64
 	AtomicHelperMemoryGrow
 )
+
+// The low bits are indexed by helper ID. The remaining bits describe the
+// operand layouts of the actual emitted host calls.
+const (
+	AtomicHelperUsesIndexedMemory uint8 = 1 << (AtomicHelperMemoryGrow + 1 + iota)
+	AtomicHelperUsesMemory64
+	AtomicHelperUsesNotifyPending
+)
+
+func AtomicHelperBridgeUses(helper uint32, params []wasm.ValType) uint8 {
+	uses := uint8(1 << helper)
+	var arity int
+	switch helper {
+	case AtomicHelperNotify:
+		arity = 3
+	case AtomicHelperWait32, AtomicHelperWait64:
+		arity = 4
+	case AtomicHelperMemoryGrow:
+		arity = 1
+	default:
+		return 0
+	}
+	if len(params) > arity {
+		uses |= AtomicHelperUsesIndexedMemory
+	}
+	if params[0] == wasm.I64 {
+		uses |= AtomicHelperUsesMemory64
+	}
+	return uses
+}
 
 // Atomic describes exactly the architecture-neutral facts needed by direct
 // Railshot lowering. Align is the encoded log2 alignment; Size and ResultSize
@@ -103,6 +134,9 @@ func decodeAtomic(r *wasm.Reader, address64 bool, m *wasm.Module) (Atomic, error
 		return Atomic{}, fmt.Errorf("atomic memarg has unsupported alignment flags")
 	}
 	if d.Align&64 != 0 {
+		if buildfeatures.MultiMemory == 0 {
+			return Atomic{}, fmt.Errorf("multi-memory is disabled in this build")
+		}
 		index, readErr := r.U32()
 		if readErr != nil {
 			return Atomic{}, readErr

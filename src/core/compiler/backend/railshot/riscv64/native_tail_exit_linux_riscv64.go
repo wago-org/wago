@@ -15,5 +15,5 @@ import coreruntime "github.com/wago-org/wago/src/core/runtime"
 var nativeTailExitState nativeTailExitCache
 
 func nativeTailExitPointer() (uintptr, error) {
-	return nativeTailExitState.get(func() ([]byte, error) { return tailRAExitCodeInvocation(true) }, coreruntime.NewCodeBuffer, (*coreruntime.CodeBuffer).Seal, (*coreruntime.CodeBuffer).Close)
+	return nativeTailExitState.get(func() ([]byte, error) { return tailRAExitCodeInvocation(true) }, coreruntime.MapWritableCode, coreruntime.SealCode, coreruntime.Unmap)
 }

@@ -117,6 +117,7 @@ func TestSourceLedgerOriginalCoordinates(t *testing.T) {
 }
 
 func TestSourceLedgerPrimitiveSignatures(t *testing.T) {
+	ensureValidationEffects()
 	for kind, effect := range opEffects {
 		if effect.cat == effNone {
 			continue

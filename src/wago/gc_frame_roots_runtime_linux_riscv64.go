@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build !wago_standalone_no_collector && linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -33,15 +33,17 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32, stack *coreruntime.Engine) gc.RootSet {
 	plan := in.c.genericGCFrameRoots()
 	if plan == nil {
-		if rv64GCStructBasic(in.c) || rv64GCArrayFixedOfficial(in.c) || rv64GCArrayDefaultOfficial(in.c) || rv64GCArrayPackedData(in.c) {
-			return in.gcBoundedCallerRoots(ctrl, state, stack)
-		}
-		// The pinned ref.eq product roots every earlier allocation in its table
-		// before the next helper. Preserve its persistent-domain root publication
-		// until it migrates to exact frame maps.
-		if state != nil && rv64OfficialGCRefEq(in.c) {
-			state.frameRoots = in.gcCollectFrameRoots(state)
-			return &state.frameRoots
+		if rv64LegacyGCProductsForImage {
+			if rv64GCStructBasic(in.c) || rv64GCArrayFixedOfficial(in.c) || rv64GCArrayDefaultOfficial(in.c) || rv64GCArrayPackedData(in.c) {
+				return in.gcBoundedCallerRoots(ctrl, state, stack)
+			}
+			// The pinned ref.eq product roots every earlier allocation in its table
+			// before the next helper. Preserve its persistent-domain root publication
+			// until it migrates to exact frame maps.
+			if state != nil && rv64OfficialGCRefEq(in.c) {
+				state.frameRoots = in.gcCollectFrameRoots(state)
+				return &state.frameRoots
+			}
 		}
 		return gc.EmptyRoots{}
 	}
@@ -84,7 +86,7 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 			continue // opaque word is resolved to its shell by the root walker
 		}
 		if encoded&shared.GCFrameFuncRefRootFlag != 0 {
-			if bits != 0 && managedFunctionDescriptorOwner(in, bits) == nil {
+			if bits != 0 && (!managedFunctionGraphForImage || managedFunctionDescriptorOwner(in, bits) == nil) {
 				panic(gcHelperFailuref("function frame root has no live physical owner"))
 			}
 			continue

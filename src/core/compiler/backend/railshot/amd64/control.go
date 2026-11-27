@@ -12,6 +12,7 @@ package amd64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -1359,6 +1360,13 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
 		}
 		return nil, nil, nil, mtI64, nil
 	}
+	if buildfeatures.MultiValue == 0 {
+		return nil, nil, nil, mtNone, fmt.Errorf("multi-value is disabled in this build")
+	}
+	return f.indexedBlockType(r)
+}
+
+func (f *fn) indexedBlockType(r *wasm.Reader) (params, results, frameTypes []machineType, res0 machineType, err error) {
 	x, e := r.I64()
 	if e != nil {
 		return nil, nil, nil, mtNone, e
@@ -1742,12 +1750,14 @@ func (f *fn) keepBlockOperands() bool {
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-	if op == 0x04 {
+	if buildfeatures.TailCall != 0 && op == 0x04 {
 		if done, err := f.tryInlineTailConstantIf(r); done || err != nil {
 			return err
 		}
 	}
-	f.blockInlineTailConstantWrites(*r, op)
+	if buildfeatures.TailCall != 0 {
+		f.blockInlineTailConstantWrites(*r, op)
+	}
 	if op == 0x03 && integerReductionLoopEnabled {
 		if done, err := f.tryIntegerReductionLoop(r); done || err != nil {
 			return err
@@ -1782,13 +1792,13 @@ func (f *fn) opBlockPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
-	if kind == cfIf && !f.unreachable && pN == 0 {
+	if buildfeatures.TailCall != 0 && kind == cfIf && !f.unreachable && pN == 0 {
 		if done, err := f.tryTailArgumentSelect(r); done || err != nil {
 			return err
 		}
 	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
-	fr.set(ctrlGCIfAllocationCast, kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI64 &&
+	fr.set(ctrlGCIfAllocationCast, buildfeatures.GC != 0 && kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI64 &&
 		f.gcIfReferenceResult(signature) && f.provedGCIfAllocationCast(r))
 	fr.setFloatConstBase(len(f.fconsts))
 	fr.set(ctrlEntryUnreachable, f.unreachable)
@@ -2433,11 +2443,13 @@ func (f *fn) opElse() error {
 	}
 	// A self-tail entry condition's false arm is also a native loop header.
 	// Give it the same fetch alignment as an explicit compact Wasm loop.
-	if entry, eligible := f.tailLoopEntryTestOffset(); eligible && f.compactLoopAlign32 {
-		size, _, _, ok := selfTailEntryCompare(f.a.B[entry:])
-		if ok && fr.controlSite == entry+size+2 {
-			f.a.AlignLoop32()
-			f.stats.peep("tail-self-loop-align32")
+	if buildfeatures.TailCall != 0 {
+		if entry, eligible := f.tailLoopEntryTestOffset(); eligible && f.compactLoopAlign32 {
+			size, _, _, ok := selfTailEntryCompare(f.a.B[entry:])
+			if ok && fr.controlSite == entry+size+2 {
+				f.a.AlignLoop32()
+				f.stats.peep("tail-self-loop-align32")
+			}
 		}
 	}
 	f.a.PatchRel32(fr.controlSite, f.a.Len())
@@ -2585,7 +2597,7 @@ func (f *fn) opEnd() error {
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
 		}
-		if !fallthroughReachable {
+		if buildfeatures.TailCall != 0 && !fallthroughReachable {
 			f.rememberInlineTailCompare(&fr, falseResume)
 		}
 		fr.set(ctrlEndReachable, true)
@@ -2622,10 +2634,12 @@ func (f *fn) opEnd() error {
 				f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(&fr, false), frameGCRootFlags(baseGCRoots, resultGCRoots))
 			}
 		}
-		f.markEHReferenceResults(&fr)
+		if buildfeatures.ExceptionHandling != 0 {
+			f.markEHReferenceResults(&fr)
+		}
 		f.restoreIfPrefix(&fr)
 	}
-	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
+	if buildfeatures.ExceptionHandling != 0 && fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
 		// Branch edges to this frame were patched to land here too, so they must
 		// also pop the handler record and skip the handler body, even when the
@@ -2672,6 +2686,9 @@ func (f *fn) branchHandlerRecord(fi int) int {
 
 // Emit only on the taken edge, alongside its value/local reconciliation.
 func (f *fn) restoreBranchHandlers(fi int) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return
+	}
 	if record := f.branchHandlerRecord(fi); record >= 0 {
 		f.a.Load64(RBP, RSP, f.ehRecordOff(record)+ehPrevOff)
 	}

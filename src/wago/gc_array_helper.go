@@ -43,12 +43,8 @@ const (
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
 	gcArrayCheckFixed          uint32 = 39
-	// 40, 42 and 43 are dead-allocation helpers; 45..47 are RV64 host helpers.
-	gcTableFill     uint32 = 48
-	gcTableCopy     uint32 = 49
-	gcTableGrow     uint32 = 50
-	gcTableInit     uint32 = 51
-	gcTableElemDrop uint32 = 52
+	// 40 and 42 are struct reservations; 45..47 are RV64 host helpers.
+	gcArrayReserveDeadBatch = 43
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -62,150 +58,24 @@ func gcArrayElementStorage(kind gc.StorageKind) bool {
 	}
 }
 
-//lint:ignore U1000 retained as the unparked native helper entrypoint
-func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
-	in.dispatchGCHelperParked(0, helper, 0, args, results)
-}
-
-func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
-	in.dispatchGCHelperParkedOnStack(ctrl, helper, safepoint, args, results, nil)
-}
-
-func (in *Instance) dispatchGCHelperParkedOnStack(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
-	if in.dispatchCompactExternStore(ctrl, helper, safepoint, args, results, stack) {
-		return
-	}
-	if dispatchOwnedExceptionHelper(in, ctrl, helper, safepoint, args, results, stack) {
-		return
-	}
-	if helper < gcArrayAllocDefault || helper == gcStructReserveDeadNative || helper == gcStructReserveDeadBatch || helper == gcArrayReserveDeadBatch {
-		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results, stack)
-		return
-	}
-	in.dispatchGCArrayHelperParked(ctrl, helper, safepoint, args, results, stack)
-}
-
 func (in *Instance) dispatchGCArrayHelper(helper uint32, args, results []uint64) {
-	in.dispatchGCArrayHelperParked(0, helper, 0, args, results, nil)
+	in.dispatchGCHelperParkedOnStack(0, helper, 0, args, results, nil)
 }
 
-func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) {
-	if in == nil || in.gc == nil {
-		panic(gcHelperFailuref("gc array helper %d has no live collector", helper))
-	}
-	defer drainExceptionReclaims(in.gc)
-	lockedDomain := in.lockGCCollector()
-	defer unlockGCCollector(lockedDomain)
-	var state *gcPublicState
-	var frameRoots gc.RootSet = gc.EmptyRoots{}
-	if gcHelperMayAllocate(helper) || in.managedFunctionAggregateMayAllocate(helper, args) || in.compactExternPersistentMayAllocate(helper, args) {
-		in.gc.CancelNativeAllocationBatch()
-		state = in.publicGCState()
-		state.mu.Lock()
-		defer state.mu.Unlock()
-		defer func() { state.frameRoots.physicalStack = nil }()
-		frameRoots = in.gcHelperRoots(ctrl, state, safepoint, stack)
-	}
-
-	if in.dispatchManagedFunctionAggregate(helper, args, results, frameRoots, state) {
-		return
-	}
-
-	if in.dispatchCompactExternTableBulk(helper, args, results, lockedDomain, frameRoots) {
-		return
-	}
-
-	switch helper {
-	case gcTableInit:
-		if len(args) != 5 {
-			panic(gcHelperFailuref("gc table init helper arity = %d, want 5", len(args)))
+func (in *Instance) dispatchGCArrayHelperLocked(helper uint32, args, results []uint64, state *gcPublicState, frameRoots gc.RootSet) {
+	switch {
+	case gcHelperMaskForImage&(1<<gcArrayReserveDeadBatch) != 0 && helper == gcArrayReserveDeadBatch:
+		if len(args) != 2 || len(results) != 0 {
+			panic(gcHelperFailuref("gc array batch reservation arity = %d/%d, want 2/0", len(args), len(results)))
 		}
-		descriptor, tableLength, _, exact := in.gcRootedTableDescriptor(args[3])
-		destination, source, count := args[0], args[1], args[2]
-		if destination+count < destination || destination+count > uint64(tableLength) {
-			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		typeID, length, count := uint32(args[1]>>32), uint32(args[1]), uint32(args[0])
+		if err := in.gc.ReserveDeadArrayAllocationsWithPoll(in.requireGCDomainType(typeID), length, count, frameRoots, in.pollGCBatchInterrupt); err != nil {
+			panic(gcHelperFailure(err))
 		}
-		entries, segmentLength := in.gcRootedTableElementSegment(uint32(args[4]), exact)
-		if source+count < source || source+count > uint64(segmentLength) {
-			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
+		if gc.NativeDeadBatchSupported {
+			in.prepareNativeDeadArrayBatch(typeID, length, count)
 		}
-		// Authenticate every retained source root before publishing the first
-		// destination write. This keeps trapping/corrupt metadata atomic.
-		for i := uint64(0); i < count; i++ {
-			word := in.gcRootedTableElementBits(entries, source+i)
-			_ = in.gcRootedTableReference(word, exact)
-		}
-		for i := uint64(0); i < count; i++ {
-			ref := in.gcRootedTableReference(in.gcRootedTableElementBits(entries, source+i), exact)
-			binary.LittleEndian.PutUint64(descriptor[8+(destination+i)*8:], uint64(ref))
-			in.gc.WriteBarrierRoot(ref)
-		}
-	case gcTableElemDrop:
-		if len(args) != 1 {
-			panic(gcHelperFailuref("gc table elem-drop helper arity = %d, want 1", len(args)))
-		}
-		desc, _ := in.gcRootedTableElementDescriptor(uint32(args[0]))
-		// Removing the descriptor length under the collector-domain lock makes
-		// the passive roots unreachable atomically from the scanner's view.
-		binary.LittleEndian.PutUint32(desc[8:], 0)
-	case gcTableFill:
-		if len(args) != 4 {
-			panic(gcHelperFailuref("gc table fill helper arity = %d, want 4", len(args)))
-		}
-		descriptor, length, _, exact := in.gcRootedTableDescriptor(args[3])
-		start, count := args[0], args[2]
-		if start+count < start || start+count > uint64(length) {
-			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
-		}
-		ref := in.gcRootedTableReference(args[1], exact)
-		for i := uint64(0); i < count; i++ {
-			binary.LittleEndian.PutUint64(descriptor[8+(start+i)*8:], uint64(ref))
-		}
-		in.gc.WriteBarrierRoot(ref)
-	case gcTableCopy:
-		if len(args) != 5 {
-			panic(gcHelperFailuref("gc table copy helper arity = %d, want 5", len(args)))
-		}
-		destination, destinationLength, _, destinationType := in.gcRootedTableDescriptor(args[3])
-		source, sourceLength, _, _ := in.gcRootedTableDescriptor(args[4])
-		destinationStart, sourceStart, count := args[0], args[1], args[2]
-		if destinationStart+count < destinationStart || destinationStart+count > uint64(destinationLength) ||
-			sourceStart+count < sourceStart || sourceStart+count > uint64(sourceLength) {
-			panic(gcHelperTrap(coreruntime.TrapTableOutOfBounds))
-		}
-		// Validate the full source against the destination's exact table type
-		// before the first write. copy then provides memmove semantics for an
-		// overlapping same-table range.
-		for i := uint64(0); i < count; i++ {
-			word := binary.LittleEndian.Uint64(source[8+(sourceStart+i)*8:])
-			_ = in.gcRootedTableReference(word, destinationType)
-		}
-		destinationBytes := destination[8+destinationStart*8 : 8+(destinationStart+count)*8]
-		sourceBytes := source[8+sourceStart*8 : 8+(sourceStart+count)*8]
-		copy(destinationBytes, sourceBytes)
-		for i := uint64(0); i < count; i++ {
-			in.gc.WriteBarrierRoot(gc.Ref(uint32(binary.LittleEndian.Uint64(destinationBytes[i*8:]))))
-		}
-	case gcTableGrow:
-		if len(args) != 3 || len(results) < 1 {
-			panic(gcHelperFailuref("gc table grow helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
-		}
-		descriptor, length, capacity, exact := in.gcRootedTableDescriptor(args[2])
-		ref := in.gcRootedTableReference(args[0], exact)
-		delta := args[1]
-		newLength := uint64(length) + delta
-		if newLength < uint64(length) || newLength > uint64(capacity) {
-			results[0] = uint64(^uint32(0))
-			break
-		}
-		for i := uint64(length); i < newLength; i++ {
-			binary.LittleEndian.PutUint64(descriptor[8+i*8:], uint64(ref))
-		}
-		in.gc.WriteBarrierRoot(ref)
-		// Publish length only after every newly visible root has been initialized.
-		binary.LittleEndian.PutUint32(descriptor, uint32(newLength))
-		results[0] = uint64(length)
-	case gcArrayCheckFixed:
+	case gcHelperMaskForImage&(1<<gcArrayCheckFixed) != 0 && helper == gcArrayCheckFixed:
 		if len(args) != 2 {
 			panic(gcHelperFailuref("gc array check-fixed helper arity = %d, want 2", len(args)))
 		}
@@ -216,7 +86,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(results) != 0 {
 			results[0] = uint64(ref)
 		}
-	case gcArrayCheckDefault:
+	case gcHelperMaskForImage&(1<<gcArrayCheckDefault) != 0 && helper == gcArrayCheckDefault:
 		if len(args) != 2 {
 			panic(gcHelperFailuref("gc array check-default helper arity = %d, want 2", len(args)))
 		}
@@ -227,7 +97,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(results) != 0 {
 			results[0] = uint64(ref)
 		}
-	case gcArrayCheckUniform:
+	case gcHelperMaskForImage&(1<<gcArrayCheckUniform) != 0 && helper == gcArrayCheckUniform:
 		if len(args) < 3 {
 			panic(gcHelperFailuref("gc array check-uniform helper arity = %d, want at least 3", len(args)))
 		}
@@ -247,7 +117,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(results) != 0 {
 			results[0] = uint64(ref)
 		}
-	case gcArrayCheckData:
+	case gcHelperMaskForImage&(1<<gcArrayCheckData) != 0 && helper == gcArrayCheckData:
 		if len(args) != 4 {
 			panic(gcHelperFailuref("gc array check-data helper arity = %d, want 4", len(args)))
 		}
@@ -293,7 +163,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if len(results) != 0 {
 			results[0] = uint64(ref)
 		}
-	case gcArrayAllocFixedV128Spill:
+	case gcHelperMaskForImage&(1<<gcArrayAllocFixedV128Spill) != 0 && helper == gcArrayAllocFixedV128Spill:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-fixed-spill helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
 		}
@@ -327,7 +197,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcHelperFailure(err))
 		}
 		results[0] = uint64(ref)
-	case gcArrayInitElem:
+	case gcHelperMaskForImage&(1<<gcArrayInitElem) != 0 && helper == gcArrayInitElem:
 		if len(args) != 6 {
 			panic(gcHelperFailuref("gc array init-elem helper arity = %d, want 6", len(args)))
 		}
@@ -336,7 +206,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		typeID, elemIndex := uint32(args[4]), uint32(args[5])
 		product := in.c.stagedGCArrayProduct()
 		if product != stagedGCArrayProductInitElem && product != stagedGCArrayProductGeneric {
-			panic(gcHelperFailuref("gc array.init_elem product %s is unavailable", product))
+			panic(gcHelperFailuref("gc array.init_elem product %s is unavailable", stagedGCArrayProductName(product)))
 		}
 		if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
 			panic(gcHelperFailuref("gc array.init_elem type %d is not a reference array", typeID))
@@ -377,7 +247,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if deferredBarrier {
 			in.gc.PostBulkWriteBarrier(ref, dstStart, length)
 		}
-	case gcArrayInitData:
+	case gcHelperMaskForImage&(1<<gcArrayInitData) != 0 && helper == gcArrayInitData:
 		if len(args) != 6 {
 			panic(gcHelperFailuref("gc array init-data helper arity = %d, want 6", len(args)))
 		}
@@ -406,7 +276,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcHelperFailure(err))
 		}
-	case gcArrayFill:
+	case gcHelperMaskForImage&(1<<gcArrayFill) != 0 && helper == gcArrayFill:
 		if len(args) < 5 {
 			panic(gcHelperFailuref("gc array fill helper arity = %d, want at least 5", len(args)))
 		}
@@ -425,7 +295,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcHelperFailure(err))
 		}
-	case gcArrayCopy:
+	case gcHelperMaskForImage&(1<<gcArrayCopy) != 0 && helper == gcArrayCopy:
 		if len(args) != 7 {
 			panic(gcHelperFailuref("gc array copy helper arity = %d, want 7", len(args)))
 		}
@@ -440,7 +310,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			}
 			panic(gcHelperFailure(err))
 		}
-	case gcArrayDropElem:
+	case gcHelperMaskForImage&(1<<gcArrayDropElem) != 0 && helper == gcArrayDropElem:
 		if len(args) != 1 {
 			panic(gcHelperFailuref("gc array elem-drop helper arity = %d, want 1", len(args)))
 		}
@@ -460,13 +330,13 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			break
 		}
 		panic(gcHelperFailuref("gc array element segment %d is unavailable", elemIndex))
-	case gcArrayAllocElem:
+	case gcHelperMaskForImage&(1<<gcArrayAllocElem) != 0 && helper == gcArrayAllocElem:
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-elem helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
 		source, length := uint32(args[0]), uint32(args[1])
 		typeID, elemIndex := uint32(args[2]), uint32(args[3])
-		if product := in.c.stagedGCArrayProduct(); !rv64GCArrayReference(in.c) && (product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric) {
+		if product := in.c.stagedGCArrayProduct(); !(rv64LegacyGCProductsForImage && rv64GCArrayReference(in.c)) && (product == stagedGCArrayProductNewElem || product == stagedGCArrayProductGeneric) {
 			if int(typeID) >= len(in.c.GCTypeDescs) || in.c.GCTypeDescs[typeID].Kind != gc.KindArray || !gcArrayElementStorage(in.c.GCTypeDescs[typeID].Elem) {
 				panic(gcHelperFailuref("gc array element type %d is unavailable", typeID))
 			}
@@ -544,7 +414,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		in.gc.BulkWriteBarrier(ref, 0, length)
 		results[0] = uint64(ref)
-	case gcArrayAllocData:
+	case gcHelperMaskForImage&(1<<gcArrayAllocData) != 0 && helper == gcArrayAllocData:
 		if len(args) != 4 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-data helper arity = %d/%d, want 4/at-least-1", len(args), len(results)))
 		}
@@ -599,7 +469,8 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			panic(gcHelperFailure(err))
 		}
 		results[0] = uint64(ref)
-	case gcArrayAllocUniform, gcArrayAllocUniformNative:
+	case gcHelperMaskForImage&(1<<gcArrayAllocUniform) != 0 && helper == gcArrayAllocUniform,
+		gcHelperMaskForImage&(1<<gcArrayAllocUniformNative) != 0 && helper == gcArrayAllocUniformNative:
 		if len(args) < 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-uniform helper arity = %d/%d, want at least 3/at-least-1", len(args), len(results)))
 		}
@@ -610,15 +481,16 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		length := uint32(args[valueSlots])
 		value := in.gcArrayStoredValue(typeID, args[:valueSlots])
-		ref, err := in.gc.NewArrayWithRootScratch(in.requireGCDomainType(typeID), length, value, frameRoots, &state.arrayInitializerRoots)
+		ref, err := in.gc.NewArrayWithRootScratch(in.requireGCDomainType(typeID), length, value, frameRoots, state.arrayInitializerScratch())
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
 		results[0] = uint64(ref)
-		if helper == gcArrayAllocUniformNative {
+		if gcHelperMaskForImage&(1<<gcArrayAllocUniformNative) != 0 && helper == gcArrayAllocUniformNative {
 			in.prepareNativeArrayAllocation(typeID, length)
 		}
-	case gcArrayAllocFixed, gcArrayAllocFixedNative:
+	case gcHelperMaskForImage&(1<<gcArrayAllocFixed) != 0 && helper == gcArrayAllocFixed,
+		gcHelperMaskForImage&(1<<gcArrayAllocFixedNative) != 0 && helper == gcArrayAllocFixedNative:
 		if len(args) < 2 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-fixed helper arity = %d/%d, want at-least-2/at-least-1", len(args), len(results)))
 		}
@@ -636,15 +508,16 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			start := int(i) * valueSlots
 			values[i] = in.gcArrayStoredValue(typeID, args[start:start+valueSlots])
 		}
-		ref, err := in.gc.NewArrayFixedPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), values, frameRoots, &state.arrayInitializerRoots)
+		ref, err := in.gc.NewArrayFixedPrevalidatedWithRootScratch(in.requireGCDomainType(typeID), values, frameRoots, state.arrayInitializerScratch())
 		if err != nil {
 			in.gcPanicArrayError(err)
 		}
 		results[0] = uint64(ref)
-		if helper == gcArrayAllocFixedNative {
+		if gcHelperMaskForImage&(1<<gcArrayAllocFixedNative) != 0 && helper == gcArrayAllocFixedNative {
 			in.prepareNativeArrayAllocation(typeID, count)
 		}
-	case gcArrayAllocDefault, gcArrayAllocDefaultNative:
+	case gcHelperMaskForImage&(1<<gcArrayAllocDefault) != 0 && helper == gcArrayAllocDefault,
+		gcHelperMaskForImage&(1<<gcArrayAllocDefaultNative) != 0 && helper == gcArrayAllocDefaultNative:
 		if len(args) != 2 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array alloc-default helper arity = %d/%d, want 2/at-least-1", len(args), len(results)))
 		}
@@ -653,10 +526,12 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			in.gcPanicArrayError(err)
 		}
 		results[0] = uint64(ref)
-		if helper == gcArrayAllocDefaultNative {
+		if gcHelperMaskForImage&(1<<gcArrayAllocDefaultNative) != 0 && helper == gcArrayAllocDefaultNative {
 			in.prepareNativeDefaultArrayAllocation(uint32(args[1]), uint32(args[0]))
 		}
-	case gcArrayGet, gcArrayGetS, gcArrayGetU:
+	case gcHelperMaskForImage&(1<<gcArrayGet) != 0 && helper == gcArrayGet,
+		gcHelperMaskForImage&(1<<gcArrayGetS) != 0 && helper == gcArrayGetS,
+		gcHelperMaskForImage&(1<<gcArrayGetU) != 0 && helper == gcArrayGetU:
 		if len(args) != 3 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array get helper arity = %d/%d, want 3/at-least-1", len(args), len(results)))
 		}
@@ -679,8 +554,8 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if !matched {
 			panic(gcHelperFailuref("gc array type = %d, want subtype of %d", actual, typeID))
 		}
-		switch helper {
-		case gcArrayGetS:
+		switch {
+		case gcHelperMaskForImage&(1<<gcArrayGetS) != 0 && helper == gcArrayGetS:
 			switch value.Kind {
 			case gc.StorageI8:
 				results[0] = uint64(uint32(int32(int8(value.Bits))))
@@ -689,7 +564,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 			default:
 				panic(gcHelperFailuref("gc array.get_s element kind %d is not packed", value.Kind))
 			}
-		case gcArrayGetU:
+		case gcHelperMaskForImage&(1<<gcArrayGetU) != 0 && helper == gcArrayGetU:
 			switch value.Kind {
 			case gc.StorageI8:
 				results[0] = uint64(uint32(uint8(value.Bits)))
@@ -711,7 +586,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 				}
 			}
 		}
-	case gcArraySet:
+	case gcHelperMaskForImage&(1<<gcArraySet) != 0 && helper == gcArraySet:
 		if len(args) < 4 {
 			panic(gcHelperFailuref("gc array set helper arity = %d, want at least 4", len(args)))
 		}
@@ -740,7 +615,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		if !matched {
 			panic(gcHelperFailuref("gc array type = %d, want subtype of %d", actual, typeID))
 		}
-	case gcArrayLen:
+	case gcHelperMaskForImage&(1<<gcArrayLen) != 0 && helper == gcArrayLen:
 		if len(args) != 1 || len(results) < 1 {
 			panic(gcHelperFailuref("gc array len helper arity = %d/%d, want 1/at-least-1", len(args), len(results)))
 		}
@@ -868,44 +743,6 @@ func (in *Instance) gcRootedTableReference(word uint64, exact ValueTypeDescripto
 		panic(gcHelperFailuref("generic GC table mutation contains an incompatible reference"))
 	}
 	return ref
-}
-
-func (in *Instance) gcRootedTableElementDescriptor(elemIndex uint32) ([]byte, ElemInit) {
-	if int(elemIndex) >= len(in.c.passiveElems) || in.jm.PassiveElemPtr() == 0 {
-		panic(gcHelperFailuref("generic GC table element segment %d is unavailable", elemIndex))
-	}
-	elem := in.c.passiveElems[elemIndex]
-	if elem.Mode != ElemModePassive && (elem.Mode != ElemModeActive && elem.Mode != ElemModeDeclarative || len(elem.Values) != 0) || elemEntryBytes(elem.RefType) != 8 || !isGCRefValType(normalizedElemRefType(elem.RefType)) && (!in.c.compactExternFrameRoots() || normalizedElemRefType(elem.RefType) != ValExternRef) {
-		panic(gcHelperFailuref("generic GC table element segment %d is not passive aggregate reference data", elemIndex))
-	}
-	descOff := int(elemIndex) * coreruntime.PassiveElemDescBytes
-	desc := unsafe.Slice((*byte)(offHeapPtr(in.jm.PassiveElemPtr()+uintptr(descOff))), coreruntime.PassiveElemDescBytes)
-	return desc, elem
-}
-
-func (in *Instance) gcRootedTableElementSegment(elemIndex uint32, tableType ValueTypeDescriptor) (uintptr, uint32) {
-	desc, elem := in.gcRootedTableElementDescriptor(elemIndex)
-	exact, err := in.c.elemExactType(elem)
-	if err != nil || !valueTypeSubtype(exact, in.c.Types, tableType, in.c.Types) {
-		panic(gcHelperFailuref("generic GC table element segment %d type does not match destination", elemIndex))
-	}
-	length := binary.LittleEndian.Uint32(desc[8:])
-	if uint64(length) > uint64(len(elem.Values)) {
-		panic(gcHelperFailuref("generic GC table element segment %d length %d exceeds retained entries %d", elemIndex, length, len(elem.Values)))
-	}
-	entries := uintptr(binary.LittleEndian.Uint64(desc))
-	if length != 0 && entries == 0 {
-		panic(gcHelperFailuref("generic GC table element segment %d has no entries", elemIndex))
-	}
-	return entries, length
-}
-
-func (in *Instance) gcRootedTableElementBits(entries uintptr, index uint64) uint64 {
-	if index > uint64(^uintptr(0))/8 || uint64(entries) > uint64(^uintptr(0))-index*8 {
-		panic(gcHelperFailuref("generic GC table element entry %d address overflows", index))
-	}
-	entry := unsafe.Slice((*byte)(offHeapPtr(entries+uintptr(index*8))), 8)
-	return binary.LittleEndian.Uint64(entry)
 }
 
 //go:noinline
