@@ -15,12 +15,6 @@ func managedFunctionRegisteredLocked(*referenceStore, *Instance)     {}
 func managedFunctionLifetimeLocked(*referenceStore, *Instance, bool) {}
 func managedFunctionPrepareRegistration(*referenceStore, *Instance)  {}
 
-//lint:ignore U1000 Used by the RISC-V root ledger with the collector disabled.
-func managedFunctionRootEpochLocked(*Instance) {}
-
-//lint:ignore U1000 Used by the RISC-V root ledger with the collector disabled.
-func managedFunctionRetainAllowedLocked(*Instance) bool { return true }
-
 func managedFunctionBindInvocationState(*Instance, *instancePluginState)      {}
 func managedFunctionAfterInvocationUnlock(*instancePluginState, invocationID) {}
 func managedFunctionAfterClose(*Instance)                                     {}
