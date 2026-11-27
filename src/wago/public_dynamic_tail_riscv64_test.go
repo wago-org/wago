@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -46,6 +47,31 @@ func rv64PublicDynamicTailModule(types []wasm.ValType, imported bool) []byte {
 	call = append(call, 0x20, byte(len(types)), 0x13, 2, 0, 0x0b)
 	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(identity), wasmtest.Code(call))))
 	return wasmtest.Module(sections...)
+}
+
+func TestBuildProfileRV64NumericIndirectTailWithoutTypedReferences(t *testing.T) {
+	if buildfeatures.TypedFunctionReferences != 0 || !SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
+		t.Skip("requires tail calls in a build without typed function references")
+	}
+	cfg := rv64NativeTailConfig().WithCoreFeatures(CoreFeaturesV1 | CoreFeatureTailCall)
+	compiled, err := cfg.Compile(rv64PublicDynamicTailModule([]wasm.ValType{wasm.I32}, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	plan := rv64NativeTailModule(compiled)
+	if plan == nil || len(plan.Plans) != 1 || plan.Plans[0].Kind != encoder.NativeTailIndirect {
+		t.Fatal("missing native indirect tail plan", plan)
+	}
+	instance, err := Instantiate(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("call", 42, 0)
+	if err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatal("numeric indirect tail", got, err)
+	}
 }
 
 func TestRV64PublicDynamicTailSourceArtifact(t *testing.T) {
@@ -111,7 +137,7 @@ func TestRV64PublicDynamicTailSourceArtifact(t *testing.T) {
 							t.Fatal("dynamic transport", got, want, err)
 						}
 						state := &in.pluginState.Load().railshotInvocation
-						if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
+						if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(in) != 0 {
 							t.Fatal("cold exit retained charged generation")
 						}
 					}
@@ -226,7 +252,7 @@ func rv64PublicTailDeepPrepared(t *testing.T, reference bool) {
 					}
 					session.Close()
 				}
-				if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+				if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 					t.Fatal("prepared exit retained tail capability")
 				}
 			})

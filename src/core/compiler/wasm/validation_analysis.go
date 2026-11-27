@@ -7,7 +7,7 @@
 
 package wasm
 
-import "sync"
+import "github.com/wago-org/wago/internal/buildfeatures"
 
 // ValidatedFuncFlags are architecture-neutral facts gathered while a function
 // body is being validated. They describe only successfully validated code.
@@ -72,7 +72,6 @@ type ValidatedModuleAnalysis struct {
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {
-	initValidatedFuncFlags()
 	*a = ValidatedModuleAnalysis{funcs: make([]ValidatedFuncFacts, len(m.Code)), module: m}
 }
 
@@ -113,16 +112,15 @@ func (a *ValidatedModuleAnalysis) DataStateCount() uint32 { return a.dataStateCo
 
 func (v *funcValidator) observeValidatedInstruction(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	f.observe(in.Kind)
-	if in.Kind < numInstrKinds && !validatedFuncNeedsPayloadByKind[in.Kind] {
-		return
+	// All instructions with relevant immediates precede the SIMD range.
+	if in.Kind <= InstrElemDrop && validatedInstructionNeedsPayload(in.Kind) {
+		v.observeValidatedInstructionPayload(f, in, segmentCounts)
 	}
-	v.observeValidatedInstructionPayload(f, in, segmentCounts)
 }
 
 // observeValidatedInstructionPayload records the uncommon facts that depend on
 // an instruction immediate rather than only its kind. The byte-backed validator
-// calls this only for kinds marked in validatedFuncNeedsPayloadByKind, keeping
-// the ordinary scalar instruction path to two table lookups and one OR.
+// calls this only for instructions with relevant payloads.
 func (v *funcValidator) observeValidatedInstructionPayload(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	for _, typ := range in.ValTypes() {
 		f.observeValType(typ)
@@ -167,31 +165,6 @@ func (v *funcValidator) observeValidatedDynamicCall(f *ValidatedFuncFacts, typeI
 	}
 }
 
-func (f *ValidatedFuncFacts) observe(kind InstrKind) {
-	if kind < numInstrKinds {
-		f.Flags |= validatedFuncFlagsByKind[kind]
-		return
-	}
-	f.observeSlow(kind)
-}
-
-var (
-	validatedFuncFlagsOnce          sync.Once
-	validatedFuncFlagsByKind        [numInstrKinds]ValidatedFuncFlags
-	validatedFuncNeedsPayloadByKind [numInstrKinds]bool
-)
-
-func initValidatedFuncFlags() {
-	validatedFuncFlagsOnce.Do(func() {
-		for kind := InstrKind(0); kind < numInstrKinds; kind++ {
-			var facts ValidatedFuncFacts
-			facts.observeSlow(kind)
-			validatedFuncFlagsByKind[kind] = facts.Flags
-			validatedFuncNeedsPayloadByKind[kind] = validatedInstructionNeedsPayload(kind)
-		}
-	})
-}
-
 func validatedInstructionNeedsPayload(kind InstrKind) bool {
 	switch kind {
 	case InstrSelect,
@@ -204,18 +177,29 @@ func validatedInstructionNeedsPayload(kind InstrKind) bool {
 	}
 }
 
-// observeSlow is the auditable source of the fixed instruction classifier.
-// Successful validation uses validatedFuncFlagsByKind. Table synchronization
-// tests check its construction; independent admission and requirements tests
-// check that the classification is sufficient to replace exact scanning.
-func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
+const validatedNonAtomicMemory = ValidatedFuncTouchesMemory | ValidatedFuncUsesNonAtomicMemory
+
+// observe records the fixed facts for a successfully validated instruction.
+func (f *ValidatedFuncFacts) observe(kind InstrKind) {
+	if buildfeatures.SIMD != 0 && kind >= InstrV128Load && kind < InstrI8x16RelaxedSwizzle {
+		f.Flags |= ValidatedFuncUsesSIMD
+		if kind <= InstrV128Store || kind >= InstrV128Load8Lane && kind <= InstrV128Load64Zero {
+			f.Flags |= validatedNonAtomicMemory
+		}
+		return
+	}
+	if buildfeatures.SIMD != 0 && buildfeatures.RelaxedSIMD != 0 &&
+		kind >= InstrI8x16RelaxedSwizzle && kind <= InstrI32x4RelaxedDotI8x16I7x16AddS {
+		f.Flags |= ValidatedFuncUsesSIMD | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncNeedsDetailedRequirements
+		return
+	}
 	// Only these classes have complete admission rules in the fixed summary.
 	// New instruction kinds retain exact admission and requirement scanning.
 	if !validatedInstructionAdmissionComplete(kind) {
 		f.Flags |= ValidatedFuncNeedsDetailedAdmission | ValidatedFuncNeedsDetailedRequirements
 	}
 	switch kind {
-	case InstrBlock, InstrIf, InstrTryTable, InstrBr, InstrBrIf, InstrBrTable,
+	case InstrBlock, InstrIf, InstrBr, InstrBrIf, InstrBrTable,
 		InstrBrOnNull, InstrBrOnNonNull, InstrBrOnCast, InstrBrOnCastFail,
 		InstrReturn, InstrUnreachable:
 		f.Flags |= ValidatedFuncHasControl
@@ -224,15 +208,21 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	case InstrCall:
 		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncMayCollect
 	case InstrReturnCall:
-		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
+		if buildfeatures.TailCall != 0 {
+			f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
+		}
 	case InstrCallIndirect:
 		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncTouchesTable | ValidatedFuncMayCollect
 	case InstrReturnCallIndirect:
-		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
+		if buildfeatures.TailCall != 0 {
+			f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
+		}
 	case InstrCallRef:
 		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncMayCollect
 	case InstrReturnCallRef:
-		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncMayCollect
+		if buildfeatures.TailCall != 0 {
+			f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncMayCollect
+		}
 	case InstrGlobalGet, InstrGlobalSet:
 		f.Flags |= ValidatedFuncTouchesGlobal
 	case InstrTableGet, InstrTableSet, InstrTableSize, InstrTableGrow,
@@ -241,12 +231,12 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	}
 	switch kind {
 	case InstrReturnCall, InstrReturnCallIndirect, InstrReturnCallRef:
-		f.Flags |= ValidatedFuncNeedsDetailedAdmission
+		if buildfeatures.TailCall != 0 {
+			f.Flags |= ValidatedFuncNeedsDetailedAdmission
+		}
 	case InstrMemoryInit, InstrDataDrop, InstrMemoryCopy, InstrMemoryFill,
 		InstrTableInit, InstrElemDrop, InstrTableCopy:
 		f.Flags |= ValidatedFuncUsesBulkMemory
-	case InstrI32Extend8S, InstrI32Extend16S, InstrI64Extend8S, InstrI64Extend16S, InstrI64Extend32S:
-		f.Flags |= ValidatedFuncUsesSignExtension
 	case InstrI32TruncSatF32S, InstrI32TruncSatF32U, InstrI32TruncSatF64S, InstrI32TruncSatF64U,
 		InstrI64TruncSatF32S, InstrI64TruncSatF32U, InstrI64TruncSatF64S, InstrI64TruncSatF64U:
 		f.Flags |= ValidatedFuncUsesSaturatingTrunc
@@ -257,23 +247,24 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	case InstrRefI31, InstrI31GetS, InstrI31GetU, InstrRefTest, InstrRefCast,
 		InstrBrOnCast, InstrBrOnCastFail, InstrAnyConvertExtern, InstrExternConvertAny:
 		f.Flags |= ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesGC | ValidatedFuncNeedsDetailedAdmission
-	case InstrThrow, InstrThrowRef, InstrTryTable:
-		f.Flags |= ValidatedFuncUsesExceptionHandling | ValidatedFuncNeedsDetailedAdmission
+	case InstrTryTable:
+		if buildfeatures.ExceptionHandling != 0 {
+			f.Flags |= ValidatedFuncHasControl | ValidatedFuncUsesExceptionHandling | ValidatedFuncNeedsDetailedAdmission
+		}
+	case InstrThrow, InstrThrowRef:
+		if buildfeatures.ExceptionHandling != 0 {
+			f.Flags |= ValidatedFuncUsesExceptionHandling | ValidatedFuncNeedsDetailedAdmission
+		}
 	case InstrMemoryGrow:
 		f.Flags |= ValidatedFuncUsesMemoryGrow
 	case InstrTableGrow:
 		f.Flags |= ValidatedFuncUsesTableGrow
-	case InstrMemoryAtomicNotify, InstrMemoryAtomicWait32, InstrMemoryAtomicWait64:
-		f.Flags |= ValidatedFuncUsesAtomicWait
+	}
+	if buildfeatures.SignExtensionOps != 0 && kind >= InstrI32Extend8S && kind <= InstrI64Extend32S {
+		f.Flags |= ValidatedFuncUsesSignExtension
 	}
 	if kind == InstrRefFunc {
 		f.Flags |= ValidatedFuncUsesRefFunc
-	}
-	if IsCoreAtomicInstructionKind(kind) {
-		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncNeedsDetailedAdmission
-	}
-	if kind >= InstrV128Load && kind <= InstrI32x4RelaxedDotI8x16I7x16AddS {
-		f.Flags |= ValidatedFuncUsesSIMD
 	}
 	if kind >= InstrStringConst && kind <= InstrStringEncodeWtf8Array {
 		f.Flags |= ValidatedFuncNeedsDetailedRequirements | ValidatedFuncNeedsDetailedAdmission
@@ -284,11 +275,14 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	if kind >= InstrRefGetDesc && kind <= InstrExternConvertAny {
 		f.Flags |= ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesGC | ValidatedFuncNeedsDetailedAdmission
 	}
-	if instructionTouchesMemory(kind) {
-		f.Flags |= ValidatedFuncTouchesMemory
-		if !IsCoreAtomicInstructionKind(kind) {
-			f.Flags |= ValidatedFuncUsesNonAtomicMemory
+	if buildfeatures.Threads != 0 && IsCoreAtomicInstructionKind(kind) {
+		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncTouchesMemory
+		if kind >= InstrMemoryAtomicNotify && kind <= InstrMemoryAtomicWait64 {
+			f.Flags |= ValidatedFuncUsesAtomicWait
 		}
+	} else if kind >= InstrI32Load && kind <= InstrMemoryGrow ||
+		kind == InstrMemoryInit || kind == InstrMemoryCopy || kind == InstrMemoryFill {
+		f.Flags |= validatedNonAtomicMemory
 	}
 	switch kind {
 	case InstrStructNew, InstrStructNewDefault,
@@ -318,18 +312,6 @@ func validatedInstructionAdmissionComplete(kind InstrKind) bool {
 	default:
 		return false
 	}
-}
-
-func instructionTouchesMemory(kind InstrKind) bool {
-	if effect := opEffects[kind]; effect.cat == effLoad || effect.cat == effStore {
-		return true
-	}
-	if IsCoreAtomicInstructionKind(kind) || kind == InstrMemorySize || kind == InstrMemoryGrow ||
-		kind == InstrMemoryInit || kind == InstrMemoryCopy || kind == InstrMemoryFill {
-		return true
-	}
-	return kind >= InstrV128Load && kind <= InstrV128Store ||
-		kind >= InstrV128Load8Lane && kind <= InstrV128Load64Zero
 }
 
 func (f *ValidatedFuncFacts) observeValType(typ ValType) {
@@ -362,9 +344,11 @@ func (f *ValidatedFuncFacts) observeStructuredDirect(op *directOp) {
 			f.observeValType(op.blockType.Val)
 		}
 	case directTryTable:
-		f.observe(InstrTryTable)
-		if op.blockType.Kind == BlockVal {
-			f.observeValType(op.blockType.Val)
+		if buildfeatures.ExceptionHandling != 0 {
+			f.observe(InstrTryTable)
+			if op.blockType.Kind == BlockVal {
+				f.observeValType(op.blockType.Val)
+			}
 		}
 	}
 }

@@ -129,7 +129,7 @@ func (f *fn) globalGetIndex(x uint32) error {
 		f.a.LdrQ(xmm, cell, 0)
 		f.pushVReg(xmm)
 	default:
-		return fmt.Errorf("arm64: global.get type %s not yet supported (global %d)", gtv, x)
+		return fmt.Errorf("arm64: global.get type %s not yet supported (global %d)", gtv.String(), x)
 	}
 	return nil
 }
@@ -259,7 +259,7 @@ func (f *fn) globalSetIndex(x uint32) error {
 	default:
 		f.pinned = f.pinned.remove(rg)
 		f.release(rg)
-		return fmt.Errorf("arm64: global.set type %s not yet supported (global %d)", gtv, x)
+		return fmt.Errorf("arm64: global.set type %s not yet supported (global %d)", gtv.String(), x)
 	}
 	f.pinned = f.pinned.remove(rg)
 	f.release(rg)

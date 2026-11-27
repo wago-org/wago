@@ -10,6 +10,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -20,12 +21,15 @@ import (
 // Exact declared limits remain metadata. Execution uses the shared finite
 // memory64 reservation ceiling; oversized valid maxima may fail later growth.
 func admitMemoryType(t wasm.MemType, production, public bool) error {
+	if buildfeatures.Memory64 == 0 && t.Limits.Addr64 {
+		return unsupported("memory64 is disabled in this build")
+	}
 	maxPages := uint64(native.MaxMemoryPages)
 	maxDeclared := uint64(65536)
 	if production {
 		maxPages = 65536
 	}
-	if t.Limits.Addr64 && production && public {
+	if buildfeatures.Memory64 != 0 && t.Limits.Addr64 && production && public {
 		maxPages, maxDeclared = 65535, 1<<48
 	}
 	if t.Shared && (!production || !public || t.Limits.Addr64 || !t.Limits.HasMax) || t.Limits.Addr64 && !(production && public) || t.Limits.Min > maxPages || t.Limits.HasMax && (t.Limits.Max < t.Limits.Min || t.Limits.Max > maxDeclared) {
@@ -98,6 +102,7 @@ func (f *integerEmitter) productionMemorySizeGrowAt(index uint32, grow bool) {
 	f.productionMemorySizeGrowTypedAt(index, grow, false)
 }
 func (f *integerEmitter) productionMemorySizeGrowTypedAt(index uint32, grow, address64 bool) {
+	address64 = buildfeatures.Memory64 != 0 && address64
 	if f.mode.threadedMemory && index == 0 {
 		if grow {
 			// A dynamic zero delta is a size query, not a growth attempt. Read the

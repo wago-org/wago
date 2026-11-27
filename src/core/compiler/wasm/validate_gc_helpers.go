@@ -116,6 +116,27 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 	return v.typeGroupBases[recGroup] + int(idx.Index), true
 }
 
+func (v *moduleValidator) validateDeclaredSubtype(st *SubType, gi, si int) error {
+	if len(st.Supers) > 1 {
+		return v.err(ErrTypeMismatch, "multiple supertypes")
+	}
+	for _, sup := range st.Supers {
+		if !v.validTypeIdxInRecGroup(sup, gi) {
+			return v.err(ErrUnknownType, "supertype")
+		}
+		if sup.Rec && sup.Index >= uint32(si) {
+			return v.err(ErrTypeMismatch, "supertype must precede subtype")
+		}
+	}
+	if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
+		return v.err(ErrUnknownType, "describes")
+	}
+	if descriptor, present := st.Metadata.Descriptor.Get(); present && !v.validTypeIdxInRecGroup(descriptor, gi) {
+		return v.err(ErrUnknownType, "descriptor")
+	}
+	return nil
+}
+
 func (v *moduleValidator) validateSubtypeMetadata() error {
 	flat := v.flattenedSubTypeRefs()
 	hasSuper := false

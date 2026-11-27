@@ -130,7 +130,7 @@ func TestForeignClonePublicationLockedHelpersSerializeCollection(t *testing.T) {
 					t.Fatalf("published clone = %v, %v", got, err)
 				}
 				target.refStore.mu.Lock()
-				entry := target.refStore.gcByToken[token.token]
+				entry := target.refStore.objectTokensLocked()[token.token]
 				target.refStore.mu.Unlock()
 				if entry.owner != target {
 					t.Fatal("clone token has the wrong owner")
@@ -139,7 +139,7 @@ func TestForeignClonePublicationLockedHelpersSerializeCollection(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 {
+			if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 0 {
 				t.Fatal("cleanup retained a clone root or token")
 			}
 			if err := target.CollectGC(); err != nil {
@@ -180,7 +180,7 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 				t.Fatal("invalid result type was published")
 			}
 			clearForeignCloneRootLocked(target, state, true)
-			if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
+			if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 				t.Fatal("failed publication leaked ownership")
 			}
 		}()
@@ -192,7 +192,7 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 			t.Fatal("invalid trailing object did not fail reconstruction")
 		}
 		state := target.existingPublicGCState()
-		if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
+		if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 			t.Fatal("failed reconstruction leaked ownership")
 		}
 		// The standalone cleanup entry point must also remain safe after a
@@ -200,7 +200,7 @@ func TestForeignClonePublicationFailureClearsPrivateRoot(t *testing.T) {
 		invocation = target.lockGCInvocation(newInvocationID())
 		clearForeignCloneRoot(target, true)
 		invocation.unlock()
-		if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
+		if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 			t.Fatal("repeated cleanup changed ownership after failed reconstruction")
 		}
 	}
@@ -291,7 +291,7 @@ func TestForeignClonePublicationConcurrentPublicOperations(t *testing.T) {
 				t.Fatal(err)
 			}
 			state := target.existingPublicGCState()
-			if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
+			if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 0 || target.gc.Stats().LiveObjects != 0 {
 				t.Fatal("concurrent operations leaked clone ownership")
 			}
 		})
@@ -327,7 +327,7 @@ func TestForeignClonePublicationClosedTargetClearsPrivateRoot(t *testing.T) {
 				t.Fatalf("clone into closed target = %v, %v", cloned, err)
 			}
 			state := target.existingPublicGCState()
-			if !target.gc.GlobalSlot(state.cloneRootSlot).IsNull() || state.resultTokenCount != 1 || target.gc.Stats().LiveObjects != 1 {
+			if !target.gc.GlobalSlot(state.cloneRoot().slot).IsNull() || state.resultSlots().resultTokenCount != 1 || target.gc.Stats().LiveObjects != 1 {
 				t.Fatal("failed publication changed existing ownership or leaked the clone")
 			}
 			if refs := target.referenceLifetime().snapshot().ResourceRoots; refs != 1 {

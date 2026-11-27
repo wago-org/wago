@@ -56,6 +56,7 @@ func (f *fn) emitAtomicWaitFastPath(helper uint32, slot int, memoryIndex uint32,
 	f.a.Cmp64(RAX, RDI)
 	outOfBounds := f.a.JccPlaceholder(condA)
 	if helper == railshared.AtomicHelperNotify {
+		f.atomicHelperUses |= railshared.AtomicHelperUsesNotifyPending
 		// Pair with wait's announcement before its value load. Prior guest stores
 		// must be visible before concluding that nobody can need this wake.
 		// A locked no-op on this activation's stack avoids writing the shared

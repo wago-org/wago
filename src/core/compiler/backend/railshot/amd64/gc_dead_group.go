@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -24,7 +25,7 @@ type gcDeadDefaultGroupSite struct {
 // The first prototype admits one group at function entry, with no local or
 // operand state. It neither moves nor removes a fallback allocation safepoint.
 func (f *fn) tryDeadGCDefaultGroup(r *wasm.Reader, firstType uint32) (bool, error) {
-	if !f.opt(optDeadGCNew) || !f.opt(optGCNativeAlloc) || f.unreachable ||
+	if !(buildfeatures.GC != 0 && f.opt(optDeadGCNew)) || !(buildfeatures.GC != 0 && f.opt(optGCNativeAlloc)) || f.unreachable ||
 		profileEnabled || f.inlineDepth != 0 || f.moduleEH || len(f.customInstructions) != 0 ||
 		len(f.ctrl) != 1 || len(f.localType) != 0 || f.depth() != 0 || f.nGlobalPins != 0 ||
 		f.wasmPC != f.tracePCBase {

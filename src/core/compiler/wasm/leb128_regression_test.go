@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestReaderDiagnosticOffsets(t *testing.T) {
+	r := ReaderFrom([]byte{0x80, 0x80, 0x80, 0x80, 0x10})
+	if _, err := r.U32(); err == nil || err.Error() != "wasm decode: malformed LEB128 at offset 5" {
+		t.Fatalf("malformed immediate: %v", err)
+	}
+	if _, err := r.Byte(); err == nil || err.Error() != "wasm decode: index out of bounds at offset 5" {
+		t.Fatalf("read past end: %v", err)
+	}
+}
+
 // These cases pin signed, unsigned, malformed, and allocation-free LEB128
 // decoding at the Reader boundary.
 func TestLEB128NoAlloc(t *testing.T) {

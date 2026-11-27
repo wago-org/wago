@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
@@ -75,11 +76,11 @@ var rv64MutableFuncrefLocalCallReferenceVectorBranchTransferCodeDigest = [sha256
 var rv64MutableFuncrefLocalTailCallReferenceVectorBranchTransferCodeDigest = [sha256.Size]byte{0xd0, 0xe8, 0x27, 0x46, 0xbd, 0xea, 0x0a, 0x19, 0xc7, 0xdd, 0x2f, 0x61, 0x0a, 0x04, 0x18, 0xf7, 0xac, 0x00, 0x17, 0xc9, 0xed, 0x5e, 0xe4, 0x49, 0xe6, 0x9f, 0xa4, 0x00, 0xdd, 0xec, 0x1f, 0x2b}
 
 func rv64MutableFuncrefGlobalLocalCallExecutionCode(c *Compiled) bool {
-	return rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
+	return rv64MutableFuncrefGlobalsForImage && buildfeatures.MutableGlobal != 0 && rv64MutableFuncrefGlobalLocalCallCodeVariant(c) != 0
 }
 
 func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
-	if c == nil {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil {
 		return 0
 	}
 	digest := sha256.Sum256(c.code)
@@ -175,6 +176,9 @@ func rv64MutableFuncrefGlobalLocalCallCodeVariant(c *Compiled) int {
 // must match type zero; guest writers can install only the two local targets
 // or null.
 func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 {
+		return false
+	}
 	variant := rv64MutableFuncrefGlobalLocalCallCodeVariant(c)
 	if c == nil || variant == 0 || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape != (variant >= 19) || !c.nativeReferenceFunctionABI || !c.nativeReferenceControlABI {
 		return false
@@ -194,7 +198,7 @@ func rv64MutableFuncrefGlobalLocalCall(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wasmParams := []wasm.ValType(nil)

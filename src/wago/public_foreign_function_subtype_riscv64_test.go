@@ -168,7 +168,7 @@ func TestRV64ForeignFunctionSubtypeWarmAllocations(t *testing.T) {
 				}
 				args, results := []uint64{descriptor, 0, 0}, []uint64{0}
 				allocations := testing.AllocsPerRun(100, func() {
-					consumer.dispatchGCStructHelperParked(0, gcFuncRefTest, 0, args, results, nil)
+					consumer.dispatchGCHelperParkedOnStack(0, gcFuncRefTest, 0, args, results, nil)
 					if results[0] != 1 {
 						panic("foreign subtype helper rejected retained target")
 					}

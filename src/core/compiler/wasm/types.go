@@ -14,7 +14,11 @@
 // current JIT/backend support boundary.
 package wasm
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 type NumType byte
 
@@ -247,19 +251,29 @@ func newValType(kind ValTypeKind, num NumType) ValType {
 	return ValType{lo: uint64(kind)<<valKindShift | uint64(num)<<numTypeShift}
 }
 
+// Static initializers let the linker discard unreferenced built-in types.
+const (
+	i32ValueBits             = uint64(ValNum)<<valKindShift | uint64(NumI32)<<numTypeShift
+	i64ValueBits             = uint64(ValNum)<<valKindShift | uint64(NumI64)<<numTypeShift
+	f32ValueBits             = uint64(ValNum)<<valKindShift | uint64(NumF32)<<numTypeShift
+	f64ValueBits             = uint64(ValNum)<<valKindShift | uint64(NumF64)<<numTypeShift
+	v128ValueBits            = uint64(ValVec) << valKindShift
+	nullableAbstractRefValue = uint64(ValRef)<<valKindShift | uint64(HeapAbs)<<heapKindShift | nullableBit
+)
+
 var (
-	I32       = newValType(ValNum, NumI32)
-	I64       = newValType(ValNum, NumI64)
-	F32       = newValType(ValNum, NumF32)
-	F64       = newValType(ValNum, NumF64)
-	V128      = newValType(ValVec, 0)
-	Bot       = newValType(ValBot, 0)
-	FuncRef   = RefVal(AbsRef(HeapFunc))
-	ExternRef = RefVal(AbsRef(HeapExtern))
-	AnyRef    = RefVal(AbsRef(HeapAny))
-	EqRef     = RefVal(AbsRef(HeapEq))
-	I31Ref    = RefVal(AbsRef(HeapI31))
-	StringRef = RefVal(Ref(true, AbsHeap(HeapString), false))
+	I32       = ValType{lo: i32ValueBits}
+	I64       = ValType{lo: i64ValueBits}
+	F32       = ValType{lo: f32ValueBits}
+	F64       = ValType{lo: f64ValueBits}
+	V128      = ValType{lo: v128ValueBits}
+	Bot       = ValType{lo: uint64(ValBot) << valKindShift}
+	FuncRef   = ValType{lo: nullableAbstractRefValue | bareBit | uint64(HeapFunc)<<heapAbsShift}
+	ExternRef = ValType{lo: nullableAbstractRefValue | bareBit | uint64(HeapExtern)<<heapAbsShift}
+	AnyRef    = ValType{lo: nullableAbstractRefValue | bareBit | uint64(HeapAny)<<heapAbsShift}
+	EqRef     = ValType{lo: nullableAbstractRefValue | bareBit | uint64(HeapEq)<<heapAbsShift}
+	I31Ref    = ValType{lo: nullableAbstractRefValue | bareBit | uint64(HeapI31)<<heapAbsShift}
+	StringRef = ValType{lo: nullableAbstractRefValue | uint64(HeapString)<<heapAbsShift}
 )
 
 func RefVal(rt RefType) ValType {
@@ -1405,6 +1419,9 @@ const (
 )
 
 func (k InstrKind) String() string {
+	if buildfeatures.Custom {
+		return profileInstructionName(k)
+	}
 	if k < numInstrKinds {
 		start, end := instrKindNameOffsets[k], instrKindNameOffsets[k+1]
 		if start != end {

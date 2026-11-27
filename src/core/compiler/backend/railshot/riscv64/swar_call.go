@@ -10,6 +10,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -24,6 +25,28 @@ func (f *integerEmitter) swarCompactGCArguments(base, count int, spill func(int)
 		f.Load(5, spill(base+i), true)
 		f.Store(spill(base)+int32(i*8), 5, true)
 	}
+}
+
+func validateCallCarrierSignature(sig *wasm.CompType, limit int) error {
+	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > MaxVectorFunctionValues || len(sig.Results) > MaxVectorFunctionValues {
+		return unsupported("native call exact signature")
+	}
+	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
+		cells := 0
+		for _, typ := range list {
+			if swarClassOf(typ) == swarInvalid && typ.Kind() != wasm.ValRef {
+				return unsupported("native call carrier type")
+			}
+			cells++
+			if wasm.EqualValType(typ, wasm.V128) {
+				cells++
+			}
+			if cells > limit {
+				return unsupported("native call physical signature bound")
+			}
+		}
+	}
+	return nil
 }
 
 func swarCallSignature(sig *wasm.CompType) error {
@@ -104,7 +127,7 @@ func (f *integerEmitter) swarIndirectCall(sig *wasm.CompType, key uint64, base, 
 }
 
 func (f *integerEmitter) swarIndirectCallAt(sig *wasm.CompType, key uint64, base, indexSlot int, wide bool, tableIndex uint32, spill func(int) int32, hiddenRefs []bool, typeIndexes ...uint32) {
-	if f.functionSubtypeHelper(typeIndexes) {
+	if buildfeatures.ReferenceSignatures && f.functionSubtypeHelper(typeIndexes) {
 		f.tableReferenceForSubtype(indexSlot, wide, tableIndex, spill)
 		f.referenceCall(sig, key, base, indexSlot, spill, 16, hiddenRefs, typeIndexes...)
 		return
@@ -139,7 +162,9 @@ func (f *integerEmitter) swarIndirectCallAt(sig *wasm.CompType, key uint64, base
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	}
 	if f.mode.gcRootedScalar && returnOffset != 0 {
-		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		if buildfeatures.RISCV64CollectorFrameRoots {
+			f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		}
 	} else {
 		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	}

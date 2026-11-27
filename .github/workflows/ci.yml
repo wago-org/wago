@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.27.1"
-  CURRENT_GO_VERSION: "1.27.1"
+  GO_VERSION: "1.27.4"
+  CURRENT_GO_VERSION: "1.27.4"
   TINYGO_VERSION: "0.42.0"
   JUST_VERSION: "1.58.0"
 
@@ -142,7 +142,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .tools/staticcheck
-          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-${{ steps.staticcheck-go.outputs.version }}-2026.2.1-${{ hashFiles('scripts/bootstrap-staticcheck.sh') }}
+          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-${{ steps.staticcheck-go.outputs.version }}-2026.2.2-${{ hashFiles('scripts/bootstrap-staticcheck.sh') }}
 
       - name: Install staticcheck
         run: |
@@ -506,6 +506,9 @@ jobs:
 
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
+        env:
+          # Standalone integration tests compile many executables on macOS runners.
+          GOFLAGS: ${{ matrix.goos == 'darwin' && '-timeout=20m' || '' }}
         run: just test unit
 
       # Preserve per-case PASS/SKIP evidence for the publication regressions;

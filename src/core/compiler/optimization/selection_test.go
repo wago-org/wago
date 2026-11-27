@@ -3,7 +3,43 @@ package optimization
 import (
 	"sync"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
+
+func TestProposalBindingAvailability(t *testing.T) {
+	old := catalog
+	catalog = []Definition{
+		{Name: "scalar", Architectures: []string{"test"}},
+		requiring(buildfeatures.SIMDBit, Definition{Name: "vector", Architectures: []string{"test"}}),
+	}
+	t.Cleanup(func() { catalog = old })
+
+	scalar, vector := true, true
+	var option Option
+	specs := []BindingSpec{Bind("scalar", &scalar)}
+	simd := buildfeatures.SIMD != 0
+	if simd {
+		specs = append(specs, BindOption("vector", &vector, &option))
+	}
+	bindings := NewBindings("test", specs...)
+	overrides := map[string]bool{"vector": true}
+	selection, err := bindings.ResolveSnapshot(overrides, Snapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !selection.Enabled("scalar") || selection.EnabledOption(option) != simd {
+		t.Fatalf("selection does not match the registered bindings")
+	}
+	lease, err := bindings.Apply(overrides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.Restore()
+	if _, ok := Lookup("test", "vector"); !ok {
+		t.Fatal("portable configuration lost the vector option")
+	}
+}
 
 func TestResolveSnapshotIsImmutableAndDoesNotInstallOverrides(t *testing.T) {
 	a, b := true, false

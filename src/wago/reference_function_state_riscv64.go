@@ -39,7 +39,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		*remaining -= n
 		return true
 	}
-	if rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
+	if tablesForImage && rv64LegacyGCProductsForImage && rv64GCTypeSubtypingRuntimeTypedTableCall(c) {
 		// The exact product digest binds its indexed value-type pool and proves
 		// that it has no memories, globals, imports, or data state.
 		if !consume(64) {
@@ -47,7 +47,10 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		return nil
 	}
-	memories := c.memoryCount()
+	memories := 0
+	if memoriesForImage {
+		memories = c.memoryCount()
+	}
 	if memories > railshot.MaxProductionMemories || len(c.Globals) > 256 || len(c.GlobalImports) > len(c.Globals) || c.activeDataCount() > 256 || len(c.PassiveData) > 256 || len(c.ValueTypes) > 6 {
 		return reject("directory bound")
 	}
@@ -97,7 +100,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		kinds |= 1 << v.Kind
 	}
-	if c.tableCount() != 0 {
+	if tablesForImage && c.tableCount() != 0 {
 		// The preceding exact table proof establishes this pool binding even
 		// when the module has no globals consuming the canonical funcref type.
 		if uint64(c.TableValueTypeIndex) >= uint64(len(c.ValueTypes)) {
@@ -105,7 +108,8 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 		}
 		used[c.TableValueTypeIndex] = true
 	}
-	for index, g := range c.Globals {
+	for index := 0; globalsForImage && index < len(c.Globals); index++ {
+		g := c.Globals[index]
 		if !g.HasValueType || uint64(g.ValueTypeIndex) >= uint64(len(c.ValueTypes)) {
 			return reject("exact numeric global binding")
 		}
@@ -178,7 +182,7 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("unused exact value types")
 		}
 	}
-	for i := 0; i < c.activeDataCount(); i++ {
+	for i := 0; activeDataForImage && i < c.activeDataCount(); i++ {
 		data := c.activeDataAt(i)
 		if uint64(data.MemoryIndex) >= uint64(memories) {
 			return reject("active data memory index")
@@ -194,7 +198,8 @@ func rv64ValidateReferenceFunctionState(c *Compiled, remaining *int) error {
 			return reject("data initializer bytes")
 		}
 	}
-	for _, data := range c.PassiveData {
+	for i := 0; passiveDataForImage && i < len(c.PassiveData); i++ {
+		data := c.PassiveData[i]
 		if !consume(4) || !consume(len(data.Bytes)) {
 			return reject("passive data bytes")
 		}

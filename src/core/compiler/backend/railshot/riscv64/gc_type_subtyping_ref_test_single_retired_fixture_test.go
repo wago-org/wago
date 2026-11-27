@@ -27,28 +27,12 @@ var rv64GCTypeSubtypingRefTestSingleWire = func() []byte {
 	return wire
 }()
 
-var rv64GCTypeSubtypingRefTestSingleModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestSingleWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
 var rv64GCTypeSubtypingRefTestRecursiveWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestRecursiveHex)
 	if err != nil {
 		panic(err)
 	}
 	return wire
-}()
-
-var rv64GCTypeSubtypingRefTestRecursiveModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestRecursiveWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }()
 
 var rv64GCTypeSubtypingRefTestDirectionFalseWire = func() []byte {
@@ -59,28 +43,12 @@ var rv64GCTypeSubtypingRefTestDirectionFalseWire = func() []byte {
 	return wire
 }()
 
-var rv64GCTypeSubtypingRefTestDirectionFalseModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestDirectionFalseWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
 var rv64GCTypeSubtypingRefTestSupertypeTrueWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestSupertypeTrueHex)
 	if err != nil {
 		panic(err)
 	}
 	return wire
-}()
-
-var rv64GCTypeSubtypingRefTestSupertypeTrueModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestSupertypeTrueWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }()
 
 var rv64GCTypeSubtypingRefTestMultiFirstWire = func() []byte {
@@ -91,28 +59,12 @@ var rv64GCTypeSubtypingRefTestMultiFirstWire = func() []byte {
 	return wire
 }()
 
-var rv64GCTypeSubtypingRefTestMultiFirstModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestMultiFirstWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
 var rv64GCTypeSubtypingRefTestMultiPairsWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestMultiPairsHex)
 	if err != nil {
 		panic(err)
 	}
 	return wire
-}()
-
-var rv64GCTypeSubtypingRefTestMultiPairsModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestMultiPairsWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }()
 
 var rv64GCTypeSubtypingRefTestMultiWire = func() []byte {
@@ -123,14 +75,6 @@ var rv64GCTypeSubtypingRefTestMultiWire = func() []byte {
 	return wire
 }()
 
-var rv64GCTypeSubtypingRefTestMultiModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestMultiWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
 var rv64GCTypeSubtypingRefTestNominalFalseWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestNominalFalseHex)
 	if err != nil {
@@ -139,28 +83,12 @@ var rv64GCTypeSubtypingRefTestNominalFalseWire = func() []byte {
 	return wire
 }()
 
-var rv64GCTypeSubtypingRefTestNominalFalseModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestNominalFalseWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
 var rv64GCTypeSubtypingRefTestNominalFalseDeepWire = func() []byte {
 	wire, err := hex.DecodeString(rv64GCTypeSubtypingRefTestNominalFalseDeepHex)
 	if err != nil {
 		panic(err)
 	}
 	return wire
-}()
-
-var rv64GCTypeSubtypingRefTestNominalFalseDeepModule = func() *wasm.Module {
-	m, err := wasm.DecodeModule(rv64GCTypeSubtypingRefTestNominalFalseDeepWire)
-	if err != nil {
-		panic(err)
-	}
-	return m
 }()
 
 var rv64GCTypeSubtypingRefTestWires = [...][]byte{
@@ -173,18 +101,6 @@ var rv64GCTypeSubtypingRefTestWires = [...][]byte{
 	rv64GCTypeSubtypingRefTestMultiWire,
 	rv64GCTypeSubtypingRefTestNominalFalseWire,
 	rv64GCTypeSubtypingRefTestNominalFalseDeepWire,
-}
-
-var rv64GCTypeSubtypingRefTestModules = [...]*wasm.Module{
-	rv64GCTypeSubtypingRefTestSingleModule,
-	rv64GCTypeSubtypingRefTestRecursiveModule,
-	rv64GCTypeSubtypingRefTestDirectionFalseModule,
-	rv64GCTypeSubtypingRefTestSupertypeTrueModule,
-	rv64GCTypeSubtypingRefTestMultiFirstModule,
-	rv64GCTypeSubtypingRefTestMultiPairsModule,
-	rv64GCTypeSubtypingRefTestMultiModule,
-	rv64GCTypeSubtypingRefTestNominalFalseModule,
-	rv64GCTypeSubtypingRefTestNominalFalseDeepModule,
 }
 
 func gcTypeSubtypingRefTestSingleSourceVariant(data []byte) uint8 {

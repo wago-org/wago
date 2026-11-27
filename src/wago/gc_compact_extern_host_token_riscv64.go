@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -43,10 +43,12 @@ func (v *compactExternDomainToken) releaseExternrefRoot() {
 		if state, ok := compactExternCollectors.Load(v.domain.collector); ok && state.hostSlots != nil {
 			state.hostSlots.publicFree = append(state.hostSlots.publicFree, v.slot)
 		}
-		if value, ok := managedFunctionGraphs.Load(v.store); ok {
-			graph := value.(*managedFunctionGraph)
-			graph.epoch.Add(1)
-			graph.pendingCollection.Store(true)
+		if managedFunctionGraphForImage {
+			if value, ok := managedFunctionGraphs.Load(v.store); ok {
+				graph := value.(*managedFunctionGraph)
+				graph.epoch.Add(1)
+				graph.pendingCollection.Store(true)
+			}
 		}
 	})
 	cleanup.run(v.domain.mu.Unlock)
@@ -63,7 +65,7 @@ func (s *compactExternCollector) issueDomainExternToken(domain *gcStoreDomain, w
 		return 0, fmt.Errorf("host extern result has no exact live collector identity")
 	}
 	s.store.mu.Lock()
-	if s.store.gcDomains.domainForCollectorLocked(collector) != domain || domain.claims == ^uint32(0) {
+	if s.store.gcTopologyLocked().domainForCollectorLocked(collector) != domain || domain.claims == ^uint32(0) {
 		s.store.mu.Unlock()
 		return 0, fmt.Errorf("host extern result has no live collector domain")
 	}

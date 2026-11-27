@@ -76,7 +76,7 @@ func TestRV64PublicReferenceFunctionProperReferenceTailBare(t *testing.T) {
 							t.Fatal("bare private null origin", trap.Frames)
 						}
 					}
-					if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
+					if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("bare root leaked generation")
 					}
 				}
@@ -101,7 +101,7 @@ func TestRV64PublicReferenceFunctionProperReferenceTailBare(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer in.unlockNativeEntry(entry)
-					generations := entry.tables.targets.tailActive
+					generations := entry.tables.targets.tailForTest().active
 					if len(generations) != 1 {
 						t.Fatal("actual private generation")
 					}

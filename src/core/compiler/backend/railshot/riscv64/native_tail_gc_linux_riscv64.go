@@ -12,6 +12,7 @@ package riscv64
 import (
 	"encoding/binary"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -20,7 +21,7 @@ import (
 // instance, and the bounds belong to the physical entry stack. It never treats
 // an arbitrary unmapped return address as permission to omit caller roots.
 func NativeTailHostContinuation(ctrl, home, context, view, stackLimit, stackTop uintptr) (pc, frameTop uintptr, ok bool) {
-	if ctrl < tailRACtrlOffset || stackTop < stackLimit {
+	if buildfeatures.TailCall == 0 || ctrl < tailRACtrlOffset || stackTop < stackLimit {
 		return 0, 0, false
 	}
 	record := ctrl - tailRACtrlOffset

@@ -16,6 +16,11 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+const mixedFPOnlyArgs = mixedFPArgsForImage &^ mixedGPArgsForImage
+const mixedEitherBankArgs = mixedFPArgsForImage & mixedGPArgsForImage
+const mixedFPOnlyResults = mixedFPResultsForImage &^ mixedGPResultsForImage
+const mixedEitherBankResults = mixedFPResultsForImage & mixedGPResultsForImage
+
 func (fn *WasmFunc) invokeDirectMixed(args []uint64) ([]uint64, error) {
 	in := fn.in
 	if fn.directIsolated && fn.tryBeginFastInvocation() {
@@ -44,17 +49,24 @@ func (in *Instance) invokeDirectMixedEntry(entry uintptr, info uint8, paramWide 
 		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
 	}
 	var raw [8]uint64
-	gp, fp := 0, 0
-	for i, bits := range args {
-		if !paramWide[i] {
-			bits = uint64(uint32(bits))
-		}
-		if info&directMixedParamMask&(1<<i) != 0 {
-			raw[4+fp] = bits
-			fp++
-		} else {
-			raw[gp] = bits
-			gp++
+	if mixedGPArgsForImage|mixedFPArgsForImage != 0 {
+		gp, fp := 0, 0
+		for i, bits := range args {
+			bits = directBankValue(bits, i, paramWide, mixedNarrowArgsForImage, mixedWideArgsForImage)
+			lane := uint8(1 << i)
+			switch {
+			case mixedGPArgsForImage == 0:
+				raw[4+i] = bits
+			case mixedFPArgsForImage == 0:
+				raw[i] = bits
+			case mixedFPOnlyArgs&lane != 0 ||
+				(mixedEitherBankArgs == directMixedParamMask || mixedEitherBankArgs&lane != 0) && info&directMixedParamMask&lane != 0:
+				raw[4+fp] = bits
+				fp++
+			default:
+				raw[gp] = bits
+				gp++
+			}
 		}
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
@@ -65,33 +77,37 @@ func (in *Instance) invokeDirectMixedEntry(entry uintptr, info uint8, paramWide 
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:len(resultWide)]
-	if len(resultWide) == 1 {
+	if mixedResultFormsForImage&mixedSingleResult != 0 &&
+		(mixedResultFormsForImage == mixedSingleResult || len(out) == 1) {
 		result := gpResult
-		if info&directMixedResultFP != 0 {
+		if mixedFPResultsForImage&1 != 0 && (mixedGPResultsForImage&1 == 0 || info&directMixedResultFP != 0) {
 			result = fpResult
 		}
-		if !resultWide[0] {
-			result = uint64(uint32(result))
-		}
-		out[0] = result
-	} else if len(resultWide) >= 2 {
+		out[0] = directBankValue(result, 0, resultWide, mixedNarrowResultsForImage, mixedWideResultsForImage)
+	} else if mixedResultFormsForImage&mixedMultipleResults != 0 &&
+		(mixedResultFormsForImage&mixedVoidResult == 0 || len(out) >= 2) {
 		gpResults := [2]uint64{gpResult, gpResult1}
 		fpResults := [2]uint64{fpResult, fpResult1}
 		gp, fp := 0, 0
 		for i := range out {
-			// Bit 7 tags the encoding, so result 3's bank is implied by the
-			// two-GP/two-FP four-result contract.
-			floatResult := i < 3 && info&(directMixedResultFP<<i) != 0 || i == 3 && fp < 2
-			if floatResult {
-				out[i] = fpResults[fp]
+			var bits uint64
+			lane := uint8(1 << i)
+			switch {
+			case mixedGPResultsForImage == 0:
+				bits = fpResults[i]
+			case mixedFPResultsForImage == 0:
+				bits = gpResults[i]
+			// Bit 7 is a tag. The fourth result uses the remaining lane.
+			case mixedFPOnlyResults&lane != 0 ||
+				(mixedEitherBankResults == directMixedParamMask || mixedEitherBankResults&lane != 0) &&
+					(i < 3 && info&(directMixedResultFP<<i) != 0 || i == 3 && fp < 2):
+				bits = fpResults[fp]
 				fp++
-			} else {
-				out[i] = gpResults[gp]
+			default:
+				bits = gpResults[gp]
 				gp++
 			}
-			if !resultWide[i] {
-				out[i] = uint64(uint32(out[i]))
-			}
+			out[i] = directBankValue(bits, i, resultWide, mixedNarrowResultsForImage, mixedWideResultsForImage)
 		}
 	}
 	return out, nil

@@ -14,12 +14,23 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // MaxSyncHostSlots is the wire-format ceiling: hcNArgs carries each direction's
 // slot count in one uint16. MaxHostArity remains the public-host admission limit;
 // this larger limit is for module-derived internal helper frames.
 const MaxSyncHostSlots = math.MaxUint16
+
+// A foreign callable may park on a control frame sized for another image.
+const wideHostControlForImage = buildfeatures.StandaloneForeignHostControl ||
+	buildfeatures.StandaloneSyncHostSlots > maxHostArity
+
+func hostCtrlFixedArityError(params, results int) error {
+	return fmt.Errorf("jit: host call arity %d/%d exceeds inline capacity %d", params, results, maxHostArity)
+}
 
 const (
 	hostCtrlExtensionMagic = 0x5741474f // "WAGO"
@@ -67,7 +78,7 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 	if _, err := hostCtrlFrameCapacity(ctrl); err != nil {
 		return err
 	}
-	if len(ctrl) == ctrlFrameSize && !registerFixedHostCtrlFrames {
+	if !buildfeatures.StandaloneForeignHostControl || len(ctrl) == ctrlFrameSize && !registerFixedHostCtrlFrames {
 		return nil
 	}
 	ptr := slicePtr(ctrl)
@@ -82,6 +93,9 @@ func RegisterHostCtrlFrame(ctrl []byte) error {
 
 // UnregisterHostCtrlFrame removes a frame registered at instance activation.
 func UnregisterHostCtrlFrame(ctrl []byte) {
+	if !buildfeatures.StandaloneForeignHostControl {
+		return
+	}
 	unregisterNativeScalarLeaf(ctrl)
 	if len(ctrl) == ctrlFrameSize && !registerFixedHostCtrlFrames {
 		return
@@ -124,4 +138,15 @@ func hostCtrlWideCallAreas(ctrl []byte, paramSlots, resultSlots int) (args, resu
 	}
 	ext := ctrl[ctrlFrameSize+hostCtrlExtensionHead:]
 	return ext[:capacity*8], ext[capacity*8:], capacity, nil
+}
+
+func prepareWideHostCall(ctrl []byte, paramSlots, resultSlots int) (args, results []uint64, err error) {
+	argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, paramSlots, resultSlots)
+	if err != nil {
+		return nil, nil, err
+	}
+	args = unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)[:paramSlots]
+	results = unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)[:resultSlots]
+	clear(results)
+	return args, results, nil
 }

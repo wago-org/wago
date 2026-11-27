@@ -55,7 +55,7 @@ func TestNativeTailImportedOwnerCertifiedIdentityAndBudgets(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if owner.owner.functions[0].job != source.job || owner.owner.targets[0].job != target.job || owner.owner.functions[1].info.mode.functionIndex != 1 {
+		if owner.owner.functions[0].job != source.job || owner.owner.targets[0].job != target.job || owner.owner.functions[1].info.functionIndex != 1 {
 			t.Fatal("importer identity or full function index lost")
 		}
 		if a := testing.AllocsPerRun(4, func() {

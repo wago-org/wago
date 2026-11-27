@@ -18,6 +18,18 @@ import (
 	nativegc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
+const (
+	rv64LegacyI31MinimalCore uint16 = 1 << iota
+	rv64LegacyI31OfficialCore
+	rv64LegacyI31OfficialTable
+	rv64LegacyI31OfficialTableGlobalInitializer
+	rv64LegacyI31OfficialGlobalInitializer
+	rv64LegacyI31OfficialAnyGlobal
+	rv64LegacyI31OfficialAnyTable
+	rv64LegacyI31OfficialRefTest
+	rv64LegacyI31RefEqPilot
+)
+
 var rv64I31CoreCodeDigest = [sha256.Size]byte{0x09, 0x33, 0xe2, 0xad, 0x20, 0x62, 0xed, 0x4a, 0xfa, 0xc8, 0x39, 0x5c, 0x3b, 0xa2, 0x68, 0x32, 0xcd, 0xbc, 0x57, 0xb4, 0xaa, 0xc3, 0xdf, 0x37, 0x4e, 0xf4, 0x74, 0x4f, 0x96, 0x9f, 0x6b, 0x76}
 var rv64I31OfficialCoreCodeDigest = [sha256.Size]byte{0x1a, 0x1f, 0xe4, 0x7e, 0x21, 0xfc, 0x84, 0x40, 0x83, 0x14, 0xbb, 0x42, 0x0b, 0xf4, 0x8e, 0xd0, 0x35, 0xff, 0x0b, 0x0b, 0x6a, 0x5c, 0xa1, 0x70, 0x1c, 0xf1, 0x2c, 0x21, 0xac, 0x78, 0xc6, 0x27}
 var rv64I31OfficialTableCodeDigest = [sha256.Size]byte{0xf6, 0xf3, 0x62, 0x07, 0xa9, 0x73, 0xb1, 0x78, 0xfd, 0xad, 0xda, 0x46, 0xed, 0xe6, 0xce, 0x23, 0x94, 0xc7, 0x8a, 0x66, 0x58, 0xc7, 0x82, 0xf3, 0xd0, 0x24, 0x04, 0x7e, 0x37, 0xa9, 0x17, 0x1d}
@@ -33,44 +45,75 @@ var rv64I31RefEqPilotCodeDigest = [sha256.Size]byte{0x35, 0xa6, 0xd7, 0xcf, 0x47
 // visibility is bound to exact RV64G code images and complete surviving
 // metadata.
 func rv64I31Core(c *Compiled) bool {
-	return rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c) || rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || rv64I31OfficialAnyGlobal(c) || rv64I31OfficialAnyTable(c) || rv64I31OfficialRefTest(c) || rv64I31RefEqPilot(c)
+	return rv64ImmediateReferenceContract(c) || rv64GeneralI31Contract(c) || rv64LegacyI31ProductsForImage &&
+		(rv64I31MinimalCore(c) || rv64I31OfficialCore(c) || rv64I31OfficialTable(c) || rv64I31OfficialTableGlobalInitializer(c) || rv64I31OfficialGlobalInitializer(c) || rv64I31OfficialAnyGlobal(c) || rv64I31OfficialAnyTable(c) || rv64I31OfficialRefTest(c) || rv64I31RefEqPilot(c))
 }
 
-// rv64I31CoreExecutionCode recognizes the nine qualified machine-code images
-// without trusting the artifact's removable semantic sidecar. The loader uses
-// it to reject an i31 image whose feature/product witness was stripped.
+func railshotLegacyI31ProductMask(c *Compiled) uint16 {
+	if !wasmGCBuilt {
+		return 0
+	}
+	return rv64I31ExecutionProduct(c)
+}
+
+// Recognize qualified machine images independently of their semantic metadata.
+// Admission can then reject a known image whose metadata was stripped.
 func rv64I31CoreExecutionCode(c *Compiled) bool {
+	return rv64I31ExecutionProduct(c) != 0
+}
+
+func rv64I31ExecutionProduct(c *Compiled) uint16 {
 	if c == nil {
-		return false
+		return 0
 	}
 	switch len(c.code) {
 	case 1432:
-		return sha256.Sum256(c.code) == rv64I31CoreCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31MinimalCore != 0 && sha256.Sum256(c.code) == rv64I31CoreCodeDigest {
+			return rv64LegacyI31MinimalCore
+		}
 	case 4872:
-		return sha256.Sum256(c.code) == rv64I31OfficialCoreCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialCore != 0 && sha256.Sum256(c.code) == rv64I31OfficialCoreCodeDigest {
+			return rv64LegacyI31OfficialCore
+		}
 	case 5776:
-		return sha256.Sum256(c.code) == rv64I31OfficialTableCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialTable != 0 && sha256.Sum256(c.code) == rv64I31OfficialTableCodeDigest {
+			return rv64LegacyI31OfficialTable
+		}
 	case 840:
-		return sha256.Sum256(c.code) == rv64I31OfficialTableGlobalInitializerCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialTableGlobalInitializer != 0 && sha256.Sum256(c.code) == rv64I31OfficialTableGlobalInitializerCodeDigest {
+			return rv64LegacyI31OfficialTableGlobalInitializer
+		}
 	case 688:
-		return sha256.Sum256(c.code) == rv64I31OfficialGlobalInitializerCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialGlobalInitializer != 0 && sha256.Sum256(c.code) == rv64I31OfficialGlobalInitializerCodeDigest {
+			return rv64LegacyI31OfficialGlobalInitializer
+		}
 	case 1592:
-		return sha256.Sum256(c.code) == rv64I31OfficialAnyGlobalCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialAnyGlobal != 0 && sha256.Sum256(c.code) == rv64I31OfficialAnyGlobalCodeDigest {
+			return rv64LegacyI31OfficialAnyGlobal
+		}
 	case 5856:
-		return sha256.Sum256(c.code) == rv64I31OfficialAnyTableCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialAnyTable != 0 && sha256.Sum256(c.code) == rv64I31OfficialAnyTableCodeDigest {
+			return rv64LegacyI31OfficialAnyTable
+		}
 	case 5024:
-		return sha256.Sum256(c.code) == rv64I31OfficialRefTestCodeDigest
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialRefTest != 0 && sha256.Sum256(c.code) == rv64I31OfficialRefTestCodeDigest {
+			return rv64LegacyI31OfficialRefTest
+		}
 	case 2436:
-		return sha256.Sum256(c.code) == rv64I31RefEqPilotCodeDigest
-	default:
-		return false
+		if rv64LegacyI31ProductMaskForImage&rv64LegacyI31RefEqPilot != 0 && sha256.Sum256(c.code) == rv64I31RefEqPilotCodeDigest {
+			return rv64LegacyI31RefEqPilot
+		}
 	}
+	return 0
 }
 
 // rv64I31RefEqPilot is the retained counterpart of the exact collector-free
 // eqref-table source. Artifact loading must recover the same compact table ABI,
 // complete metadata, and machine image before callable publication.
 func rv64I31RefEqPilot(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31RefEqPilot == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -83,7 +126,7 @@ func rv64I31RefEqPilot(c *Compiled) bool {
 	if !c.HasTable || c.TableType != ValAnyRef || !c.TableHasValueType || c.TableValueTypeIndex != 0 || c.TableSize != 5 || c.TableMax != 5 || c.TableHasMax || c.TableAddr64 || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.HasMemory || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	initIndex, hasInit := c.Exports["init"]
@@ -142,6 +185,9 @@ func rv64I31RefEqPilot(c *Compiled) bool {
 // collector-free ref.test product. The code image and every surviving semantic
 // directory are exact because artifacts do not retain Wasm bodies.
 func rv64I31OfficialRefTest(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialRefTest == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -160,7 +206,7 @@ func rv64I31OfficialRefTest(c *Compiled) bool {
 	if c.HasTable || c.HasMemory || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	typeSigs := []*wasm.CompType{
@@ -220,6 +266,9 @@ func rv64I31OfficialRefTest(c *Compiled) bool {
 }
 
 func rv64I31OfficialAnyGlobal(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialAnyGlobal == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -239,7 +288,7 @@ func rv64I31OfficialAnyGlobal(c *Compiled) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantFuncs := []FuncSig{
@@ -296,6 +345,9 @@ func rv64I31OfficialAnyGlobal(c *Compiled) bool {
 }
 
 func rv64I31OfficialGlobalInitializer(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialGlobalInitializer == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -310,7 +362,7 @@ func rv64I31OfficialGlobalInitializer(c *Compiled) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	fn := c.Funcs[0]
@@ -346,6 +398,9 @@ func rv64I31OfficialGlobalInitializer(c *Compiled) bool {
 }
 
 func rv64I31OfficialTableGlobalInitializer(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialTableGlobalInitializer == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -360,7 +415,7 @@ func rv64I31OfficialTableGlobalInitializer(c *Compiled) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	fn := c.Funcs[0]
@@ -407,11 +462,11 @@ func rv64I31OfficialTableGlobalInitializer(c *Compiled) bool {
 }
 
 func rv64I31OfficialTable(c *Compiled) bool {
-	return rv64I31OfficialTableShape(c, false)
+	return rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialTable != 0 && rv64I31OfficialTableShape(c, false)
 }
 
 func rv64I31OfficialAnyTable(c *Compiled) bool {
-	return rv64I31OfficialTableShape(c, true)
+	return rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialAnyTable != 0 && rv64I31OfficialTableShape(c, true)
 }
 
 func rv64I31OfficialTableShape(c *Compiled, anyref bool) bool {
@@ -435,7 +490,7 @@ func rv64I31OfficialTableShape(c *Compiled, anyref bool) bool {
 	if !c.HasTable || c.TableType != wantTableType || !c.TableHasValueType || c.TableValueTypeIndex != 0 || c.TableSize != 3 || c.TableMax != 10 || !c.TableHasMax || c.TableAddr64 || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.HasMemory || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := map[string]int{"size": 0, "get": 1, "grow": 2, "fill": 3, "copy": 4, "init": 5}
@@ -537,6 +592,9 @@ func rv64I31TableElement(got ElemInit, valueTypeIndex uint32, mode ElemMode, val
 }
 
 func rv64I31MinimalCore(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31MinimalCore == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape ||
 		c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
@@ -552,7 +610,7 @@ func rv64I31MinimalCore(c *Compiled) bool {
 	if c.HasTable || c.HasMemory || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	for _, fn := range c.Funcs {
@@ -586,6 +644,9 @@ func rv64I31MinimalCore(c *Compiled) bool {
 // spec-v3 gc/i31 core module. Wasm bodies are absent from artifacts, so every
 // surviving semantic directory and the complete RV64G image are pinned.
 func rv64I31OfficialCore(c *Compiled) bool {
+	if rv64LegacyI31ProductMaskForImage&rv64LegacyI31OfficialCore == 0 {
+		return false
+	}
 	if c == nil || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI ||
 		!c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
@@ -598,7 +659,7 @@ func rv64I31OfficialCore(c *Compiled) bool {
 	if c.HasTable || c.HasMemory || c.HasTableInitFunc || c.TableInitFunc != 0 || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := map[string]int{"new": 0, "get_u": 1, "get_s": 2, "get_u-null": 3, "get_s-null": 4, "get_globals": 5, "set_global": 6}

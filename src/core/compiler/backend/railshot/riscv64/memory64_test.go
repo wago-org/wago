@@ -6,12 +6,33 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
+
+func TestMemory64ProfileWidths(t *testing.T) {
+	memories := make([]wasm.MemType, MaxProductionMemories)
+	last := uint32(len(memories) - 1)
+	memories[last].Limits.Addr64 = true
+	profile := makeMemoryProfile(memories, true)
+	enabled := buildfeatures.Memory64 != 0
+	if profile.wide(0) || profile.wide(last) != enabled || profile.wide(last+1) {
+		t.Fatal("memory width profile did not preserve the declared index")
+	}
+	var want uintptr
+	if enabled {
+		want = uintptr((len(memories)+63)/64) * unsafe.Sizeof(uint64(0))
+	}
+	if got := unsafe.Sizeof(profile.address64); got != want {
+		t.Fatalf("memory64 widths use %d bytes, want %d", got, want)
+	}
+	t.Logf("memory64 widths=%d bytes, memory profile=%d bytes", want, unsafe.Sizeof(profile))
+}
 
 func memory64ULEB(v uint64) []byte {
 	var out []byte

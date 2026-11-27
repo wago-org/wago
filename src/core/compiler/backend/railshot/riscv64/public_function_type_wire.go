@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // The frontend validates type relations. This pass checks the retained public
 // function grammar directly in source bytes, without rebuilding its type graph.
@@ -60,6 +63,9 @@ func admitPublicFunctionTypeWire(s *wasm.Reader, floating, vectors bool) error {
 				}
 			}
 			if kind == 0x5e || kind == 0x5f {
+				if buildfeatures.GC == 0 {
+					return unsupported("public aggregate types require gc")
+				}
 				fields := uint32(1)
 				if kind == 0x5f {
 					fields, err = s.U32()

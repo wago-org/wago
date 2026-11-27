@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -503,7 +504,9 @@ const inlineTailLoopFlag = uint32(1 << 30)
 
 var tailLoopInlineEnabled = true
 
-func (t *inlineTarget) tailLoop() bool { return t.params&inlineTailLoopFlag != 0 }
+func (t *inlineTarget) tailLoop() bool {
+	return buildfeatures.TailCall != 0 && t.params&inlineTailLoopFlag != 0
+}
 
 func (t *inlineTarget) recursive() bool { return t.params&inlineRecursiveFlag != 0 }
 func (t *inlineTarget) paramCount() int {
@@ -566,7 +569,7 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 // here is a property of the callee alone (the call-site count only mattered for the report),
 // so a call to one of these can be spliced wherever it appears.
 func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
-	allowTail := len(tailLoops) > 0 && tailLoops[0]
+	allowTail := buildfeatures.TailCall != 0 && len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
@@ -642,7 +645,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			params |= inlineRecursiveFlag
 		}
 		zeroMask := uint8(0)
-		if params&inlineTailLoopFlag != 0 {
+		if buildfeatures.TailCall != 0 && params&inlineTailLoopFlag != 0 {
 			zeroMask = tailInlineZeroMask(m.Code[i].BodyBytes, facts.params, int(h.localCount), targets.classifier)
 		}
 		data.targets = append(data.targets, inlineTarget{
@@ -704,7 +707,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		facts.calleeCount = 1
 	}
 	facts.boundedTuple = boundedIntegerTupleBody(m.Code[i], facts, classifier)
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || buildfeatures.TailCall != 0 && len(tailLoops) > 0 && tailLoops[0] && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
@@ -1109,7 +1112,10 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 		f.bindInlineParams(t, base)
 	}
 	var prefix [8]storage
-	prefixCount := f.detachInlineTailPrefix(t, base, &prefix)
+	prefixCount := 0
+	if buildfeatures.TailCall != 0 {
+		prefixCount = f.detachInlineTailPrefix(t, base, &prefix)
+	}
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
@@ -1162,7 +1168,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	// future write to their private area goes through setLocal, whose
 	// realizeLocalRefs preserves all outstanding references before rebinding.
 	// Leave pure result trees deferred so the caller can consume them directly.
-	if prefixCount != 0 {
+	if buildfeatures.TailCall != 0 && prefixCount != 0 {
 		f.restoreInlineTailPrefix(t, prefix[:prefixCount])
 	}
 	f.stats.addInlineSiteBytes(f.a.Len() - start)
@@ -1397,7 +1403,7 @@ func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 
 func tailLoopInlineCandidate(m *wasm.Module, h []funcHints, index int, policy CodegenPolicy) bool {
 	ft, ok := m.LocalFuncType(index)
-	if !ok || !h[index].hasTailTransfer() || policy.CompactNative || !policy.EnabledOption(optTailLoopInline) || !policy.EnabledOption(optTailSelfLoop) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
+	if !ok || !h[index].hasTailTransfer() || policy.CompactNative || !(buildfeatures.TailCall != 0 && policy.EnabledOption(optTailLoopInline)) || !(buildfeatures.TailCall != 0 && policy.EnabledOption(optTailSelfLoop)) || len(ft.Results) > 1 || len(m.Code[index].BodyBytes) > 128 || h[index].localCount > 5 || h[index].globalCount != 0 || h[index].flags.has(hintTouchesMemory|hintUsesBulkMem|hintHasLoop|hintModuleEH) {
 		return false
 	}
 	for _, run := range m.Code[index].Locals.Runs {

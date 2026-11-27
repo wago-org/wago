@@ -38,15 +38,15 @@ func (fn *WasmFunc) initDirectIntCall() {
 }
 
 func (in *Instance) invokeCachedDirectInt1(ic *invokeCache, entry uintptr, arg uint64) ([]uint64, error) {
-	if ic.scalarWideMask&1 == 0 {
+	if fixedIntArgumentIsNarrow(1, ic.scalarWideMask) {
 		arg = uint64(uint32(arg))
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
 	var result uint64
 	var err error
-	if ic.directIntBounded {
+	if useBoundedDirectInt(ic.directIntBounded) {
 		result, err = in.eng.EnterPreparedIntBounded(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
-	} else {
+	} else if directIntUnboundedForImage {
 		result, err = in.eng.EnterPreparedInt(entry, in.jm.LinMemBase(), arg, 0, 0, 0)
 	}
 	if err != nil {
@@ -58,13 +58,7 @@ func (in *Instance) invokeCachedDirectInt1(ic *invokeCache, entry uintptr, arg u
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
-	if ic.resultSlots == 1 {
-		if ic.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
+	storeFixedIntResult(out, result, ic.scalarResultWide)
 	return out, nil
 }
 
@@ -143,31 +137,31 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 	}
 	switch paramSlots {
 	case 4:
-		if scalarWideMask&8 == 0 {
+		if fixedIntArgumentIsNarrow(8, scalarWideMask) {
 			a3 = uint64(uint32(a3))
 		}
 		fallthrough
 	case 3:
-		if scalarWideMask&4 == 0 {
+		if fixedIntArgumentIsNarrow(4, scalarWideMask) {
 			a2 = uint64(uint32(a2))
 		}
 		fallthrough
 	case 2:
-		if scalarWideMask&2 == 0 {
+		if fixedIntArgumentIsNarrow(2, scalarWideMask) {
 			a1 = uint64(uint32(a1))
 		}
 		fallthrough
 	case 1:
-		if scalarWideMask&1 == 0 {
+		if fixedIntArgumentIsNarrow(1, scalarWideMask) {
 			a0 = uint64(uint32(a0))
 		}
 	}
 	var result uint64
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
-	if bounded {
+	if useBoundedDirectInt(bounded) {
 		result, err = in.eng.EnterPreparedIntBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
-	} else {
+	} else if directIntUnboundedForImage {
 		result, err = in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
 	}
 	if err != nil {
@@ -179,43 +173,37 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:resultSlots]
-	if resultSlots == 1 {
-		if scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
+	storeFixedIntResult(out, result, scalarResultWide)
 	return out, nil
 }
 func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, error) {
-	if fn.resultSlots == 2 {
+	if fn.usesDirectIntPairABI() {
 		return fn.invokeDirectIntPairSession(a0, a1, a2, a3)
 	}
 	in := fn.in
-	if fn.scalarWideMask == 0 {
+	if fixedIntI32ArgsForImage != 0 && (fixedIntI64ArgsForImage == 0 || fn.scalarWideMask == 0) {
 		// Normalize the whole argument bank in the common all-i32 case.
 		// The entry only reads the signature's argument prefix.
-		a0, a1, a2, a3 = uint64(uint32(a0)), uint64(uint32(a1)), uint64(uint32(a2)), uint64(uint32(a3))
+		a0, a1, a2, a3 = narrowFixedIntArguments(a0, a1, a2, a3)
 	} else {
 		switch fn.paramSlots {
 		case 4:
-			if fn.scalarWideMask&8 == 0 {
+			if fixedIntArgumentIsNarrow(8, fn.scalarWideMask) {
 				a3 = uint64(uint32(a3))
 			}
 			fallthrough
 		case 3:
-			if fn.scalarWideMask&4 == 0 {
+			if fixedIntArgumentIsNarrow(4, fn.scalarWideMask) {
 				a2 = uint64(uint32(a2))
 			}
 			fallthrough
 		case 2:
-			if fn.scalarWideMask&2 == 0 {
+			if fixedIntArgumentIsNarrow(2, fn.scalarWideMask) {
 				a1 = uint64(uint32(a1))
 			}
 			fallthrough
 		case 1:
-			if fn.scalarWideMask&1 == 0 {
+			if fixedIntArgumentIsNarrow(1, fn.scalarWideMask) {
 				a0 = uint64(uint32(a0))
 			}
 		}
@@ -223,13 +211,13 @@ func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, err
 	wruntime.PreparePreparedIntTrap(in.trap)
 	var result uint64
 	var err error
-	if fn.directIntMode == preparedIntCallPrebound {
+	if directIntBoundedForImage && fn.directIntMode == preparedIntCallPrebound {
 		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
-	} else if fn.directIntMode == preparedIntCallBlock {
+	} else if directIntBoundedForImage && fn.directIntMode == preparedIntCallBlock {
 		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
-	} else if fn.directIntBounded {
+	} else if useBoundedDirectInt(fn.directIntBounded) {
 		result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
-	} else {
+	} else if directIntUnboundedForImage {
 		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
 	}
 	if err != nil {
@@ -242,12 +230,6 @@ func (fn *WasmFunc) invokeDirectIntSession(a0, a1, a2, a3 uint64) ([]uint64, err
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]
-	if fn.resultSlots == 1 {
-		if fn.scalarResultWide {
-			out[0] = result
-		} else {
-			out[0] = uint64(uint32(result))
-		}
-	}
+	storeFixedIntResult(out, result, fn.scalarResultWide)
 	return out, nil
 }

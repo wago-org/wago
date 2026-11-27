@@ -45,35 +45,35 @@ type tailRADynamicProxy struct {
 	arguments, results []byte
 }
 
-func (o tailRADynamicOwner) target(i int) tailRAFunction {
+func (o *tailRADynamicOwner) target(i int) *tailRAFunction {
 	if o.targets != nil {
-		return o.targets[i]
+		return &o.targets[i]
 	}
-	return o.functions[i]
+	return &o.functions[i]
 }
 
-func (o tailRADynamicOwner) retainedFunction(i int) tailRAFunction {
+func (o *tailRADynamicOwner) retainedFunction(i int) *tailRAFunction {
 	if i < len(o.functions) {
-		return o.functions[i]
+		return &o.functions[i]
 	}
-	return o.targets[i-len(o.functions)]
+	return &o.targets[i-len(o.functions)]
 }
 
-func (o tailRADynamicOwner) proxy(i int) *tailRADynamicProxy {
+func (o *tailRADynamicOwner) proxy(i int) *tailRADynamicProxy {
 	if o.proxies == nil {
 		return nil
 	}
 	return o.proxies[i]
 }
 
-func (o tailRADynamicOwner) host(i int) *NativeTailHostFunction {
+func (o *tailRADynamicOwner) host(i int) *NativeTailHostFunction {
 	if o.hosts == nil {
 		return nil
 	}
 	return o.hosts[i]
 }
 
-func (o tailRADynamicOwner) targetFlags(i int) uint64 {
+func (o *tailRADynamicOwner) targetFlags(i int) uint64 {
 	if o.host(i) != nil {
 		return abi.RV64TailTargetsHost
 	}
@@ -104,7 +104,8 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 	}
 	code = 2048 + 1024*len(d.owners)
 	count := 0
-	for _, o := range d.owners {
+	for i := range d.owners {
+		o := &d.owners[i]
 		if len(o.functions) == 0 || len(o.functions) > MaxFunctions-count || o.signatureKeys != nil && len(o.signatureKeys) != len(o.functions) || o.targets != nil && len(o.targets) != len(o.functions) || o.proxies != nil && (len(o.proxies) != len(o.functions) || o.targets == nil) || o.hosts != nil && len(o.hosts) != len(o.functions) || len(o.descriptors) != 40*(len(o.functions)+1) || len(o.context) != abi.RV64InstanceContextBytes || len(o.directory) != abi.RV64TailTargetsHeaderBytes+abi.RV64TailTargetsRowBytes*len(o.functions) {
 			return 0, 0, unsupported("dynamic tail retained owner extent")
 		}
@@ -129,7 +130,7 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 				if f.signature != nil || o.signatureKeys[ordinal] != 0 || f.info.Params != 0 || f.info.Results != 0 || f.published == nil || o.proxy(ordinal) != nil || o.host(ordinal) != nil {
 					return 0, 0, unsupported("dynamic tail noncallable signature metadata")
 				}
-				if i >= len(o.functions) && !sameNativeTailPhysicalFunction(f, o.functions[ordinal]) {
+				if i >= len(o.functions) && !sameNativeTailPhysicalFunction(f, &o.functions[ordinal]) {
 					return 0, 0, unsupported("dynamic tail noncallable target differs from source")
 				}
 				continue
@@ -150,7 +151,7 @@ func (d *tailRADynamicSite) budget() (metadata, code int, err error) {
 // Hole targets mirror their physical source exactly. Comparing identities and
 // extents here does not dereference borrowed native storage; Validate checks
 // every particular published lease before reading any context or live row.
-func sameNativeTailPhysicalFunction(a, b tailRAFunction) bool {
+func sameNativeTailPhysicalFunction(a, b *tailRAFunction) bool {
 	return a.code == b.code && a.published == b.published && a.info == b.info && a.signature == b.signature && a.job == b.job &&
 		len(a.snapshot) == len(b.snapshot) && tailRAPointer(a.snapshot) == tailRAPointer(b.snapshot) &&
 		len(a.context) == len(b.context) && tailRAPointer(a.context) == tailRAPointer(b.context) &&
@@ -174,9 +175,11 @@ func (d *tailRADynamicSite) validate(s *tailRAProofSite) error {
 			return unsupported("dynamic tail reference overlaps argument home")
 		}
 	}
-	for n, o := range d.owners {
+	for n := range d.owners {
+		o := &d.owners[n]
 		anchor := tailRAPointer(o.descriptors)
-		for _, prev := range d.owners[:n] {
+		for i := range d.owners[:n] {
+			prev := &d.owners[i]
 			p := tailRAPointer(prev.descriptors)
 			if anchor < p+uintptr(len(prev.descriptors)) && p < anchor+uintptr(len(o.descriptors)) || tailRAPointer(prev.context) == tailRAPointer(o.context) {
 				return unsupported("dynamic tail ambiguous retained owner")
@@ -212,7 +215,7 @@ func (d *tailRADynamicSite) validateType(home, context uintptr, params, results 
 }
 
 // budget validates all slice extents before this owner authentication runs.
-func (o tailRADynamicOwner) validate(trampoline uintptr) error {
+func (o *tailRADynamicOwner) validate(trampoline uintptr) error {
 	// A published image's runtime owner first confirms the particular instance
 	// lease. Its context and descriptor slices may already be physically retired
 	// if a caller tries to reuse a stale snapshot after releasing that lease.
@@ -225,7 +228,8 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 	if !(tailRARange{anchor, uintptr(len(o.descriptors))}).valid(8) || !(tailRARange{dir, uintptr(len(o.directory))}).valid(8) || ctx == 0 || ctx&7 != 0 || binary.LittleEndian.Uint64(o.context[16:]) != uint64(anchor) || binary.LittleEndian.Uint64(o.descriptors[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(o.descriptors[8:]) != uint64(dir) || binary.LittleEndian.Uint64(o.directory) != abi.RV64TailTargetsMagic || binary.LittleEndian.Uint32(o.directory[8:]) != abi.RV64TailTargetsVersion || binary.LittleEndian.Uint32(o.directory[12:]) != uint32(len(o.functions)) || binary.LittleEndian.Uint64(o.directory[16:]) != uint64(anchor) || binary.LittleEndian.Uint64(o.directory[24:]) != uint64(ctx) {
 		return unsupported("dynamic tail retained directory identity")
 	}
-	for i, f := range o.functions {
+	for i := range o.functions {
+		f := &o.functions[i]
 		if o.uncallable != nil && o.uncallable[i] {
 			if err := f.validateFrame(true); err != nil {
 				return err
@@ -234,7 +238,7 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 			var emptyTarget [abi.RV64TailTargetsRowBytes]byte
 			desc := o.descriptors[40*(i+1) : 40*(i+2)]
 			row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes : abi.RV64TailTargetsHeaderBytes+(i+1)*abi.RV64TailTargetsRowBytes]
-			if !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(f.job.LinMemBase()) || !bytes.Equal(desc, emptyDescriptor[:]) || !bytes.Equal(row, emptyTarget[:]) {
+			if !f.info.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(f.job.LinMemBase()) || !bytes.Equal(desc, emptyDescriptor[:]) || !bytes.Equal(row, emptyTarget[:]) {
 				return unsupported("dynamic tail noncallable physical owner or row")
 			}
 			continue
@@ -256,7 +260,7 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		} else if err := t.validate(true); err != nil {
 			return err
 		}
-		if !t.info.mode.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || len(t.directory) != 0 && binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
+		if !t.info.invocationContext || !wasm.FuncTypeEqual(f.signature, t.signature) || len(t.directory) != 0 && binary.LittleEndian.Uint64(t.directory[16:]) != uint64(t.job.LinMemBase()) {
 			return unsupported("dynamic tail exact producer signature/anchor")
 		}
 		if p := o.proxy(i); p != nil {
@@ -282,14 +286,14 @@ func (o tailRADynamicOwner) validate(trampoline uintptr) error {
 		}
 		desc := o.descriptors[40*(i+1):]
 		row := o.directory[abi.RV64TailTargetsHeaderBytes+i*abi.RV64TailTargetsRowBytes:]
-		if o.proxy(i) == nil && !f.info.mode.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.codeBase()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != o.targetFlags(i) {
+		if o.proxy(i) == nil && !f.info.invocationContext || tailRAPointer(f.context) != ctx || tailRAPointer(f.directory) != anchor || binary.LittleEndian.Uint64(o.descriptors[16:]) != uint64(home) || binary.LittleEndian.Uint64(desc) != uint64(entry) || binary.LittleEndian.Uint64(desc[8:]) != key || binary.LittleEndian.Uint64(desc[16:]) != uint64(home)|abi.FuncRefLocalWrapperHomeTag || binary.LittleEndian.Uint64(desc[24:]) != uint64(anchor+uintptr(40*(i+1))) || binary.LittleEndian.Uint64(desc[32:]) != uint64(ctx) || binary.LittleEndian.Uint64(row) != uint64(t.codeBase()+uintptr(t.info.Entry)) || binary.LittleEndian.Uint64(row[8:]) != uint64(t.job.LinMemBase()) || binary.LittleEndian.Uint64(row[16:]) != uint64(tailRAPointer(t.context)) || binary.LittleEndian.Uint64(row[24:]) != o.targetFlags(i) {
 			return unsupported("dynamic tail genuine defined target")
 		}
 	}
 	return nil
 }
 
-func (p *tailRADynamicProxy) validate(source, target tailRAFunction, trampoline uintptr) error {
+func (p *tailRADynamicProxy) validate(source, target *tailRAFunction, trampoline uintptr) error {
 	if err := source.validateCode(); err != nil {
 		return err
 	}
@@ -385,7 +389,8 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 		if s.dynamic == nil {
 			continue
 		}
-		for on, o := range s.dynamic.owners {
+		for on := range s.dynamic.owners {
+			o := &s.dynamic.owners[on]
 			for fn := 0; fn < len(o.functions)+len(o.targets); fn++ {
 				f := o.retainedFunction(fn)
 				seen := false
@@ -394,7 +399,8 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 					if p.dynamic == nil {
 						continue
 					}
-					for po, owner := range p.dynamic.owners {
+					for po := range p.dynamic.owners {
+						owner := &p.dynamic.owners[po]
 						for pf := 0; pf < len(owner.functions)+len(owner.targets); pf++ {
 							prev := owner.retainedFunction(pf)
 							if pn == sn && po == on && pf == fn {
@@ -425,13 +431,15 @@ func nativeTailDynamicCodeBytes(sites []NativeTailSite) (int, error) {
 func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite, params, results []wasm.ValType) error {
 	a := &e.a
 	frozenKeys := true
-	for _, o := range d.owners {
+	for i := range d.owners {
+		o := &d.owners[i]
 		frozenKeys = frozenKeys && o.signatureKeys != nil
 	}
-	tailRAAddress(a, enc.X14, enc.SP, d.referenceBase)
+	emitBaseOffsetAddress(a, enc.X14, enc.SP, d.referenceBase)
 	a.Ld(enc.X14, enc.X14, 0)
 	var selected []int
-	for _, o := range d.owners {
+	for i := range d.owners {
+		o := &d.owners[i]
 		anchor := tailRAPointer(o.descriptors)
 		a.Constant64(enc.X19, int64(anchor+40))
 		below := a.BranchLong(enc.LTU, enc.X14, enc.X19)
@@ -497,8 +505,10 @@ func (e *tailRAEmitter) dynamicNativeTarget(d *tailRADynamicSite, params, result
 	// Authenticate the exact frozen entry as well as the live directory. Even
 	// coordinated descriptor/row corruption cannot substitute arbitrary code.
 	var genuine []int
-	for _, o := range d.owners {
-		for i, f := range o.functions {
+	for i := range d.owners {
+		o := &d.owners[i]
+		for i := range o.functions {
+			f := &o.functions[i]
 			if o.uncallable != nil && o.uncallable[i] {
 				continue
 			}

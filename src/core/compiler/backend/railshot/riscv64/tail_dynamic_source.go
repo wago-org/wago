@@ -12,6 +12,7 @@ package riscv64
 import (
 	"bytes"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -88,7 +89,9 @@ func (f *integerEmitter) dynamicIndirectTailCall(typeIndex uint32, sig *wasm.Com
 	// The selected reference home is eight bytes physically. Sd preserves
 	// every reference bit; a narrow Store would truncate the selected address.
 	f.Store(int32(p.referenceBase), 14, true)
-	f.guardCollectorTailContext(sig)
+	if buildfeatures.RISCV64CollectorFrameRoots {
+		f.guardCollectorTailContext(sig)
+	}
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
 }
@@ -115,7 +118,9 @@ func (f *integerEmitter) dynamicReferenceTailCall(typeIndex uint32, sig *wasm.Co
 	// instruction's signed 12-bit offset. Use the bounded frame address helper.
 	f.Load(14, int32(p.referenceBase), true)
 	f.trap(trapIndirectBounds, f.a.BranchLong(enc.EQ, enc.X14, enc.Zero))
-	f.guardCollectorTailContext(sig)
+	if buildfeatures.RISCV64CollectorFrameRoots {
+		f.guardCollectorTailContext(sig)
+	}
 	*f.mode.tailPlans = append(*f.mode.tailPlans, p)
 	f.tailRAProofCall(p.site, sig, base, spill)
 }
@@ -274,4 +279,53 @@ func (i *tailImportImage) symbolicTailPlans() (*enc.NativeTailModule, error) {
 		m.Plans[n] = enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: i.functions[int(p.functionIndex)-i.imports].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride}
 	}
 	return m, nil
+}
+
+func stageNativeTailMetadata(c *Compiled, opts CompileOptions) (*enc.NativeTailModule, error) {
+	var tail *enc.NativeTailModule
+	if opts.NativeTailCalls {
+		if _, _, err := NativeTailInstanceBudget(len(*opts.tailPlans), len(c.code)); err != nil {
+			return nil, err
+		}
+		tail = &enc.NativeTailModule{}
+		values := 0
+		for _, p := range *opts.tailPlans {
+			if opts.tailModule == nil {
+				return nil, unsupported("staged tail module metadata")
+			}
+			var sig *wasm.CompType
+			var ok bool
+			switch p.kind {
+			case enc.NativeTailDirectImport:
+				sig, ok = opts.tailModule.FuncSignature(p.importIndex)
+			case enc.NativeTailIndirect, enc.NativeTailReference:
+				if !opts.dynamicTailCalls {
+					return nil, unsupported("indirect tail requires native owner generations")
+				}
+				sig, ok = opts.tailModule.TypeFunc(p.typeIndex)
+			default:
+				return nil, unsupported("unknown native tail runtime attachment")
+			}
+			if !ok {
+				return nil, unsupported("staged tail signature metadata")
+			}
+			values += len(sig.Params) + len(sig.Results)
+			if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {
+				return nil, err
+			}
+			local := int(p.functionIndex) - c.state.importedFunctions
+			if local < 0 || local >= len(c.functions) || c.functions[local].FrameHeaderBytes != callFrameHeader {
+				return nil, unsupported("staged tail finalized frame metadata")
+			}
+			tail.Plans = append(tail.Plans, enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
+		}
+	}
+	// The validated source can contain only unreachable dynamic tails. Those
+	// instructions emit no code and need no plan. Each emitted plan above still
+	// requires the retained source, native owner protocol and finalized frame.
+	if (opts.referenceTailInstructions || opts.referenceFunctions && opts.indirectTailInstructions) &&
+		(tail == nil || !opts.dynamicTailCalls || opts.tailModule == nil) {
+		return nil, unsupported("dynamic tails require qualified native source metadata")
+	}
+	return tail, nil
 }

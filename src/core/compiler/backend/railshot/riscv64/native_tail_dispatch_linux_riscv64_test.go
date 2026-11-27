@@ -79,7 +79,7 @@ func TestTailInvocationInstanceFactoriesReuseOneRecord(t *testing.T) {
 					return o
 				}
 				oa, ob := bind(a, af[0], bf[0]), bind(b, bf[0], af[0])
-				if oa.code == ob.code || tailRAPointer(oa.capability) == tailRAPointer(ob.capability) {
+				if oa.code.Base() == ob.code.Base() || tailRAPointer(oa.capability) == tailRAPointer(ob.capability) {
 					t.Fatal("factories not instance owned")
 				}
 				exit1, err := nativeTailExitPointer()

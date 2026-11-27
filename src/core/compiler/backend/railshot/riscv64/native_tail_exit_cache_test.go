@@ -4,8 +4,9 @@ package riscv64
 
 import (
 	"errors"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"testing"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 func TestTailInvocationExitPublicationCleanupRetry(t *testing.T) {
@@ -13,20 +14,23 @@ func TestTailInvocationExitPublicationCleanupRetry(t *testing.T) {
 	publishFailure, cleanupFailure := errors.New("exit publication failed"), errors.New("exit cleanup failed")
 	allocations, publications, cleanups := 0, 0, 0
 	build := func() ([]byte, error) { return []byte{0x13, 0, 0, 0}, nil }
-	allocate := func(n int) (*coreruntime.CodeBuffer, error) { allocations++; return coreruntime.NewCodeBuffer(n) }
-	publish := func(b *coreruntime.CodeBuffer) error {
+	allocate := func(code []byte) ([]byte, uintptr, error) {
+		allocations++
+		return coreruntime.MapWritableCode(code)
+	}
+	publish := func(b []byte) error {
 		publications++
 		if publications == 1 {
 			return publishFailure
 		}
-		return b.Seal()
+		return coreruntime.SealCode(b)
 	}
-	cleanup := func(b *coreruntime.CodeBuffer) error {
+	cleanup := func(b []byte) error {
 		cleanups++
 		if cleanups <= 2 {
 			return cleanupFailure
 		}
-		return b.Close()
+		return coreruntime.Unmap(b)
 	}
 	pointer, err := state.get(build, allocate, publish, cleanup)
 	if pointer != 0 || !errors.Is(err, publishFailure) || !errors.Is(err, cleanupFailure) || state.code == nil {
@@ -44,7 +48,7 @@ func TestTailInvocationExitPublicationCleanupRetry(t *testing.T) {
 	if err != nil || stable != pointer || allocations != 2 || publications != 2 || cleanups != 3 {
 		t.Fatal("successful identity changed", err)
 	}
-	if err := state.code.Close(); err != nil {
+	if err := coreruntime.Unmap(state.code); err != nil {
 		t.Fatal(err)
 	}
 }

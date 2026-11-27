@@ -42,8 +42,8 @@ func rv64GCRefCastAbstract(c *Compiled) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 ||
-		d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || len(d.gcArrayGlobals()) != 0 ||
+		d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := map[string]int{"init": 1, "ref_cast_non_null": 2, "ref_cast_null": 3, "ref_cast_i31": 4, "ref_cast_struct": 5, "ref_cast_array": 6}

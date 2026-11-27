@@ -53,7 +53,7 @@ func (in *Instance) tryInvokePrivateTypedI32(export string, args []uint64) (out 
 	}()
 	copyPublicScalarSlotsByClass(nativeUint64Slots(in.serArgs), args, ic.slotWide[:ic.paramSlots], ic.paramWidthClass)
 	nativeOwned = true
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}

@@ -7,6 +7,12 @@
 
 package wasm
 
+import (
+	"sync"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
+
 // beginBranchTable advances the generation used to stamp distinct target
 // frames. A decoded code section cannot contain enough instructions to exhaust
 // uint32. The overflow branch defensively resets the active frame set.
@@ -32,8 +38,17 @@ func (v *funcValidator) markBranchTableLabel(label uint32) bool {
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
 func (v *funcValidator) step(in *Instruction) error {
-	if in.Kind >= InstrKind(len(opEffects)) {
+	if in.Kind >= numInstrKinds {
 		return v.verr(ErrUnsupportedValidationOpcode, in.Kind.String())
+	}
+	if buildfeatures.SignExtensionOps == 0 && in.Kind >= InstrI32Extend8S && in.Kind <= InstrI64Extend32S {
+		return v.verr(ErrUnsupportedFeature, "sign-extension-ops is disabled in this build")
+	}
+	if buildfeatures.TailCall == 0 {
+		switch in.Kind {
+		case InstrReturnCall, InstrReturnCallIndirect, InstrReturnCallRef:
+			return v.verr(ErrUnsupportedFeature, "tail-call is disabled in this build")
+		}
 	}
 	if v.constOnly && !isConstInstruction(in.Kind) && !(v.features.GCConstExpr && (in.Kind == InstrStructNew || in.Kind == InstrArrayNew || in.Kind == InstrArrayNewDefault || in.Kind == InstrRefI31 || in.Kind == InstrAnyConvertExtern || in.Kind == InstrExternConvertAny)) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
@@ -43,7 +58,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 	}
-	if e := opEffects[in.Kind]; e.cat == effLoad {
+	if e := scalarOpEffect(in.Kind); e.cat == effLoad {
 		addr, err := v.checkMemArg(in.MemArg(), uint32(e.align))
 		if err != nil {
 			return err
@@ -64,18 +79,6 @@ func (v *funcValidator) step(in *Instruction) error {
 		return v.popExpect(addr)
 	}
 	switch in.Kind {
-	case InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU:
-		n := 2
-		if in.Kind == InstrI64Add128 || in.Kind == InstrI64Sub128 {
-			n = 4
-		}
-		for i := 0; i < n; i++ {
-			if err := v.popExpect(I64); err != nil {
-				return err
-			}
-		}
-		v.push(I64)
-		v.push(I64)
 	case InstrUnreachable:
 		v.unreachable()
 	case InstrNop:
@@ -197,7 +200,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if err := v.popAll(ft.Params); err != nil {
 			return err
 		}
-		if in.Kind == InstrReturnCall {
+		if buildfeatures.TailCall != 0 && in.Kind == InstrReturnCall {
 			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call")
 			}
@@ -214,20 +217,16 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownTable, "")
 		}
-		if !v.refSubtype(tt.Ref, AbsRef(HeapFunc)) {
+		if buildfeatures.ReferenceSignatures && !v.refSubtype(tt.Ref, AbsRef(HeapFunc)) {
 			return v.verr(ErrTypeMismatch, "call_indirect table element type")
 		}
-		addr := I32
-		if tt.Limits.Addr64 {
-			addr = I64
-		}
-		if err := v.popExpect(addr); err != nil {
+		if err := v.popExpect(tableAddrType(tt)); err != nil {
 			return err
 		}
 		if err := v.popAll(ft.Params); err != nil {
 			return err
 		}
-		if in.Kind == InstrReturnCallIndirect {
+		if buildfeatures.TailCall != 0 && in.Kind == InstrReturnCallIndirect {
 			if !v.matchValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call_indirect")
 			}
@@ -289,7 +288,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return v.verr(ErrUnknownGlobal, "")
 		}
 		if v.constOnly && (mutable || uint(in.Index) >= uint(v.constGlobalLimit) ||
-			(uint(in.Index) >= uint(len(v.importsOfKind(ExternGlobal))) && !v.features.ExtendedConstGlobals)) {
+			((buildfeatures.ExtendedConstExpressions == 0 || !v.features.ExtendedConstGlobals) && uint(in.Index) >= uint(len(v.importsOfKind(ExternGlobal))))) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(typ)
@@ -302,24 +301,11 @@ func (v *funcValidator) step(in *Instruction) error {
 			return v.verr(ErrImmutableGlobal, "")
 		}
 		return v.popExpect(typ)
-	case InstrTableGet:
-		addr, tt, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return err
+	case InstrTableGet, InstrTableSet, InstrRefNull, InstrRefFunc, InstrRefIsNull:
+		if !buildfeatures.ReferenceSignatures {
+			return v.verr(ErrUnsupportedFeature, "reference-types is disabled in this build")
 		}
-		if err := v.popExpect(addr); err != nil {
-			return err
-		}
-		v.push(RefVal(tt.Ref))
-	case InstrTableSet:
-		addr, tt, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return err
-		}
-		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
-			return err
-		}
-		return v.popExpect(addr)
+		return v.stepReferenceInstruction(in)
 	case InstrI32Const:
 		v.push(I32)
 	case InstrI64Const:
@@ -328,223 +314,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		v.push(F32)
 	case InstrF64Const:
 		v.push(F64)
-	case InstrRefNull:
-		if err := v.validateRefType(in.RefType()); err != nil {
-			return err
-		}
-		v.push(RefVal(in.RefType()))
-	case InstrRefFunc:
-		typeIdx, ok := v.m.FuncTypeIndex(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownFunc, "ref.func")
-		}
-		if !v.isDeclaredFunc(in.Index) {
-			return v.verr(ErrUnknownFunc, "undeclared function reference")
-		}
-		// Core 3.0 gives ref.func the exact declared function type rather than
-		// collapsing it to the abstract funcref supertype. The reference is
-		// non-null and remains a subtype of funcref for Release 2 consumers.
-		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
-	case InstrRefIsNull:
-		x, err := v.pop()
-		if err != nil {
-			return err
-		}
-		if !x.unknown() && x.t.Kind() != ValRef {
-			return v.verr(ErrTypeMismatch, "ref.is_null")
-		}
-		v.push(I32)
-	case InstrRefEq:
-		if err := v.popExpect(EqRef); err != nil {
-			return err
-		}
-		if err := v.popExpect(EqRef); err != nil {
-			return err
-		}
-		v.push(I32)
-	case InstrStringConst:
-		if uint(in.Index) >= uint(len(v.m.StringRefs)) {
-			return v.verr(ErrTypeMismatch, "string.const index")
-		}
-		v.push(StringRef)
-	case InstrRefAsNonNull:
-		x, err := v.pop()
-		if err != nil {
-			return err
-		}
-		if !x.unknown() && x.t.Kind() != ValRef {
-			return v.verr(ErrTypeMismatch, "ref.as_non_null")
-		}
-		v.push(nonNullValidationType(x))
-	case InstrBrOnNull:
-		lt, err := v.label(in.Index)
-		if err != nil {
-			return err
-		}
-		x, err := v.pop()
-		if err != nil {
-			return err
-		}
-		if !x.unknown() && x.t.Kind() != ValRef {
-			return v.verr(ErrTypeMismatch, "br_on_null")
-		}
-		if err := v.popAll(lt); err != nil {
-			return err
-		}
-		v.pushAll(lt)
-		v.push(nonNullValidationType(x))
-	case InstrBrOnNonNull:
-		lt, err := v.label(in.Index)
-		if err != nil {
-			return err
-		}
-		x, err := v.pop()
-		if err != nil {
-			return err
-		}
-		if len(lt) == 0 || lt[len(lt)-1].Kind() != ValRef || (!x.unknown() && x.t.Kind() != ValRef) {
-			return v.verr(ErrTypeMismatch, "br_on_non_null")
-		}
-		if !x.unknown() {
-			x.t = RefVal(x.t.Ref().WithNullable(false))
-			if !v.subtype(x.t, lt[len(lt)-1]) {
-				return v.verr(ErrTypeMismatch, x.t.String()+" is not "+lt[len(lt)-1].String())
-			}
-		}
-		prefix := lt[:len(lt)-1]
-		if err := v.popAll(prefix); err != nil {
-			return err
-		}
-		// A taken branch appends the non-null reference to the label payload.
-		// The null fallthrough consumes the reference and retains only the
-		// payload values that precede it.
-		v.pushAll(prefix)
-	case InstrMemoryInit:
-		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
-			return err
-		}
-		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
-		if err != nil {
-			return err
-		}
-		if err := v.popExpect(I32); err != nil { // length in data segment bytes
-			return err
-		}
-		if err := v.popExpect(I32); err != nil { // source offset in data segment
-			return err
-		}
-		return v.popExpect(addr) // destination
-	case InstrMemoryCopy:
-		addrDst, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
-		if err != nil {
-			return err
-		}
-		addrSrc, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
-		if err != nil {
-			return err
-		}
-		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil { // length
-			return err
-		}
-		if err := v.popExpect(addrSrc); err != nil {
-			return err
-		}
-		return v.popExpect(addrDst)
-	case InstrMemoryFill:
-		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
-		if err != nil {
-			return err
-		}
-		if err := v.popExpect(addr); err != nil { // length
-			return err
-		}
-		if err := v.popExpect(I32); err != nil { // byte value
-			return err
-		}
-		return v.popExpect(addr) // destination
-	case InstrDataDrop:
-		if err := v.checkDataIndex(in.Index, "data.drop"); err != nil {
-			return err
-		}
-	case InstrTableInit:
-		// Element expressions were validated during the serial module phase. The
-		// body check needs only their immutable declared/result reference type.
-		elemRef, err := v.elemRefType(in.Index)
-		if err != nil {
-			return err
-		}
-		tt, ok := v.tableType(in.Index2)
-		if !ok {
-			return v.verr(ErrUnknownTable, "table.init table")
-		}
-		if !v.refSubtype(elemRef, tt.Ref) {
-			return v.verr(ErrTypeMismatch, "table.init element type")
-		}
-		addr := tableAddrType(tt)
-		if err := v.popExpect(I32); err != nil { // length in element-segment entries
-			return err
-		}
-		if err := v.popExpect(I32); err != nil { // source offset in element segment
-			return err
-		}
-		return v.popExpect(addr) // destination table offset
-	case InstrTableCopy:
-		addrDst, dst, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return v.verr(ErrUnknownTable, "table.copy dst")
-		}
-		addrSrc, src, err := v.tableAddrType(in.Index2)
-		if err != nil {
-			return v.verr(ErrUnknownTable, "table.copy src")
-		}
-		if !v.refSubtype(src.Ref, dst.Ref) {
-			return v.verr(ErrTypeMismatch, "table.copy element type")
-		}
-		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil {
-			return err
-		}
-		if err := v.popExpect(addrSrc); err != nil {
-			return err
-		}
-		return v.popExpect(addrDst)
-	case InstrElemDrop:
-		if v.direct != nil {
-			if uint(in.Index) >= uint(len(v.direct.elements)) {
-				return v.verr(ErrUnknownTable, "elem.drop")
-			}
-		} else if uint(in.Index) >= uint(len(v.m.Elements)) {
-			return v.verr(ErrUnknownTable, "elem.drop")
-		}
-	case InstrTableSize:
-		addr, _, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return v.verr(ErrUnknownTable, "table.size")
-		}
-		v.push(addr)
-	case InstrTableGrow:
-		addr, tt, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return v.verr(ErrUnknownTable, "table.grow")
-		}
-		if err := v.popExpect(addr); err != nil {
-			return err
-		}
-		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
-			return err
-		}
-		v.push(addr)
-	case InstrTableFill:
-		addr, tt, err := v.tableAddrType(in.Index)
-		if err != nil {
-			return v.verr(ErrUnknownTable, "table.fill")
-		}
-		if err := v.popExpect(addr); err != nil {
-			return err
-		}
-		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
-			return err
-		}
-		return v.popExpect(addr)
+
 	default:
 		if handled, err := v.proposalStep(in); handled || err != nil {
 			return err
@@ -557,9 +327,10 @@ func (v *funcValidator) step(in *Instruction) error {
 func isConstInstruction(k InstrKind) bool {
 	switch k {
 	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const, InstrRefNull, InstrRefFunc, InstrGlobalGet,
-		InstrI32Add, InstrI32Sub, InstrI32Mul, InstrI64Add, InstrI64Sub, InstrI64Mul,
 		InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
 		return true
+	case InstrI32Add, InstrI32Sub, InstrI32Mul, InstrI64Add, InstrI64Sub, InstrI64Mul:
+		return buildfeatures.ExtendedConstArithmetic
 	}
 	return false
 }
@@ -596,7 +367,7 @@ func sameValTypes(a, b []ValType) bool {
 
 func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
-	if e := opEffects[k]; e.cat != effNone {
+	if e := scalarOpEffect(k); e.cat != effNone {
 		a := e.a.valType()
 		switch e.cat {
 		case effUnary:
@@ -708,13 +479,11 @@ func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
 	return nil
 }
 
-func tableAddrType(tt TableType) ValType { return TableAddrType(tt) }
-
-func minAddrType(a, b ValType) ValType {
-	if equalValType(a, I32) || equalValType(b, I32) {
-		return I32
+func tableAddrType(tt TableType) ValType {
+	if buildfeatures.Table64 != 0 && tt.Limits.Addr64 {
+		return I64
 	}
-	return I64
+	return I32
 }
 
 func (v *funcValidator) tableAddrType(idx uint32) (ValType, TableType, error) {
@@ -729,6 +498,9 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	idx := uint32(0)
 	if ma.Mem != nil {
 		idx = uint32(*ma.Mem)
+		if buildfeatures.MultiMemory == 0 && idx != 0 {
+			return ValType{}, v.verr(ErrUnsupportedFeature, "multi-memory is disabled in this build")
+		}
 	}
 	flags, ok := v.memoryProperties(idx)
 	if !ok {
@@ -737,7 +509,7 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	if ma.Align > natural {
 		return ValType{}, v.verr(ErrInvalidAlignment, "")
 	}
-	if flags&externTypeAddr64 != 0 {
+	if buildfeatures.Memory64 != 0 && flags&externTypeAddr64 != 0 {
 		return I64, nil
 	}
 	if ma.Offset > uint64(^uint32(0)) {
@@ -792,11 +564,11 @@ const (
 
 var effectValTypes = [...]ValType{
 	effectNone: {},
-	effectI32:  I32,
-	effectI64:  I64,
-	effectF32:  F32,
-	effectF64:  F64,
-	effectV128: V128,
+	effectI32:  {lo: i32ValueBits},
+	effectI64:  {lo: i64ValueBits},
+	effectF32:  {lo: f32ValueBits},
+	effectF64:  {lo: f64ValueBits},
+	effectV128: {lo: v128ValueBits},
 }
 
 func (t effectValue) valType() ValType { return effectValTypes[t] }
@@ -807,7 +579,16 @@ type opEffect struct {
 	align uint8
 }
 
-var opEffects [numInstrKinds]opEffect
+// Sign extension is the last scalar instruction family in kind order.
+var opEffects [int(InstrI32Extend8S) + signExtensionBuilt*int(InstrI64Extend32S-InstrI32Extend8S+1)]opEffect
+var scalarEffectsOnce sync.Once
+
+func scalarOpEffect(kind InstrKind) opEffect {
+	if kind < InstrKind(len(opEffects)) {
+		return opEffects[kind]
+	}
+	return opEffect{}
+}
 
 func setOpEffectRange(first, last InstrKind, effect opEffect) {
 	for kind := first; kind <= last; kind++ {
@@ -821,7 +602,7 @@ func setOpEffects(effect opEffect, kinds ...InstrKind) {
 	}
 }
 
-func init() {
+func fillScalarEffects() {
 	setOpEffects(opEffect{cat: effTest, a: effectI32}, InstrI32Eqz)
 	setOpEffects(opEffect{cat: effTest, a: effectI64}, InstrI64Eqz)
 	setOpEffectRange(InstrI32Eq, InstrI32GeU, opEffect{cat: effCompare, a: effectI32})
@@ -833,8 +614,10 @@ func init() {
 	setOpEffectRange(InstrI64Clz, InstrI64Popcnt, opEffect{cat: effUnary, a: effectI64})
 	setOpEffectRange(InstrF32Abs, InstrF32Sqrt, opEffect{cat: effUnary, a: effectF32})
 	setOpEffectRange(InstrF64Abs, InstrF64Sqrt, opEffect{cat: effUnary, a: effectF64})
-	setOpEffectRange(InstrI32Extend8S, InstrI32Extend16S, opEffect{cat: effUnary, a: effectI32})
-	setOpEffectRange(InstrI64Extend8S, InstrI64Extend32S, opEffect{cat: effUnary, a: effectI64})
+	if buildfeatures.SignExtensionOps != 0 {
+		setOpEffectRange(InstrI32Extend8S, InstrI32Extend16S, opEffect{cat: effUnary, a: effectI32})
+		setOpEffectRange(InstrI64Extend8S, InstrI64Extend32S, opEffect{cat: effUnary, a: effectI64})
+	}
 
 	setOpEffectRange(InstrI32Add, InstrI32Rotr, opEffect{cat: effBinary, a: effectI32})
 	setOpEffectRange(InstrI64Add, InstrI64Rotr, opEffect{cat: effBinary, a: effectI64})

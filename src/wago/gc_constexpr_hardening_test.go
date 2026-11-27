@@ -1,10 +1,12 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -191,5 +193,37 @@ func TestGCConstExprRootsEarlierElementEntries(t *testing.T) {
 	got, err := in.Invoke("sum")
 	if err != nil || len(got) != 1 || got[0] != 33 {
 		t.Fatalf("element values after later allocation = %v, %v; want [33]", got, err)
+	}
+}
+
+func TestGCConstExprArithmeticBuildFeature(t *testing.T) {
+	c := &Compiled{}
+	want := ValueTypeDescriptor{
+		Kind: ValueTypeReference,
+		Ref:  ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Abstract: AbstractHeapI31}},
+	}
+	for _, tc := range []struct {
+		name string
+		body []byte
+	}{
+		{"literal", []byte{0x41, 7, 0xfb, 0x1c, 0x0b}},
+		{"arithmetic", []byte{0x41, 10, 0x41, 3, 0x6b, 0xfb, 0x1c, 0x0b}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			validateErr := c.validateGCConstExpr(tc.body, want, 0)
+			got, evalErr := evalCompiledGCConstExpr(tc.body, nil, nil, nil, c, nil, 0, nil, nil)
+			if tc.name == "arithmetic" && !buildfeatures.ExtendedConstArithmetic {
+				for _, err := range []error{validateErr, evalErr} {
+					var unsupported *UnsupportedFeatureError
+					if !errors.As(err, &unsupported) || unsupported.Requested != CoreFeatureExtendedConst {
+						t.Fatalf("error = %v, want unavailable extended constants", err)
+					}
+				}
+				return
+			}
+			if validateErr != nil || evalErr != nil || got != 15 {
+				t.Fatalf("i31 initializer = %d, error %v, validation %v, want 15", got, evalErr, validateErr)
+			}
+		})
 	}
 }

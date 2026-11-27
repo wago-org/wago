@@ -12,6 +12,7 @@ package riscv64
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
@@ -95,6 +96,9 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 // helper allocation. Their packet words can share lanes with scalar tags and
 // do not have a single static raw-reference kind across catch_all routes.
 func BuildExceptionRootMapsOwned(m *wasm.Module, owned bool) ([]nativeabi.FunctionRootMap, error) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return nil, nil
+	}
 	if m == nil {
 		return nil, nil
 	}

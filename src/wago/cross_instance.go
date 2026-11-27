@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -176,7 +177,7 @@ func NewTable64(minSize, maxSize uint32) (*Table, error) {
 // table itself keeps the reference store alive after Runtime.Close until every
 // importer is closed and Table.Close releases the final owner root.
 func (rt *Runtime) NewExternRefTable(minSize, maxSize uint32) (*Table, error) {
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
 	operation, err := rt.beginOperation("NewExternRefTable", false)
@@ -184,7 +185,7 @@ func (rt *Runtime) NewExternRefTable(minSize, maxSize uint32) (*Table, error) {
 		return nil, err
 	}
 	defer operation.end()
-	return newHostTable(minSize, maxSize, ValExternRef, rt.refStore)
+	return newHostTable(minSize, maxSize, ValExternRef, rt.references())
 }
 
 func newHostTable(minSize, maxSize uint32, elementType ValType, store *referenceStore) (*Table, error) {
@@ -373,7 +374,7 @@ func (t *Table) hasIncompatibleGCProducer(store *referenceStore) bool {
 			}
 		}
 		if topology != nil {
-			topology.RUnlock()
+			topology.gate.RUnlock()
 		}
 		if incompatible {
 			return true
@@ -461,6 +462,9 @@ func (t *Table) validateImportWithRetainedOwner(elementType ValType, exact Value
 		}
 	}
 	if isGCRefValType(elementType) {
+		if !collectorObjectTokensBuilt {
+			return fmt.Errorf("collector-reference tables are disabled in this build")
+		}
 		source := o.instance
 		immediateOnly := immediateI31ReferenceType(actual)
 		if !immediateOnly && (source == nil || source.gc == nil || store == nil || collector == nil || source.gc != collector || source.refStore != store || !store.ownsGCCollector(collector)) {
@@ -507,6 +511,26 @@ func (t *Table) attachImporterWithCollector(elementType ValType, exact ValueType
 	return t.attachImporterWithExpectedHost(elementType, exact, types, store, collector, addr64, nil)
 }
 
+// Serialize host funcref imports with collector-domain registration. The
+// per-table importer count is independent of this optional Runtime registry.
+func (s *referenceStore) lockFuncrefTableTopology(create bool) *gcDomainTopology {
+	if !nativeCollectorFrameRootsBuilt || s == nil {
+		return nil
+	}
+	var topology *gcDomainTopology
+	if create {
+		topology = s.ensureGCTopology()
+	} else {
+		s.mu.Lock()
+		topology = s.gcTopologyLocked()
+		s.mu.Unlock()
+	}
+	if topology != nil {
+		topology.funcrefMu.Lock()
+	}
+	return topology
+}
+
 // Managed host acquisition cannot silently become an Instance acquisition if
 // its owner identity changes between validation and the actual counter claim.
 func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, collector *gc.Collector, addr64 bool, expected *tableOwner) error {
@@ -530,13 +554,11 @@ func (t *Table) attachImporterWithExpectedHost(elementType ValType, exact ValueT
 		return err
 	}
 	if expected != nil && elementType == ValFuncRef || expected == nil && o.elementType == ValFuncRef && o.instance == nil {
-		if t.hasIncompatibleGCProducer(store) {
+		if nativeCollectorFrameRootsBuilt && t.hasIncompatibleGCProducer(store) {
 			return fmt.Errorf("funcref table contains a producer from an incompatible GC invocation domain")
 		}
-		var topology *gcDomainTopology
-		if store != nil {
-			topology = store.ensureGCTopology()
-			topology.funcrefMu.Lock()
+		topology := store.lockFuncrefTableTopology(true)
+		if topology != nil {
 			defer topology.funcrefMu.Unlock()
 		}
 		o.mu.Lock()
@@ -635,19 +657,13 @@ func (t *Table) detachImporterCounterMatching(store *referenceStore, expectedOwn
 	}
 	o := t.owner
 	if checkExpected && expected == nil && elementType == ValFuncRef || !checkExpected && o.elementType == ValFuncRef && o.instance == nil {
-		var topology *gcDomainTopology
-		if store != nil {
-			store.mu.Lock()
-			topology = store.gcDomains
-			store.mu.Unlock()
-			if topology != nil {
-				topology.funcrefMu.Lock()
-				defer topology.funcrefMu.Unlock()
-			}
+		topology := store.lockFuncrefTableTopology(false)
+		if topology != nil {
+			defer topology.funcrefMu.Unlock()
 		}
 		o.mu.Lock()
 		refs := o.funcrefStores[store]
-		if o.importers <= 0 || refs == 0 || store != nil && (topology == nil || topology.funcrefTables[t] == 0) || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
+		if o.importers <= 0 || refs == 0 || nativeCollectorFrameRootsBuilt && store != nil && (topology == nil || topology.funcrefTables[t] == 0) || checkExpected && (t.owner != expectedOwner || o != expectedOwner || o.instance != expected || o.elementType != elementType) {
 			o.mu.Unlock()
 			return nil, false
 		}
@@ -1193,7 +1209,7 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	owns := false
 	if memoryIndex == 0 {
 		memory, owns = in.memory, in.ownsMem
-	} else if in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
+	} else if buildfeatures.MultiMemory != 0 && in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
 		memory = in.memoryDir.memories[memoryIndex]
 		owns = memoryIndex < len(in.memoryDir.owns) && in.memoryDir.owns[memoryIndex]
 	}

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -29,6 +29,9 @@ var compactExternHostGlobals struct {
 }
 
 func compactExternHostGlobalRow(owner *globalOwner) *compactExternHostGlobal {
+	if !nativeCollectorFrameRootsBuilt {
+		return nil
+	}
 	if owner == nil || compactExternHostTableCount.Load() == 0 {
 		return nil
 	}
@@ -39,6 +42,9 @@ func compactExternHostGlobalRow(owner *globalOwner) *compactExternHostGlobal {
 }
 
 func railshotAttachCompactExternHostGlobal(global *Global, store *referenceStore, collector *gc.Collector) error {
+	if !nativeCollectorFrameRootsBuilt {
+		return nil
+	}
 	if global == nil || global.owner == nil {
 		return nil
 	}
@@ -69,7 +75,7 @@ func railshotAttachCompactExternHostGlobal(global *Global, store *referenceStore
 		return fmt.Errorf("host extern global has no reference store")
 	}
 	store.mu.Lock()
-	domain := store.gcDomains.domainForCollectorLocked(collector)
+	domain := store.gcTopologyLocked().domainForCollectorLocked(collector)
 	if domain == nil || domain.private || domain.claims == ^uint32(0) {
 		store.mu.Unlock()
 		return fmt.Errorf("host extern global has no live collector domain")
@@ -130,6 +136,9 @@ func railshotCompactExternHostGlobalOpen(owner *globalOwner) bool {
 }
 
 func railshotReleaseCompactExternHostGlobal(owner *globalOwner) {
+	if !nativeCollectorFrameRootsBuilt {
+		return
+	}
 	compactExternHostGlobals.Lock()
 	row := compactExternHostGlobals.rows[owner]
 	delete(compactExternHostGlobals.rows, owner)
@@ -192,6 +201,9 @@ func compactExternHostAccessRoots(row *compactExternHostGlobal, leases *globalVa
 }
 
 func railshotSetCompactExternHostGlobal(global *Global, value Value, leases *globalValueRoots) (bool, error) {
+	if !nativeCollectorFrameRootsBuilt {
+		return false, nil
+	}
 	if global == nil || global.owner == nil {
 		return false, nil
 	}
@@ -253,7 +265,7 @@ func compactExternClosedHostGlobalImporters(global *Global, row *compactExternHo
 		}
 		if public := owner.existingPublicGCState(); public != nil {
 			public.mu.Lock()
-			active := public.hostActivationCount != 0
+			active := public.hasGCHostActivations()
 			public.mu.Unlock()
 			if active {
 				return nil, false
@@ -299,50 +311,10 @@ func compactExternClosedHostGlobalImporters(global *Global, row *compactExternHo
 	return result, valid
 }
 
-// Close can run from a parked host callback. It must never wait for that
-// callback's own domain gate. Acquire an ordered, frozen set without waiting;
-// an active invocation leaves the ordinary live-importer error unchanged.
-func compactExternTryCloseInvocation(store *referenceStore) (gcInvocationLease, bool) {
-	if value, ok := managedFunctionGraphs.Load(store); ok {
-		graph := value.(*managedFunctionGraph)
-		graph.mu.Lock()
-		active := graph.gateStillOwnedLocked(0)
-		graph.mu.Unlock()
-		if active {
-			return gcInvocationLease{}, false
-		}
-	}
-	topology := store.ensureGCTopology()
-	if !topology.TryRLock() {
-		return gcInvocationLease{}, false
-	}
-	store.mu.Lock()
-	var set gcInvocationDomainSet
-	for _, entry := range store.instances {
-		if entry != nil && !entry.resourcesReleased {
-			set.add(entry.gcDomain)
-		}
-	}
-	compactExternAddClaimedDomainsLocked(store, &set)
-	store.mu.Unlock()
-	set.sort()
-	domains := gcInvocationDomainView{set: &set}
-	for i := 0; i < domains.len(); i++ {
-		gate := &domains.at(i).invocationMu
-		if !gate.state.CompareAndSwap(0, invocationGateHeld) && !gate.state.CompareAndSwap(invocationGateRevoked, invocationGateRevoked|invocationGateHeld) {
-			for j := i - 1; j >= 0; j-- {
-				domains.at(j).invocationMu.Unlock()
-			}
-			topology.RUnlock()
-			return gcInvocationLease{}, false
-		}
-	}
-	id := newInvocationID()
-	domains.claim(id)
-	return gcInvocationLease{topology: topology, domains: domains, owner: id, acquired: true, dynamic: true}, true
-}
-
 func railshotTryCloseCompactExternHostGlobal(global *Global) (bool, error) {
+	if !managedFunctionGraphForImage || !nativeCollectorFrameRootsBuilt {
+		return false, nil
+	}
 	if global == nil || global.owner == nil {
 		return false, nil
 	}

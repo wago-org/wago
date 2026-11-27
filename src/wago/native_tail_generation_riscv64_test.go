@@ -15,17 +15,34 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+// Close tests explicit cleanup and retries on a retained generation handle.
+// Production retires generations with the owning invocation scope.
+func (g *rv64NativeTailGeneration) Close() error {
+	if g == nil || !g.reserved {
+		return nil
+	}
+	g.ready = false
+	if err := g.deactivate(); err != nil {
+		return err
+	}
+	if err := g.factory.Close(); err != nil {
+		return err
+	}
+	g.releaseReservation()
+	return nil
+}
+
 // This is runtime attachment/lifetime qualification using genuine published
 // ordinary function frames and symbolic sites. These tests never execute those
 // symbolic sites or claim public dynamic source/artifact execution admission.
 func rv64GenerationPlanForTest(t *testing.T, in *Instance, vector bool) []encoder.NativeTailPlan {
 	t.Helper()
-	state := &in.c.ensureCompileIndexes().railshotTail
-	if len(state.primitiveTailTypeKeys) == 0 {
+	state := in.c.ensureCompileIndexes().railshotTail.tailCode.get()
+	if len(state.declaredTypeKeys) == 0 {
 		if !rv64PrimitiveReferenceContract(in.c) {
 			t.Fatal("symbolic tail fixture has no primitive execution contract")
 		}
-		if err := rv64ValidatePrimitiveFunctionKeys(in.c, &state.primitiveTailTypeKeys); err != nil {
+		if err := rv64ValidatePrimitiveFunctionKeys(in.c, &state.declaredTypeKeys); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -151,7 +168,7 @@ func TestRV64PrivateTailGenerationOverlappingRoots(t *testing.T) {
 					}); allocations != 0 {
 						t.Fatal("warm overlapping graph switches allocated", allocations)
 					}
-					if err := rv64GenerationLockedForTest(ga.Close); err != nil || binary.LittleEndian.Uint64(binding) != capB || scopeA.tailBudget.count != 0 {
+					if err := rv64GenerationLockedForTest(ga.Close); err != nil || binary.LittleEndian.Uint64(binding) != capB || scopeA.tailForTest().budget.count != 0 {
 						t.Fatal("departing outer root cleared another generation", err)
 					}
 					if err := producer.Close(); err != nil {
@@ -183,7 +200,7 @@ func TestRV64PrivateTailGenerationOverlappingRoots(t *testing.T) {
 					if !errors.Is(activate(gb), railshot.ErrUnsupported) || binary.LittleEndian.Uint64(binding) != capB {
 						t.Fatal("fixed generation accepted graph growth or changed binding")
 					}
-					if err := rv64GenerationLockedForTest(gb.Close); err != nil || binary.LittleEndian.Uint64(binding) != 0 || scopeB.tailBudget != (rv64NativeTailGenerationBudget{}) || gb.state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) {
+					if err := rv64GenerationLockedForTest(gb.Close); err != nil || binary.LittleEndian.Uint64(binding) != 0 || scopeB.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || gb.state.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) {
 						t.Fatal("cold close failed to release generation ownership", err)
 					}
 					scopeB.release()
@@ -227,7 +244,7 @@ func TestRV64PrivateTailGenerationAggregateLimits(t *testing.T) {
 		return g, err
 	}
 	for _, owner := range scope.owners[:scope.count] {
-		if owner.ensurePluginState().railshotInvocation.definedTailOwner != nil {
+		if owner.ensurePluginState().railshotInvocation.tailForTest().definedOwner != nil {
 			t.Fatal("fixture already has cached owner snapshot")
 		}
 	}
@@ -235,7 +252,7 @@ func TestRV64PrivateTailGenerationAggregateLimits(t *testing.T) {
 		t.Fatal("cold below-quota construction", err)
 	}
 	for _, owner := range scope.owners[:scope.count] {
-		if owner.ensurePluginState().railshotInvocation.definedTailOwner != nil {
+		if owner.ensurePluginState().railshotInvocation.tailForTest().definedOwner != nil {
 			t.Fatal("rejected quota populated owner snapshot")
 		}
 	}
@@ -248,7 +265,7 @@ func TestRV64PrivateTailGenerationAggregateLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, limits := range []rv64NativeTailGenerationLimits{{exact.code - 1, exact.metadata}, {exact.code, exact.metadata - 1}} {
-		if rejected, err := construct(limits, plans); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailBudget != (rv64NativeTailGenerationBudget{}) {
+		if rejected, err := construct(limits, plans); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) {
 			t.Fatal("below exact charge allocated a generation", err)
 		}
 	}
@@ -274,7 +291,7 @@ func TestRV64PrivateTailGenerationAggregateLimits(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if otherScope.tailBudget != (rv64NativeTailGenerationBudget{}) {
+	if otherScope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) {
 		t.Fatal("rejected cross-scope quota charged")
 	}
 	panicked := false
@@ -285,13 +302,13 @@ func TestRV64PrivateTailGenerationAggregateLimits(t *testing.T) {
 	if !panicked || scope.count != 2 || producer.resourcesClosed {
 		t.Fatal("live generation scope roots released")
 	}
-	before := scope.tailBudget
-	if rejected, err := construct(exact, plans); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailBudget != before {
+	before := scope.tailForTest().budget
+	if rejected, err := construct(exact, plans); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailForTest().budget != before {
 		t.Fatal("live overlapping generations escaped aggregate quota", err)
 	}
 	bad := append([]encoder.NativeTailPlan(nil), plans...)
 	bad[0].FrameBytes += 16
-	if rejected, err := construct(rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}, bad); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailBudget != before {
+	if rejected, err := construct(rv64NativeTailGenerationLimits{railshot.MaxCodeBytes, railshot.MaxModuleBytes}, bad); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || scope.tailForTest().budget != before {
 		t.Fatal("claimed source frame replaced actual native frame", err)
 	}
 }
@@ -335,10 +352,10 @@ func TestRV64PrivateTailGenerationOccupiedSetIsTransactional(t *testing.T) {
 	first := rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:]
 	second := rv64NativeInvocationContext(root)[abi.RV64TailCapabilityOffset:]
 	capability := binary.LittleEndian.Uint64(first)
-	budget := scope.tailBudget
+	budget := scope.tailForTest().budget
 	binary.LittleEndian.PutUint64(second, 8)
 	err := rv64GenerationLockedForTest(func() error { return rv64ActivateNativeTailGenerations(generations) })
-	if !errors.Is(err, railshot.ErrUnsupported) || capability == 0 || binary.LittleEndian.Uint64(first) != capability || binary.LittleEndian.Uint64(second) != 8 || generations[0].state.activeTailGeneration != generations[0] || generations[1].state.activeTailGeneration != nil || scope.tailBudget != budget {
+	if !errors.Is(err, railshot.ErrUnsupported) || capability == 0 || binary.LittleEndian.Uint64(first) != capability || binary.LittleEndian.Uint64(second) != 8 || generations[0].state.tailForTest().activeGeneration != generations[0] || generations[1].state.tailForTest().activeGeneration != nil || scope.tailForTest().budget != budget {
 		t.Fatal("later occupied caller partially changed graph", err)
 	}
 	binary.LittleEndian.PutUint64(second, 0)
@@ -423,11 +440,11 @@ func TestRV64PrivateTailGenerationDistinctImageOverlapQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal("first individually fitting graph", err)
 	}
-	before := first.state.tailGenerationBudget
-	if rejected, err := makeGeneration(&scopeB, limits); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || first.state.tailGenerationBudget != before || scopeB.tailBudget != (rv64NativeTailGenerationBudget{}) {
+	before := first.state.tailForTest().generationBudget
+	if rejected, err := makeGeneration(&scopeB, limits); rejected != nil || !errors.Is(err, railshot.ErrUnsupported) || first.state.tailForTest().generationBudget != before || scopeB.tailForTest().budget != (rv64NativeTailGenerationBudget{}) {
 		t.Fatal("distinct retained guest union escaped caller quota", err)
 	}
-	if b.ensurePluginState().railshotInvocation.definedTailOwner != nil {
+	if b.ensurePluginState().railshotInvocation.tailForTest().definedOwner != nil {
 		t.Fatal("cross-scope rejection constructed a target snapshot")
 	}
 }
@@ -463,10 +480,10 @@ func TestRV64PrivateTailGenerationFailedConstructionAndCleanup(t *testing.T) {
 	binary.LittleEndian.PutUint64(row, key^8)
 	err := construct()
 	binary.LittleEndian.PutUint64(row, key)
-	if !errors.Is(err, railshot.ErrUnsupported) || generation == nil || generation.factory != nil || !generation.reserved || scope.tailBudget.count != 1 || generation.state.tailGenerationBudget.count != 1 {
+	if !errors.Is(err, railshot.ErrUnsupported) || generation == nil || generation.factory != nil || !generation.reserved || scope.tailForTest().budget.count != 1 || generation.state.tailForTest().generationBudget.count != 1 {
 		t.Fatal("post-reservation failure lost cleanup ownership", err)
 	}
-	if err := rv64GenerationLockedForTest(generation.Close); err != nil || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || generation.state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) {
+	if err := rv64GenerationLockedForTest(generation.Close); err != nil || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || generation.state.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) {
 		t.Fatal("nil-factory cleanup reservation", err)
 	}
 	if err := construct(); err != nil {
@@ -476,17 +493,17 @@ func TestRV64PrivateTailGenerationFailedConstructionAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := rv64NativeInvocationContext(producer)[abi.RV64TailCapabilityOffset:]
-	capability, before := binary.LittleEndian.Uint64(binding), scope.tailBudget
+	capability, before := binary.LittleEndian.Uint64(binding), scope.tailForTest().budget
 	binary.LittleEndian.PutUint64(binding, 8)
 	err = rv64GenerationLockedForTest(generation.Close)
-	if !errors.Is(err, railshot.ErrUnsupported) || generation.ready || !generation.reserved || scope.tailBudget != before || generation.state.tailGenerationBudget.count != 1 || binary.LittleEndian.Uint64(binding) != 8 {
+	if !errors.Is(err, railshot.ErrUnsupported) || generation.ready || !generation.reserved || scope.tailForTest().budget != before || generation.state.tailForTest().generationBudget.count != 1 || binary.LittleEndian.Uint64(binding) != 8 {
 		t.Fatal("failed detach released reservation or overwrote binding", err)
 	}
 	if err := rv64GenerationLockedForTest(func() error { return rv64ActivateNativeTailGenerations([]*rv64NativeTailGeneration{generation}) }); !errors.Is(err, railshot.ErrUnsupported) {
 		t.Fatal("failed-close generation resumed", err)
 	}
 	binary.LittleEndian.PutUint64(binding, capability)
-	if err := rv64GenerationLockedForTest(generation.Close); err != nil || binary.LittleEndian.Uint64(binding) != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || generation.state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) {
+	if err := rv64GenerationLockedForTest(generation.Close); err != nil || binary.LittleEndian.Uint64(binding) != 0 || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || generation.state.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) {
 		t.Fatal("retained detach/cleanup retry", err)
 	}
 }

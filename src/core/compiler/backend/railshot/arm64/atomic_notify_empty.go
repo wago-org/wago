@@ -9,7 +9,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/runtime/abi"
+import (
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 var atomicNotifyEmptyEnabled = true
 
@@ -44,6 +47,7 @@ func (f *fn) notifyEmptyShortcut(memoryIndex uint32) int {
 	f.cmpRR(X9, X16, true)
 	cold(f.a.Bcond(condA))
 	if f.memoryShared(memoryIndex) {
+		f.atomicHelperUses |= shared.AtomicHelperUsesNotifyPending
 		f.a.SubImm64(X16, X10, abi.SharedNotifyPendingOffset)
 		// Acquire alone does not order an earlier plain Wasm store before
 		// this load. Pair a full barrier with wait's SC pending publication.

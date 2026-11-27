@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func TestValidateModuleEntryPointsRejectNil(t *testing.T) {
@@ -127,6 +129,7 @@ func constFor(t ValType) Instruction {
 }
 
 func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
+	ensureValidationEffects()
 	const wantEffects = 151
 	count := 0
 	for rawKind, effect := range opEffects {
@@ -235,6 +238,7 @@ func TestValidateMemoryCountDefaultAndCustomLimits(t *testing.T) {
 }
 
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
+	ensureSIMDEffects()
 	for _, effect := range simdLoads {
 		k := effect.kind
 		t.Run(k.String(), func(t *testing.T) {
@@ -303,7 +307,7 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 		})
 	}
 	for _, k := range simdBinary {
-		if simdEffects[k].cat == simdEffShift {
+		if simdOpEffect(k).cat == simdEffShift {
 			continue
 		}
 		t.Run(k.String(), func(t *testing.T) {
@@ -359,16 +363,23 @@ func TestValidationEffectTablesStayCompact(t *testing.T) {
 	if _, ok := lookupAtomicEffect(atomicLoadEffects[:], InstrI32AtomicStore, InstrI32AtomicStore+InstrKind(len(atomicLoadEffects))); ok {
 		t.Error("atomic effect lookup accepted a kind above its range")
 	}
-	const wantSIMDSourceEntries = 268
-	if got := len(simdLoads) + len(simdMemLane) + len(simdLaneLimits) + len(simdSplat) + len(simdExtract) + len(simdReplace) + len(simdShift) + len(simdUnary) + len(simdBinary) + len(simdTernary); got != wantSIMDSourceEntries {
+	const wantSIMDSourceEntries = 252
+	if got := len(simdLoads) + len(simdMemLane) + len(simdLaneLimits) + len(simdSplat) + len(simdExtract) + len(simdReplace) + len(simdShift) + len(simdUnary) + len(simdBinary); got != wantSIMDSourceEntries {
 		t.Fatalf("SIMD source effect entries = %d, want %d", got, wantSIMDSourceEntries)
 	}
 }
 
 func TestSIMDEffectTableMatchesAdmissionSet(t *testing.T) {
 	admitted := SIMDValidationInstructionKinds()
-	for k, eff := range simdEffects {
-		kind := InstrKind(k)
+	for kind := InstrKind(0); kind < numInstrKinds; kind++ {
+		var eff simdEffect
+		switch {
+		case buildfeatures.SIMD != 0 && kind >= InstrV128Load && kind < InstrI8x16RelaxedSwizzle:
+			eff = simdEffects[kind-InstrV128Load]
+		case buildfeatures.SIMD != 0 && buildfeatures.RelaxedSIMD != 0 &&
+			kind >= InstrI8x16RelaxedSwizzle && kind <= InstrI32x4RelaxedDotI8x16I7x16AddS:
+			eff = relaxedSIMDEffects[kind-InstrI8x16RelaxedSwizzle]
+		}
 		_, inSnapshot := admitted[kind]
 		if got := IsSIMDValidationInstructionKind(kind); got != (eff.cat != simdNone) {
 			t.Fatalf("%s admission = %v, effect category = %d", kind, got, eff.cat)
@@ -898,6 +909,7 @@ func TestValidatorCoverageSubtypeHelpers(t *testing.T) {
 }
 
 func coverageFuncValidator(m *Module, results []ValType) *funcValidator {
+	ensureValidationEffects()
 	mv := &moduleValidator{m: m}
 	fv := &funcValidator{moduleValidator: mv}
 	_ = fv.pushCtrl(ctrlFunc, nil, results)

@@ -983,7 +983,7 @@ func TestGenericGCTableBulkHelpers(t *testing.T) {
 	}
 	defer compiled.Close()
 	if compiled.stagedGCStructProduct() != stagedGCStructGeneric {
-		t.Fatalf("struct product = %s, want generic", compiled.stagedGCStructProduct())
+		t.Fatalf("struct product = %v, want generic", compiled.stagedGCStructProduct())
 	}
 	instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{VerifyAfterCollect: true}})
 	if err != nil {

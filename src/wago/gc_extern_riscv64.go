@@ -44,8 +44,8 @@ func rv64GCExtern(c *Compiled) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 ||
-		d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || len(d.gcArrayGlobals()) != 0 ||
+		d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := map[string]int{"init": 1, "internalize": 2, "externalize": 3, "externalize-i": 4, "externalize-ii": 5}

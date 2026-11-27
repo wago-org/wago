@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_gc
 
 package wago
 
@@ -83,9 +83,9 @@ func TestRV64PublicGCArrayInitElemExecutionAndArtifact(t *testing.T) {
 					state := in.pluginState.Load()
 					var roots []gcGlobalRootMapping
 					if state != nil {
-						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+						roots = append(roots, state.stagedGlobalRoots()...)
 					}
-					roots = append(roots, in.publicGCState().globalRoots...)
+					roots = append(roots, in.publicGCState().globalRootMappings()...)
 					if len(roots) != 2 {
 						t.Fatalf("array.init_elem global roots=%d, want 2", len(roots))
 					}

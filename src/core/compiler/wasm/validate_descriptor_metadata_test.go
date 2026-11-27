@@ -1,6 +1,11 @@
 package wasm
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 func descriptorTestStruct(final bool, supers []TypeIdx, describes, descriptor OptionalTypeIdx) SubType {
 	return SubType{
@@ -169,5 +174,42 @@ func TestValidateDescriptorMetadataInvariants(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			expectValidateErr(t, tc.m, ErrTypeMismatch)
 		})
+	}
+}
+
+func TestGCDisabledTypeDeclarations(t *testing.T) {
+	if buildfeatures.GC != 0 {
+		t.Skip("requires a build without GC")
+	}
+	plain := SubType{Final: true, Comp: CompType{Kind: CompFunc}}
+	for _, st := range []SubType{
+		{Final: true, HasPrefix: true, Comp: plain.Comp},
+		{Final: true, Supers: []TypeIdx{{Index: 0}}, Comp: plain.Comp},
+		{Final: true, Metadata: TypeMetadata{Descriptor: SomeTypeIdx(TypeIdx{Index: 0})}, Comp: plain.Comp},
+		{Final: true, Comp: CompType{Kind: CompStruct}},
+		{Final: true, Comp: CompType{Kind: CompArray}},
+	} {
+		m := &Module{Types: []RecType{{SubTypes: []SubType{plain, st}}}}
+		expectValidateErr(t, m, ErrUnsupportedFeature)
+	}
+	for _, data := range [][]byte{
+		{0x01, 0x4c, 0x00, 0x60, 0x00, 0x00},
+		{0x01, 0x4d, 0x00, 0x60, 0x00, 0x00},
+		{0x01, 0x4f, 0x00, 0x60, 0x00, 0x00},
+		{0x01, 0x5f, 0x00},
+		{0x01, 0x5e, 0x7f, 0x00},
+	} {
+		_, err := DecodeModule(module(section(secType, data...)))
+		var decoded *DecodeError
+		if !errors.As(err, &decoded) || decoded.Code != ErrDisabledInstruction || decoded.Offset != 11 {
+			t.Fatalf("decode %x = %v, want disabled GC at byte 11", data, err)
+		}
+	}
+	m, err := DecodeModule(module(section(secType, 0x01, 0x4e, 0x02, 0x60, 0x00, 0x00, 0x60, 0x00, 0x00)))
+	if err != nil {
+		t.Fatalf("decode function group: %v", err)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("validate function group: %v", err)
 	}
 }

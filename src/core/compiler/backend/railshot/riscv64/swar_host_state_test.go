@@ -9,9 +9,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
+
+func TestSWARHostThunkExtendedSignaturesFollowBuildFeatures(t *testing.T) {
+	enabled := buildfeatures.ReferenceSignatures || buildfeatures.TailCall != 0
+	for _, sig := range []swarHostSignature{
+		{params: []wasm.ValType{wasm.FuncRef}, rooted: true},
+		{params: []wasm.ValType{wasm.FuncRef}, primitive: true},
+	} {
+		image, entries, err := swarHostThunks([]swarHostSignature{sig}, MaxCodeBytes)
+		if enabled {
+			if err != nil || len(image) == 0 || len(entries) != 1 || entries[0] != 0 {
+				t.Fatalf("extended signature rejected or missing thunk: %v, entries %v", err, entries)
+			}
+		} else if err == nil || image != nil || entries != nil {
+			t.Fatalf("extended signature accepted without its build features: %v, entries %v", err, entries)
+		}
+	}
+}
 
 func swarHostCodeBuffers(t *testing.T, image *swarModuleImage) (*coreruntime.CodeBuffer, *coreruntime.CodeBuffer) {
 	t.Helper()

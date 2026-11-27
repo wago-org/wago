@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !(linux && amd64) && !((linux || darwin) && arm64) && !(linux && riscv64 && !tinygo && !wago_target_tinygo)
+//go:build wago_standalone_no_collector || (!(linux && amd64 && !wago_no_gc) && !((linux || darwin) && arm64 && !wago_no_gc) && !(linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)))
 
 package wago
 
@@ -24,7 +24,7 @@ func (in *Instance) gcHelperRoots(_ uintptr, state *gcPublicState, _ uint32, _ *
 	// rooted eqref table before the next allocation. It still must publish the
 	// instance/domain persistent-root universe so a stress collection cannot
 	// recycle an earlier table-resident handle.
-	if in != nil && state != nil && rv64OfficialGCRefEq(in.c) {
+	if rv64LegacyGCProductsForImage && in != nil && state != nil && rv64OfficialGCRefEq(in.c) {
 		state.frameRoots = gcCollectFrameRoots(in, state, gcNativeFrameLayoutAMD64, false)
 		return &state.frameRoots
 	}

@@ -72,13 +72,13 @@ func TestRV64PublicGCStructNumericGlobalsExecutionAndArtifact(t *testing.T) {
 					var roots []gcGlobalRootMapping
 					state := in.pluginState.Load()
 					if state != nil {
-						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+						roots = append(roots, state.stagedGlobalRoots()...)
 					}
 					stagedRoots := len(roots)
 					public := in.publicGCState()
-					roots = append(roots, public.globalRoots...)
+					roots = append(roots, public.globalRootMappings()...)
 					if len(roots) != 2 || in.c.needsRuntimeGCCollectorDomain() && stagedRoots != 0 {
-						t.Fatalf("numeric struct global roots staged/generic=%d/%d, want two slots", stagedRoots, len(public.globalRoots))
+						t.Fatalf("numeric struct global roots staged/generic=%d/%d, want two slots", stagedRoots, len(public.globalRootMappings()))
 					}
 					var seen [2]bool
 					for _, mapping := range roots {

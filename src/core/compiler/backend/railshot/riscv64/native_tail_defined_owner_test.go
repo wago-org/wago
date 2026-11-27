@@ -160,7 +160,7 @@ func TestNativeTailDefinedOwnerMultipleFunctionSpans(t *testing.T) {
 	for i := range functions {
 		functions[i].code, functions[i].snapshot = buffer, code
 		functions[i].job, functions[i].context = functions[0].job, functions[0].context
-		functions[i].info.mode.functionIndex = uint32(i)
+		functions[i].info.functionIndex = uint32(i)
 	}
 	functions[0].info.CodeBytes = second
 	functions[1].info.Entry = second

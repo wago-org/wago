@@ -11,8 +11,8 @@ package riscv64
 
 import (
 	"fmt"
-	"sort"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -50,128 +50,12 @@ type integerTrap struct {
 type integerEmitter struct {
 	customSpillOffsets []int32
 	target
-	traps                          []integerTrap
-	calls                          []directCall
-	propagate                      []int
-	frameBytes                     int
-	gcFrameRoots                   *shared.GCFrameRootPlan
-	gcOperandRoots                 *wasm.CollectorOperandRoots
-	gcOperandStride                int
-	gcDeadAllocations, gcDeadCalls uint32
-	exception                      *exceptionFrame
-}
-
-// recordGCFrameCallsite publishes the caller-frame roots visible while a
-// direct callee owns execution. Locals use their canonical homes and retained
-// operands below the consumed argument vector use canonical spill homes.
-func (f *integerEmitter) recordGCFrameCallsite(returnOffset int, hiddenRefs []bool) {
-	f.recordGCFrameCallsiteAdjusted(returnOffset, 0, hiddenRefs)
-}
-
-// recordGCFrameCallsiteAdjusted describes a call whose callee returns through
-// a bounded bridge allocation before reaching the Wasm caller frame. The
-// return PC still belongs to this function image; stackAdjust skips the bridge
-// so the runtime walker resumes at the caller's canonical frame homes.
-func (f *integerEmitter) recordGCFrameCallsiteAdjusted(returnOffset int, stackAdjust uint32, hiddenRefs []bool) {
-	plan := f.gcFrameRoots
-	if plan == nil || !plan.Candidate {
-		return
-	}
-	site := plan.CallsiteCount()
-	if site >= plan.CallMaskCount() || returnOffset <= 0 {
-		plan.Exact = false
-		return
-	}
-	offsets := make([]uint32, 0, len(plan.Locals)+len(hiddenRefs)+len(plan.FixedOffsets()))
-	offsets = append(offsets, plan.FixedOffsets()...)
-	if !plan.VisitLiveLocals(site, true, func(root int) {
-		offsets = append(offsets, plan.Locals[root].Offset)
-	}) {
-		plan.Exact = false
-		return
-	}
-	if !f.referenceOperandOffsets(hiddenRefs, f.sourcePC, func(off uint32) { offsets = append(offsets, off) }) {
-		plan.Exact = false
-		return
-	}
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	for i, off := range offsets {
-		if off%8 != 0 || f.frameBytes < 8 || uint64(shared.GCFrameRootOffset(off)) > uint64(f.frameBytes-8) || i != 0 && off == offsets[i-1] {
-			plan.Exact = false
-			return
-		}
-	}
-	plan.RecordCallsite(uint32(returnOffset), stackAdjust, offsets)
-}
-
-// recordGCFrameSafepoint snapshots the exact local and hidden operand roots
-// visible while a parked allocating helper owns execution. Integer lowering
-// already keeps every local and operand in its canonical frame home, so unlike
-// the register backends it does not need a materialization pass here.
-func (f *integerEmitter) recordGCFrameSafepoint(hiddenRefs []bool) uint32 {
-	return f.recordGCFrameSafepointAt(hiddenRefs, f.sourcePC)
-}
-
-func (f *integerEmitter) recordGCFrameSafepointAt(hiddenRefs []bool, pc uint32) uint32 {
-	plan := f.gcFrameRoots
-	if plan == nil || !plan.Candidate {
-		return 0
-	}
-	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
-	if id == 0 || id > shared.GCSafepointIDMax {
-		plan.Exact = false
-		return 0
-	}
-	site := plan.SafepointCount()
-	if site >= plan.AllocationMaskCount() {
-		plan.Exact = false
-		return id
-	}
-	builder := plan.BeginSafepoint()
-	if !plan.VisitLiveLocals(site, false, func(root int) {
-		builder.AppendOffset(plan.Locals[root].Offset)
-	}) {
-		builder.Abort()
-		plan.Exact = false
-		return id
-	}
-	if !f.referenceOperandOffsets(hiddenRefs, pc, func(off uint32) { builder.AppendOffset(off) }) {
-		builder.Abort()
-		plan.Exact = false
-		return id
-	}
-	for _, off := range plan.FixedOffsets() {
-		builder.AppendOffset(off)
-	}
-	offsets, ok := builder.Offsets()
-	if !ok {
-		builder.Abort()
-		plan.Exact = false
-		return id
-	}
-	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	for _, off := range offsets {
-		if off%8 != 0 || f.frameBytes < 8 || uint64(shared.GCFrameRootOffset(off)) > uint64(f.frameBytes-8) {
-			builder.Abort()
-			plan.Exact = false
-			return id
-		}
-	}
-	// Locals and hidden operands can intentionally name the same canonical home
-	// only in malformed producer input. Reject duplicates instead of publishing
-	// an ambiguous root vector.
-	for i := 1; i < len(offsets); i++ {
-		if offsets[i] == offsets[i-1] {
-			builder.Abort()
-			plan.Exact = false
-			return id
-		}
-	}
-	if !builder.Commit() {
-		builder.Abort()
-		plan.Exact = false
-	}
-	return id
+	traps      []integerTrap
+	calls      []directCall
+	propagate  []int
+	frameBytes int
+	integerGCFrameState
+	exception *exceptionFrame
 }
 
 // The separate fallback uses fixed temporary registers and canonical operand
@@ -281,14 +165,14 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 	}
 	for _, run := range fn.Locals.Runs {
 		arrayLocalRef := state != nil && (state.gcArrayLocal || state.gcArrayUniform || state.gcArrayFixedLocal) && wasm.EqualValType(run.Type, wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)))
-		if run.Count != 0 && !scalarType(run.Type, floating) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) && !arrayLocalRef {
+		if run.Count != 0 && !scalarType(run.Type, floating) && !(buildfeatures.ReferenceSignatures && privateRefs && internalFunctionReferenceWithTypes(run.Type, state.referenceCalls, referenceTypes)) && !arrayLocalRef {
 			return integerSummary{}, unsupported("noninteger local")
 		}
 		if int(run.Count) > len(locals)-nlocals {
 			return integerSummary{}, unsupported("local bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
-			localRefs[nlocals] = internalFunctionReferenceWithTypes(run.Type, true, referenceTypes) || arrayLocalRef
+			localRefs[nlocals] = buildfeatures.ReferenceSignatures && internalFunctionReferenceWithTypes(run.Type, true, referenceTypes) || arrayLocalRef
 			locals[nlocals] = scalarWide(run.Type) || localRefs[nlocals]
 			nlocals++
 		}
@@ -450,7 +334,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 		}
 		if emit != nil {
-			emit.restoreExceptionHandlers(depth - 1 - int(label))
+			if buildfeatures.ExceptionHandling != 0 {
+				emit.restoreExceptionHandlers(depth - 1 - int(label))
+			}
 			site := emit.Jump()
 			if fr.kind == 0x03 {
 				if err := patch(site, fr.start); err != nil {
@@ -475,38 +361,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 		if err != nil {
 			return integerSummary{}, err
 		}
-		if !live && emit != nil && emit.gcFrameRoots != nil {
-			// Source masks are conservative and include syntactic dead sites.
-			// Account for those sites explicitly; every remaining site must
-			// publish a native map. Operand roots still use the exact live PC.
-			probe := r
-			var dead wasm.InstructionImmediate
-			if err := profile.classifier.ClassifyInto(&probe, op, &dead); err != nil {
+		if !live && emit != nil && emit.mode.gcFramePlan() != nil {
+			if err := emit.recordDeadGCFrameSites(&profile.classifier, r, op); err != nil {
 				return integerSummary{}, err
-			}
-			if !emit.gcFrameRoots.Conservative {
-				return integerSummary{}, unsupported("dead GC sites require conservative local masks")
-			}
-			switch dead.Kind {
-			case wasm.InstrCall:
-				inline := false
-				if emit.mode.customInstructions != nil {
-					_, inline = emit.mode.customInstructions.instructions[dead.Index]
-				}
-				if !inline {
-					emit.gcDeadCalls++
-				}
-			case wasm.InstrCallRef, wasm.InstrCallIndirect:
-				emit.gcDeadCalls++
-			}
-			if op == 0xfb {
-				switch dead.Subopcode {
-				case 0, 1, 6, 7, 8, 9, 10, 26, 27:
-					emit.gcDeadAllocations++
-				}
-			}
-			if wasm.OpaqueStorageMutation(emit.mode.tableModuleSource, dead.Kind, dead.Index, dead.Index2) {
-				emit.gcDeadAllocations++
 			}
 		}
 		budget++
@@ -523,10 +380,10 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			h = ctrl[depth-1].base
 		case 0x01:
 		case 0x02, 0x03, 0x04, 0x1f:
-			if op == 0x1f && !exceptionMode {
+			if op == 0x1f && (buildfeatures.ExceptionHandling == 0 || !exceptionMode) {
 				return integerSummary{}, unsupported("try_table without EH source proof")
 			}
-			bt, e := internalReferenceBlockType(&r, privateRefs && state.referenceCalls, referenceTypes)
+			bt, e := internalBlockType(&r, privateRefs && state.referenceCalls, referenceTypes)
 			if e != nil {
 				return integerSummary{}, e
 			}
@@ -538,7 +395,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			case -2:
 				results = inlineResults[1][:]
 			case -16: // nullable abstract funcref, an internal full-width carrier
-				if !privateRefs {
+				if !buildfeatures.ReferenceSignatures || !privateRefs {
 					return integerSummary{}, unsupported("reference block without table profile")
 				}
 				results, resultRefs = inlineResults[1][:], inlineReference[:]
@@ -552,6 +409,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					results = inlineResults[1][:]
 				}
 			default:
+				if buildfeatures.MultiValue == 0 {
+					return integerSummary{}, unsupported("multi-value is disabled in this build")
+				}
 				if bt < 0 || state == nil || bt >= int64(len(state.types)) {
 					return integerSummary{}, unsupported("noninteger block signature")
 				}
@@ -588,7 +448,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			h -= len(params)
 			fr := integerControl{base: h, kind: op, params: params, results: results, paramRefs: paramRefs, resultRefs: resultRefs, entry: live, start: position(), falseSite: -1}
-			if op == 0x1f {
+			if buildfeatures.ExceptionHandling != 0 && op == 0x1f {
 				control, e := parseExceptionCatches(&r, state.exceptionModule, depth, &nextExceptionRoot)
 				if e != nil {
 					return integerSummary{}, e
@@ -679,7 +539,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err = match(fr.results, fr.resultRefs, true, true); err != nil {
 				return integerSummary{}, err
 			}
-			if fr.kind == 0x1f {
+			if buildfeatures.ExceptionHandling != 0 && fr.kind == 0x1f {
 				control := exceptionControls[depth-1]
 				if emit != nil && control.active {
 					skip := -1
@@ -746,6 +606,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 		case 0x08, 0x0a:
+			if buildfeatures.ExceptionHandling == 0 {
+				return integerSummary{}, unsupported("exception-handling is disabled in this build")
+			}
 			if !exceptionMode {
 				return integerSummary{}, unsupported("throw without EH source proof")
 			}
@@ -812,6 +675,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				h = ctrl[depth-1].base
 			}
 		case 0xd5, 0xd6:
+			if buildfeatures.TypedFunctionReferences == 0 {
+				return integerSummary{}, unsupported("typed-function-references is disabled in this build")
+			}
 			label, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1060,7 +926,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if e != nil {
 					return integerSummary{}, e
 				}
-				if n != 1 || bt != 0x7f && bt != 0x7e && (!floating || bt != 0x7d && bt != 0x7c) && !(privateRefs && bt == 0x70) {
+				if n != 1 || bt != 0x7f && bt != 0x7e && (!floating || bt != 0x7d && bt != 0x7c) && !(buildfeatures.ReferenceSignatures && privateRefs && bt == 0x70) {
 					return integerSummary{}, unsupported("noninteger typed select")
 				}
 				typedRef = bt == 0x70
@@ -1167,7 +1033,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 		case 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0x25, 0x26:
-			if !privateRefs {
+			if !buildfeatures.ReferenceSignatures || !privateRefs {
 				return integerSummary{}, unsupported("reference instruction without retained reference state")
 			}
 			switch op {
@@ -1206,6 +1072,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 			case 0xd4:
+				if buildfeatures.TypedFunctionReferences == 0 {
+					return integerSummary{}, unsupported("typed-function-references is disabled in this build")
+				}
 				if !state.referenceCalls && !state.gcRefTestAbstract && !state.gcRootedScalar {
 					return integerSummary{}, unsupported("ref.as_non_null requires private typed-reference profile")
 				}
@@ -1304,7 +1173,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				if err != nil {
 					return integerSummary{}, err
 				}
-				gcTableSet := op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
+				gcTableSet := buildfeatures.RISCV64CollectorFrameRoots && op == 0x26 && (state.gcRootedScalar && compactReference || state.gcRefTestTable || state.gcRefTestConcrete || state.gcRefTestAbstract && idx != 1)
 				if gcTableSet {
 					callCount++
 					if callCount > maxFunctionCallSites {
@@ -1386,6 +1255,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				stackRefs[h-1] = len(resultRefs) != 0 && resultRefs[i]
 			}
 		case 0x12:
+			if buildfeatures.TailCall == 0 {
+				return integerSummary{}, unsupported("tail calls are disabled in this build")
+			}
 			idx, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1435,7 +1307,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.restoreExceptionHandlers(0)
+				if buildfeatures.ExceptionHandling != 0 {
+					emit.restoreExceptionHandlers(0)
+				}
 				if importedTail {
 					emit.importTailCall(idx, sig.signature, h, emit.SpillOffset, 8)
 				} else {
@@ -1446,6 +1320,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x14:
+			if buildfeatures.TypedFunctionReferences == 0 {
+				return integerSummary{}, unsupported("typed-function-references is disabled in this build")
+			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1515,6 +1392,12 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 
 		case 0x15:
+			if buildfeatures.TailCall == 0 {
+				return integerSummary{}, unsupported("tail calls are disabled in this build")
+			}
+			if buildfeatures.TypedFunctionReferences == 0 {
+				return integerSummary{}, unsupported("typed-function-references is disabled in this build")
+			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1576,13 +1459,18 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 			}
 			if live && emit != nil {
-				emit.restoreExceptionHandlers(0)
+				if buildfeatures.ExceptionHandling != 0 {
+					emit.restoreExceptionHandlers(0)
+				}
 				emit.dynamicReferenceTailCall(typeIndex, sig.signature, h, referenceSlot, emit.SpillOffset, 8)
 			}
 			live = false
 			ctrl[depth-1].unreachable = true
 			h = ctrl[depth-1].base
 		case 0x11, 0x13:
+			if buildfeatures.TailCall == 0 && op == 0x13 {
+				return integerSummary{}, unsupported("tail calls are disabled in this build")
+			}
 			typeIndex, e := r.U32()
 			if e != nil {
 				return integerSummary{}, e
@@ -1600,7 +1488,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			sig := state.types[typeIndex]
 			var paramRefs, resultRefs []bool
-			subtypeCall := state.gcRootedScalar || state.gcTypeSubtypingRuntimeCallCast && typeIndex < 3 || state.publicReferences && primitiveReferenceTargetWithTypes(sig.signature, referenceTypes, false)
+			subtypeCall := buildfeatures.ReferenceSignatures && (state.gcRootedScalar || state.gcTypeSubtypingRuntimeCallCast && typeIndex < 3 || state.publicReferences && primitiveReferenceTargetWithTypes(sig.signature, referenceTypes, false))
 			if subtypeCall {
 				sig.params, sig.results, paramRefs, resultRefs, err = integerControlSignature(sig, referenceTypes, true, true, floating, &budget)
 			} else {
@@ -1609,7 +1497,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			if err != nil {
 				return integerSummary{}, err
 			}
-			tail := op == 0x13
+			tail := buildfeatures.TailCall != 0 && op == 0x13
 			if tail {
 				if !state.dynamicTailCalls && (tableIndex != 0 || tableWide) {
 					return integerSummary{}, unsupported("indexed indirect tail call")
@@ -1676,7 +1564,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			}
 			if live && emit != nil {
 				if tail {
-					emit.restoreExceptionHandlers(0)
+					if buildfeatures.ExceptionHandling != 0 {
+						emit.restoreExceptionHandlers(0)
+					}
 					if state.dynamicTailCalls {
 						emit.dynamicIndirectTailCall(typeIndex, sig.signature, sig.key, h, indexSlot, tableWide, tableIndex, emit.SpillOffset, 8)
 					} else {
@@ -1719,7 +1609,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("global index")
 			}
 			g := state.globals[idx]
-			reference := g.reference || wasm.EqualValType(g.typ, wasm.FuncRef) || state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref) || wasm.EqualValType(g.typ, wasm.AnyRef) || (state.gcStructPacked || state.gcStructBasic || state.gcArrayInitElem || state.gcArrayInitData || state.gcArrayFill || state.gcArrayCopy) && g.typ.Kind() == wasm.ValRef)
+			reference := g.reference || wasm.EqualValType(g.typ, wasm.FuncRef) || buildfeatures.GC != 0 && state.i31Core && (isI31CoreRef(g.typ) || wasm.EqualValType(g.typ, wasm.I31Ref) || wasm.EqualValType(g.typ, wasm.AnyRef) || (state.gcStructPacked || state.gcStructBasic || state.gcArrayInitElem || state.gcArrayInitData || state.gcArrayFill || state.gcArrayCopy) && g.typ.Kind() == wasm.ValRef)
 			if reference && !state.i31Core && (!privateRefs || !state.importReferences || g.mutable && !state.localMutableReferences) {
 				return integerSummary{}, unsupported("immutable retained reference global required")
 			}
@@ -1732,8 +1622,8 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				functionCarrier := g.typ.Kind() == wasm.ValRef && (g.typ.Ref().Heap().Kind() == wasm.HeapTypeIndex || g.typ.Ref().Heap() == wasm.AbsHeap(wasm.HeapFunc) || g.typ.Ref().Heap() == wasm.AbsHeap(wasm.HeapNoFunc))
-				parkedGlobalStore := state.publicReferenceStores && functionCarrier || state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve || state.mutableFuncrefGlobalLocalCall
-				if state.gcRootedScalar && wasm.ExternReferenceType(g.typ) {
+				parkedGlobalStore := buildfeatures.ReferenceSignatures && (state.publicReferenceStores && functionCarrier || state.mutableFuncrefGlobalClear || state.mutableFuncrefGlobalSetSelf || state.mutableFuncrefGlobalCopy || state.mutableFuncrefGlobalMove || state.mutableFuncrefGlobalBidirectionalCopy || state.mutableFuncrefGlobalLocalCopy || state.mutableFuncrefGlobalLocalPublish && idx == 0 || state.mutableFuncrefGlobalLocalTransfer || state.mutableFuncrefGlobalLocalExport || state.mutableFuncrefGlobalLocalObserve || state.mutableFuncrefGlobalLocalCall)
+				if buildfeatures.RISCV64CollectorFrameRoots && state.gcRootedScalar && wasm.ExternReferenceType(g.typ) {
 					callCount++
 					if callCount > maxFunctionCallSites {
 						return integerSummary{}, unsupported("extern global helper count")
@@ -1793,7 +1683,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 			case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU:
 				wideOperands = 2
 			}
-			if wideOperands != 0 {
+			if buildfeatures.WideArithmetic != 0 && wideOperands != 0 {
 				for range wideOperands {
 					if err = popWidth(true); err != nil {
 						return integerSummary{}, err
@@ -1814,25 +1704,27 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				continue
 			}
-			if sub, ok := saturatingFloatKind(imm.Kind); ok && floating {
-				if _, err = pop(); err != nil {
-					return integerSummary{}, err
+			if buildfeatures.NonTrappingFloatToIntConversion != 0 && floating {
+				if sub, ok := saturatingFloatKind(imm.Kind); ok {
+					if _, err = pop(); err != nil {
+						return integerSummary{}, err
+					}
+					w, resultWide := sub&2 != 0, sub&4 != 0
+					if live && emit != nil {
+						emit.Load(5, emit.SpillOffset(h), w)
+						emit.floatTruncSaturating(w, resultWide, sub&1 != 0)
+						emit.Store(emit.SpillOffset(h), 5, resultWide)
+					}
+					if err = push(resultWide); err != nil {
+						return integerSummary{}, err
+					}
+					continue
 				}
-				w, resultWide := sub&2 != 0, sub&4 != 0
-				if live && emit != nil {
-					emit.Load(5, emit.SpillOffset(h), w)
-					emit.floatTrunc(w, resultWide, sub&1 != 0, true)
-					emit.Store(emit.SpillOffset(h), 5, resultWide)
-				}
-				if err = push(resultWide); err != nil {
-					return integerSummary{}, err
-				}
-				continue
 			}
 			if state == nil {
 				return integerSummary{}, unsupported("bulk instruction without state")
 			}
-			if (state.gcArrayReference || state.gcArrayInitElem) && imm.Kind == wasm.InstrElemDrop && imm.Index == 0 && imm.Index2 == 0 {
+			if buildfeatures.GC != 0 && buildfeatures.BulkMemoryOperations != 0 && buildfeatures.ReferenceTypes != 0 && (state.gcArrayReference || state.gcArrayInitElem) && imm.Kind == wasm.InstrElemDrop && imm.Index == 0 && imm.Index2 == 0 {
 				callCount++
 				if callCount > maxFunctionCallSites {
 					return integerSummary{}, unsupported("GC helper call count/slot budget")
@@ -1842,7 +1734,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				continue
 			}
-			if imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop {
+			if buildfeatures.BulkMemoryOperations != 0 && buildfeatures.ReferenceTypes != 0 && (imm.Kind == wasm.InstrTableInit || imm.Kind == wasm.InstrElemDrop) {
 				if !privateRefs || imm.Kind == wasm.InstrTableInit && !state.ownedTable || uint64(imm.Index) >= uint64(state.elementCount) || imm.Kind == wasm.InstrElemDrop && imm.Index2 != 0 {
 					return integerSummary{}, unsupported("private element index/shape")
 				}
@@ -1897,7 +1789,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				continue
 			}
-			if imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableCopy || imm.Kind == wasm.InstrTableGrow {
+			if buildfeatures.ReferenceTypes != 0 && (imm.Kind == wasm.InstrTableFill || imm.Kind == wasm.InstrTableGrow || buildfeatures.BulkMemoryOperations != 0 && imm.Kind == wasm.InstrTableCopy) {
 				tableIndex, tableWide := uint32(0), state.table64
 				sourceTableIndex := uint32(0)
 				sourceTableWide := tableWide
@@ -1980,7 +1872,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					if state.gcRootedScalar && compactReference {
 						switch imm.Kind {
 						case wasm.InstrTableCopy:
-							emit.gcObjectTableCopy(h, tableIndex, sourceTableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, sourceTableIndex, stackRefs[:h+3])...)
+							if buildfeatures.BulkMemoryOperations != 0 {
+								emit.gcObjectTableCopy(h, tableIndex, sourceTableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, sourceTableIndex, stackRefs[:h+3])...)
+							}
 						case wasm.InstrTableFill:
 							emit.gcObjectTableFill(h, tableIndex, emit.externPersistentRoots(imm.Kind, tableIndex, 0, stackRefs[:h+3])...)
 						case wasm.InstrTableGrow:
@@ -1989,7 +1883,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					} else {
 						switch imm.Kind {
 						case wasm.InstrTableCopy:
-							emit.privateTableCopyBetween(tableIndex, sourceTableIndex, compactReference)
+							if buildfeatures.BulkMemoryOperations != 0 {
+								emit.privateTableCopyBetween(tableIndex, sourceTableIndex, compactReference)
+							}
 						case wasm.InstrTableFill:
 							emit.privateTableFillAt(tableIndex, compactReference)
 						case wasm.InstrTableGrow:
@@ -2005,7 +1901,7 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				}
 				continue
 			}
-			if imm.Kind == wasm.InstrTableSize {
+			if buildfeatures.ReferenceTypes != 0 && imm.Kind == wasm.InstrTableSize {
 				wide, ok := state.tableWidth(imm.Index)
 				if !privateRefs || !ok {
 					return integerSummary{}, unsupported("private table.size index")
@@ -2019,6 +1915,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 					return integerSummary{}, err
 				}
 				continue
+			}
+			if buildfeatures.BulkMemoryOperations == 0 {
+				return integerSummary{}, unsupported("unsupported prefixed instruction")
 			}
 			switch imm.Kind {
 			case wasm.InstrMemoryInit, wasm.InstrDataDrop:
@@ -2063,6 +1962,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				emit.memoryBulkAt(imm.Kind, dataOffset, dst, src)
 			}
 		case 0xfb:
+			if buildfeatures.GC == 0 {
+				return integerSummary{}, unsupported("gc is disabled in this build")
+			}
 			var imm wasm.InstructionImmediate
 			if err = profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return integerSummary{}, err
@@ -3014,6 +2916,9 @@ func walkInteger(fn *wasm.Func, ft *wasm.CompType, state *moduleState, emit *int
 				return integerSummary{}, unsupported("unsupported GC instruction in exact i31 profile")
 			}
 		case 0xfe:
+			if buildfeatures.Threads == 0 {
+				return integerSummary{}, unsupported("threads is disabled in this build")
+			}
 			d, e := shared.DecodeAtomic(&r)
 			if e != nil {
 				return integerSummary{}, e
@@ -3269,8 +3174,14 @@ func integerOpcode(op byte) (shared.IntOp, bool, bool, bool, bool) {
 	case 0xad:
 		return shared.IntZExt32, false, true, true, true
 	case 0xc0, 0xc1:
+		if buildfeatures.SignExtensionOps == 0 {
+			break
+		}
 		return []shared.IntOp{shared.IntSExt8, shared.IntSExt16}[op-0xc0], false, true, false, true
 	case 0xc2, 0xc3, 0xc4:
+		if buildfeatures.SignExtensionOps == 0 {
+			break
+		}
 		return []shared.IntOp{shared.IntSExt8, shared.IntSExt16, shared.IntSExt32}[op-0xc2], true, true, true, true
 	}
 	return 0, false, false, false, false
@@ -3350,11 +3261,15 @@ func (f *integerEmitter) operation(op shared.IntOp, w, unary, resultWide bool) {
 		case shared.IntWrap, shared.IntZExt32:
 			f.NormalizeI32(5)
 		case shared.IntSExt8:
-			f.a.Slli(enc.X5, enc.X5, 56)
-			f.a.Srai(enc.X5, enc.X5, 56)
+			if buildfeatures.SignExtensionOps != 0 {
+				f.a.Slli(enc.X5, enc.X5, 56)
+				f.a.Srai(enc.X5, enc.X5, 56)
+			}
 		case shared.IntSExt16:
-			f.a.Slli(enc.X5, enc.X5, 48)
-			f.a.Srai(enc.X5, enc.X5, 48)
+			if buildfeatures.SignExtensionOps != 0 {
+				f.a.Slli(enc.X5, enc.X5, 48)
+				f.a.Srai(enc.X5, enc.X5, 48)
+			}
 		case shared.IntSExt32:
 			f.a.Addiw(enc.X5, enc.X5, 0)
 		case shared.IntClz, shared.IntCtz, shared.IntPopcnt:
@@ -3479,11 +3394,11 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	}
 	for _, run := range fn.Locals.Runs {
 		for i := uint32(0); i < run.Count; i++ {
-			widths[n] = scalarWide(run.Type) || internalFunctionReferenceWithTypes(run.Type, true, referenceTypes)
+			widths[n] = scalarWide(run.Type) || buildfeatures.ReferenceSignatures && internalFunctionReferenceWithTypes(run.Type, true, referenceTypes)
 			n++
 		}
 	}
-	f := integerEmitter{target: target{nlocals: n, mode: mode}, gcFrameRoots: mode.gcFrameRoots}
+	f := integerEmitter{target: target{nlocals: n, mode: mode}}
 	if regallocCheckEnabled {
 		defer f.checkEndLifetimes()
 	}
@@ -3491,7 +3406,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		f.header = callFrameHeader
 	}
 	reservedSlots := summary.maxStack
-	if state != nil && state.exceptionModule != nil {
+	if buildfeatures.ExceptionHandling != 0 && state != nil && state.exceptionModule != nil {
 		if !mode.production || !mode.invocationContext {
 			return nil, FunctionInfo{}, nil, unsupported("EH requires the invocation context ABI")
 		}
@@ -3504,11 +3419,7 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		reservedSlots += f.exception.slots()
 		f.spillPrefix = int32(f.exception.slots() * 8)
 	}
-	collectorModule := mode.tableModuleSource
-	if collectorModule == nil {
-		collectorModule = mode.exceptionModule
-	}
-	if err := f.prepareCollectorOperands(collectorModule, fn, false); err != nil {
+	if err := f.prepareCollectorOperands(fn, false); err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
 	frame, err := checkedFrameBytes(f.frameHeader(), n, reservedSlots)
@@ -3516,23 +3427,12 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	if f.gcFrameRoots != nil {
-		f.gcFrameRoots.ResetSafepoints()
-		f.gcFrameRoots.ResetCallsites()
-		f.gcFrameRoots.FrameBytes = uint32(frame)
-		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() {
-			return nil, FunctionInfo{}, nil, unsupported("invalid GC frame-root plan")
-		}
-		previous := uint32(0)
-		for i, root := range f.gcFrameRoots.Locals {
-			if uint64(root.Index) >= uint64(n) || i != 0 && root.Index <= previous || shared.GCFrameRootOffset(root.Offset) != uint32(f.LocalOffset(int(root.Index))) || uint64(shared.GCFrameRootOffset(root.Offset)) > uint64(frame-8) || root.Offset&shared.GCFrameFuncRefRootFlag != 0 && !mode.functionEnvironmentRoots() || root.Offset&shared.GCFrameExternRefRootFlag != 0 && !mode.opaqueExternRoots() {
-				f.gcFrameRoots.Exact = false
-				return nil, FunctionInfo{}, nil, unsupported("invalid GC frame-root local home")
-			}
-			previous = root.Index
-		}
+	if err := f.initializeGCFrameRoots(n, 1, 0); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
-	f.initializeExceptionRoots()
+	if buildfeatures.ExceptionHandling != 0 {
+		f.initializeExceptionRoots()
+	}
 	actual, err := walkInteger(fn, ft, state, &f)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
@@ -3540,11 +3440,8 @@ func compileIntegerMode(fn *wasm.Func, ft *wasm.CompType, state *moduleState, su
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: integer admission changed")
 	}
-	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount()+int(f.gcDeadAllocations) != f.gcFrameRoots.AllocationMaskCount() || f.gcFrameRoots.CallsiteCount()+int(f.gcDeadCalls) != f.gcFrameRoots.CallMaskCount()) {
-		return nil, FunctionInfo{}, nil, unsupported("incomplete GC frame-root safepoints")
-	}
-	if !finalizeGCFrameRootMasks(f.gcFrameRoots, f.gcDeadAllocations, f.gcDeadCalls) {
-		return nil, FunctionInfo{}, nil, unsupported("invalid dead GC frame-root masks")
+	if err := f.finishScalarGCFrameRoots(); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
 	f.profileUnknown()
 	exits := []int{f.Jump()}

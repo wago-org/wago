@@ -194,7 +194,7 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 	case gcRefTableRoot:
 		root := gc.Null()
 		if word>>32 != 0 {
-			if s.Conversion == nil {
+			if !gcExternConversionForImage || s.Conversion == nil {
 				return fmt.Errorf("GC ref.test foreign anyref has no conversion owner")
 			}
 			foreign, err := s.Conversion.isForeignAny(word)
@@ -215,7 +215,7 @@ func (s *gcRefTestTableState) setTable(collector *gc.Collector, table, index, wo
 			return err
 		}
 	case gcRefTableExtern:
-		if s.Conversion == nil {
+		if !gcExternConversionForImage || s.Conversion == nil {
 			return fmt.Errorf("GC ref.test extern table has no conversion owner")
 		}
 		off := 8 + int(index)*8
@@ -250,7 +250,7 @@ func (s *gcRefTestTableState) refTest(collector *gc.Collector, word uint64, targ
 		}
 	}
 	if word>>32 != 0 {
-		if s == nil || s.Conversion == nil {
+		if !gcExternConversionForImage || s == nil || s.Conversion == nil {
 			return false, fmt.Errorf("GC ref.test foreign anyref has no conversion owner")
 		}
 		foreign, err := s.Conversion.isForeignAny(word)
@@ -290,7 +290,7 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 			}
 		}
 	}
-	if s.Conversion != nil {
+	if gcExternConversionForImage && s.Conversion != nil {
 		_ = s.Conversion.close()
 	}
 	for table, descriptor := range s.Descriptors {
@@ -300,23 +300,4 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 		size := int(binary.LittleEndian.Uint32(descriptor))
 		clear(descriptor[8 : 8+size*s.entryBytes[table]])
 	}
-}
-
-func (in *Instance) existingGCExternConversionState() *gcExternConversionState {
-	state := in.existingGCRefTestTableState()
-	if state == nil {
-		return nil
-	}
-	return state.Conversion
-}
-
-func (in *Instance) existingGCRefTestTableState() *gcRefTestTableState {
-	if in == nil {
-		return nil
-	}
-	state := in.pluginState.Load()
-	if state == nil {
-		return nil
-	}
-	return state.gcRefTestTable.Load()
 }

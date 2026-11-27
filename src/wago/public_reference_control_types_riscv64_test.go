@@ -301,7 +301,7 @@ func TestRV64PublicReferenceControlsRetiredImportedOwner(t *testing.T) {
 					}
 					rv64ReferenceControlsInvoke(t, in, vector, true, cell, true)
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailDispatcher != nil {
+					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailForTest().dispatcher != nil {
 						t.Fatal("control owner scope")
 					}
 					if err := in.Close(); err != nil {

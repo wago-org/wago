@@ -11,7 +11,6 @@ package riscv64
 
 import (
 	"errors"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"sync"
 )
 
@@ -19,12 +18,12 @@ import (
 // owned here until cleanup succeeds; a later construction retries cleanup first.
 type nativeTailExitCache struct {
 	mu               sync.Mutex
-	code             *coreruntime.CodeBuffer
+	code             []byte
 	pointer          uintptr
 	publicationError error
 }
 
-func (s *nativeTailExitCache) get(build func() ([]byte, error), allocate func(int) (*coreruntime.CodeBuffer, error), seal, closeCode func(*coreruntime.CodeBuffer) error) (uintptr, error) {
+func (s *nativeTailExitCache) get(build func() ([]byte, error), allocate func([]byte) ([]byte, uintptr, error), seal, closeCode func([]byte) error) (uintptr, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pointer != 0 {
@@ -41,10 +40,8 @@ func (s *nativeTailExitCache) get(build func() ([]byte, error), allocate func(in
 	if err != nil {
 		return 0, err
 	}
-	s.code, err = allocate(len(code))
-	if err == nil {
-		err = s.code.Append(code)
-	}
+	var pointer uintptr
+	s.code, pointer, err = allocate(code)
 	if err == nil {
 		err = seal(s.code)
 	}
@@ -58,6 +55,6 @@ func (s *nativeTailExitCache) get(build func() ([]byte, error), allocate func(in
 		}
 		return 0, err
 	}
-	s.pointer = s.code.Base()
+	s.pointer = pointer
 	return s.pointer, nil
 }

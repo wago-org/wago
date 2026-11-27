@@ -42,7 +42,7 @@ const (
 	hcSavedR13    = 32                                  // u64
 	hcSavedR14    = 40                                  // u64
 	hcSavedR15    = 48                                  // u64
-	hcTrampoline  = 56                                  // u64: hostCallStub address (per-instance constant, published by CallWithHost)
+	hcTrampoline  = abi.AMD64SyncHostCallSavedBytes     // u64: hostCallStub address (per-instance constant, published by CallWithHost)
 	hcImportIdx   = 64                                  // u32: native -> Go, which import
 	hcNArgs       = 68                                  // u32: low 16 bits = param slots, high 16 bits = result slots (native -> Go)
 	hcArgs        = 72                                  // [maxHostArity]u64: native -> Go

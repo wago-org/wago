@@ -39,10 +39,10 @@ func TestStagedGCArrayBulkCopyMutableRootLifecycle(t *testing.T) {
 	}
 	defer in.Close()
 	state := in.pluginState.Load()
-	if state == nil || state.gcGlobalRootCount != 2 {
+	if state == nil || len(state.stagedGlobalRoots()) != 2 {
 		t.Fatalf("root state=%#v, want two mappings", state)
 	}
-	mutable := state.gcGlobalRoots[1]
+	mutable := state.stagedGlobalRoots()[1]
 	before := readGlobalObject(in.globalCells[mutable.GlobalIndex], ValAnyRef)
 	if _, err := in.Invoke("array_copy_overlap_test-1"); err != nil {
 		t.Fatalf("first overlap copy: %v", err)

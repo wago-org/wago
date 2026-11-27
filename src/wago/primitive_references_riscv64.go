@@ -47,7 +47,7 @@ func rv64PrimitiveReferenceDeclarations(c *Compiled) bool {
 		if typ.HasDescribes || typ.HasDescriptor {
 			return false
 		}
-		if typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+		if aggregateTypesForImage && referenceSignaturesBuilt && (typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray) {
 			continue // Inert graph members; full declaration validation is separate.
 		}
 		if typ.Kind != CompositeTypeFunction || len(typ.Fields) != 0 || typ.Array != (FieldTypeDescriptor{}) {
@@ -61,23 +61,44 @@ func rv64PrimitiveReferenceDeclarations(c *Compiled) bool {
 					}
 					continue
 				}
-				if !rv64PrimitiveReferenceValue(c, value) {
+				if !referenceTypeDescriptorsForImage || !referenceSignaturesBuilt || !rv64PrimitiveReferenceValue(c, value) {
 					return false
 				}
 			}
 		}
 	}
+	if hostFunctionImportsBuilt {
+		if !rv64PrimitiveImportDeclarations(c) {
+			return false
+		}
+	} else if len(c.importFuncSigs) != 0 {
+		return false
+	}
+	if globalsForImage {
+		return rv64PrimitiveGlobalDeclarations(c)
+	}
+	return len(c.Globals) == 0
+}
+
+func rv64PrimitiveImportDeclarations(c *Compiled) bool {
 	for _, sig := range c.importFuncSigs {
 		for _, values := range [][]ValType{sig.Params, sig.Results} {
 			for _, value := range values {
-				if value != ValI32 && value != ValI64 && value != ValF32 && value != ValF64 && value != ValV128 && value != ValFuncRef && value != ValExternRef {
+				if value != ValI32 && value != ValI64 && value != ValF32 && value != ValF64 && value != ValV128 && !(referenceSignaturesBuilt && (value == ValFuncRef || value == ValExternRef)) {
 					return false
 				}
 			}
 		}
 	}
+	return true
+}
+
+func rv64PrimitiveGlobalDeclarations(c *Compiled) bool {
 	for index, global := range c.Globals {
 		if global.Type == ValFuncRef || global.Type == ValExternRef {
+			if !referenceSignaturesBuilt {
+				return false
+			}
 			exact, err := c.globalExactType(index)
 			if err != nil || !rv64PrimitiveReferenceValue(c, exact) {
 				return false
@@ -90,6 +111,10 @@ func rv64PrimitiveReferenceDeclarations(c *Compiled) bool {
 }
 
 func rv64PrimitiveReferenceValue(c *Compiled, value ValueTypeDescriptor) bool {
+	return referenceSignaturesBuilt && rv64AdmitPrimitiveReferenceValue(c, value)
+}
+
+func rv64AdmitPrimitiveReferenceValue(c *Compiled, value ValueTypeDescriptor) bool {
 	if value.Kind != ValueTypeReference || value.Ref.Exact || c.requiredFeatures&(CoreFeatureReferenceTypes|CoreFeatureTypedFunctionReferences|CoreFeatureGC) == 0 || (!value.Ref.Nullable || value.Ref.Heap.Defined) && !c.requiredFeatures.IsEnabled(CoreFeatureTypedFunctionReferences) {
 		return false
 	}
@@ -98,27 +123,6 @@ func rv64PrimitiveReferenceValue(c *Compiled, value ValueTypeDescriptor) bool {
 		return heap.Abstract == 0 && uint64(heap.TypeIndex) < uint64(len(c.Types)) && c.Types[heap.TypeIndex].Kind == CompositeTypeFunction
 	}
 	return heap.TypeIndex == 0 && (heap.Abstract == AbstractHeapFunc || heap.Abstract == AbstractHeapExtern || heap.Abstract == AbstractHeapNoFunc || heap.Abstract == AbstractHeapNoExtern)
-}
-
-func rv64PrimitiveUsesTypedSignatures(c *Compiled) bool {
-	for _, typ := range c.Types {
-		if !typ.Final || len(typ.Supers) != 0 {
-			return true
-		}
-		for _, values := range [][]ValueTypeDescriptor{typ.Params, typ.Results} {
-			for _, value := range values {
-				if value.Kind == ValueTypeReference && (!value.Ref.Nullable || value.Ref.Heap.Defined || value.Ref.Heap.Abstract != AbstractHeapFunc && value.Ref.Heap.Abstract != AbstractHeapExtern) {
-					return true
-				}
-			}
-		}
-	}
-	for index := 1; index < len(c.Types); index++ {
-		if c.Types[index].RecGroup == c.Types[index-1].RecGroup {
-			return true
-		}
-	}
-	return false
 }
 
 // Rebuild the complete bounded declaration graph during cold admission. Inert
@@ -138,7 +142,7 @@ func rv64ValidatePrimitiveFunctionKeys(c *Compiled, output ...*[]uint64) error {
 	if err != nil {
 		return err
 	}
-	if err := wasm.ValidateModule(module); err != nil {
+	if err := wasm.ValidateTypeGraph(module); err != nil {
 		return err
 	}
 	keys := make([]uint64, len(c.Types))

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build wagodebug
+//go:build wagodebug && (!wago_no_gc || (linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_exception_handling)))
 
 package wago
 
@@ -23,13 +23,17 @@ const nativeGCEntryValidationEnabled = true
 // only immutable ABI/view facts; mutable collector backing remains dynamically
 // validated by generated semantic access code.
 func validateNativeGCEntry(in *Instance) error {
-	if in == nil || in.gcNativeView == nil {
+	if in == nil {
 		return nil
 	}
-	if in.jm == nil || in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(in.gcNativeView)) {
+	view := in.gcNativeView()
+	if view == nil {
+		return nil
+	}
+	if in.jm == nil || in.jm.GCNativeViewPtr() != uintptr(unsafe.Pointer(view)) {
 		return fmt.Errorf("wagodebug: native GC basedata view pointer mismatch")
 	}
-	if err := gc.ValidateNativeInstanceView(in.gcNativeView, in.gc, uint32(len(in.c.Types))); err != nil {
+	if err := gc.ValidateNativeInstanceView(view, in.gc, uint32(len(in.c.Types))); err != nil {
 		return fmt.Errorf("wagodebug: native GC entry: %w", err)
 	}
 	return nil

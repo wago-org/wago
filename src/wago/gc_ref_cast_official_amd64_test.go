@@ -226,7 +226,7 @@ func replayStagedGCRefCastScript(t *testing.T, tmp string, script stagedSpecScri
 				if product != want {
 					_ = c.Close()
 					counts.Failures++
-					t.Errorf("gc/ref_cast.wast:%d compiled as product %s, want %s", cmd.Line, product, want)
+					t.Errorf("gc/ref_cast.wast:%d compiled as product %v, want %v", cmd.Line, product, want)
 					continue
 				}
 				in, instantiateErr := instantiateCore(c, InstantiateOptions{})

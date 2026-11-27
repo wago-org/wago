@@ -240,7 +240,7 @@ func TestRV64CollectorHostTailWarmAllocations(t *testing.T) {
 							t.Fatal(e)
 						}
 						defer in.unlockNativeEntry(entry)
-						generations := entry.tables.targets.tailActive
+						generations := entry.tables.targets.tailForTest().active
 						if len(generations) != 1 {
 							t.Fatal("missing host tail generation")
 						}

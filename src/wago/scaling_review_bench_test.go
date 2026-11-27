@@ -1,11 +1,8 @@
 package wago
 
 import (
-	"encoding/binary"
 	"fmt"
-	"runtime"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -73,37 +70,14 @@ func BenchmarkScalingValueIntern(b *testing.B) {
 	}
 }
 
-func BenchmarkScalingReturnPCLookup(b *testing.B) {
-	for _, n := range []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
-		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
-			frame := make([]byte, 160)
-			code := make([]byte, 16*(n+2))
-			base := uintptr(unsafe.Pointer(&frame[0]))
-			codeBase := uintptr(unsafe.Pointer(&code[0]))
-			callsites := make([]compiledGCFrameCallsite, n)
-			for i := range callsites {
-				callsites[i] = compiledGCFrameCallsite{returnOffset: uint32(16 * (i + 1)), frameBytes: 32}
-			}
-			binary.LittleEndian.PutUint64(frame[40:], uint64(codeBase+uintptr(16*n)))
-			binary.LittleEndian.PutUint64(frame[88:], uint64(codeBase+uintptr(16*(n+1))))
-			roots := gcNativeFrameRoots{base: base, frameBytes: 32, frameLayout: gcNativeFrameLayoutARM64, codeBase: codeBase, codeBytes: uintptr(len(code)), adapterReturnOffsets: []uint32{uint32(16 * (n + 1))}, callsites: callsites}
-			visit := func(gc.RootSlot) bool { return true }
-			b.ReportAllocs()
-			b.ResetTimer()
-			for k := 0; k < b.N; k++ {
-				roots.RangeRoots(visit)
-			}
-			runtime.KeepAlive(frame)
-			runtime.KeepAlive(code)
-		})
-	}
-}
-
 func BenchmarkScalingCodeRangeLookup(b *testing.B) {
+	if !nativeCollectorFrameRootsBuilt {
+		b.Skip("requires compiled native frame roots")
+	}
 	for _, n := range []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096} {
 		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
 			collector := new(gc.Collector)
-			c := &Compiled{code: make([]byte, 64), validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}}
+			c := &Compiled{code: make([]byte, 64), validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})}}
 			store := &referenceStore{instances: make(map[*Instance]*referenceStoreInstance)}
 			for i := 0; i < n; i++ {
 				in := &Instance{c: c, gc: collector, base: uintptr(0x10000 + i*8192)}

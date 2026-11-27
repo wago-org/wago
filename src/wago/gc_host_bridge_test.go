@@ -45,8 +45,9 @@ func TestRuntimeGCHostFuncRefCallAndTailOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if owner.gc.collector == nil || owner.gc.collector != in.gc || owner.gc.domainID == 0 || owner.gc.domainID != instanceNativeGCDomainID(in) {
-		t.Fatalf("GC host owner domain = %p/%d, instance = %p/%d", owner.gc.collector, owner.gc.domainID, in.gc, instanceNativeGCDomainID(in))
+	collector, domain := owner.binding.gcDomain()
+	if collector == nil || collector != in.gc || domain == 0 || domain != instanceNativeGCDomainID(in) {
+		t.Fatalf("GC host owner domain = %p/%d, instance = %p/%d", collector, domain, in.gc, instanceNativeGCDomainID(in))
 	}
 	created, err := in.InvokeValues(context.Background(), "new")
 	if err != nil || len(created) != 1 || created[0].GCRef().IsNull() {

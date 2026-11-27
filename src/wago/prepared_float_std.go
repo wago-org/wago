@@ -45,15 +45,12 @@ func (in *Instance) invokeDirectFloatEntry(entry uintptr, paramWide, resultWide 
 	if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke Wasm function: instance is closed")
 	}
-	if len(args) > 4 || len(resultWide) > 4 {
+	if directFloatOctForImage && (!directFloatFourForImage || len(args) > 4 || len(resultWide) > 4) {
 		return in.invokeDirectFloatOctEntry(entry, paramWide, resultWide, args)
 	}
 	var raw [4]uint64
 	for i, bits := range args {
-		if !paramWide[i] {
-			bits = uint64(uint32(bits))
-		}
-		raw[i] = bits
+		raw[i] = directBankValue(bits, i, paramWide, floatFourNarrowArgsForImage, floatFourWideArgsForImage)
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
 	r0, r1, r2, r3 := in.eng.EnterPreparedFloatBounded(entry, in.jm.LinMemBase(), &raw)
@@ -65,10 +62,7 @@ func (in *Instance) invokeDirectFloatEntry(entry uintptr, paramWide, resultWide 
 	out := in.resultVals[:len(resultWide)]
 	results := [4]uint64{r0, r1, r2, r3}
 	for i := range out {
-		out[i] = results[i]
-		if !resultWide[i] {
-			out[i] = uint64(uint32(out[i]))
-		}
+		out[i] = directBankValue(results[i], i, resultWide, floatFourNarrowResultsForImage, floatFourWideResultsForImage)
 	}
 	return out, nil
 }
@@ -76,10 +70,7 @@ func (in *Instance) invokeDirectFloatEntry(entry uintptr, paramWide, resultWide 
 func (in *Instance) invokeDirectFloatOctEntry(entry uintptr, paramWide, resultWide []bool, args []uint64) ([]uint64, error) {
 	var raw [8]uint64
 	for i, bits := range args {
-		if !paramWide[i] {
-			bits = uint64(uint32(bits))
-		}
-		raw[i] = bits
+		raw[i] = directBankValue(bits, i, paramWide, floatOctNarrowArgsForImage, floatOctWideArgsForImage)
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
 	r0, r1, r2, r3, r4, r5, r6, r7 := in.eng.EnterPreparedFloatOctBounded(entry, in.jm.LinMemBase(), &raw)
@@ -91,10 +82,7 @@ func (in *Instance) invokeDirectFloatOctEntry(entry uintptr, paramWide, resultWi
 	out := in.resultVals[:len(resultWide)]
 	results := [8]uint64{r0, r1, r2, r3, r4, r5, r6, r7}
 	for i := range out {
-		out[i] = results[i]
-		if !resultWide[i] {
-			out[i] = uint64(uint32(out[i]))
-		}
+		out[i] = directBankValue(results[i], i, resultWide, floatOctNarrowResultsForImage, floatOctWideResultsForImage)
 	}
 	return out, nil
 }

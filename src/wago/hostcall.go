@@ -9,7 +9,6 @@ package wago
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	goruntime "runtime"
@@ -43,7 +42,7 @@ type HostModule interface {
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
 	var id invocationID
-	var reservation *pluginOperationReservation
+	var reservation pluginReservation
 	if h, ok := resolveHostCaller(caller); ok {
 		if h.valid() {
 			active = h.in
@@ -695,40 +694,32 @@ type instancePluginState struct {
 	invocationID         invocationID
 	gcConfig             *GCConfig
 	origin               InstantiateOrigin
-	gcGlobalRootCount    uint32
 	guestStorageBorrow   atomic.Uint32
-	gcPublic             atomic.Pointer[gcPublicState]
-	gcArrayElements      atomic.Pointer[gcArrayElementState]
-	gcRefTestTable       atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots        []gcGlobalRootMapping
-	tagIdentityBase      uintptr                 // arena-owned bounded native u64 directory for staged EH
-	tagExports           map[int]*Tag            // lazy stable identity handles for exported local tags
-	boundedViewVersion   uint64                  // native lease protected; valid only for this observed context epoch
-	boundedViewMemBase   uintptr                 // changed backing invalidates cached view entry too
-	multiHost            *boundedMultiHostLayout // immutable admitted import shapes, allocated only for multi-import modules
+	pluginPublicGCState
+	stagedGCObjectState
+	stagedGCGlobalRootState
+	instanceExceptionTagState
+	boundedViewVersion uint64                  // native lease protected; valid only for this observed context epoch
+	boundedViewMemBase uintptr                 // changed backing invalidates cached view entry too
+	multiHost          *boundedMultiHostLayout // immutable admitted import shapes, allocated only for multi-import modules
 }
 
 type instanceCloseState struct {
-	doneMu            sync.Mutex
-	done              chan struct{}
-	completed         atomic.Bool
-	quiesced          chan struct{}
-	quiescedOnce      sync.Once
-	prepared          atomic.Bool // publishes hook data and completion of all BeforeClose work
-	result            error
-	interruptStop     func()
-	hooks             *hookRegistry
-	event             *InstanceCloseEvent
+	doneMu        sync.Mutex
+	done          chan struct{}
+	completed     atomic.Bool
+	quiesced      chan struct{}
+	quiescedOnce  sync.Once
+	prepared      atomic.Bool // publishes hook data and completion of all BeforeClose work
+	result        error
+	interruptStop func()
+	pluginInstanceCloseState
 	terminalStarted   atomic.Bool
 	terminalComplete  atomic.Bool
 	terminalPublished atomic.Bool
 	terminalDone      chan struct{} // publishes terminalResult, independently of quiescence
-	terminalResult    error
-	// terminalCollectionMu pairs logical-result publication with RV64 terminal
-	// eligibility. Exactly one side of that crossing owns the collection try.
-	terminalCollectionMu       sync.Mutex
-	terminalCollectionClaimed  bool
-	terminalCollectionDeferred bool
+	terminalCloseCollection
+	terminalResult error
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -742,11 +733,11 @@ func (s *hostCallScope) begin(in *Instance) instanceHostModule {
 	return s.beginReserved(in, currentInvocationReservation(in))
 }
 
-func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperationReservation) instanceHostModule {
+func (s *hostCallScope) beginReserved(in *Instance, reservation pluginReservation) instanceHostModule {
 	return s.beginReservedWithID(in, in.currentInvocationID(), reservation, activeHostInvocationContext(in).parent)
 }
 
-func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation, parentContext context.Context) instanceHostModule {
+func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation pluginReservation, parentContext context.Context) instanceHostModule {
 	generation, parent := s.beginGeneration(parentContext)
 	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: id, reservation: reservation}
 }
@@ -804,11 +795,11 @@ func (in *Instance) beginHostCallScope() instanceHostModule {
 	return in.beginHostCallScopeReserved(currentInvocationReservation(in))
 }
 
-func (in *Instance) beginHostCallScopeReserved(reservation *pluginOperationReservation) instanceHostModule {
+func (in *Instance) beginHostCallScopeReserved(reservation pluginReservation) instanceHostModule {
 	return in.beginHostCallScopeReservedWithID(in.currentInvocationID(), reservation)
 }
 
-func (in *Instance) beginHostCallScopeReservedWithID(id invocationID, reservation *pluginOperationReservation) instanceHostModule {
+func (in *Instance) beginHostCallScopeReservedWithID(id invocationID, reservation pluginReservation) instanceHostModule {
 	return in.ensurePluginState().hostScope.beginReservedWithID(in, id, reservation, activeHostInvocationContext(in).parent)
 }
 
@@ -856,13 +847,14 @@ type HostFuncRef struct {
 	importers     int
 	tokenLive     bool
 	closed        bool
-	gcCapable     bool
-	gc            *hostFuncRefGCState // lazy exact binding state; collector fields are used only when gcCapable
+	hostGCBridgeCapability
+	binding *hostFuncRefBindingState
 }
 
-type hostFuncRefGCState struct {
-	collector             *gc.Collector
-	domainID              uint64
+// hostFuncRefBindingState is allocated for exact reference dispatch. Its
+// collector domain is present only on builds that support Wasm GC.
+type hostFuncRefBindingState struct {
+	hostGCBridgeBinding
 	params                []ValueTypeDescriptor
 	results               []ValueTypeDescriptor
 	types                 []DefinedTypeDescriptor
@@ -900,6 +892,9 @@ func (rt *Runtime) NewHostFuncRef(fn any, sig FuncSig) (*HostFuncRef, error) {
 // collector domain. The first importer binds the owner to one canonical Runtime
 // collector domain; incompatible or foreign-domain importers fail closed.
 func (rt *Runtime) NewGCHostFuncRef(fn any, sig FuncSig) (*HostFuncRef, error) {
+	if !wasmGCBuilt {
+		return nil, fmt.Errorf("wago: GC host function references are disabled in this build")
+	}
 	if !funcSigHasGCRefs(sig) {
 		return nil, fmt.Errorf("wago: GC host function signature has no collector references")
 	}
@@ -907,7 +902,7 @@ func (rt *Runtime) NewGCHostFuncRef(fn any, sig FuncSig) (*HostFuncRef, error) {
 }
 
 func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoading bool) (*HostFuncRef, error) {
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return nil, fmt.Errorf("wago: nil runtime")
 	}
 	operation, err := rt.beginOperation("NewHostFuncRef", allowLoading)
@@ -933,12 +928,12 @@ func (rt *Runtime) newHostFuncRef(callback any, sig FuncSig, gcCapable, allowLoa
 	}
 	owner := &HostFuncRef{
 		fn:    &binding,
-		store: rt.refStore,
+		store: rt.references(),
 		sig:   sig,
 	}
 	binding.sig = &owner.sig
-	owner.gcCapable = gcCapable
-	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
+	owner.setGCBridgeCapability(gcCapable)
+	dispatchIndex, err := rt.references().registerHostFuncRef(owner)
 	if err != nil {
 		return nil, err
 	}
@@ -956,15 +951,11 @@ func (h *HostFuncRef) directNumericBinding() (syncHostBinding, bool) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed || h.gcCapable || h.fn == nil || h.fn.gate != nil || h.fn.scalarKind < syncHostTypedI32 ||
+	if h.closed || h.allowsGCBridge() || h.fn == nil || h.fn.callbackGate() != nil || h.fn.scalarKind < syncHostTypedI32 ||
 		hasReferenceValType(h.sig.Params) || hasReferenceValType(h.sig.Results) {
 		return syncHostBinding{}, false
 	}
 	return *h.fn, true
-}
-
-func funcSigHasGCRefs(sig FuncSig) bool {
-	return hasValType(sig.Params, ValAnyRef) || hasValType(sig.Params, ValI31Ref) || hasValType(sig.Results, ValAnyRef) || hasValType(sig.Results, ValI31Ref)
 }
 
 // Close releases this host-function ownership handle after its importers and
@@ -1079,7 +1070,7 @@ func (h *HostFuncRef) validateExactBindingLocked(sig FuncSig, c *Compiled) error
 	if !needed {
 		return nil
 	}
-	if h.gc == nil || h.gc.types == nil || !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+	if h.binding == nil || h.binding.types == nil || !exactSignatureEquivalent(h.binding.params, h.binding.results, h.binding.types, params, results, c.Types) {
 		return fmt.Errorf("host funcref structural signature mismatch")
 	}
 	return nil
@@ -1097,7 +1088,8 @@ func (h *HostFuncRef) validateAttachedImporter(store *referenceStore, sig FuncSi
 	if !funcSigHasGCRefs(sig) {
 		return nil
 	}
-	if !h.gcCapable || h.gc == nil || collector == nil || h.gc.collector != collector || h.gc.domainID == 0 || h.gc.domainID != domainID {
+	boundCollector, boundDomain := h.binding.gcDomain()
+	if !wasmGCBuilt || !h.allowsGCBridge() || collector == nil || boundCollector != collector || boundDomain == 0 || boundDomain != domainID {
 		return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
 	}
 	return nil
@@ -1113,38 +1105,38 @@ func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig, collect
 	if err != nil {
 		return fmt.Errorf("host funcref exact signature: %w", err)
 	}
-	if exactNeeded && h.gc != nil && h.gc.types != nil && !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+	if exactNeeded && h.binding != nil && h.binding.types != nil && !exactSignatureEquivalent(h.binding.params, h.binding.results, h.binding.types, params, results, c.Types) {
 		return fmt.Errorf("host funcref structural signature mismatch")
 	}
 	gcRefs := funcSigHasGCRefs(sig)
 	if gcRefs {
-		if !h.gcCapable {
+		if !h.allowsGCBridge() {
 			return fmt.Errorf("host funcref collector-reference signature requires Runtime.NewGCHostFuncRef")
 		}
-		if collector == nil || domainID == 0 || c == nil || c.genericGCFrameRoots() == nil || !store.ownsGCCollector(collector) {
+		if !wasmGCBuilt || collector == nil || domainID == 0 || c == nil || c.genericGCFrameRoots() == nil || !store.ownsGCCollector(collector) {
 			return fmt.Errorf("GC host funcref requires an exact live Runtime collector domain and native root maps")
 		}
-		if h.gc != nil && h.gc.collector != nil && (h.gc.collector != collector || h.gc.domainID != domainID) {
+		boundCollector, boundDomain := h.binding.gcDomain()
+		if boundCollector != nil && (boundCollector != collector || boundDomain != domainID) {
 			return fmt.Errorf("GC host funcref belongs to a different Runtime collector domain")
 		}
-	} else if h.gcCapable {
+	} else if h.allowsGCBridge() {
 		return fmt.Errorf("GC host funcref requires a collector-reference signature")
 	}
-	if exactNeeded && (h.gc == nil || h.gc.types == nil) {
-		if h.gc == nil {
-			h.gc = &hostFuncRefGCState{}
+	if exactNeeded && (h.binding == nil || h.binding.types == nil) {
+		if h.binding == nil {
+			h.binding = &hostFuncRefBindingState{}
 		}
-		h.gc.params = params
-		h.gc.results = results
-		h.gc.types = c.Types
+		h.binding.params = params
+		h.binding.results = results
+		h.binding.types = c.Types
 	}
-	if gcRefs {
-		if h.gc == nil {
+	if wasmGCBuilt && gcRefs {
+		if h.binding == nil {
 			return fmt.Errorf("GC host funcref requires an exact structural signature")
 		}
-		if h.gc.collector == nil {
-			h.gc.collector = collector
-			h.gc.domainID = domainID
+		if boundCollector, _ := h.binding.gcDomain(); boundCollector == nil {
+			h.binding.bindGCCollector(collector, domainID)
 		}
 	}
 	h.importers++
@@ -1164,17 +1156,17 @@ func (h *HostFuncRef) acquireDispatchBinding(store *referenceStore, c *Compiled,
 	defer store.mu.Unlock()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.closed || h.store != store || h.gc == nil || h.gc.types == nil || !exactSignatureEquivalent(h.gc.params, h.gc.results, h.gc.types, params, results, c.Types) {
+	if h.closed || h.store != store || h.binding == nil || h.binding.types == nil || !exactSignatureEquivalent(h.binding.params, h.binding.results, h.binding.types, params, results, c.Types) {
 		return 0, false, fmt.Errorf("host funcref structural signature mismatch")
 	}
-	if binding := h.gc.inlineDispatchBinding; binding != nil && h.gc.inlineDispatchKey == key {
+	if binding := h.binding.inlineDispatchBinding; binding != nil && h.binding.inlineDispatchKey == key {
 		if binding.refs == ^uint32(0) {
 			return 0, false, fmt.Errorf("host funcref dispatch binding has too many importers")
 		}
 		binding.refs++
 		return binding.dispatchIndex, true, nil
 	}
-	if binding := h.gc.dispatchBindings[key]; binding != nil {
+	if binding := h.binding.dispatchBindings[key]; binding != nil {
 		if binding.refs == ^uint32(0) {
 			return 0, false, fmt.Errorf("host funcref dispatch binding has too many importers")
 		}
@@ -1189,14 +1181,14 @@ func (h *HostFuncRef) acquireDispatchBinding(store *referenceStore, c *Compiled,
 		return 0, false, err
 	}
 	binding.dispatchIndex = dispatchIndex
-	if h.gc.inlineDispatchBinding == nil {
-		h.gc.inlineDispatchKey = key
-		h.gc.inlineDispatchBinding = binding
+	if h.binding.inlineDispatchBinding == nil {
+		h.binding.inlineDispatchKey = key
+		h.binding.inlineDispatchBinding = binding
 	} else {
-		if h.gc.dispatchBindings == nil {
-			h.gc.dispatchBindings = make(map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding)
+		if h.binding.dispatchBindings == nil {
+			h.binding.dispatchBindings = make(map[hostFuncRefBindingKey]*hostFuncRefDispatchBinding)
 		}
-		h.gc.dispatchBindings[key] = binding
+		h.binding.dispatchBindings[key] = binding
 	}
 	return dispatchIndex, true, nil
 }
@@ -1207,14 +1199,14 @@ func (h *HostFuncRef) dispatchBinding(c *Compiled, importIndex int) (*hostFuncRe
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.gc == nil {
+	if h.binding == nil {
 		return nil, false
 	}
 	key := hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}
-	if h.gc.inlineDispatchBinding != nil && h.gc.inlineDispatchKey == key {
-		return h.gc.inlineDispatchBinding, true
+	if h.binding.inlineDispatchBinding != nil && h.binding.inlineDispatchKey == key {
+		return h.binding.inlineDispatchBinding, true
 	}
-	binding := h.gc.dispatchBindings[key]
+	binding := h.binding.dispatchBindings[key]
 	return binding, binding != nil
 }
 
@@ -1226,20 +1218,20 @@ func (h *HostFuncRef) releaseDispatchBinding(c *Compiled, importIndex int) {
 	key := hostFuncRefBindingKey{owner: h, compiled: c, importIndex: importIndex}
 	store.mu.Lock()
 	h.mu.Lock()
-	if h.gc != nil {
-		if binding := h.gc.inlineDispatchBinding; binding != nil && h.gc.inlineDispatchKey == key {
+	if h.binding != nil {
+		if binding := h.binding.inlineDispatchBinding; binding != nil && h.binding.inlineDispatchKey == key {
 			if binding.refs > 1 {
 				binding.refs--
 			} else {
-				h.gc.inlineDispatchKey = hostFuncRefBindingKey{}
-				h.gc.inlineDispatchBinding = nil
+				h.binding.inlineDispatchKey = hostFuncRefBindingKey{}
+				h.binding.inlineDispatchBinding = nil
 				store.unregisterHostFuncRefBindingLocked(binding)
 			}
-		} else if binding := h.gc.dispatchBindings[key]; binding != nil {
+		} else if binding := h.binding.dispatchBindings[key]; binding != nil {
 			if binding.refs > 1 {
 				binding.refs--
 			} else {
-				delete(h.gc.dispatchBindings, key)
+				delete(h.binding.dispatchBindings, key)
 				store.unregisterHostFuncRefBindingLocked(binding)
 			}
 		}
@@ -1273,27 +1265,16 @@ func (h *HostFuncRef) detachImporter() {
 	if h.importers > 0 {
 		h.importers--
 	}
-	if h.importers == 0 && h.gc != nil {
-		h.gc.collector = nil
-		h.gc.domainID = 0
-		h.gc.params = nil
-		h.gc.results = nil
-		h.gc.types = nil
-		h.gc.inlineDispatchKey = hostFuncRefBindingKey{}
-		h.gc.inlineDispatchBinding = nil
-		h.gc.dispatchBindings = nil
+	if h.importers == 0 && h.binding != nil {
+		h.binding.hostGCBridgeBinding = hostGCBridgeBinding{}
+		h.binding.params = nil
+		h.binding.results = nil
+		h.binding.types = nil
+		h.binding.inlineDispatchKey = hostFuncRefBindingKey{}
+		h.binding.inlineDispatchBinding = nil
+		h.binding.dispatchBindings = nil
 	}
 	h.mu.Unlock()
-}
-
-func (h *HostFuncRef) isGCBridge() bool {
-	if h == nil {
-		return false
-	}
-	h.mu.Lock()
-	ok := h.gcCapable && h.gc != nil && !h.closed && h.gc.collector != nil && h.gc.domainID != 0
-	h.mu.Unlock()
-	return ok
 }
 
 func (h *HostFuncRef) canonicalDescriptor(source *Instance, descriptor uint64, sig FuncSig) (*Instance, uint64, bool) {
@@ -1344,17 +1325,17 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 
 // instanceHostModule is an immutable capability snapshot. Never pool or mutate
 // an interface-boxed value: a retained callback must not gain a later generation.
-// Mutable reference-result cleanup stays in dispatch-owned ephemeralGCResults;
-// every operation checks scope validity before accessing that temporary state.
+// The callback owns its reference context and temporary result tokens.
+// Operations check the generation before accessing the dispatch state.
 type instanceHostModule struct {
-	in                 *Instance
-	scope              *hostCallScope
-	generation         uint64
-	parentGeneration   uint64
-	invocationID       invocationID
-	reservation        *pluginOperationReservation
-	exact              *DefinedTypeDescriptor // immutable compiled signature, not per-call slice headers
-	ephemeralGCResults *gcHostTempTokens
+	in               *Instance
+	scope            *hostCallScope
+	generation       uint64
+	parentGeneration uint64
+	invocationID     invocationID
+	reservation      pluginReservation
+	exact            *DefinedTypeDescriptor // immutable compiled signature, not per-call slice headers
+	referenceCall    *hostReferenceCallState
 }
 
 func (h instanceHostModule) exactSignature() (params, results []ValueTypeDescriptor) {
@@ -1407,12 +1388,17 @@ func (h instanceHostModule) CollectGC() error {
 	if h.in.guestStorageBorrowed() {
 		return fmt.Errorf("wago: collection is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
+	if !nativeCollectorFrameRootsBuilt {
+		return h.in.collectGCWithJoint(false)
+	}
 	if h.in.ownsGCInvocation(h.invocationID) {
 		return h.in.collectGC()
 	}
 	lease := h.in.lockManagedFunctionCollectionInvocation(h.invocationID)
-	defer lease.unlock()
-	return h.in.collectGCWithJoint(lease.dynamic)
+	if nativeCollectorBuilt {
+		defer lease.unlock()
+	}
+	return h.in.collectGCWithJoint(lease.isDynamic())
 }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	if !h.valid() {
@@ -1449,6 +1435,9 @@ func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
 		}
 		return f, nil
 	case *HostFuncRef:
+		if !referenceStoreForImage {
+			return nil, fmt.Errorf("host funcref requires a reference store")
+		}
 		if f == nil {
 			return nil, fmt.Errorf("host funcref owner is nil")
 		}
@@ -1476,11 +1465,11 @@ func bindHostImport(v any, sig FuncSig) (slotHostFunc, error) {
 }
 
 type syncHostBinding struct {
-	fn           any
-	typedI32     i32ToI32HostFunc
-	typedI32x2   i32I32ToI32HostFunc
-	typedI64     func(int64) int64
-	gate         *pluginCallGate
+	fn         any
+	typedI32   i32ToI32HostFunc
+	typedI32x2 i32I32ToI32HostFunc
+	typedI64   func(int64) int64
+	pluginCallbackGate
 	exact        *DefinedTypeDescriptor
 	importIdx    uint32
 	scalarKind   uint8
@@ -1512,60 +1501,10 @@ const (
 	syncHostTypedF64x2
 )
 
-type gatedI32ToI32HostFunc struct {
-	fn   i32ToI32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedNoArgsHostFunc struct {
-	fn   noArgsHostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32HostFunc struct {
-	fn   i32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32I32HostFunc struct {
-	fn   i32I32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32ToI32I32HostFunc struct {
-	fn   i32ToI32I32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32I32ToI32I32HostFunc struct {
-	fn   i32I32ToI32I32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32I32ToI32HostFunc struct {
-	fn   i32I32ToI32HostFunc
-	gate *pluginCallGate
-}
-
-type gatedI32HostEvent struct {
-	fn   I32HostEvent
-	gate *pluginCallGate
-}
-
-type gatedHostCallFunc struct {
-	fn   any
-	gate *pluginCallGate
-}
-
-type gatedOrdinaryHostFunc struct {
-	fn   any
-	gate *pluginCallGate
-}
-
 func isHostCallback(value any) bool {
 	switch value.(type) {
 	case slotHostFunc, callerSlotHostFunc,
-		HostCallFunc, func(HostCall), CallerHostCallFunc, func(Caller, HostCall), gatedHostCallFunc,
+		HostCallFunc, func(HostCall), CallerHostCallFunc, func(Caller, HostCall),
 		noArgsHostFunc, func(), i32HostFunc, func(int32),
 		i32ToI32HostFunc, func(int32) int32,
 		i32I32HostFunc, func(int32, int32),
@@ -1577,13 +1516,10 @@ func isHostCallback(value any) bool {
 		func(float64) float64, func(float64, float64) float64,
 		func(FuncRef) FuncRef, func(ExternRef) ExternRef,
 		func(ExnRef) ExnRef, func(GCRef) GCRef, func(I31Ref) I31Ref,
-		gatedNoArgsHostFunc, gatedI32HostFunc, gatedI32ToI32HostFunc,
-		gatedI32I32HostFunc, gatedI32I32ToI32HostFunc,
-		gatedI32ToI32I32HostFunc, gatedI32I32ToI32I32HostFunc,
-		gatedOrdinaryHostFunc, I32HostEvent, gatedI32HostEvent, *HostFuncRef:
+		I32HostEvent, *HostFuncRef:
 		return true
 	default:
-		return false
+		return pluginRuntimeBuilt && isGatedHostCallback(value)
 	}
 }
 
@@ -1655,108 +1591,46 @@ func inspectHostFuncSignature(value any) (params, results []ValType, inferred, s
 	}
 }
 
-func gateHostImport(value any, gate *pluginCallGate) (any, error) {
-	if custom, ok := value.(nativeCustomInstructionBinding); ok {
-		if custom.fn == nil {
-			return nil, fmt.Errorf("native custom instruction callback is nil")
-		}
-		custom.fn = gate.wrap(custom.fn)
-		return custom, nil
-	}
-	switch fn := value.(type) {
-	case slotHostFunc:
-		if fn == nil {
-			return nil, fmt.Errorf("host function is nil")
-		}
-		return gate.wrap(fn), nil
-	case callerSlotHostFunc:
-		if fn == nil {
-			return nil, fmt.Errorf("caller host function is nil")
-		}
-		return gate.wrapCaller(fn), nil
-	case HostCallFunc:
-		if fn == nil {
-			return nil, fmt.Errorf("host call function is nil")
-		}
-		return gatedHostCallFunc{fn: fn, gate: gate}, nil
-	case func(HostCall):
-		if fn == nil {
-			return nil, fmt.Errorf("host call function is nil")
-		}
-		return gatedHostCallFunc{fn: HostCallFunc(fn), gate: gate}, nil
-	case CallerHostCallFunc:
-		if fn == nil {
-			return nil, fmt.Errorf("caller host call function is nil")
-		}
-		return gatedHostCallFunc{fn: fn, gate: gate}, nil
-	case func(Caller, HostCall):
-		if fn == nil {
-			return nil, fmt.Errorf("caller host call function is nil")
-		}
-		return gatedHostCallFunc{fn: CallerHostCallFunc(fn), gate: gate}, nil
-	case noArgsHostFunc:
-		return gatedNoArgsHostFunc{fn: fn, gate: gate}, nil
-	case func():
-		return gatedNoArgsHostFunc{fn: noArgsHostFunc(fn), gate: gate}, nil
-	case i32HostFunc:
-		return gatedI32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32):
-		return gatedI32HostFunc{fn: i32HostFunc(fn), gate: gate}, nil
-	case i32ToI32HostFunc:
-		return gatedI32ToI32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32) int32:
-		return gatedI32ToI32HostFunc{fn: i32ToI32HostFunc(fn), gate: gate}, nil
-	case i32I32HostFunc:
-		return gatedI32I32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32, int32):
-		return gatedI32I32HostFunc{fn: i32I32HostFunc(fn), gate: gate}, nil
-	case i32I32ToI32HostFunc:
-		return gatedI32I32ToI32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32, int32) int32:
-		return gatedI32I32ToI32HostFunc{fn: i32I32ToI32HostFunc(fn), gate: gate}, nil
-	case i32ToI32I32HostFunc:
-		return gatedI32ToI32I32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32) (int32, int32):
-		return gatedI32ToI32I32HostFunc{fn: i32ToI32I32HostFunc(fn), gate: gate}, nil
-	case i32I32ToI32I32HostFunc:
-		return gatedI32I32ToI32I32HostFunc{fn: fn, gate: gate}, nil
-	case func(int32, int32) (int32, int32):
-		return gatedI32I32ToI32I32HostFunc{fn: i32I32ToI32I32HostFunc(fn), gate: gate}, nil
-	case func(int64) int64, func(int64, int64) int64,
-		func(float32) float32, func(float32, float32) float32,
-		func(float64) float64, func(float64, float64) float64,
-		func(FuncRef) FuncRef, func(ExternRef) ExternRef,
-		func(ExnRef) ExnRef, func(GCRef) GCRef, func(I31Ref) I31Ref:
-		return gatedOrdinaryHostFunc{fn: value, gate: gate}, nil
-	default:
-		return nil, fmt.Errorf("unsupported host function %T; use an ordinary supported function or func(wago.HostCall)", value)
-	}
-}
-
 type asyncHostBinding struct {
+	pluginCallbackGate
 	eventI32 I32HostEvent
-	gate     *pluginCallGate
 }
 
 type hostEventBindings struct {
 	byImport []asyncHostBinding
 }
 
-func bindI32HostEvent(value any, sig FuncSig) (asyncHostBinding, error) {
-	var binding asyncHostBinding
-	switch fn := value.(type) {
-	case I32HostEvent:
-		binding.eventI32 = fn
-	case gatedI32HostEvent:
-		binding.eventI32, binding.gate = fn.fn, fn.gate
-	default:
-		return binding, fmt.Errorf("deferred host event must be a wago.I32HostEvent; got %T", value)
+func isI32HostEvent(value any) bool {
+	if _, ok := value.(I32HostEvent); ok {
+		return true
 	}
-	if binding.eventI32 == nil {
+	if pluginRuntimeBuilt {
+		_, ok := value.(gatedI32HostEvent)
+		return ok
+	}
+	return false
+}
+
+func bindI32HostEvent(value any, sig FuncSig) (asyncHostBinding, error) {
+	event, ok := value.(I32HostEvent)
+	var gate *pluginCallGate
+	if pluginRuntimeBuilt && !ok {
+		if gated, gatedOK := value.(gatedI32HostEvent); gatedOK {
+			event, gate, ok = gated.fn, gated.gate, true
+		}
+	}
+	if !ok {
+		return asyncHostBinding{}, fmt.Errorf("deferred host event must be a wago.I32HostEvent; got %T", value)
+	}
+	if event == nil {
 		return asyncHostBinding{}, fmt.Errorf("deferred host event is nil")
 	}
 	if len(sig.Params) != 1 || sig.Params[0] != ValI32 || len(sig.Results) != 0 {
 		return asyncHostBinding{}, fmt.Errorf("deferred host event requires signature (i32) -> ()")
+	}
+	binding := asyncHostBinding{eventI32: event}
+	if pluginRuntimeBuilt {
+		binding.setCallbackGate(gate)
 	}
 	return binding, nil
 }
@@ -1789,11 +1663,11 @@ func (b *syncHostBinding) callable() bool {
 // this exact gate. Native guest dispatch uses representation-specific unchecked
 // helpers after performing the same admission around argument/result translation.
 func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64) {
-	if b.gate != nil && (caller.reservation == nil || !caller.reservation.allows(b.gate)) {
-		if err := b.gate.enter(); err != nil {
+	if gate := b.callbackGate(); pluginRuntimeBuilt && gate != nil && !pluginReservationAllows(caller.reservation, gate) {
+		if err := gate.enter(); err != nil {
 			panic(HostTrap{Err: err})
 		}
-		defer b.gate.release()
+		defer gate.release()
 	}
 	b.callUnchecked(caller, args, results)
 }
@@ -1878,13 +1752,16 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 	}
 	switch fn := value.(type) {
 	case *HostFuncRef:
+		if !referenceStoreForImage {
+			return syncHostBinding{}, fmt.Errorf("host funcref requires a reference store")
+		}
 		if binding, ok := fn.directNumericBinding(); ok {
 			if !funcSigEqual(fn.sig, sig) {
 				return syncHostBinding{}, fmt.Errorf("host funcref signature mismatch")
 			}
 			return binding, nil
 		}
-	case I32HostEvent, gatedI32HostEvent:
+	case I32HostEvent:
 		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case callerSlotHostFunc:
 		if fn == nil {
@@ -1994,42 +1871,11 @@ func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 			return syncHostBinding{}, fmt.Errorf("typed host function is nil")
 		}
 		return bindSimpleTypedHostFunc(sig, ValI31Ref, 1, syncHostBinding{fn: fn})
-	case gatedI32ToI32HostFunc:
-		binding, err := bindI32ToI32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedNoArgsHostFunc:
-		binding, err := bindNoArgsHostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedI32HostFunc:
-		binding, err := bindI32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedI32I32HostFunc:
-		binding, err := bindI32I32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedI32ToI32I32HostFunc:
-		binding, err := bindI32ToI32I32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedI32I32ToI32I32HostFunc:
-		binding, err := bindI32I32ToI32I32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedI32I32ToI32HostFunc:
-		binding, err := bindI32I32ToI32HostFunc(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedHostCallFunc:
-		binding, err := bindSyncHostImport(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
-	case gatedOrdinaryHostFunc:
-		binding, err := bindSyncHostImport(fn.fn, sig)
-		binding.gate = fn.gate
-		return binding, err
+	}
+	if pluginRuntimeBuilt {
+		if binding, handled, err := bindGatedSyncHostImport(value, sig); handled {
+			return binding, err
+		}
 	}
 	fn, err := bindHostImport(value, sig)
 	return syncHostBinding{fn: fn}, err
@@ -2179,59 +2025,6 @@ func (c *Compiled) buildSyncHosts(imports resolvedImports) ([]syncHostBinding, e
 type missingHostFunc struct{ importIdx uint32 }
 type invalidHostReference struct{ err error }
 
-type gcHostTempTokens struct {
-	count      uint32
-	exactTypes *[]DefinedTypeDescriptor
-	tokens     [gcPublicSlotLimit]uint64
-	extra      []uint64
-}
-
-func (t *gcHostTempTokens) token(index uint32) uint64 {
-	if index < gcPublicSlotLimit {
-		return t.tokens[index]
-	}
-	return t.extra[index-gcPublicSlotLimit]
-}
-
-func (t *gcHostTempTokens) setToken(index uint32, token uint64) {
-	if index < gcPublicSlotLimit {
-		t.tokens[index] = token
-		return
-	}
-	extra := index - gcPublicSlotLimit
-	if int(extra) == len(t.extra) {
-		t.extra = append(t.extra, token)
-	} else {
-		t.extra[extra] = token
-	}
-}
-
-func (t *gcHostTempTokens) add(token uint64) error {
-	if token == 0 {
-		return nil
-	}
-	t.setToken(t.count, token)
-	t.count++
-	return nil
-}
-
-func (t *gcHostTempTokens) release(in *Instance) {
-	if t == nil || in == nil || in.refStore == nil {
-		return
-	}
-	for t.count != 0 {
-		t.count--
-		token := t.token(t.count)
-		t.setToken(t.count, 0)
-		if token != 0 {
-			_ = in.refStore.releaseGCRef(in, token)
-		}
-	}
-	if len(t.extra) != 0 {
-		t.extra = t.extra[:0]
-	}
-}
-
 type boundHostFuncRefCall struct {
 	owner           *HostFuncRef
 	fn              *syncHostBinding
@@ -2241,17 +2034,17 @@ type boundHostFuncRefCall struct {
 }
 
 func (in *Instance) pluginGCImportSet() map[uint32]struct{} {
-	if in == nil {
+	if !pluginRuntimeBuilt || in == nil {
 		return nil
 	}
 	if state := in.importState.Load(); state != nil {
-		return state.pluginGCImports
+		return state.gcImports()
 	}
 	return nil
 }
 
 func (in *Instance) pluginGCHostSignature(dispatch uint32) (FuncSig, bool) {
-	if in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
+	if !wasmGCBuilt || in == nil || in.c == nil || dispatch&hostFuncRefDispatchBit != 0 || uint64(dispatch) >= uint64(len(in.c.Imports)) || uint64(dispatch) >= uint64(len(in.c.importFuncSigs)) || !funcSigHasGCRefs(in.c.importFuncSigs[dispatch]) {
 		return FuncSig{}, false
 	}
 	if _, ok := in.pluginGCImportSet()[dispatch]; !ok {
@@ -2261,7 +2054,7 @@ func (in *Instance) pluginGCHostSignature(dispatch uint32) (FuncSig, bool) {
 }
 
 func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, bool) {
-	if in == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
+	if !referenceStoreForImage || in == nil || in.refStore == nil || dispatch&hostFuncRefDispatchBit == 0 {
 		return boundHostFuncRefCall{}, false
 	}
 	owner, exact := in.refStore.hostFuncRefDispatch(dispatch)
@@ -2283,16 +2076,12 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
-func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
-	enteredGate := false
-	if binding.gate != nil && (invocation.reservation == nil || !invocation.reservation.allows(binding.gate)) {
-		if err := binding.gate.enter(); err != nil {
+func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, binding *syncHostBinding, callerExact *DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
+	if gate := binding.callbackGate(); pluginRuntimeBuilt && gate != nil && !pluginReservationAllows(invocation.reservation, gate) {
+		if err := gate.enter(); err != nil {
 			panic(HostTrap{Err: err})
 		}
-		enteredGate = true
-	}
-	if enteredGate {
-		defer binding.gate.release()
+		defer gate.release()
 	}
 	if binding.typedI32 != nil {
 		results[0] = I32(binding.typedI32(AsI32(args[0])))
@@ -2336,7 +2125,7 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, bi
 		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
 	}
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
-	caller.exact = binding.exact
+	caller.exact = callerExact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	// Foreign roots use their own scope, not the producer's ambient control
 	// context. Preserve a cancelable parent before lazy resolver access.
@@ -2346,68 +2135,13 @@ func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, ctrl uintptr, bi
 	binding.callBoundUnchecked(caller, args, results)
 }
 
-func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr, importIdx uint32, binding *syncHostBinding, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
-	if binding.gate != nil && (invocation.reservation == nil || !invocation.reservation.allows(binding.gate)) {
-		dispatchSyncHostReferenceGated(in, scope, ctrl, importIdx, binding, sig, exact, exactTypes, exactTypesPtr, args, results, invocation)
-		return
-	}
-	if _, ok := binding.fn.(HostCallFunc); ok && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
-		binding.callBoundUnchecked(instanceHostModule{}, args, results)
-		return
-	}
-	var exactParams, exactResults []ValueTypeDescriptor
-	if exact != nil {
-		exactParams, exactResults = exact.Params, exact.Results
-	}
-	if invocation.callbackScope != nil {
-		scope = invocation.callbackScope
-	} else {
-		scope = railshotCallbackHostScope(in, ctrl, scope, invocation.parent)
-	}
-	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation, invocation.parent)
-	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	var gcTemps gcHostTempTokens
-	if err := in.translateHostReferenceArgsMode(args, sig.Params, exactParams, exactTypes, &gcTemps, &caller); err != nil {
-		gcTemps.release(in)
-		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
-	}
-	defer gcTemps.release(in)
-	caller.exact = exact
-	// Scalar results need no GC result scratch. Ordinary imports borrow their
-	// compiled type context directly. Host function references can have their own
-	// type context, so keep dispatch-owned state for that separate context.
-	separateTypes := exactTypesPtr != nil && (in.c == nil || exactTypesPtr != &in.c.Types)
-	if hasReferenceValType(sig.Results) || separateTypes {
-		gcResultTemps := &gcHostTempTokens{exactTypes: exactTypesPtr}
-		caller.ephemeralGCResults = gcResultTemps
-		defer gcResultTemps.release(in)
-	}
-	if invocation.scope != nil && invocationMayCancel(invocation.parent) {
-		scope.invocationContext(caller.generation, invocation.parent)
-	}
-	binding.callUnchecked(caller, args, results)
-	if err := in.translateHostReferenceResults(invocation.gcActivation, results, sig.Results, exactResults, exactTypes); err != nil {
-		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
-	}
-}
-
-func dispatchSyncHostReferenceGated(in *Instance, scope *hostCallScope, ctrl uintptr, importIdx uint32, binding *syncHostBinding, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
-	if err := binding.gate.enter(); err != nil {
-		panic(HostTrap{Err: err})
-	}
-	defer binding.gate.release()
-	ungated := *binding
-	ungated.gate = nil
-	dispatchSyncHostReference(in, scope, ctrl, importIdx, &ungated, sig, exact, exactTypes, exactTypesPtr, args, results, invocation)
-}
-
 // newHostDispatch builds the optional specialized callback used by injected
 // paths. Ordinary calls dispatch through dispatchHostCall directly
 // so a never-invoked instance does not allocate a closure or plugin sidecar.
 func (in *Instance) newHostDispatch() resolvedHostCall {
 	if len(in.syncHosts) == 1 {
 		binding := &in.syncHosts[0]
-		if binding.hostCall && binding.gate == nil && binding.scalarKind != syncHostNonScalar {
+		if binding.hostCall && binding.callbackGate() == nil && binding.scalarKind != syncHostNonScalar {
 			fn := binding.fn.(HostCallFunc)
 			sig, exact := binding.sig, binding.exact
 			return func(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
@@ -2423,18 +2157,14 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 }
 
 func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
-	scope := invocation.scope
-	if scope == nil {
-		scope = &in.ensurePluginState().hostScope
-	}
-	if importIdx&shared.AtomicWaitDispatchBit != 0 {
+	if atomicWaitRuntimeBuilt && importIdx&shared.AtomicWaitDispatchBit != 0 {
 		if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 			panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
 		}
 		in.dispatchAtomicWaitHelper(importIdx&^shared.AtomicWaitDispatchBit, args, results)
 		return
 	}
-	if importIdx&gcStructDispatchBit != 0 {
+	if nativeCollectorBuilt && importIdx&gcStructDispatchBit != 0 {
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			panic(gcHelperFailuref("invalid overlapping GC/host dispatch index %#x", importIdx))
 		}
@@ -2442,7 +2172,17 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 		in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
 		return
 	}
+	if !foreignHostControlForImage {
+		panic(missingHostFunc{importIdx: importIdx})
+	}
+	scope := invocation.scope
+	if scope == nil {
+		scope = &in.ensurePluginState().hostScope
+	}
 	if importIdx&hostFuncRefDispatchBit != 0 {
+		if !referenceStoreForImage {
+			panic(missingHostFunc{importIdx: importIdx})
+		}
 		owner, exact := in.refStore.hostFuncRefDispatch(importIdx)
 		if owner == nil {
 			panic(missingHostFunc{importIdx: importIdx})
@@ -2452,6 +2192,14 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 		owner.mu.Unlock()
 		if fn == nil {
 			panic(missingHostFunc{importIdx: importIdx})
+		}
+		if !referenceSignaturesBuilt {
+			var signature *DefinedTypeDescriptor
+			if exact != nil {
+				signature = &exact.types[exact.sig.TypeIndex]
+			}
+			dispatchSyncHostScalar(in, scope, ctrl, fn, signature, args, results, invocation)
+			return
 		}
 		var signature *DefinedTypeDescriptor
 		var exactTypes []DefinedTypeDescriptor
@@ -2463,7 +2211,7 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 			exactTypesPtr = &exact.types
 		}
 		if fn.scalarKind >= syncHostTypedI32 && !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) {
-			dispatchSyncHostScalar(in, scope, ctrl, fn, args, results, invocation)
+			dispatchSyncHostScalar(in, scope, ctrl, fn, fn.exact, args, results, invocation)
 		} else {
 			dispatchSyncHostReference(in, scope, ctrl, importIdx, fn, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
 		}
@@ -2473,8 +2221,8 @@ func (in *Instance) dispatchHostCall(ctrl uintptr, importIdx uint32, args, resul
 		panic(missingHostFunc{importIdx: importIdx})
 	}
 	binding := &in.syncHosts[importIdx]
-	if binding.scalarKind != syncHostNonScalar {
-		dispatchSyncHostScalar(in, scope, ctrl, binding, args, results, invocation)
+	if !referenceSignaturesBuilt || binding.scalarKind != syncHostNonScalar {
+		dispatchSyncHostScalar(in, scope, ctrl, binding, binding.exact, args, results, invocation)
 	} else {
 		dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
 	}
@@ -2552,6 +2300,9 @@ func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValT
 			if ref.IsI31() {
 				break
 			}
+			if !collectorObjectTokensBuilt {
+				return fmt.Errorf("invalid GC reference argument %d", i)
+			}
 			var token uint64
 			var err error
 			if caller != nil {
@@ -2562,10 +2313,7 @@ func (in *Instance) translateHostReferenceArgsMode(values []uint64, types []ValT
 			if err != nil {
 				return fmt.Errorf("GC reference argument %d: %w", i, err)
 			}
-			if err := gcTemps.add(token); err != nil {
-				_ = in.refStore.releaseGCRef(in, token)
-				return err
-			}
+			gcTemps.add(token)
 			values[slot] = token
 		}
 		slot++
@@ -2643,6 +2391,9 @@ func (in *Instance) translateHostReferenceResults(activation gcHostActivationTok
 			if uint64(ref) == bits && ref.IsObj() {
 				return fmt.Errorf("raw compact GC reference for result %d is not a host token", i)
 			}
+			if !collectorObjectTokensBuilt {
+				return fmt.Errorf("GC reference result %d: invalid GC host result token", i)
+			}
 			resolved, err := in.refStore.stageGCHostResult(in, activation, bits, required)
 			if err != nil {
 				return fmt.Errorf("GC reference result %d: %w", i, err)
@@ -2717,7 +2468,7 @@ func (in *Instance) callNativeSyncAdmitted(entry uintptr, activeTrap []byte, wai
 	defer func() { err = in.decorateTrap(err) }()
 	returned := false
 	defer recoverNativeSyncPanicCompletion(&err, &returned)
-	if prepared != nil {
+	if hostFunctionImportsBuilt && prepared != nil {
 		if preparedActivation == nil {
 			err = fmt.Errorf("wago: prepared host call has no activation")
 			returned = true
@@ -2799,20 +2550,10 @@ func setNativeSyncPanicError(r any, err *error) {
 		*err = instruction.err
 		return
 	}
-	if trap, ok := r.(gcStructHelperTrap); ok {
-		*err = &runtime.TrapError{Code: trap.code}
+	if nativeCollectorBuilt && setGCHelperPanicError(r, err) {
 		return
 	}
-	if helper, ok := r.(gcStructHelperError); ok {
-		*err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
-		return
-	}
-	if helper, ok := r.(atomicWaitHelperError); ok {
-		if errors.Is(helper.err, errAtomicWaitInstanceClosed) {
-			*err = &runtime.TrapError{Code: runtime.TrapInterrupted}
-		} else {
-			*err = helper.err
-		}
+	if atomicWaitRuntimeBuilt && setAtomicWaitHelperPanicError(r, err) {
 		return
 	}
 	panic(r)
@@ -2871,7 +2612,7 @@ func (in *Instance) callCachedBoundedHostView(entry uintptr) (err error) {
 	}
 	defer in.unlockNativeEntry(locked)
 	defer in.recoverBoundedNativeSyncPanic(&err)
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}
@@ -2932,7 +2673,7 @@ func (in *Instance) callCachedBoundedTypedHostContext(entry uintptr, waitParent 
 	}
 	defer in.unlockNativeEntry(locked)
 	defer in.recoverBoundedNativeSyncPanic(&err)
-	if waitParent != nil || activeHostInvocationBindings.Load() != 0 {
+	if hostInvocationBindingsForImage && (waitParent != nil || hasHostInvocationBindings()) {
 		restore := bindHostInvocationParent(in, waitParent)
 		defer restore()
 	}
@@ -2990,11 +2731,11 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 	}
 	// Avoid no-op context cleanup on ARM64; paired AMD64 measurements
 	// favor its original unconditional setup.
-	if goruntime.GOARCH != "arm64" || waitParent != nil || activeHostInvocationBindings.Load() != 0 {
+	if hostInvocationBindingsForImage && (goruntime.GOARCH != "arm64" || waitParent != nil || hasHostInvocationBindings()) {
 		restoreInvocationContext := bindHostInvocationParent(in, waitParent)
 		defer restoreInvocationContext()
 	}
-	if goruntime.GOARCH != "arm64" || in.needsAtomicWaitContext() {
+	if atomicBlockingWaitRuntimeBuilt && (goruntime.GOARCH != "arm64" || in.needsAtomicWaitContext()) {
 		stopWaitContext := in.publishAtomicWaitContext(waitParent)
 		defer stopWaitContext()
 	}
@@ -3025,7 +2766,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		defer finishProfileBoundary(span, &err, &completed)
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 		completed = true
-	} else if in.hasSingleDirectTypedScalarHost() {
+	} else if hostFunctionImportsBuilt && in.hasSingleDirectTypedScalarHost() {
 		if in.boundedHostSegments() || in.boundedFixedSharedHostPortal() {
 			rawSlots, _ := in.syncHosts[0].typedScalarSlots()
 			fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedI32FixedPortal)
@@ -3036,7 +2777,7 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		} else {
 			err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleTypedScalarPortal)
 		}
-	} else if in.hasSingleExpandedTypedScalarHost() {
+	} else if hostFunctionImportsBuilt && in.hasSingleExpandedTypedScalarHost() {
 		rawSlots, ok := in.syncHosts[0].typedScalarSlots()
 		if !ok {
 			panic("wago: invalid fixed scalar host signature")
@@ -3071,13 +2812,13 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		} else {
 			err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
 		}
-	} else if in.hasBoundedMultiHostView() {
+	} else if hostFunctionImportsBuilt && in.hasBoundedMultiHostView() {
 		err = in.eng.CallWithHostBaseMultiViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.ensurePluginState().multiHost.shapes, activation.dispatchBoundedMultiHostView)
-	} else if in.hasExpandedTypedScalarHost() {
+	} else if hostFunctionImportsBuilt && in.hasExpandedTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarExpandedPortal)
-	} else if in.hasDirectTypedScalarHost() {
+	} else if hostFunctionImportsBuilt && in.hasDirectTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarPortal)
-	} else if in.hasSingleHostCallFixedViewPortal() {
+	} else if hostFunctionImportsBuilt && in.hasSingleHostCallFixedViewPortal() {
 		binding := &in.syncHosts[0]
 		rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
 		if in.boundedHostSegments() {
@@ -3085,11 +2826,11 @@ func (in *Instance) callNativeSyncUnpreparedAdmitted(entry uintptr, activeTrap [
 		} else {
 			err = in.eng.CallWithHostBaseFixedView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchSingleHostCallFixedView)
 		}
-	} else if in.hasSingleHostCallPortal() {
+	} else if hostFunctionImportsBuilt && in.hasSingleHostCallPortal() {
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatchSingleHostCall)
-	} else if in.hasSingleHostCallViewPortal() {
+	} else if hostFunctionImportsBuilt && in.hasSingleHostCallViewPortal() {
 		err = in.eng.CallWithHostBaseView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchSingleHostCallView)
-	} else if in.boundedHostSegments() && in.hasBoundedCallerHostView() {
+	} else if hostFunctionImportsBuilt && in.boundedHostSegments() && in.hasBoundedCallerHostView() {
 		binding := &in.syncHosts[0]
 		rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
 		err = in.eng.CallWithHostBaseFixedViewBounded(runtimebridge.GrantHostScalarCall(), entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatchBoundedHostView)

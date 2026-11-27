@@ -34,7 +34,7 @@ func TestNativeTailImportOnlyOwnerCertifiedIdentity(t *testing.T) {
 					t.Fatal(err)
 				}
 				certificate = cert
-				wrapper = tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: storage.job, context: storage.context, directory: storage.directory, info: FunctionInfo{CodeBytes: len(code)}}
+				wrapper = tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: storage.job, context: storage.context, directory: storage.directory, info: tailRAFunctionInfo{CodeBytes: len(code)}}
 			} else {
 				target := tailRAProofFunctionFixture(t, &sig, abi.RV64InstanceContextBytes)
 				binary.LittleEndian.PutUint64(target.directory[16:], uint64(target.job.LinMemBase()))

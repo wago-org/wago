@@ -2,7 +2,10 @@ package wasm
 
 import (
 	"errors"
+	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func TestPrimitiveBinaryEdgeMatrix(t *testing.T) {
@@ -130,8 +133,101 @@ func TestScalarSignExtensionInstructionDecodeMatrix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in, err := decodeInstruction(newReader(tc.bytes), 0)
+			if signExtensionBuilt == 0 {
+				checkDisabledInstructionDecode(t, err, 0, "sign-extension-ops")
+				typ, literal := I32, byte(0x41)
+				if tc.kind >= InstrI64Extend8S {
+					typ, literal = I64, 0x42
+				}
+				for _, withFacts := range []bool{false, true} {
+					m := modWithFunc(nil, []ValType{typ})
+					m.Code[0].BodyBytes = []byte{literal, 0, tc.bytes[0], 0x0b}
+					if withFacts {
+						var analysis ValidatedModuleAnalysis
+						err = ValidateModuleWithAnalysis(m, ValidationFeatures{}, 1, ValidationLimits{}, &analysis)
+					} else {
+						err = ValidateModule(m)
+					}
+					checkDisabledInstructionDecode(t, err, 2, "sign-extension-ops")
+				}
+				expectValidateErr(t, modWithFunc(nil, []ValType{typ},
+					Instruction{Kind: constFor(typ).Kind}, Instruction{Kind: tc.kind}), ErrUnsupportedFeature)
+				return
+			}
 			if err != nil || in.Kind != tc.kind {
 				t.Fatalf("decode %x = %#v err=%v, want %v", tc.bytes, in.Kind, err, tc.kind)
+			}
+		})
+	}
+}
+
+func checkDisabledInstructionDecode(t *testing.T, err error, offset int, feature string) {
+	t.Helper()
+	var decoded *DecodeError
+	if !errors.As(err, &decoded) || decoded.Code != ErrDisabledInstruction || decoded.Offset != offset ||
+		!strings.Contains(err.Error(), feature+" is disabled in this build") {
+		t.Fatalf("decode error = %v, want disabled %s at byte %d", err, feature, offset)
+	}
+}
+
+func TestCallInstructionBuildFeatures(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		code    []byte
+		kind    InstrKind
+		feature string
+	}{
+		{"call", []byte{0x10, 0}, InstrCall, ""},
+		{"call_indirect", []byte{0x11, 0, 0}, InstrCallIndirect, ""},
+		{"return_call", []byte{0x12, 0}, InstrReturnCall, ""},
+		{"return_call_indirect", []byte{0x13, 0, 0}, InstrReturnCallIndirect, ""},
+		{"call_ref", []byte{0x14, 0}, InstrCallRef, "typed-function-references"},
+		{"return_call_ref", []byte{0x15, 0}, InstrReturnCallRef, "typed-function-references"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			disabled := ""
+			switch {
+			case buildfeatures.TailCall == 0 && (tc.kind == InstrReturnCall || tc.kind == InstrReturnCallIndirect || tc.kind == InstrReturnCallRef):
+				disabled = "tail-call"
+			case buildfeatures.TypedFunctionReferences == 0:
+				disabled = tc.feature
+			}
+			in, err := decodeInstruction(newReader(tc.code), 0)
+			reader := NewReader(tc.code)
+			_, _ = reader.Byte()
+			immediate, classifyErr := ClassifyInstructionImmediate(reader, tc.code[0])
+			reader = NewReader(tc.code)
+			_, _ = reader.Byte()
+			skipErr := SkipInstructionImmediate(reader, tc.code[0])
+			if disabled == "" {
+				if err != nil || in.Kind != tc.kind {
+					t.Fatalf("decode %x = %s, %v, want %s", tc.code, in.Kind, err, tc.kind)
+				}
+				if classifyErr != nil || immediate.Kind != tc.kind || skipErr != nil || reader.HasNext() {
+					t.Fatalf("classify or skip %x = %v, %v, %v", tc.code, immediate.Kind, classifyErr, skipErr)
+				}
+				return
+			}
+			checkDisabledInstructionDecode(t, err, 0, disabled)
+			checkDisabledInstructionDecode(t, classifyErr, 0, disabled)
+			checkDisabledInstructionDecode(t, skipErr, 0, disabled)
+			for _, withFacts := range []bool{false, true} {
+				m := modWithFunc(nil, nil)
+				m.Code[0].BodyBytes = append(append([]byte(nil), tc.code...), 0x0b)
+				if withFacts {
+					var analysis ValidatedModuleAnalysis
+					err = ValidateModuleWithAnalysis(m, ValidationFeatures{}, 1, ValidationLimits{}, &analysis)
+				} else {
+					err = ValidateModule(m)
+				}
+				checkDisabledInstructionDecode(t, err, 0, disabled)
+			}
+			m := modWithFunc(nil, nil, Instruction{Kind: tc.kind})
+			var validation *ValidationError
+			err = ValidateModule(m)
+			if !errors.As(err, &validation) || validation.Code != ErrUnsupportedFeature ||
+				!strings.Contains(validation.Detail, disabled) {
+				t.Fatalf("validate %s = %v, want unsupported %s", tc.kind, err, disabled)
 			}
 		})
 	}
@@ -155,6 +251,10 @@ func TestScalarTruncSatInstructionDecodeMatrix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in, err := decodeInstruction(newReader(tc.bytes), 0)
+			if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+				checkDisabledInstructionDecode(t, err, len(tc.bytes), "nontrapping-float-to-int-conversion")
+				return
+			}
 			if err != nil || in.Kind != tc.kind {
 				t.Fatalf("decode %x = %#v err=%v, want %v", tc.bytes, in.Kind, err, tc.kind)
 			}
@@ -163,6 +263,16 @@ func TestScalarTruncSatInstructionDecodeMatrix(t *testing.T) {
 }
 
 func TestMultiValueBlockTypeDecodeAndValidation(t *testing.T) {
+	if buildfeatures.MultiValue == 0 {
+		_, err := decodeBlockType(newReader([]byte{0}))
+		checkDisabledInstructionDecode(t, err, 0, "multi-value")
+		for _, encoded := range [][]byte{{0x40}, {0x7f}} {
+			if _, err := decodeBlockType(newReader(encoded)); err != nil {
+				t.Fatalf("ordinary block type %x: %v", encoded, err)
+			}
+		}
+		return
+	}
 	multiResultFuncType := []byte{0x60, 0x00, 0x02, 0x7f, 0x7e} // () -> (i32, i64)
 	singleResultFuncType := []byte{0x60, 0x00, 0x01, 0x7f}      // () -> i32
 	typePayload := append([]byte{0x03}, multiResultFuncType...)
@@ -298,6 +408,14 @@ func TestSIMDAndRelaxedSIMDDecodeMatrix(t *testing.T) {
 	for _, tc := range cases {
 		b := append([]byte{0xfd}, u32(tc.sub)...)
 		in, err := decodeInstruction(newReader(b), 0)
+		if buildfeatures.SIMD == 0 {
+			checkDisabledInstructionDecode(t, err, 0, "simd")
+			continue
+		}
+		if buildfeatures.RelaxedSIMD == 0 && tc.sub >= firstRelaxedSIMDSubopcode {
+			checkDisabledInstructionDecode(t, err, len(b), "relaxed-simd")
+			continue
+		}
 		if err != nil || in.Kind != tc.kind {
 			t.Fatalf("sub %d decoded %#v err=%v", tc.sub, in.Kind, err)
 		}
@@ -349,5 +467,121 @@ func TestCustomSectionNameDetailSpan(t *testing.T) {
 	var de *DecodeError
 	if !errors.As(err, &de) || de.Code != ErrInvalidSection || de.SectionID != secCustom || de.SectionStart != 10 || de.SectionEnd != len(bad) {
 		t.Fatalf("expected malformed custom-section name with section span, got %#v / %v", de, err)
+	}
+}
+
+func TestExceptionInstructionBuildFeature(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code []byte
+		kind InstrKind
+	}{
+		{"throw", []byte{0x08, 0}, InstrThrow},
+		{"throw_ref", []byte{0x0a}, InstrThrowRef},
+		{"try_table", []byte{0x1f, 0x40, 0, 0x0b}, InstrTryTable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := decodeInstruction(newReader(tc.code), 0)
+			if buildfeatures.ExceptionHandling != 0 {
+				if err != nil || in.Kind != tc.kind {
+					t.Fatalf("decode %x = %s, %v, want %s", tc.code, in.Kind, err, tc.kind)
+				}
+				return
+			}
+			checkDisabledInstructionDecode(t, err, 0, "exception-handling")
+			// The opcode alone must be enough to reject the instruction.
+			_, err = decodeInstruction(newReader(tc.code[:1]), 0)
+			checkDisabledInstructionDecode(t, err, 0, "exception-handling")
+			for _, withFacts := range []bool{false, true} {
+				m := modWithFunc(nil, nil)
+				m.Code[0].BodyBytes = tc.code[:1]
+				if withFacts {
+					var analysis ValidatedModuleAnalysis
+					err = ValidateModuleWithAnalysis(m, ValidationFeatures{}, 1, ValidationLimits{}, &analysis)
+				} else {
+					err = ValidateModule(m)
+				}
+				checkDisabledInstructionDecode(t, err, 0, "exception-handling")
+			}
+			expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: tc.kind}), ErrUnsupportedFeature)
+		})
+	}
+}
+
+func TestExceptionTagBuildFeature(t *testing.T) {
+	if buildfeatures.ExceptionHandling != 0 {
+		t.Skip("requires a build without exception handling")
+	}
+	_, err := decodeExternType(newReader([]byte{byte(ExternTag)}))
+	checkDisabledInstructionDecode(t, err, 1, "exception-handling")
+
+	defined := modWithFunc(nil, nil)
+	defined.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
+	expectValidateErr(t, defined, ErrUnsupportedFeature)
+
+	imported := modWithFunc(nil, nil)
+	imported.Imports = []Import{{Type: NewTagExternType(TagType{Type: TypeIdx{Index: 0}})}}
+	expectValidateErr(t, imported, ErrUnsupportedFeature)
+}
+
+func TestReferenceValueBuildFeature(t *testing.T) {
+	for _, tc := range []struct {
+		code    []byte
+		kind    InstrKind
+		feature string
+		enabled bool
+	}{
+		{[]byte{0x25, 0}, InstrTableGet, "reference-types", buildfeatures.ReferenceSignatures},
+		{[]byte{0x26, 0}, InstrTableSet, "reference-types", buildfeatures.ReferenceSignatures},
+		{[]byte{0xd0, 0x70}, InstrRefNull, "reference-types", buildfeatures.ReferenceSignatures},
+		{[]byte{0xd1}, InstrRefIsNull, "reference-types", buildfeatures.ReferenceSignatures},
+		{[]byte{0xd2, 0}, InstrRefFunc, "reference-types", buildfeatures.ReferenceSignatures},
+		{[]byte{0xd3}, InstrRefEq, "gc", buildfeatures.GC != 0},
+		{[]byte{0xd4}, InstrRefAsNonNull, "typed-function-references", buildfeatures.TypedFunctionReferences != 0},
+		{[]byte{0xd5, 0}, InstrBrOnNull, "typed-function-references", buildfeatures.TypedFunctionReferences != 0},
+		{[]byte{0xd6, 0}, InstrBrOnNonNull, "typed-function-references", buildfeatures.TypedFunctionReferences != 0},
+	} {
+		in, err := decodeInstruction(newReader(tc.code), 0)
+		if tc.enabled {
+			if err != nil || in.Kind != tc.kind {
+				t.Fatalf("decode %x = %s, %v, want %s", tc.code, in.Kind, err, tc.kind)
+			}
+			continue
+		}
+		checkDisabledInstructionDecode(t, err, 0, tc.feature)
+		if tc.feature != "reference-types" {
+			_, err := skipExprOp(newReader(tc.code))
+			checkDisabledInstructionDecode(t, err, 0, tc.feature)
+		}
+		m := modWithFunc(nil, nil)
+		m.Code[0].BodyBytes = append(append([]byte(nil), tc.code...), 0x0b)
+		checkDisabledInstructionDecode(t, ValidateModule(m), 0, tc.feature)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: tc.kind}), ErrUnsupportedFeature)
+	}
+	if buildfeatures.GC == 0 {
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrStringConst}), ErrUnsupportedFeature)
+	}
+	if !buildfeatures.ReferenceSignatures {
+		_, err := decodeValType(newReader([]byte{0x70}))
+		checkDisabledInstructionDecode(t, err, 0, "reference-types")
+		var elem directElem
+		err = decodeDirectElem(newReader([]byte{0x07}), &elem)
+		checkDisabledInstructionDecode(t, err, 0, "reference-types")
+	}
+}
+
+func TestMVPTableBuildFeature(t *testing.T) {
+	m, err := DecodeModule(module(section(secTable, 1, 0x70, 0, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if !buildfeatures.ReferenceSignatures {
+		_, err := DecodeModule(module(section(secTable, 1, 0x6f, 0, 1)))
+		checkDisabledInstructionDecode(t, err, 11, "reference-types")
+		m.Tables[0].Type.Ref = AbsRef(HeapExtern)
+		expectValidateErr(t, m, ErrUnsupportedFeature)
 	}
 }

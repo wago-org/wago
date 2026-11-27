@@ -1,6 +1,12 @@
 package wasm
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 	t.Run("imported table invalid limit range", func(t *testing.T) {
@@ -216,4 +222,46 @@ func TestMoreValidateControlBoundaries(t *testing.T) {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 	})
+}
+
+func TestMemoryAndTableDeclarationBuildFeatures(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		mem   MemType
+		table bool
+		built bool
+	}{
+		{name: "memory64", mem: MemType{Limits: Limits{Min: 1, Addr64: true}}, built: buildfeatures.Memory64 != 0},
+		{name: "table64", table: true, built: buildfeatures.Table64 != 0},
+		{name: "threads", mem: MemType{Limits: Limits{Min: 1, Max: 2, HasMax: true}, Shared: true}, built: buildfeatures.Threads != 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, imported := range []bool{true, false} {
+				m := modWithFunc(nil, nil)
+				if tc.table {
+					table := TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1, Addr64: true}}
+					if imported {
+						m.Imports = []Import{{Type: NewTableExternType(table)}}
+					} else {
+						m.Tables = []Table{{Type: table}}
+					}
+				} else if imported {
+					m.Imports = []Import{{Type: NewMemExternType(tc.mem)}}
+				} else {
+					m.Memories = []MemType{tc.mem}
+				}
+				err := ValidateModule(m)
+				if tc.built {
+					if err != nil {
+						t.Fatalf("imported=%t: %v", imported, err)
+					}
+					continue
+				}
+				var unsupported *ValidationError
+				if !errors.As(err, &unsupported) || unsupported.Code != ErrUnsupportedFeature || !strings.Contains(unsupported.Detail, tc.name) {
+					t.Fatalf("imported=%t: validation = %v, want unsupported %s", imported, err, tc.name)
+				}
+			}
+		})
+	}
 }

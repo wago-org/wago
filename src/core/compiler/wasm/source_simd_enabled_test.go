@@ -44,6 +44,11 @@ func sourceSIMDModule(t *testing.T, params, results []ValType, instructions ...I
 				}
 			}
 		}
+		for n, k := range fdRelaxedNoImm {
+			if k == in.Kind {
+				sub, found = uint32(n)+firstRelaxedSIMDSubopcode, true
+			}
+		}
 		if in.Kind == InstrV128Const {
 			sub, found = 12, true
 		}
@@ -83,7 +88,7 @@ func sourceSIMDModule(t *testing.T, params, results []ValType, instructions ...I
 				}
 			}
 		}
-		if simdEffects[in.Kind].laneLimit != 0 {
+		if simdOpEffect(in.Kind).laneLimit != 0 {
 			body = append(body, byte(in.Lane))
 		}
 	}
@@ -122,13 +127,14 @@ func TestSourceSIMDFullLiteralIdentityAndLocalAliases(t *testing.T) {
 }
 
 func TestSourceSIMDAuthoritativeSignatureInventory(t *testing.T) {
+	ensureSIMDEffects()
 	count := 0
-	for kind, effect := range simdEffects {
+	for k := InstrV128Load; k <= InstrI32x4RelaxedDotI8x16I7x16AddS; k++ {
+		effect := simdOpEffect(k)
 		if effect.cat == simdNone {
 			continue
 		}
 		count++
-		k := InstrKind(kind)
 		t.Run(k.String(), func(t *testing.T) {
 			var params, results []ValType
 			results = []ValType{V128}
@@ -252,11 +258,12 @@ func TestSourceSIMDLimitsAndClose(t *testing.T) {
 }
 
 func TestSourceSIMDMemory64AndDeadImmediate(t *testing.T) {
+	ensureSIMDEffects()
 	for _, kind := range []InstrKind{InstrV128Load, InstrV128Store, InstrV128Load8Lane, InstrV128Store8Lane} {
 		t.Run(kind.String(), func(t *testing.T) {
 			mem := MemIdx(1)
 			in := Instruction{Kind: kind, Lane: 15, ext: &instrExt{MemArg: MemArg{Mem: &mem, Offset: 1<<40 + 37}}}
-			if simdEffects[kind].laneLimit == 0 {
+			if simdOpEffect(kind).laneLimit == 0 {
 				in.Lane = 0
 			}
 			params, results := []ValType{I64}, []ValType{V128}

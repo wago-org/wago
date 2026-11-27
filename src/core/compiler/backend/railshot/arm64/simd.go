@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -160,7 +161,7 @@ func (f *fn) pinnedV128LocalCount() int {
 // the cached index at every dynamic invocation. Vector-local pressure narrows
 // the cache rather than disabling reuse entirely.
 func (f *fn) preloadV128Consts(code []byte) {
-	if !f.opt(optV128ConstCache) || f.makesCalls || f.syncHostCalls {
+	if !(buildfeatures.SIMD != 0 && f.opt(optV128ConstCache)) || f.makesCalls || f.syncHostCalls {
 		return
 	}
 	limit := maxV128Consts
@@ -592,7 +593,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) error {
 // operands are borrowed pinned locals, NEON's three-register form needs only a
 // fresh destination and does not copy either source first.
 func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
-	if !f.opt(optV128DirectResults) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optV128DirectResults)) {
 		b := f.popValue()
 		a := f.popValue()
 		xa := f.materializeV128(a)
@@ -712,7 +713,7 @@ func (f *fn) v128BinDirect(op func(dst, s1, s2 Reg), swap, invert bool) {
 // v128Unary lowers a single-instruction unary v128 op (op(dst, src)).
 func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
 	a := f.popValue()
-	if !f.opt(optV128DirectResults) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optV128DirectResults)) {
 		x := f.materializeV128(a)
 		op(x, x)
 		f.pushVReg(x)
@@ -901,7 +902,7 @@ func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error 
 }
 
 func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, shift uint8), countMask int32, laneSize int, right, rotateRight bool) error {
-	if !f.opt(optV128DirectResults) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optV128DirectResults)) {
 		return f.v128ShiftLegacy(op, opImm, countMask, laneSize, right)
 	}
 	countElem := f.popValue()
@@ -963,7 +964,7 @@ func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), opImm func(dst,
 // full shift and the ORR. The reader is advanced only after the complete pattern
 // and the identical local source have been validated.
 func (f *fn) tryI32x4RotateRight(r *wasm.Reader, value *elem, shift uint8) bool {
-	if !f.opt(optSIMDSuperopt) || shift >= 32 || value.elemKind() != ekValue ||
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) || shift >= 32 || value.elemKind() != ekValue ||
 		(value.st.kind != stLocalRef && value.st.kind != stLocalReg) {
 		return false
 	}
@@ -1309,7 +1310,7 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 
 // v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT.
 func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
-	if f.opt(optV128DirectResults) {
+	if buildfeatures.SIMD != 0 && f.opt(optV128DirectResults) {
 		f.v128BinDirect(op, false, true)
 		return nil
 	}
@@ -1327,7 +1328,7 @@ func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 }
 
 func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, invert bool) error {
-	if f.opt(optV128DirectResults) {
+	if buildfeatures.SIMD != 0 && f.opt(optV128DirectResults) {
 		f.v128BinDirect(op, swap, invert)
 		return nil
 	}
@@ -1351,7 +1352,7 @@ func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, inver
 }
 
 func (f *fn) v128UnsignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap bool) error {
-	if f.opt(optV128DirectResults) {
+	if buildfeatures.SIMD != 0 && f.opt(optV128DirectResults) {
 		f.v128BinDirect(op, swap, false)
 		return nil
 	}
@@ -1386,7 +1387,7 @@ func (f *fn) i64x2SignedCmp(r *wasm.Reader, cc Cond) error {
 	default:
 		panic("arm64: unsupported i64x2 signed compare")
 	}
-	if f.opt(optV128DirectResults) {
+	if buildfeatures.SIMD != 0 && f.opt(optV128DirectResults) {
 		f.v128BinDirect(op, swap, false)
 		return nil
 	}
@@ -1489,7 +1490,7 @@ func matchNextSIMDOp(r *wasm.Reader, want uint32) bool {
 }
 
 func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 83) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) || !matchNextSIMDOp(r, 83) {
 		return false
 	}
 	b := f.popValue()
@@ -1534,7 +1535,7 @@ func (f *fn) tryV128AndAnyTrue(r *wasm.Reader) bool {
 // it to NEON BIC. Sources may alias the chosen destination: the three-register
 // instruction reads both before writing it.
 func (f *fn) tryV128NotAnd(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) || !matchNextSIMDOp(r, 78) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) || !matchNextSIMDOp(r, 78) {
 		return false
 	}
 	b := f.popValue()
@@ -1639,7 +1640,7 @@ func (f *fn) i8x16Bitmask() {
 // when only its zero-ness is observed: shifting each byte's sign bit into bit 0
 // and reducing with UMAXV produces the final 0/1 boolean directly.
 func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) {
 		return false
 	}
 	save := r.Offset()
@@ -1680,7 +1681,7 @@ func (f *fn) tryI8x16BitmaskNonZero(r *wasm.Reader) bool {
 // bits to 0/1 and sum all sixteen lanes directly instead of materializing a
 // scalar bitmask only to feed it back through the scalar popcnt sequence.
 func (f *fn) tryI8x16BitmaskPopcnt(r *wasm.Reader) bool {
-	if !f.opt(optSIMDSuperopt) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDSuperopt)) {
 		return false
 	}
 	save := r.Offset()
@@ -2031,13 +2032,13 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoads()
 	}
 	load, reuseAddress := f.inspectSIMDStoreLoadAddress(r, memoryIndex, off)
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, 16)
 	f.pinned = f.pinned.add(ea)
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, 16)
 	}
 	f.a.StrQIdx(base, ea, x, disp)
@@ -2126,12 +2127,12 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	if memoryIndex != 0 || f.threadedMemory0 {
+	if f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoads()
 	}
 	base, ea, releaseBase, eaOwned, _, disp := f.memAddrAt(memoryIndex, off, size)
 	f.pinned = f.pinned.add(ea)
-	if memoryIndex == 0 && !f.threadedMemory0 {
+	if !f.usesIndexedMemory(memoryIndex) {
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	}
 	t := f.allocReg(maskOf(base, ea))
@@ -2205,38 +2206,89 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw TBL semantics.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, f.a.NeonTbl)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128I32x4TruncSat(r, false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128I32x4TruncSat(r, false, false)
 	case 259: // i32x4.relaxed_trunc_f64x2_s_zero: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128I32x4TruncSat(r, true, true)
 	case 260: // i32x4.relaxed_trunc_f64x2_u_zero: conservative saturating choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128I32x4TruncSat(r, true, false)
 	case 261: // f32x4.relaxed_madd: deterministic FMUL + FADD choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(false, false)
 	case 262: // f32x4.relaxed_nmadd: deterministic FMUL then subtract from addend.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(false, true)
 	case 263: // f64x2.relaxed_madd: deterministic FMUL + FADD choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(true, false)
 	case 264: // f64x2.relaxed_nmadd: deterministic FMUL then subtract from addend.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128RelaxedMadd(true, true)
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.v128Bitselect()
 	case 269: // f32x4.relaxed_min: deterministic native FMIN choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, false) })
 	case 270: // f32x4.relaxed_max: deterministic native FMAX choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, false) })
 	case 271: // f64x2.relaxed_min: deterministic native FMIN choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, true) })
 	case 272: // f64x2.relaxed_max: deterministic native FMAX choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw SQRDMULH choice.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		return f.v128Bin(r, f.a.NeonSqrdmulhH)
 	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.i16x8RelaxedDotI8x16I7x16S()
 	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
+		if buildfeatures.RelaxedSIMD == 0 {
+			return fmt.Errorf("relaxed-simd is disabled in this build")
+		}
 		f.i32x4RelaxedDotI8x16I7x16AddS()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)

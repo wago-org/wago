@@ -80,7 +80,7 @@ func applyPolicy(mod *Module, p Policy) error {
 	if p.MaxMemories > 0 && uint64(mod.c.memoryCount()) > uint64(p.MaxMemories) {
 		return fmt.Errorf("module memory count %d exceeds policy limit %d: %w", mod.c.memoryCount(), p.MaxMemories, ErrPermissionDenied)
 	}
-	if p.MaxTableEntries > 0 {
+	if tablesForImage && p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
 			capacity := uint64(mod.c.tableRuntimeCapacity(i))
 			if declared, ok := mod.c.tableImportAt(i); ok {
@@ -94,14 +94,14 @@ func applyPolicy(mod *Module, p Policy) error {
 			}
 		}
 	}
-	if p.MaxTags > 0 && mod.c.memoryDir != nil && uint32(len(mod.c.memoryDir.ehTags)) > p.MaxTags {
-		return fmt.Errorf("module tag count %d exceeds policy limit %d: %w", len(mod.c.memoryDir.ehTags), p.MaxTags, ErrPermissionDenied)
+	if exceptionTagsForImage && p.MaxTags > 0 && mod.c.memoryDir != nil && uint32(len(mod.c.memoryDir.exceptionTags())) > p.MaxTags {
+		return fmt.Errorf("module tag count %d exceeds policy limit %d: %w", len(mod.c.memoryDir.exceptionTags()), p.MaxTags, ErrPermissionDenied)
 	}
 	return nil
 }
 
 func applyResolvedTablePolicy(c *Compiled, imports resolvedImports, p Policy) error {
-	if p.MaxTableEntries == 0 {
+	if !tablesForImage || p.MaxTableEntries == 0 {
 		return nil
 	}
 	for i := 0; i < c.tableImportCount(); i++ {

@@ -190,25 +190,25 @@ type tailRACodeKey struct {
 	bytes  int
 }
 
-func (f tailRAFunction) codeKey() tailRACodeKey {
+func (f *tailRAFunction) codeKey() tailRACodeKey {
 	if f.published != nil {
 		return tailRACodeKey{base: f.published.Base(), bytes: len(f.published.Bytes())}
 	}
 	return tailRACodeKey{buffer: f.code}
 }
-func (f tailRAFunction) codeBase() uintptr {
+func (f *tailRAFunction) codeBase() uintptr {
 	if f.published != nil {
 		return f.published.Base()
 	}
 	return f.code.Base()
 }
-func (f tailRAFunction) codeBytes() []byte {
+func (f *tailRAFunction) codeBytes() []byte {
 	if f.published != nil {
 		return f.published.Bytes()
 	}
 	return f.code.Bytes()
 }
-func (f tailRAFunction) validateCode() error {
+func (f *tailRAFunction) validateCode() error {
 	if (f.code == nil) == (f.published == nil) {
 		return unsupported("native tail exact code owner")
 	}
@@ -216,13 +216,4 @@ func (f tailRAFunction) validateCode() error {
 		return f.published.Validate()
 	}
 	return nil
-}
-func (f tailRAFunction) publishCode() error {
-	if err := f.validateCode(); err != nil {
-		return err
-	}
-	if f.published != nil {
-		return nil // Publication belongs to the borrowed runtime owner.
-	}
-	return f.code.Seal()
 }

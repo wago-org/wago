@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -200,7 +201,9 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 		clearTrapUnlessInterrupted(trap)
 		base := unsafe.Pointer(&linMem[0])
 		*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
-		*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
+		if buildfeatures.StandaloneExceptionHandling {
+			*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
+		}
 	}
 	e.prepareNativeInvocation(serArgs, results)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
@@ -311,6 +314,27 @@ func (e *Engine) Close() error {
 		e.stackTop = 0
 	}
 	return errors.Join(preparedErr, stackErr)
+}
+
+// MapWritableCode copies a complete image into a fresh writable code mapping.
+// The caller owns the returned mapping and can publish it with SealCode.
+func MapWritableCode(code []byte) ([]byte, uintptr, error) {
+	mem, base, err := ReserveWritableCode(len(code))
+	if err != nil {
+		return nil, 0, err
+	}
+	copy(mem, code)
+	return mem, base, nil
+}
+
+// ReserveWritableCode allocates a writable code mapping of at least size bytes.
+// The caller owns the mapping and can publish it with SealCode.
+func ReserveWritableCode(size int) ([]byte, uintptr, error) {
+	mem, err := mmapCodeRW(size)
+	if err != nil {
+		return nil, 0, err
+	}
+	return mem, slicePtr(mem), nil
 }
 
 // MapCode copies machine code into a fresh W^X executable mapping and returns

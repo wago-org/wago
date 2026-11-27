@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -21,14 +22,14 @@ import (
 var rv64MutableFuncrefStoreSelfCodeDigest = [sha256.Size]byte{0xcd, 0x20, 0x5d, 0x4c, 0x75, 0xe4, 0xbf, 0x7b, 0x61, 0x17, 0x87, 0x4d, 0xa5, 0xc1, 0x1e, 0xc1, 0xdf, 0x92, 0x0a, 0x6a, 0x9c, 0x6b, 0xad, 0x8c, 0x9b, 0x5d, 0xcb, 0xe2, 0x36, 0x08, 0x14, 0x08}
 
 func rv64MutableFuncrefGlobalStoreSelfExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 940 && sha256.Sum256(c.code) == rv64MutableFuncrefStoreSelfCodeDigest
+	return rv64MutableFuncrefGlobalsForImage && buildfeatures.MutableGlobal != 0 && c != nil && len(c.code) == 940 && sha256.Sum256(c.code) == rv64MutableFuncrefStoreSelfCodeDigest
 }
 
 // rv64MutableFuncrefGlobalStoreSelf authenticates the first non-null guest
 // reference write product. Its sole function can only publish its own function
 // zero into imported mutable global zero through the parked ownership bridge.
 func rv64MutableFuncrefGlobalStoreSelf(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 1 || len(c.FuncTypeID) != 1 || len(c.Exports) != 1 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
@@ -46,7 +47,7 @@ func rv64MutableFuncrefGlobalStoreSelf(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	sig := c.Funcs[0]

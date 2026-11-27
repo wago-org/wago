@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -222,10 +223,11 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 	r := wasm.NewReader(expr)
 	stack := make([]gcConstStackValue, 0, 16)
 	var compact *compactExternConstruction
-	if len(externConstruction) != 0 {
+	allocationRoots := gcConstStackRootSet{stack: &stack, extra: roots}
+	if compactExternConstructionForImage && len(externConstruction) != 0 {
 		compact = externConstruction[0]
+		allocationRoots.extra = compact.roots(roots)
 	}
-	allocationRoots := gcConstStackRootSet{stack: &stack, extra: compact.roots(roots)}
 	pop := func() (gcConstStackValue, error) {
 		if len(stack) == 0 {
 			return gcConstStackValue{}, fmt.Errorf("constant expression stack underflow")
@@ -239,8 +241,8 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 		if err != nil {
 			return 0, err
 		}
-		switch op {
-		case 0x0b:
+		switch {
+		case op == 0x0b:
 			if r.BytesLeft() != 0 || len(stack) != 1 || stack[0].kind == gcConstNumeric {
 				return 0, fmt.Errorf("GC constant expression result stack has %d value(s)", len(stack))
 			}
@@ -248,13 +250,16 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				return uint64(stack[0].ref), nil
 			}
 			return stack[0].bits, nil
-		case 0x23: // global.get
+		case constExprLowOpcodesForImage&(1<<0x23) != 0 && op == 0x23: // global.get
 			idx, err := r.U32()
 			if err != nil || int(idx) >= current || int(idx) >= len(globalCells) || globalCells[idx] == nil {
 				return 0, fmt.Errorf("global.get %d is unavailable", idx)
 			}
 			typ := c.Globals[idx].Type
 			if typ == ValV128 {
+				if buildfeatures.SIMD == 0 {
+					return 0, checkCompiledFeatures(CoreFeatureSIMD)
+				}
 				vec := readGlobalObjectV128(globalCells[idx])
 				stack = append(stack, gcConstStackValue{
 					bits:   binary.LittleEndian.Uint64(vec[:8]),
@@ -276,31 +281,34 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				value.ref = gc.Ref(uint32(bits))
 			}
 			stack = append(stack, value)
-		case 0x41:
+		case constExprNumericOpcodesForImage&(1<<(0x41-0x40)) != 0 && op == 0x41:
 			v, err := r.I32()
 			if err != nil {
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: uint64(uint32(v))})
-		case 0x42:
+		case constExprNumericOpcodesForImage&(1<<(0x42-0x40)) != 0 && op == 0x42:
 			v, err := r.I64()
 			if err != nil {
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: uint64(v)})
-		case 0x43:
+		case constExprNumericOpcodesForImage&(1<<(0x43-0x40)) != 0 && op == 0x43:
 			b, err := r.Bytes(4)
 			if err != nil {
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: uint64(binary.LittleEndian.Uint32(b))})
-		case 0x44:
+		case constExprNumericOpcodesForImage&(1<<(0x44-0x40)) != 0 && op == 0x44:
 			b, err := r.Bytes(8)
 			if err != nil {
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b)})
-		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e: // integer add/sub/mul
+		case constExprArithmeticOpcodesForImage != 0 && constExprArithmeticOpcodesForImage&(uint64(1)<<(op-0x40)) != 0: // integer add/sub/mul
+			if !buildfeatures.ExtendedConstArithmetic {
+				return 0, checkCompiledFeatures(CoreFeatureExtendedConst)
+			}
 			right, err := pop()
 			if err != nil {
 				return 0, err
@@ -312,36 +320,18 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 			if left.kind != gcConstNumeric || right.kind != gcConstNumeric {
 				return 0, fmt.Errorf("integer constant expression operand is not numeric")
 			}
-			var bits uint64
-			switch op {
-			case 0x6a:
-				bits = uint64(uint32(left.bits) + uint32(right.bits))
-			case 0x6b:
-				bits = uint64(uint32(left.bits) - uint32(right.bits))
-			case 0x6c:
-				bits = uint64(uint32(left.bits) * uint32(right.bits))
-			case 0x7c:
-				bits = left.bits + right.bits
-			case 0x7d:
-				bits = left.bits - right.bits
-			case 0x7e:
-				bits = left.bits * right.bits
-			}
+			bits := evalConstIntegerArithmetic(op, left.bits, right.bits)
 			stack = append(stack, gcConstStackValue{bits: bits})
-		case 0xfd: // SIMD prefix
-			sub, err := r.U32()
-			if err != nil {
-				return 0, err
+		case constExprReferenceOpcodesForImage&(1<<(0xfd-0xc0)) != 0 && op == 0xfd: // SIMD prefix
+			if buildfeatures.SIMD == 0 {
+				return 0, checkCompiledFeatures(CoreFeatureSIMD)
 			}
-			if sub != 12 { // v128.const
-				return 0, fmt.Errorf("unsupported SIMD constant expression opcode 0xfd %d", sub)
-			}
-			b, err := r.Bytes(16)
+			b, err := readV128ConstExpr(r)
 			if err != nil {
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b[:8]), bitsHi: binary.LittleEndian.Uint64(b[8:])})
-		case 0xd0: // ref.null
+		case constExprReferenceOpcodesForImage&(1<<(0xd0-0xc0)) != 0 && op == 0xd0: // ref.null
 			_, heap, err := r.RefHeapType()
 			if err != nil {
 				return 0, err
@@ -351,7 +341,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{ref: gc.Null(), kind: kind})
-		case 0xd2: // ref.func
+		case constExprReferenceOpcodesForImage&(1<<(0xd2-0xc0)) != 0 && op == 0xd2: // ref.func
 			idx, err := r.U32()
 			if err != nil {
 				return 0, err
@@ -361,13 +351,13 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				return 0, fmt.Errorf("ref.func %d descriptor is unavailable", idx)
 			}
 			stack = append(stack, gcConstStackValue{bits: uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))), kind: gcConstFuncRef})
-		case 0xfb:
+		case constExprReferenceOpcodesForImage&(1<<(0xfb-0xc0)) != 0 && op == 0xfb:
 			sub, err := r.U32()
 			if err != nil {
 				return 0, err
 			}
-			switch sub {
-			case 0: // struct.new
+			switch {
+			case gcConstOpcodesForImage&(1<<0) != 0 && sub == 0: // struct.new
 				if err := requireCollector(); err != nil {
 					return 0, err
 				}
@@ -401,7 +391,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				}
 				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
-			case 1: // struct.new_default
+			case gcConstOpcodesForImage&(1<<1) != 0 && sub == 1: // struct.new_default
 				if err := requireCollector(); err != nil {
 					return 0, err
 				}
@@ -419,7 +409,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				}
 				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
-			case 6: // array.new
+			case gcConstOpcodesForImage&(1<<6) != 0 && sub == 6: // array.new
 				if err := requireCollector(); err != nil {
 					return 0, err
 				}
@@ -452,7 +442,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				}
 				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
-			case 7: // array.new_default
+			case gcConstOpcodesForImage&(1<<7) != 0 && sub == 7: // array.new_default
 				if err := requireCollector(); err != nil {
 					return 0, err
 				}
@@ -474,7 +464,7 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				}
 				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
-			case 8: // array.new_fixed
+			case gcConstOpcodesForImage&(1<<8) != 0 && sub == 8: // array.new_fixed
 				if err := requireCollector(); err != nil {
 					return 0, err
 				}
@@ -508,18 +498,18 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				}
 				recordManagedFunctionConstruction(collector, c, ref, typeID)
 				stack = append(stack, gcConstStackValue{ref: ref, kind: gcConstCollectorRef})
-			case 26: // any.convert_extern
+			case gcConstOpcodesForImage&(1<<26) != 0 && sub == 26: // any.convert_extern
 				v, err := pop()
 				if err != nil {
 					return 0, err
 				}
-				if v.kind != gcConstExternRef || conversion == nil && compact == nil {
+				if v.kind != gcConstExternRef || (!gcExternConversionForImage || conversion == nil) && compact == nil {
 					return 0, fmt.Errorf("any.convert_extern constant has no extern conversion owner")
 				}
 				var bits uint64
-				if compact != nil {
+				if compactExternConstructionForImage && compact != nil {
 					bits, err = compact.convert(sub, v, allocationRoots)
-				} else {
+				} else if gcExternConversionForImage {
 					bits, err = conversion.anyFromExtern(v.bits)
 				}
 				if err != nil {
@@ -529,25 +519,25 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 					return 0, fmt.Errorf("any.convert_extern constant produced non-compact anyref %#x", bits)
 				}
 				stack = append(stack, gcConstStackValue{ref: gc.Ref(uint32(bits)), kind: gcConstCollectorRef})
-			case 27: // extern.convert_any
+			case gcConstOpcodesForImage&(1<<27) != 0 && sub == 27: // extern.convert_any
 				v, err := pop()
 				if err != nil {
 					return 0, err
 				}
-				if v.kind != gcConstCollectorRef || conversion == nil && compact == nil {
+				if v.kind != gcConstCollectorRef || (!gcExternConversionForImage || conversion == nil) && compact == nil {
 					return 0, fmt.Errorf("extern.convert_any constant has no GC conversion owner")
 				}
 				var bits uint64
-				if compact != nil {
+				if compactExternConstructionForImage && compact != nil {
 					bits, err = compact.convert(sub, v, allocationRoots)
-				} else {
+				} else if gcExternConversionForImage {
 					bits, err = conversion.externFromAny(uint64(v.ref))
 				}
 				if err != nil {
 					return 0, err
 				}
 				stack = append(stack, gcConstStackValue{bits: bits, kind: gcConstExternRef})
-			case 28: // ref.i31
+			case gcConstOpcodesForImage&(1<<28) != 0 && sub == 28: // ref.i31
 				v, err := pop()
 				if err != nil {
 					return 0, err

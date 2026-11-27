@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -43,6 +43,13 @@ func TestRV64CompactExternAggregateSourcePrivate(t *testing.T) {
 				t.Fatal(vector, array, err)
 			}
 			defer c.Close()
+			wantHelpers := uint64(managedStructAggregateHelpers)
+			if array {
+				wantHelpers = managedArrayAggregateHelpers
+			}
+			if got := managedAggregateHelperFamilies(c.executionView()); got != wantHelpers {
+				t.Fatalf("array=%t managed aggregate helper families = %#x, want %#x", array, got, wantHelpers)
+			}
 
 			for artifact, candidate := range []*Compiled{c} {
 				for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {

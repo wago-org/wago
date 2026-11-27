@@ -9,7 +9,10 @@
 
 package arm64
 
-import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+)
 
 // The condense engine: materialize a deferred-action valent block into machine
 // code, with target hints (compute the result straight into a destination
@@ -132,11 +135,14 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt32:
 		f.a.Sxtw(result, src) // SBFM Xd,Xn,#0,#31 — sign-extend 32→64
 	case opSExt8:
-		// Encoder width selectors use true for W (32-bit) and false for X
-		// (64-bit), the inverse of machineType.is64().
-		f.a.Sxtb(result, src, !node.st.typ.is64())
+		if buildfeatures.SignExtensionOps != 0 {
+			// The encoder selects W (32-bit) when the width flag is true.
+			f.a.Sxtb(result, src, !node.st.typ.is64())
+		}
 	case opSExt16:
-		f.a.Sxth(result, src, !node.st.typ.is64())
+		if buildfeatures.SignExtensionOps != 0 {
+			f.a.Sxth(result, src, !node.st.typ.is64())
+		}
 	}
 	if srcOwned && result != src {
 		f.release(src)

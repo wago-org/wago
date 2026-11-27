@@ -105,7 +105,7 @@ func rv64PublicDynamicNativeImportSourceArtifact(t *testing.T, reference bool) {
 					if len(producer.funcRefDescs) != 0 || producer.c.needsFuncRefContextHeader || producer.c.NeedsFuncRefDescs || binary.LittleEndian.Uint64(in.funcRefDescs[40:]) == uint64(producer.base+uintptr(producer.c.Entry[0])) {
 						t.Fatal("ordinary proxy or bare producer identity changed")
 					}
-					if rv64StaticTailPlanCount(rv64NativeTailModule(c)) != 0 || in.pluginState.Load().railshotInvocation.tailDispatcher != nil {
+					if rv64StaticTailPlanCount(rv64NativeTailModule(c)) != 0 || in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil {
 						t.Fatal("mixed sites acquired competing static capability")
 					}
 					if err := producer.Close(); err != nil {
@@ -120,7 +120,7 @@ func rv64PublicDynamicNativeImportSourceArtifact(t *testing.T, reference bool) {
 						if err != nil || !slices.Equal(got, want) {
 							t.Fatal("native imported tail transport", row, got, want, err)
 						}
-						if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+						if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 							t.Fatal("cold exit retained generation")
 						}
 					}
@@ -241,10 +241,10 @@ func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool, 
 						panic("parked reference lost native owner activation")
 					}
 					if ordinary {
-						if rv64EntryCapability(in) != 0 || state.tailGenerationBudget.count != 0 || state.tailDispatcher != nil {
+						if rv64EntryCapability(in) != 0 || state.tailForTest().generationBudget.count != 0 || state.tailForTest().dispatcher != nil {
 							panic("ordinary reference allocated a tail factory")
 						}
-					} else if rv64EntryCapability(in) == 0 || state.tailGenerationBudget.count == 0 {
+					} else if rv64EntryCapability(in) == 0 || state.tailForTest().generationBudget.count == 0 {
 						panic("parked dynamic tail lost generation")
 					}
 					depth++
@@ -295,7 +295,7 @@ func rv64PublicDynamicNativeImportHostParkReentry(t *testing.T, reference bool, 
 				if got, err := in.Invoke("identity", 52); err != nil || !slices.Equal(got, []uint64{52}) {
 					t.Fatal("cold reuse after nested host trap", got, err)
 				}
-				if in.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+				if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 					t.Fatal("parked generations escaped cold cleanup")
 				}
 			}
@@ -351,7 +351,7 @@ func rv64PublicNativeImportDeepPrepared(t *testing.T, reference bool) {
 				defer rt.Close()
 				in := rv64HostTailInstantiate(t, rt, c, NewImports().Function("env", "target", export))
 				state := &in.pluginState.Load().railshotInvocation
-				if c.needsFuncRefDescs() || state.nativeImports == nil || !state.nativeImports.published || len(state.nativeImports.records) != 0 || !state.tailPolicy.ready {
+				if c.needsFuncRefDescs() || state.nativeImports == nil || !state.nativeImports.published || len(state.nativeImports.records) != 0 || !state.tail.get().policy.ready {
 					t.Fatal("table-free importer lost header-only publication/policy")
 				}
 				staticC := rv64NativeTailCompile(t, key+"-static", rv64OrdinaryNativeCallerModule(params, payload, true), artifact)
@@ -382,7 +382,7 @@ func rv64PublicNativeImportDeepPrepared(t *testing.T, reference bool) {
 						t.Fatal("ordinary bridge continuation after 2049 dynamic tails", got, want, err)
 					}
 				}
-				if state.tailGenerationBudget.count != 0 || producer.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || rv64EntryCapability(producer) != 0 {
+				if state.tailForTest().generationBudget.count != 0 || producer.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || rv64EntryCapability(producer) != 0 {
 					t.Fatal("ordinary bridge cold exit retained generation")
 				}
 			})

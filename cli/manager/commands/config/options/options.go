@@ -22,6 +22,7 @@ const (
 	Set         Action = "set"
 	Reset       Action = "reset"
 	Diff        Action = "diff"
+	BuildTags   Action = "build-tags"
 )
 
 type Request struct {

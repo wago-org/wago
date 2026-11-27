@@ -29,6 +29,7 @@ const (
 	ErrInstructionNestingLimitExceeded
 	ErrInvalidModule
 	ErrLegacyExceptionHandling
+	ErrDisabledInstruction
 )
 
 type DecodeError struct {
@@ -41,10 +42,17 @@ type DecodeError struct {
 }
 
 func (e *DecodeError) Error() string {
-	if e.SectionEnd > 0 {
-		return fmt.Sprintf("wasm decode: %v at offset %d in section %d [%d,%d)", e.Code, e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
+	if e.Code == ErrDisabledInstruction && e.Cause != nil {
+		return fmt.Sprintf("wasm decode: %v at offset %d", e.Cause, e.Offset)
 	}
-	return fmt.Sprintf("wasm decode: %v at offset %d", e.Code, e.Offset)
+	if e.SectionEnd > 0 {
+		return fmt.Sprintf("wasm decode: %s at offset %d in section %d [%d,%d)", e.Code.String(), e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
+	}
+	return decodeErrorAt(e.Code, e.Offset)
+}
+
+func decodeErrorAt(code DecodeErrorCode, offset int) string {
+	return fmt.Sprintf("wasm decode: %s at offset %d", code.String(), offset)
 }
 
 func (c DecodeErrorCode) String() string {
@@ -75,6 +83,8 @@ func (c DecodeErrorCode) String() string {
 		return "invalid export"
 	case ErrInvalidInstruction:
 		return "invalid instruction"
+	case ErrDisabledInstruction:
+		return "instruction disabled in this build"
 	case ErrInvalidBlockType:
 		return "invalid block type"
 	case ErrInstructionNestingLimitExceeded:
@@ -86,6 +96,10 @@ func (c DecodeErrorCode) String() string {
 	default:
 		return fmt.Sprintf("decode error %d", int(c))
 	}
+}
+
+func disabledInstruction(feature string, offset int) error {
+	return &DecodeError{Code: ErrDisabledInstruction, Offset: offset, Cause: fmt.Errorf("%s is disabled in this build", feature)}
 }
 
 // Only unsupported opcode paths call this helper; valid decoding stays unchanged.

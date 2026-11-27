@@ -66,7 +66,7 @@ func TestRV64PublicDynamicHostReferenceCarriers(t *testing.T) {
 						binding = owner
 					}
 					in := rv64HostTailInstantiate(t, rt, c, NewImports().Function("env", "target", binding))
-					if rv64StaticTailPlanCount(m) != 0 || rv64EntryCapability(in) != 0 || in.pluginState.Load().railshotInvocation.tailDispatcher != nil {
+					if rv64StaticTailPlanCount(m) != 0 || rv64EntryCapability(in) != 0 || in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil {
 						t.Fatal("dynamic host reference acquired competing static capability")
 					}
 					if err := producer.Close(); err != nil {

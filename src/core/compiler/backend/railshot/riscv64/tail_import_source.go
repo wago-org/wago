@@ -171,10 +171,11 @@ func tailImportOwnerSpec(bindings []tailImportBinding, s tailRAOwnerSpec) (tailR
 		if i == nil || i.siteBase != uint32(count) || len(i.functions) == 0 || len(i.functions) != len(b.functions) || i.imports != len(b.targets) || len(i.signatures) != i.imports+len(i.functions) || len(i.plans) > tailRAMaxSites-count {
 			return tailRAOwnerSpec{}, unsupported("private imported-tail binding shape/base")
 		}
-		for n, f := range b.functions {
-			info := i.functions[n]
-			first := b.functions[0]
-			if f.codeKey() != first.codeKey() || f.job != first.job || tailRAPointer(f.context) != tailRAPointer(first.context) || tailRAPointer(f.directory) != tailRAPointer(first.directory) || !bytes.Equal(f.snapshot, i.code) || f.info.Entry != info.Entry || f.info.CodeBytes != info.CodeBytes || f.info.FrameBytes != info.FrameBytes || f.info.FrameHeaderBytes != info.FrameHeaderBytes || f.info.Params != info.Params || f.info.Results != info.Results || f.info.mode.functionIndex != info.mode.functionIndex || !tailImportExactSignature(f.signature, i.signatures[i.imports+n]) {
+		for n := range b.functions {
+			f := &b.functions[n]
+			info := i.functions[n].tailInfo()
+			first := &b.functions[0]
+			if f.codeKey() != first.codeKey() || f.job != first.job || tailRAPointer(f.context) != tailRAPointer(first.context) || tailRAPointer(f.directory) != tailRAPointer(first.directory) || !bytes.Equal(f.snapshot, i.code) || f.info.Entry != info.Entry || f.info.CodeBytes != info.CodeBytes || f.info.FrameBytes != info.FrameBytes || f.info.FrameHeaderBytes != info.FrameHeaderBytes || f.info.Params != info.Params || f.info.Results != info.Results || f.info.functionIndex != info.functionIndex || !tailImportExactSignature(f.signature, i.signatures[i.imports+n]) {
 				return tailRAOwnerSpec{}, unsupported("private imported-tail frozen caller image")
 			}
 		}

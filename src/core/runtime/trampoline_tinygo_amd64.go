@@ -15,7 +15,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
+
+const tinygoPreparedIntForImage = buildfeatures.StandaloneDirectIntFixed
 
 // TinyGo cannot assemble Go's Plan9 .s files, so the assembly trampoline used by
 // the standard toolchain (trampoline_amd64.s) is unavailable here. Instead we
@@ -122,14 +126,22 @@ func (e *Engine) initNativeEntry() error {
 	}
 	stackTop := e.stackTop
 	intEntry := int(tinygoPreparedIntEntryOffset)
-	mxcsr := (intEntry + len(tinygoIntThunkTemplate) + 3) &^ 3
+	codeEnd := len(thunkTemplate)
+	var intThunk string
+	if tinygoPreparedIntForImage {
+		intThunk = tinygoIntThunk()
+		codeEnd = intEntry + len(intThunk)
+	}
+	mxcsr := (codeEnd + 3) &^ 3
 	code := make([]byte, mxcsr+4)
 	copy(code, thunkTemplate)
-	copy(code[intEntry:], tinygoIntThunkTemplate)
 	binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(stackTop))
-	binary.LittleEndian.PutUint64(code[intEntry+tinygoIntThunkStackTopOff:], uint64(stackTop))
 	binary.LittleEndian.PutUint32(code[thunkMXCSRDispOff:], uint32(mxcsr-(thunkMXCSRDispOff+4)))
-	binary.LittleEndian.PutUint32(code[intEntry+thunkMXCSRDispOff:], uint32(mxcsr-(intEntry+thunkMXCSRDispOff+4)))
+	if tinygoPreparedIntForImage {
+		copy(code[intEntry:], intThunk)
+		binary.LittleEndian.PutUint64(code[intEntry+tinygoIntThunkStackTopOff:], uint64(stackTop))
+		binary.LittleEndian.PutUint32(code[intEntry+thunkMXCSRDispOff:], uint32(mxcsr-(intEntry+thunkMXCSRDispOff+4)))
+	}
 	binary.LittleEndian.PutUint32(code[mxcsr:], 0x1f80)
 	mem, err := tinygoMmapExec(code)
 	if err != nil {

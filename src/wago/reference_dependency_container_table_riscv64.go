@@ -62,7 +62,7 @@ type tableDescriptorDependencyBatch struct {
 // Caller owns the concrete bootstrap and Table.mu. Recording performs no graph
 // or lifetime operation; publication runs only after every outer native lock.
 func railshotRecordTableDescriptorDependencyLocked(table *Table, producer *Instance, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
-	if table.owner == nil || table.owner.elementType != ValFuncRef {
+	if !crossInstanceDependenciesForImage || table.owner == nil || table.owner.elementType != ValFuncRef {
 		return
 	}
 	if owner := table.owner.instance; owner != nil && (table.owner.descriptorDependencies.holder == nil || table.owner.descriptorDependencies.holder.member.owner != owner) {
@@ -83,7 +83,7 @@ func railshotRecordTableDescriptorDependencyLocked(table *Table, producer *Insta
 
 // Caller holds in.lifeMu and has not published table through in.table yet.
 func railshotLinkOwnedTableDescriptorHolderLocked(in *Instance, table *Table) {
-	if in == nil || table == nil || table.owner == nil || table.owner.instance != in || table.owner.elementType != ValFuncRef || table.owner.descriptorDependencies.holder != nil {
+	if !crossInstanceDependenciesForImage || in == nil || table == nil || table.owner == nil || table.owner.instance != in || table.owner.elementType != ValFuncRef || table.owner.descriptorDependencies.holder != nil {
 		return
 	}
 	ownership := rv64FunctionDependencyOwnershipForLocked(in)
@@ -110,6 +110,9 @@ func railshotOwnedTableDescriptorDependenciesComplete(ownership *rv64FunctionDep
 // Traverse the immutable Table chain without retaining a Table lock across
 // graph work, physical release, or callbacks.
 func railshotReleaseOwnedTableDescriptorDependencies(in *Instance) {
+	if !crossInstanceDependenciesForImage {
+		return
+	}
 	ownership := rv64ExistingFunctionDependencyOwnership(in)
 	if ownership == nil {
 		return
@@ -171,7 +174,7 @@ func railshotRetryClosedTableDescriptorRetirement(in *Instance) error {
 }
 
 func railshotPublishTableDescriptorDependencyLocked(table *Table, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
-	if batch == nil || table.owner == nil || mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
+	if !crossInstanceDependenciesForImage || batch == nil || table.owner == nil || mapState == nil || !mapState.precise && len(mapState.proxyDescriptors) != 0 {
 		return
 	}
 	if row := table.owner.descriptorDependencies.rows[mapState]; row != nil && (row.phase == rv64TableDescriptorBootstrap || row.phase == rv64TableDescriptorFailed) {
@@ -180,7 +183,7 @@ func railshotPublishTableDescriptorDependencyLocked(table *Table, mapState *reta
 }
 
 func railshotRetireTableDescriptorDependencyLocked(table *Table, producer *Instance, mapState *retainedInstanceRoot, batch *tableDescriptorDependencyBatch) {
-	if table.owner == nil {
+	if !crossInstanceDependenciesForImage || table.owner == nil {
 		batch.legacy.add(producer)
 		return
 	}
@@ -197,7 +200,7 @@ func railshotRetireTableDescriptorDependencyLocked(table *Table, producer *Insta
 }
 
 func railshotRetryTableDescriptorDependenciesLocked(table *Table, batch *tableDescriptorDependencyBatch) {
-	if table.owner == nil {
+	if !crossInstanceDependenciesForImage || table.owner == nil {
 		return
 	}
 	for _, row := range table.owner.descriptorDependencies.rows {
@@ -208,8 +211,10 @@ func railshotRetryTableDescriptorDependenciesLocked(table *Table, batch *tableDe
 
 func railshotFlushTableDescriptorDependencies(batch *tableDescriptorDependencyBatch) {
 	var cleanup resourceCleanup
-	cleanup.run(func() { batch.publications.drain((*rv64TableDescriptorDependency).publish) })
-	cleanup.run(func() { batch.retirements.drain((*rv64TableDescriptorDependency).release) })
+	if crossInstanceDependenciesForImage {
+		cleanup.run(func() { batch.publications.drain((*rv64TableDescriptorDependency).publish) })
+		cleanup.run(func() { batch.retirements.drain((*rv64TableDescriptorDependency).release) })
+	}
 	cleanup.run(func() { batch.legacy.drain((*Instance).releaseResourceRoot) })
 	cleanup.finish()
 }

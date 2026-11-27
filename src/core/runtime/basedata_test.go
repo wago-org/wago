@@ -9,6 +9,26 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+func TestInstanceControlMemoryKeepsNativeBaseWithoutGuestMemory(t *testing.T) {
+	memory, err := NewInstanceControlMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := memory.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	nativeView := memory.LinearMemory()
+	if len(nativeView) != 1 || slicePtr(nativeView) != memory.LinMemBase() {
+		t.Fatal("slice-based entry lost the native control address")
+	}
+	if memory.CurrentPages() != 0 || memory.MaxPages() != 0 || len(memory.HostBytes()) != 0 {
+		t.Fatal("control mapping exposed guest memory")
+	}
+}
+
 // TestBasedataOffsetsMatchWARP guards against silent drift of the basedata
 // layout away from WARP's basedataoffsets.hpp (Phase-0 config). If WARP's
 // layout or our config changes, this must be re-derived.

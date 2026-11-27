@@ -25,7 +25,7 @@ func boundedMultiHostShapes(bindings []syncHostBinding) []uint32 {
 	for i := range bindings {
 		b := &bindings[i]
 		_, caller := b.fn.(CallerHostCallFunc)
-		if b.sig == nil || b.gate != nil || b.scalarKind == syncHostNonScalar || !(b.hostCall || caller || b.scalarKind >= syncHostTypedI32) {
+		if b.sig == nil || b.callbackGate() != nil || b.scalarKind == syncHostNonScalar || !(b.hostCall || caller || b.scalarKind >= syncHostTypedI32) {
 			return nil
 		}
 		n, nres := len(b.sig.Params), len(b.sig.Results)
@@ -47,7 +47,7 @@ func (in *Instance) tryInvokeCachedMultiNumeric(export string, args []uint64) ([
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if ic == nil || ic.li < 0 || ic.hasFuncRefParams || ic.hasFuncRefResults || len(args) != int(ic.paramSlots) ||
 		!privateRefStore || in.guestStorageBorrowed() || !in.preparedFastStateValid() || !in.usesIndependentExecution() ||
-		in.gc != nil || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
+		in.hasNativeCollector() || in.threadedMemoryZero || in.table != nil || in.importsFuncrefStorage() || len(in.hostLog) != 0 {
 		in.endOrdinaryInvocation(state)
 		return nil, nil, false
 	}
@@ -74,7 +74,7 @@ func (in *Instance) callCachedBoundedMultiHost(entry uintptr, layout *boundedMul
 	defer in.unlockNativeEntry(locked)
 	defer func() { err = in.decorateTrap(err) }()
 	defer recoverNativeSyncPanic(&err)
-	if activeHostInvocationBindings.Load() != 0 {
+	if hasHostInvocationBindings() {
 		restore := bindHostInvocationParent(in, nil)
 		defer restore()
 	}
@@ -99,7 +99,7 @@ type boundedMultiHostLayout struct{ shapes []uint32 }
 
 func (in *Instance) hasBoundedMultiHostView() bool {
 	state := in.pluginState.Load()
-	return state != nil && state.multiHost != nil && in.boundedHostSegments() && in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+	return state != nil && state.multiHost != nil && in.boundedHostSegments() && !in.hostCallNeedsGCSuspension()
 }
 
 func (a *hostLoopActivation) dispatchBoundedMultiHostView(args, results []uint64) {

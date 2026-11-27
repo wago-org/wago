@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -192,7 +193,7 @@ func publicReferenceCallBoundaryWireShape(data []byte) bool {
 	if bytes.Equal(bodies[2], wrapper) {
 		return true
 	}
-	if !sameResults || len(wrapper) < 3 {
+	if buildfeatures.TailCall == 0 || !sameResults || len(wrapper) < 3 {
 		return false
 	}
 	wrapper[len(wrapper)-3] = 0x15 // canonical return_call_ref alternate
@@ -258,7 +259,10 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 	}
 	callerBody = append(callerBody, 0x20)
 	callerBody = appendPublicReferenceBoundaryU32(callerBody, uint32(len(target.Params)))
-	callerPrefix := slices.Clone(callerBody)
+	var callerPrefix []byte
+	if buildfeatures.TailCall != 0 && numericResult {
+		callerPrefix = slices.Clone(callerBody)
+	}
 	callerBody = append(callerBody, 0x14, 0)
 	if referenceResult {
 		for range target.Results {
@@ -268,9 +272,13 @@ func admitPublicReferenceCallBoundary(m *wasm.Module) bool {
 		callerBody = appendPublicReferenceBoundaryU32(callerBody, uint32(len(target.Params)))
 	}
 	callerBody = append(callerBody, 0x0b)
-	tailBody := append(callerPrefix, 0x15, 0, 0x0b)
-	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) || !bytes.Equal(m.Code[2].BodyBytes, callerBody) && (!numericResult || !bytes.Equal(m.Code[2].BodyBytes, tailBody)) {
+	if !bytes.Equal(m.Code[1].BodyBytes, []byte{0xd2, 0, 0x0b}) {
 		return false
+	}
+	if !bytes.Equal(m.Code[2].BodyBytes, callerBody) {
+		if buildfeatures.TailCall == 0 || !numericResult || !bytes.Equal(m.Code[2].BodyBytes, append(callerPrefix, 0x15, 0, 0x0b)) {
+			return false
+		}
 	}
 	for i, name := range []string{"target", "get", "call"} {
 		export := m.Exports[i]
@@ -319,11 +327,18 @@ func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
 		return false
 	}
 	identity := []byte{0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0x0b}
-	tailBody := []byte{0x20, 6, 0x04, 3, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd0, 2, 0x15, 2, 0x05, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd2, 0, 0x15, 2, 0x0b, 0x0b}
-	callBody := slices.Clone(tailBody)
-	callBody[18], callBody[35] = 0x14, 0x14
-	if !bytes.Equal(m.Code[0].BodyBytes, identity) || !bytes.Equal(m.Code[1].BodyBytes, tailBody) && !bytes.Equal(m.Code[1].BodyBytes, callBody) {
+	callBody := []byte{0x20, 6, 0x04, 3, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd0, 2, 0x14, 2, 0x05, 0x20, 0, 0x20, 1, 0x20, 2, 0x20, 3, 0x20, 4, 0x20, 5, 0xd2, 0, 0x14, 2, 0x0b, 0x0b}
+	if !bytes.Equal(m.Code[0].BodyBytes, identity) {
 		return false
+	}
+	if !bytes.Equal(m.Code[1].BodyBytes, callBody) {
+		if buildfeatures.TailCall == 0 {
+			return false
+		}
+		callBody[18], callBody[35] = 0x15, 0x15
+		if !bytes.Equal(m.Code[1].BodyBytes, callBody) {
+			return false
+		}
 	}
 	e := m.Elements[0]
 	if e.Mode.Kind != wasm.ElemDeclarative || e.Mode.Table != 0 || len(e.Mode.Offset.BodyBytes) != 0 || len(e.Mode.Offset.Instrs) != 0 || e.Kind.Kind != wasm.ElemFuncs || e.Kind.Ref != (wasm.RefType{}) || len(e.Kind.Funcs) != 1 || e.Kind.Funcs[0] != 0 || len(e.Kind.Exprs) != 0 {
@@ -333,13 +348,13 @@ func admitPublicDynamicHostReferenceBoundary(m *wasm.Module) bool {
 }
 
 func publicReferenceCarrierTarget(target *wasm.CompType) bool {
-	return publicReferenceCarrierTargetMode(target, false)
+	return buildfeatures.ReferenceSignatures && publicReferenceCarrierTargetMode(target, false)
 }
 
 // The vector form is kept separate so the exact mutable reference-cell
 // profile cannot accidentally widen scalar host/reference wrappers to v128.
 func publicReferenceVectorCarrierTarget(target *wasm.CompType) bool {
-	return publicReferenceCarrierTargetMode(target, true)
+	return buildfeatures.ReferenceSignatures && publicReferenceCarrierTargetMode(target, true)
 }
 
 func publicReferenceCarrierTargetMode(target *wasm.CompType, vector bool) bool {
@@ -678,6 +693,10 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 			switch op {
 			case 0x1f:
 				return unsupported("closed reference module exception control is unsupported")
+			case 0x12, 0x13, 0x15:
+				if buildfeatures.TailCall == 0 {
+					return unsupported("tail calls are disabled in this build")
+				}
 			}
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
@@ -737,14 +756,14 @@ func admitClosedReferenceFunctionModule(m *wasm.Module, vector bool) error {
 						return err
 					}
 				}
-				if op == 0x15 || op == 0x13 {
+				if buildfeatures.TailCall != 0 && (op == 0x15 || op == 0x13) {
 					source := &m.Types[m.FuncTypes[function].Index].SubTypes[0].Comp
 					if err := admitReferenceTailResults(source, sig); err != nil {
 						return err
 					}
 				}
 			}
-			if op == 0x12 && uint64(imm.Index) < uint64(imported) {
+			if buildfeatures.TailCall != 0 && op == 0x12 && uint64(imm.Index) < uint64(imported) {
 				// This includes unreachable tails. A private source may have reference
 				// parameters/locals, but a numeric imported target must match its results.
 				source := &m.Types[m.FuncTypes[function].Index].SubTypes[0].Comp

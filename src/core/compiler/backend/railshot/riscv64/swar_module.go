@@ -13,13 +13,15 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
 
 type swarModuleImage struct {
 	profileModuleState
+	gcHelperUses                  uint64
+	atomicHelperUses              uint8
 	code                          []byte
 	functions                     []FunctionInfo
 	globals                       []swarGlobalInitializer
@@ -104,9 +106,9 @@ type swarStateProfile struct {
 	importedGlobals      bool
 	importedTable        bool
 	functionTableImports bool // public retained controls only; private pilots stay separate
-	gcFrameRoots         *shared.GCModuleFrameRootPlan
-	integerState         *moduleState
-	integerFunctions     []bool
+	gcFrameModuleState
+	integerState     *moduleState
+	integerFunctions []bool
 }
 
 // Production integrates qualified state with current public lifecycles.
@@ -132,6 +134,9 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		return nil, unsupported("hybrid integer function directory")
 	}
 	if mode.referenceFunctions && mode.exceptionModule == nil {
+		if !buildfeatures.ReferenceSignatures {
+			return nil, unsupported("reference ABI is disabled in this build")
+		}
 		if !mode.interruptible || !mode.foreignTableCalls || !mode.invocationContext || !state.publicStarts || !state.exports || mode.dynamicTailCalls && (!mode.localTailCalls || !mode.importTailCalls) {
 			return nil, unsupported("closed reference SWAR module requires private cooperative production")
 		}
@@ -140,7 +145,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		}
 	}
 	budgetModule := m
-	if mode.exceptionModule != nil {
+	if buildfeatures.ExceptionHandling != 0 && mode.exceptionModule != nil {
 		budgetModule = exceptionAdmissionProjection(m)
 	}
 	if err := admitSWARDecodedBudgetReferencesLimit(pluginBudgetModule(budgetModule, mode.customInstructions), state.publicStarts, state.publicStarts, mode.referenceCalls, mode.gcRootedScalar, state.moduleByteLimit); err != nil {
@@ -268,19 +273,19 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 	}
 	publicReferenceCarriers := mode.referenceFunctions && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 	var rootedDirectory internalReferenceTypeDirectory
-	if mode.gcRootedScalar {
+	if buildfeatures.RISCV64CollectorFrameRoots && mode.gcRootedScalar {
 		var ok bool
 		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
 		if !ok {
 			return nil, unsupported("SWAR rooted type directory")
 		}
-		mode.gcRootedDirectory = &rootedDirectory
+		mode.setRootedTypeDirectory(&rootedDirectory)
 	}
 	sourceDirectory, err := newSourceFunctionTypeDirectory(m)
 	if err != nil {
 		return nil, err
 	}
-	primitiveDeclarations := state.publicStarts && admitPublicPrimitiveReferenceModule(m, true)
+	primitiveDeclarations := state.publicStarts && admitPublicTailFunctionCarriers(m, true)
 	if primitiveDeclarations || mode.gcRootedScalar {
 		mode.primitiveTailTypes = &sourceDirectory
 	}
@@ -525,9 +530,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		functionMode.profileMode = mode.newFunctionProfile(&m.Code[i], uint32(imported+i))
 		functionMode.functionIndex = uint32(imported + i)
 		functionMode.entryPC = uint32(m.Code[i].LocalDeclBytes)
-		if state.gcFrameRoots != nil {
-			functionMode.gcFrameRoots = state.gcFrameRoots.Function(i)
-		}
+		state.bindFunction(&functionMode, i)
 		var code []byte
 		var info FunctionInfo
 		var relocations []directCall
@@ -557,71 +560,13 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		calls = append(calls, relocations...)
 		image.code = append(image.code, code...)
 	}
-	// SWAR functions normally relocate only to other functions. The exact
-	// mutable-reference profiles additionally use the same parked host bridge as
-	// scalar lowering. Keep those thunks in the guest image so every transfer is
-	// still image-relative and becomes callable only with the rest of the image.
-	type swarHelperBridge struct {
-		helper    uint32
-		slots     int
-		safepoint uint32
+	var helperEntries map[helperBridge]int
+	image.code, helperEntries, err = appendInternalHelperBridges(image.code, calls, codeLimit-len(image.hostCode), mode.ownedExceptionReferences)
+	if err != nil {
+		return nil, err
 	}
-	helperEntries := make(map[swarHelperBridge]int, 12)
-	bridges := []swarHelperBridge{{helper: gcExternGlobalSet, slots: 2}, {helper: gcStructAllocDefault, slots: 1}, {helper: gcStructAllocOne, slots: 2}, {helper: gcStructAllocOne, slots: 4}, {helper: gcStructGet, slots: 3}, {helper: gcStructSet, slots: 4}, {helper: gcStructGetS, slots: 3}, {helper: gcStructGetU, slots: 3}, {helper: gcStructRefTest, slots: 4}, {helper: gcFunctionSubtypeTest, slots: 3}, {helper: gcStructRefCast, slots: 4}, {helper: gcStructTableSet, slots: 3}, {helper: gcAnyConvertExtern, slots: 1}, {helper: gcExternConvertAny, slots: 1}, {helper: gcArrayAllocDefault, slots: 2}, {helper: gcArrayAllocFixed, slots: 4}, {helper: gcArrayAllocFixed, slots: 5}, {helper: gcArrayAllocUniform, slots: 3}, {helper: gcArrayAllocData, slots: 4}, {helper: gcArrayAllocElem, slots: 4}, {helper: gcArrayDropElem, slots: 1}, {helper: gcArrayFill, slots: 5}, {helper: gcArrayCopy, slots: 7}, {helper: gcArrayGet, slots: 3}, {helper: gcArrayGetS, slots: 3}, {helper: gcArrayGetU, slots: 3}, {helper: gcArraySet, slots: 4}, {helper: gcArrayLen, slots: 1}, {helper: gcArrayInitData, slots: 6}, {helper: gcArrayInitElem, slots: 6}, {helper: gcTableFill, slots: 4}, {helper: gcTableCopy, slots: 5}, {helper: gcTableGrow, slots: 3}, {helper: gcTableInit, slots: 5}, {helper: gcTableElemDrop, slots: 1}, {helper: guestGlobalClear}, {helper: guestGlobalStore, slots: 1}, {helper: guestGlobalStoreIndexed, slots: 2}}
-	if mode.ownedExceptionReferences {
-		bridges = append(bridges, swarHelperBridge{helper: gcExceptionPayload, slots: 1})
-	}
-	for _, call := range calls {
-		if call.helper == 0 || call.safepoint == 0 {
-			continue
-		}
-		slots, ok := gcAllocHelperSlots(call.helper, call.helperSlots)
-		if !ok {
-			return nil, unsupported("missing canonical SWAR GC helper bridge shape")
-		}
-		key := swarHelperBridge{helper: call.helper, slots: slots, safepoint: call.safepoint}
-		if !slices.Contains(bridges, key) {
-			bridges = append(bridges, key)
-		}
-	}
-	for _, helper := range bridges {
-		used := false
-		for _, call := range calls {
-			used = used || call.helper == helper.helper && call.safepoint == helper.safepoint && (call.helper != gcArrayAllocFixed && call.helper != gcStructAllocOne || call.helperSlots == helper.slots)
-		}
-		if !used {
-			continue
-		}
-		padding := (-len(image.code)) & 15
-		paramSlots, resultSlots := helper.slots, 1
-		if helper.helper == gcExternGlobalSet || helper.helper == gcStructSet || helper.helper == gcStructTableSet || helper.helper == gcArraySet || helper.helper == gcArrayDropElem || helper.helper == gcArrayFill || helper.helper == gcArrayCopy || helper.helper == gcArrayInitData || helper.helper == gcArrayInitElem || helper.helper == gcTableFill || helper.helper == gcTableCopy || helper.helper == gcTableInit || helper.helper == gcTableElemDrop {
-			resultSlots = 0
-		}
-		dispatch := guestGlobalStoreDispatch
-		if helper.helper != guestGlobalClear && helper.helper != guestGlobalStore && helper.helper != guestGlobalStoreIndexed {
-			payload, ok := shared.EncodeGCDispatch(helper.helper, helper.safepoint)
-			if !ok {
-				return nil, unsupported("SWAR GC helper dispatch encoding")
-			}
-			dispatch = gcStructDispatchBit | payload
-		} else {
-			resultSlots = 0
-		}
-		stub := HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)
-		if len(stub) == 0 || padding > codeLimit-len(image.hostCode)-len(image.code) || len(stub) > codeLimit-len(image.hostCode)-len(image.code)-padding {
-			return nil, unsupported("SWAR mutable funcref helper image bound")
-		}
-		for ; padding > 0; padding -= 4 {
-			image.code = append(image.code, 0x13, 0, 0, 0)
-		}
-		key := helper
-		if key.helper != gcArrayAllocFixed && key.helper != gcStructAllocOne {
-			key.slots = 0
-		}
-		helperEntries[key] = len(image.code)
-		image.code = append(image.code, stub...)
-	}
-	image.code, err = appendAtomicHelpers(image.code, calls)
+	image.gcHelperUses = emittedGCHelperUses(helperEntries)
+	image.code, image.atomicHelperUses, err = appendAtomicHelpers(image.code, calls)
 	if err != nil {
 		return nil, err
 	}
@@ -633,11 +578,7 @@ func compileSWARDecodedModuleProfile(m *wasm.Module, mode emissionMode, policy s
 		target := 0
 		if call.helper != 0 {
 			var ok bool
-			keySlots := 0
-			if call.helper == gcArrayAllocFixed || call.helper == gcStructAllocOne {
-				keySlots = call.helperSlots
-			}
-			target, ok = helperEntries[swarHelperBridge{helper: call.helper, slots: keySlots, safepoint: call.safepoint}]
+			target, ok = helperEntries[call.bridgeKey()]
 			if !ok {
 				return nil, unsupported("SWAR internal helper bridge")
 			}
@@ -725,41 +666,8 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	if err := chargeDeclaredTypeBytes(m, &remaining); err != nil {
 		return err
 	}
-	publicReferenceCarriers := referencesAllowed && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
-	var rootedDirectory internalReferenceTypeDirectory
-	if rootedScalar {
-		var ok bool
-		rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
-		if !ok {
-			return unsupported("SWAR rooted type directory")
-		}
-	}
-	sourceDirectory, err := newSourceFunctionTypeDirectory(m)
-	if err != nil {
+	if err := admitSWARDecodedTypes(m, publicStarts, referencesAllowed, typed, rootedScalar); err != nil {
 		return err
-	}
-	primitiveDeclarations := publicStarts && admitPublicPrimitiveReferenceModule(m, true)
-	declaredTypes := internalReferenceTypes{sourceDirectory: sourceDirectory, publicReferences: publicStarts, decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: rootedScalar}
-	flatIndex := uint32(0)
-	for _, group := range m.Types {
-		if len(group.SubTypes) != 1 && !publicStarts {
-			return unsupported("SWAR decoded numeric function types")
-		}
-		for subtypeIndex := range group.SubTypes {
-			sub := &group.SubTypes[subtypeIndex]
-			index := flatIndex
-			flatIndex++
-			if (rootedScalar || primitiveDeclarations) && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
-				continue
-			}
-			signature, callable := sourceDirectory.function(index)
-			if !callable || admitSWARControlSignature(signature, declaredTypes, referencesAllowed, typed) != nil {
-				return unsupported("SWAR decoded numeric function types")
-			}
-			if (!publicStarts && (!sub.Final || sub.HasPrefix || len(sub.Supers) != 0)) || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
-				return unsupported("SWAR decoded type metadata")
-			}
-		}
 	}
 	for _, fn := range m.Code {
 		if fn.BodyBytes == nil || len(fn.Body.Instrs) != 0 || len(fn.Body.BodyBytes) != 0 || len(fn.BodyBytes) > 64<<10 || len(fn.Locals.Runs) > maxSWARLocals || fn.LocalDeclBytes > MaxModuleBytes || !consume(len(fn.BodyBytes)) || !consume(int(fn.LocalDeclBytes)) {
@@ -770,7 +678,7 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 	for _, table := range m.Tables {
 		// Bound expressions before normal validation scans declared functions.
 		if table.Init != nil {
-			if !publicStarts || !consume(len(table.Init.BodyBytes)) {
+			if !buildfeatures.ReferenceSignatures || !publicStarts || !consume(len(table.Init.BodyBytes)) {
 				return unsupported("SWAR decoded table initializer")
 			}
 			if rootedModule && rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) && rootedScalarAggregateElementExpression(*table.Init, table.Type.Ref, m) {
@@ -806,7 +714,7 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 				return unsupported("SWAR legacy expression payload")
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
-			if !publicStarts || len(element.Kind.Funcs) != 0 {
+			if !buildfeatures.ReferenceSignatures || !publicStarts || len(element.Kind.Funcs) != 0 {
 				return unsupported("SWAR public element expressions required")
 			}
 			aggregate := rootedModule && element.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(element.Kind.Ref), m)
@@ -828,6 +736,54 @@ func admitSWARDecodedBudgetReferencesLimit(m *wasm.Module, publicStarts, referen
 		return err
 	}
 	return admitSWARDecodedMetadataBudget(m, &remaining)
+}
+
+func admitSWARDecodedTypes(m *wasm.Module, publicStarts, referencesAllowed, typed, rootedScalar bool) error {
+	var declaredTypes internalReferenceTypes
+	var primitiveDeclarations bool
+	if buildfeatures.ReferenceSignatures {
+		publicReferenceCarriers := referencesAllowed && admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
+		var rootedDirectory internalReferenceTypeDirectory
+		if buildfeatures.RISCV64CollectorFrameRoots && rootedScalar {
+			var ok bool
+			rootedDirectory, ok = newInternalReferenceTypeDirectory(m.Types)
+			if !ok {
+				return unsupported("SWAR rooted type directory")
+			}
+		}
+		sourceDirectory, err := newSourceFunctionTypeDirectory(m)
+		if err != nil {
+			return err
+		}
+		primitiveDeclarations = publicStarts && admitPublicPrimitiveReferenceModule(m, true)
+		declaredTypes = internalReferenceTypes{sourceDirectory: sourceDirectory, publicReferences: publicStarts, decoded: m.Types, rootedDirectory: rootedDirectory, decodedSWAR: true, publicReferenceCarriers: publicReferenceCarriers, gcRootedScalar: rootedScalar}
+	}
+	flatIndex := uint32(0)
+	for _, group := range m.Types {
+		if len(group.SubTypes) != 1 && !publicStarts {
+			return unsupported("SWAR decoded numeric function types")
+		}
+		for subtypeIndex := range group.SubTypes {
+			sub := &group.SubTypes[subtypeIndex]
+			index := flatIndex
+			flatIndex++
+			if buildfeatures.ReferenceSignatures && (rootedScalar || primitiveDeclarations) && (sub.Comp.Kind == wasm.CompStruct || sub.Comp.Kind == wasm.CompArray) {
+				continue
+			}
+			if buildfeatures.ReferenceSignatures {
+				signature, callable := declaredTypes.sourceDirectory.function(index)
+				if !callable || admitSWARControlSignature(signature, declaredTypes, referencesAllowed, typed) != nil {
+					return unsupported("SWAR decoded numeric function types")
+				}
+			} else if err := swarCallSignature(&sub.Comp); err != nil {
+				return unsupported("SWAR decoded numeric function types")
+			}
+			if (!publicStarts && (!sub.Final || sub.HasPrefix || len(sub.Supers) != 0)) || len(sub.Comp.Fields) != 0 || sub.Metadata.Describes.Present() || sub.Metadata.Descriptor.Present() {
+				return unsupported("SWAR decoded type metadata")
+			}
+		}
+	}
+	return nil
 }
 
 // Reject unsupported sections even when empty. A decoded module alone cannot

@@ -295,7 +295,7 @@ func TestLocalIndirectTailRV64OriginalLinkedContinuationAndVoid(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = ar.Close() })
 		witness := ar.Alloc(256)
-		root := tailRANativeRoot(t, tailRAFunction{code: buffer, info: image.functions[0]}, witness)
+		root := tailRANativeRoot(t, tailRAFunction{code: buffer, info: image.functions[0].tailInfo()}, witness)
 		if err = root.Seal(); err != nil {
 			t.Fatal(err)
 		}

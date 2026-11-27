@@ -13,7 +13,7 @@ import "fmt"
 // opaque, non-null WebAssembly externref token. Runtime-created instances share
 // the store, so the token may cross their public and host-call boundaries.
 func (rt *Runtime) NewExternRef(value any) (ExternRef, error) {
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return ExternRef{}, fmt.Errorf("wago: nil runtime")
 	}
 	operation, err := rt.beginOperation("NewExternRef", false)
@@ -21,7 +21,7 @@ func (rt *Runtime) NewExternRef(value any) (ExternRef, error) {
 		return ExternRef{}, err
 	}
 	defer operation.end()
-	token, err := rt.refStore.issueExternref(value)
+	token, err := rt.references().issueExternref(value)
 	if err != nil {
 		return ExternRef{}, err
 	}
@@ -34,7 +34,7 @@ func (rt *Runtime) ExternRefValue(ref ExternRef) (any, bool) {
 	if ref.IsNull() {
 		return nil, true
 	}
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return nil, false
 	}
 	operation, err := rt.beginOperation("ExternRefValue", false)
@@ -42,7 +42,7 @@ func (rt *Runtime) ExternRefValue(ref ExternRef) (any, bool) {
 		return nil, false
 	}
 	defer operation.end()
-	return rt.refStore.resolveExternref(ref.token)
+	return rt.references().resolveExternref(ref.token)
 }
 
 // ReleaseExternRef releases the host value retained by ref. It returns false
@@ -52,7 +52,7 @@ func (rt *Runtime) ReleaseExternRef(ref ExternRef) bool {
 	if ref.IsNull() {
 		return true
 	}
-	if rt == nil || rt.refStore == nil {
+	if rt == nil || rt.references() == nil {
 		return false
 	}
 	operation, err := rt.beginOperation("ReleaseExternRef", false)
@@ -60,7 +60,7 @@ func (rt *Runtime) ReleaseExternRef(ref ExternRef) bool {
 		return false
 	}
 	defer operation.end()
-	return rt.refStore.releaseExternref(ref.token)
+	return rt.references().releaseExternref(ref.token)
 }
 
 // NewExternRef registers value in this instance's reference store. Runtime
@@ -122,7 +122,7 @@ func (in *Instance) validExternrefToken(token uint64) bool {
 // an externref result, so global reads must use the result conversion. handled
 // is false when ordinary host-issued tokens apply.
 func (in *Instance) publicExternFromGlobal(bits uint64) (public uint64, handled bool, err error) {
-	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
+	if !in.usesStagedExternConversion() {
 		return bits, false, nil
 	}
 	conversion := in.existingGCExternConversionState()
@@ -135,7 +135,7 @@ func (in *Instance) publicExternFromGlobal(bits uint64) (public uint64, handled 
 
 // internalExternForGlobal is the inverse of publicExternFromGlobal for writes.
 func (in *Instance) internalExternForGlobal(bits uint64) (internal uint64, handled bool, err error) {
-	if in == nil || in.c == nil || in.c.stagedGCStructProduct() != stagedGCStructExtern {
+	if !in.usesStagedExternConversion() {
 		return bits, false, nil
 	}
 	conversion := in.existingGCExternConversionState()
@@ -144,4 +144,8 @@ func (in *Instance) internalExternForGlobal(bits uint64) (internal uint64, handl
 	}
 	internal, err = conversion.internalExternFromPublic(bits)
 	return internal, true, err
+}
+
+func (in *Instance) usesStagedExternConversion() bool {
+	return gcExternConversionForImage && in != nil && in.c != nil && in.c.stagedGCStructProduct() == stagedGCStructExtern
 }

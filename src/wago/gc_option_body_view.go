@@ -633,6 +633,21 @@ func buildGCOptionBodyViewWithLocalLimit(m *wasm.Module, localLimit uint32) (*gc
 	return view, nil
 }
 
+func (v *gcOptionView) applyEdits(source *wasm.Module, analysis *wasm.ValidatedModuleAnalysis, features wasm.ValidationFeatures, workers int, limits wasm.ValidationLimits) (*wasm.Module, wasm.ValidatedModuleAnalysis, error) {
+	edits := make([]wasm.BodyEdit, 0, len(v.Origins))
+	imported := uint32(source.ImportedFuncCount())
+	for global := range v.Origins {
+		local := global - imported
+		code := v.Module.Code[local]
+		edits = append(edits, wasm.BodyEdit{LocalFunction: local, BodyBytes: code.BodyBytes, Locals: code.Locals})
+	}
+	module, updated, err := wasm.ApplyValidatedBodyEdits(source, analysis, edits, features, workers, limits)
+	if err == nil {
+		v.Module = module
+	}
+	return module, updated, err
+}
+
 func (v *gcOptionView) metadata() map[uint32]codegen.GCBodyView {
 	out := make(map[uint32]codegen.GCBodyView, len(v.Origins))
 	for index, origins := range v.Origins {

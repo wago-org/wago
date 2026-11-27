@@ -291,6 +291,10 @@ func pkgUpdate(target string, options pkgOpts) {
 // stageAndPublishLockedState retains one cancellation context across every Go
 // subprocess while the caller owns the project metadata mutation lock.
 func stageAndPublishLockedState(ctx context.Context, mutation *project.Mutation, manifestDir, buildDir string, manifest map[string]any, lock project.LockDocument, verbose bool, config pluginbuild.Config) error {
+	config, err := pluginRuntimeBuildConfig(config, manifest)
+	if err != nil {
+		return err
+	}
 	manifestData, err := project.EncodeManifest(manifest)
 	if err != nil {
 		return err
@@ -587,7 +591,11 @@ func pluginRuntimeBinary() (string, bool, error) {
 		if err != nil {
 			return err
 		}
-		bin, _, err = pluginbuild.EnsureVerifiedBinaryContext(context.Background(), environment.buildDir, input, changed, false, environment.selection.config(), verifyStagedRuntimeContext)
+		config, err := pluginRuntimeBuildConfig(environment.selection.config(), manifest)
+		if err != nil {
+			return err
+		}
+		bin, _, err = pluginbuild.EnsureVerifiedBinaryContext(context.Background(), environment.buildDir, input, changed, false, config, verifyStagedRuntimeContext)
 		configured = err == nil
 		return err
 	})

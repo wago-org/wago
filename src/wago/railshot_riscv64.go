@@ -12,6 +12,7 @@ package wago
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -60,7 +61,7 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	opts.Interruptible = true
 	opts.ForeignTableCalls = true
 	opts.InvocationContext = true
-	opts.ExceptionHandlingSource = railshot.AdmitExceptionHandlingModule(m)
+	opts.ExceptionHandlingSource = buildfeatures.ExceptionHandling != 0 && railshot.AdmitExceptionHandlingModule(m)
 	opts.OwnedExceptionReferences = opts.ExceptionHandlingSource && railshot.ManagedExceptionReferences(m)
 	return railshot.CompileModuleWith(m, opts)
 }
@@ -90,7 +91,7 @@ func railshotAdmitSource(data []byte, m *wasm.Module) error {
 	if err := railshot.AdmitProductionSource(data); err != nil {
 		return err
 	}
-	if railshot.AdmitExceptionHandlingModule(m) {
+	if buildfeatures.ExceptionHandling != 0 && railshot.AdmitExceptionHandlingModule(m) {
 		return railshot.AdmitExceptionHandlingInitializers(m)
 	}
 	return railshot.AdmitPublicInitializers(m)

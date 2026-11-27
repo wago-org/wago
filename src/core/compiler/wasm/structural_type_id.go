@@ -11,6 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"sync"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 // structuralIndexedFuncTypeID preserves the compact historical discriminator
@@ -159,6 +161,13 @@ func (budget *structuralEncodingBudget) appendU32(dst *[]byte, value uint32) boo
 }
 
 func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), groupDigests *map[int][32]byte, compactKey bool) bool {
+	if !buildfeatures.ReferenceSignatures {
+		return m.writeStructuralPlainFuncGroup(typeIdx, mix, groupDigests, compactKey)
+	}
+	return m.writeStructuralFuncTypeGraph(typeIdx, mix, groupDigests, compactKey)
+}
+
+func (m *Module) writeStructuralFuncTypeGraph(typeIdx uint32, mix func(byte), groupDigests *map[int][32]byte, compactKey bool) bool {
 	directory := m.typeIndex()
 	flatCount := len(directory.flat)
 	if uint(typeIdx) >= uint(flatCount) {
@@ -257,16 +266,18 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 		}
 	}
 
-	writeField = func(dst *[]byte, field FieldType, currentGroup int) bool {
-		storage := field.Storage()
-		if storage.Packed() {
-			if !budget.appendByte(dst, 1) || !budget.appendByte(dst, byte(storage.Pack())) {
+	if buildfeatures.GC != 0 {
+		writeField = func(dst *[]byte, field FieldType, currentGroup int) bool {
+			storage := field.Storage()
+			if storage.Packed() {
+				if !budget.appendByte(dst, 1) || !budget.appendByte(dst, byte(storage.Pack())) {
+					return false
+				}
+			} else if !budget.appendByte(dst, 0) || !writeValue(dst, storage.Val(), currentGroup) {
 				return false
 			}
-		} else if !budget.appendByte(dst, 0) || !writeValue(dst, storage.Val(), currentGroup) {
-			return false
+			return budget.appendByte(dst, byte(field.Mut()))
 		}
-		return budget.appendByte(dst, byte(field.Mut()))
 	}
 
 	buildGroup = func(group int) ([]byte, bool) {
@@ -294,19 +305,26 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 			if !budget.appendByte(&encoded, final) || !budget.appendU32(&encoded, uint32(len(st.Supers))) {
 				return nil, false
 			}
-			for _, super := range st.Supers {
-				if !writeRef(&encoded, super, group) {
+			if buildfeatures.GC == 0 {
+				if len(st.Supers) != 0 || st.Metadata.Describes.Present() || st.Metadata.Descriptor.Present() ||
+					!budget.appendByte(&encoded, 0) || !budget.appendByte(&encoded, 0) {
 					return nil, false
 				}
-			}
-			for _, metadata := range []OptionalTypeIdx{st.Metadata.Describes, st.Metadata.Descriptor} {
-				idx, present := metadata.Get()
-				if !present {
-					if !budget.appendByte(&encoded, 0) {
+			} else {
+				for _, super := range st.Supers {
+					if !writeRef(&encoded, super, group) {
 						return nil, false
 					}
-				} else if !budget.appendByte(&encoded, 1) || !writeRef(&encoded, idx, group) {
-					return nil, false
+				}
+				for _, metadata := range []OptionalTypeIdx{st.Metadata.Describes, st.Metadata.Descriptor} {
+					idx, present := metadata.Get()
+					if !present {
+						if !budget.appendByte(&encoded, 0) {
+							return nil, false
+						}
+					} else if !budget.appendByte(&encoded, 1) || !writeRef(&encoded, idx, group) {
+						return nil, false
+					}
 				}
 			}
 			if !budget.appendByte(&encoded, byte(st.Comp.Kind)) {
@@ -331,6 +349,9 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 					}
 				}
 			case CompStruct:
+				if buildfeatures.GC == 0 {
+					return nil, false
+				}
 				if !budget.appendU32(&encoded, uint32(len(st.Comp.Fields))) {
 					return nil, false
 				}
@@ -340,6 +361,9 @@ func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte), 
 					}
 				}
 			case CompArray:
+				if buildfeatures.GC == 0 {
+					return nil, false
+				}
 				if !writeField(&encoded, st.Comp.Array, group) {
 					return nil, false
 				}

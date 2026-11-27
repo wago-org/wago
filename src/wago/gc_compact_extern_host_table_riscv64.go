@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -79,18 +79,27 @@ func railshotClosedCompactExternHostObjectsLocked(store *referenceStore, count u
 // unpinExternref holds store.mu and can run inside native cleanup. Wake the
 // existing outer cleanup driver rather than releasing collector roots here.
 func railshotCompactExternUnpinnedAfterClose(store *referenceStore) {
+	if !managedFunctionGraphForImage || !nativeCollectorFrameRootsBuilt {
+		return
+	}
 	if value, ok := managedFunctionGraphs.Load(store); ok {
 		value.(*managedFunctionGraph).pendingMetadata.Store(true)
 	}
 }
 
 func compactExternHostTableRow(owner *tableOwner) *compactExternHostTable {
+	if !nativeCollectorFrameRootsBuilt {
+		return nil
+	}
 	compactExternHostTables.RLock()
 	row := compactExternHostTables.rows[owner]
 	compactExternHostTables.RUnlock()
 	return row
 }
 func railshotAttachCompactExternHostTable(t *Table, store *referenceStore, collector *gc.Collector) error {
+	if !nativeCollectorFrameRootsBuilt {
+		return nil
+	}
 	if t == nil || t.owner == nil {
 		return nil
 	}
@@ -117,7 +126,7 @@ func railshotAttachCompactExternHostTable(t *Table, store *referenceStore, colle
 		return fmt.Errorf("host extern table has no reference store")
 	}
 	store.mu.Lock()
-	domain := store.gcDomains.domainForCollectorLocked(collector)
+	domain := store.gcTopologyLocked().domainForCollectorLocked(collector)
 	if domain == nil || domain.private || domain.claims == ^uint32(0) {
 		store.mu.Unlock()
 		return fmt.Errorf("host extern table has no live collector domain")
@@ -178,6 +187,9 @@ func railshotCompactExternHostTableMatches(t *Table, store *referenceStore, coll
 	return row != nil && row.store == store && row.domain.collector == collector && len(t.desc) == len(row.desc) && len(t.desc) >= 8 && &t.desc[0] == &row.desc[0]
 }
 func railshotReleaseCompactExternHostTable(owner *tableOwner) {
+	if !nativeCollectorFrameRootsBuilt {
+		return
+	}
 	compactExternHostTables.Lock()
 	row := compactExternHostTables.rows[owner]
 	delete(compactExternHostTables.rows, owner)
@@ -285,10 +297,10 @@ func (s *compactExternCollector) hostTableForCell(key uintptr) *tableOwner {
 }
 
 func compactExternAddClaimedDomainsLocked(store *referenceStore, set *gcInvocationDomainSet) {
-	if compactExternHostTableCount.Load() == 0 || store.gcDomains == nil {
+	if compactExternHostTableCount.Load() == 0 || store.gcTopologyLocked() == nil {
 		return
 	}
-	for domain := store.gcDomains.first; domain != nil; domain = domain.next {
+	for domain := store.gcTopologyLocked().first; domain != nil; domain = domain.next {
 		set.add(domain)
 	}
 }
@@ -375,6 +387,9 @@ func compactExternClosedHostTableImporters(table *Table, row *compactExternHostT
 	return result, valid
 }
 func railshotTryCloseCompactExternHostTable(table *Table) (bool, error) {
+	if !managedFunctionGraphForImage || !nativeCollectorFrameRootsBuilt {
+		return false, nil
+	}
 	if table == nil || table.owner == nil {
 		return false, nil
 	}
@@ -465,7 +480,7 @@ func (d *managedFunctionMarkDomain) clearUnreachableHostExternRoots() error {
 // The caller holds tableOwner.mu through its importer-count commit. This
 // closes the interval after the early validation and before acquisition.
 func railshotCompactExternHostTableOpen(owner *tableOwner) bool {
-	if compactExternHostTableCount.Load() == 0 {
+	if !nativeCollectorFrameRootsBuilt || compactExternHostTableCount.Load() == 0 {
 		return true
 	}
 	row := compactExternHostTableRow(owner)

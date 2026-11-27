@@ -38,7 +38,7 @@ func sparseOwnerFixture(t *testing.T, holes []bool) (*NativeTailDefinedOwner, *t
 		if i+1 < len(functions) {
 			end = entries[i+1]
 		}
-		f.info.CodeBytes, f.info.mode.functionIndex = end-entries[i], uint32(i)
+		f.info.CodeBytes, f.info.functionIndex = end-entries[i], uint32(i)
 		f.job, f.context = functions[0].job, functions[0].context
 	}
 	o := tailDynamicOwnerForTest(t, functions)
@@ -67,7 +67,7 @@ func TestNativeTailSparseDefinedOwnerPhysicalSpans(t *testing.T) {
 				if i+1 < len(entries) {
 					end = entries[i+1]
 				}
-				if f.info.Entry != entries[i] || f.info.CodeBytes != end-entries[i] || f.info.mode.functionIndex != uint32(i) || f.job != owner.owner.functions[0].job || owner.owner.uncallable[i] != holes[i] || (f.signature == nil) != holes[i] {
+				if f.info.Entry != entries[i] || f.info.CodeBytes != end-entries[i] || f.info.functionIndex != uint32(i) || f.job != owner.owner.functions[0].job || owner.owner.uncallable[i] != holes[i] || (f.signature == nil) != holes[i] {
 					t.Fatal("lost physical ordinal/span", i)
 				}
 				if holes[i] {
@@ -159,7 +159,7 @@ func TestNativeTailSparseDefinedOwnerRejectsCallableHoles(t *testing.T) {
 		{"span", func(o *tailRADynamicOwner) { o.functions[0].info.CodeBytes = len(o.functions[0].snapshot) + 4 }},
 		{"frame", func(o *tailRADynamicOwner) { o.functions[0].info.FrameBytes += 16 }},
 		{"header", func(o *tailRADynamicOwner) { o.functions[0].info.FrameHeaderBytes = 16 }},
-		{"invocation", func(o *tailRADynamicOwner) { o.functions[0].info.mode.invocationContext = false }},
+		{"invocation", func(o *tailRADynamicOwner) { o.functions[0].info.invocationContext = false }},
 		{"context", func(o *tailRADynamicOwner) { o.functions[0].context = bytes.Clone(o.context) }},
 		{"anchor", func(o *tailRADynamicOwner) { o.functions[0].directory = bytes.Clone(o.descriptors) }},
 		{"snapshot", func(o *tailRADynamicOwner) {
@@ -252,7 +252,7 @@ func TestNativeTailSparseClosedReferenceModule(t *testing.T) {
 			signatures := make([]*wasm.CompType, len(functions))
 			for i, info := range c.functions {
 				sig, _ := m.FuncSignature(uint32(i))
-				functions[i] = tailRAFunction{code: buffer, snapshot: c.code, info: info, signature: sig, job: physical.job, context: physical.context}
+				functions[i] = tailRAFunction{code: buffer, snapshot: c.code, info: info.tailInfo(), signature: sig, job: physical.job, context: physical.context}
 				entries[i], signatures[i] = info.Entry, sig
 			}
 			o := tailDynamicOwnerForTest(t, functions)

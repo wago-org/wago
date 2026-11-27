@@ -42,6 +42,20 @@ func Command(environment interface {
 		Children: []*command.Cmd{
 			configlist.Command(environment), configdiff.Command(environment), configget.Command(environment), configset.Command(environment),
 			configreset.Command(environment), completions.Command(environment),
+			{
+				Name: "build-tags", Summary: "print Go and TinyGo build tags for the WebAssembly feature profile",
+				Flags: options.ScopeFlags(),
+				Run: func(ctx *command.Ctx) {
+					if len(ctx.Args) != 0 {
+						ui.Usage("config build-tags: unexpected arguments")
+					}
+					request := options.Request{Action: options.BuildTags}
+					if err := options.ApplyScope(ctx, &request); err != nil {
+						ui.Usage("config build-tags: %v", err)
+					}
+					environment.Configure(request)
+				},
+			},
 		},
 		Run: func(ctx *command.Ctx) {
 			request := options.Request{Action: options.Interactive, Experimental: ctx.Bool("experimental")}

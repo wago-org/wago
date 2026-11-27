@@ -70,7 +70,7 @@ func tailRAProofFunctionFixture(t *testing.T, sig *wasm.CompType, contextBytes i
 		t.Fatal(err)
 	}
 	info.CodeBytes = len(code)
-	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: append([]byte(nil), code...), info: info, signature: sig, job: j, context: ctx, directory: dir}
+	return tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: append([]byte(nil), code...), info: info.tailInfo(), signature: sig, job: j, context: ctx, directory: dir}
 }
 
 func tailRAOwnerFixture(t *testing.T, params, results []wasm.ValType) tailRAOwnerSpec {
@@ -142,7 +142,7 @@ func TestTailRAProofAdmissionBeforeAnyOwnerAllocation(t *testing.T) {
 		func(s *tailRAOwnerSpec) { s.sites = nil },
 		func(s *tailRAOwnerSpec) { s.sites = make([]tailRAOwnerSite, tailRAMaxSites+1) },
 		func(s *tailRAOwnerSpec) { s.sites[0].caller.info.FrameHeaderBytes = 16 },
-		func(s *tailRAOwnerSpec) { s.sites[0].caller.info.mode.production = false },
+		func(s *tailRAOwnerSpec) { s.sites[0].caller.info.production = false },
 		func(s *tailRAOwnerSpec) { s.sites[0].caller.info.FrameBytes = MaxFrameBytes + 16 },
 		func(s *tailRAOwnerSpec) {
 			s.sites[0].target.signature = &wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.F32}}

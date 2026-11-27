@@ -9,6 +9,7 @@
 
 #include "textflag.h"
 #include "go_asm.h"
+#include "standalone_registers.h"
 
 // Production ABI0 bridge. Keep gp/tp/g valid throughout native execution.
 // The complete foreign save area and minimum guest header are checked before
@@ -55,10 +56,18 @@ TEXT ·enterNativeIntRV64Raw(SB),NOSPLIT|NOFRAME,$0-72
  MOV T6, nativeWrapperSaveFrame_FCSR(T1)
  MOV ZERO, nativeWrapperSaveFrame_Padding(T1) // invocation-owned EH handler chain
  MOV A1, X25
+#ifdef WAGO_INT_FIXED_ARG_0
  MOV a0+40(FP), A0
+#endif
+#ifdef WAGO_INT_FIXED_ARG_1
  MOV a1+48(FP), A1
+#endif
+#ifdef WAGO_INT_FIXED_ARG_2
  MOV a2+56(FP), A2
+#endif
+#ifdef WAGO_INT_FIXED_ARG_3
  MOV a3+64(FP), A3
+#endif
  MOV T1, X2
  MOV ZERO, X8
  MOV T1, -const_RV64TrapReentrySPOffset(X25)

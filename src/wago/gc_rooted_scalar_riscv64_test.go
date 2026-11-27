@@ -275,9 +275,9 @@ func TestRV64RootedReferenceFunctionReexportExecutes(t *testing.T) {
 	view := relayCode.executionView()
 	exportDigest, validExports := rv64RootedMemoryExportDigest(view)
 	if !rv64FreshRootedGC(view) || view.Exports["echo"] != 0 || view.Exports["run"] != 1 ||
-		!validExports || exportDigest != view.validateMemo.rv64FreshRootedGCExportDigest {
+		!validExports || exportDigest != view.validateMemo.rootedReceipt().exportDigest {
 		t.Fatalf("rooted function re-export receipt=%t exports=%v digest=%t/%t validation=%v", rv64FreshRootedGC(view), view.Exports,
-			validExports, exportDigest == view.validateMemo.rv64FreshRootedGCExportDigest, railshotValidateCompiled(view))
+			validExports, exportDigest == view.validateMemo.rootedReceipt().exportDigest, railshotValidateCompiled(view))
 	}
 	mutated := cloneCompiledMetadata(view)
 	mutated.Exports = maps.Clone(mutated.Exports)
@@ -435,8 +435,8 @@ func TestRV64RootedAbstractReferenceBoundaryExecutes(t *testing.T) {
 	defer compiled.Close()
 	view := compiled.executionView()
 	imports, validImports := rv64RootedImportDigest(view)
-	if !rv64FreshRootedGC(view) || view.NumImports != 1 || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest {
-		t.Fatalf("abstract boundary receipt=%t imports=%d digest=%t/%t validation=%v", rv64FreshRootedGC(view), view.NumImports, validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, railshotValidateCompiled(view))
+	if !rv64FreshRootedGC(view) || view.NumImports != 1 || !validImports || imports != view.validateMemo.rootedReceipt().importDigest {
+		t.Fatalf("abstract boundary receipt=%t imports=%d digest=%t/%t validation=%v", rv64FreshRootedGC(view), view.NumImports, validImports, imports == view.validateMemo.rootedReceipt().importDigest, railshotValidateCompiled(view))
 	}
 	candidate := cloneCompiledMetadata(view)
 	candidate.Types = slices.Clone(candidate.Types)
@@ -587,8 +587,8 @@ func TestRV64RootedExactReferenceBoundaryExecutes(t *testing.T) {
 	defer compiled.Close()
 	view := compiled.executionView()
 	imports, validImports := rv64RootedImportDigest(view)
-	if !rv64FreshRootedGC(view) || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest || !view.Types[2].Params[0].Ref.Exact {
-		t.Fatalf("exact boundary receipt=%t import-digest=%t/%t parameter=%+v validation=%v", rv64FreshRootedGC(view), validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, view.Types[2].Params[0], railshotValidateCompiled(view))
+	if !rv64FreshRootedGC(view) || !validImports || imports != view.validateMemo.rootedReceipt().importDigest || !view.Types[2].Params[0].Ref.Exact {
+		t.Fatalf("exact boundary receipt=%t import-digest=%t/%t parameter=%+v validation=%v", rv64FreshRootedGC(view), validImports, imports == view.validateMemo.rootedReceipt().importDigest, view.Types[2].Params[0], railshotValidateCompiled(view))
 	}
 	for name, mutate := range map[string]func(*ValueTypeDescriptor){
 		"inexact":  func(value *ValueTypeDescriptor) { value.Ref.Exact = false },
@@ -837,8 +837,8 @@ func TestRV64RootedSIMDReferenceBoundaryExecutes(t *testing.T) {
 			defer compiled.Close()
 			view := compiled.executionView()
 			imports, validImports := rv64RootedImportDigest(view)
-			if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || !validImports || imports != view.validateMemo.rv64FreshRootedGCImportDigest || view.Types[2].Params[0].Kind != ValueTypeV128 || view.Types[2].Results[0].Kind != ValueTypeV128 {
-				t.Fatalf("mixed SIMD/collector-reference receipt=%t features=%v imports=%t/%t type=%+v", rv64FreshRootedGC(view), view.requiredFeatures, validImports, imports == view.validateMemo.rv64FreshRootedGCImportDigest, view.Types[2])
+			if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || !validImports || imports != view.validateMemo.rootedReceipt().importDigest || view.Types[2].Params[0].Kind != ValueTypeV128 || view.Types[2].Results[0].Kind != ValueTypeV128 {
+				t.Fatalf("mixed SIMD/collector-reference receipt=%t features=%v imports=%t/%t type=%+v", rv64FreshRootedGC(view), view.requiredFeatures, validImports, imports == view.validateMemo.rootedReceipt().importDigest, view.Types[2])
 			}
 			if imported {
 				return
@@ -1195,9 +1195,9 @@ func TestRV64RootedSIMDArrayFunctionExecutes(t *testing.T) {
 	view := compiled.executionView()
 	tableDigest, validTable := rv64RootedTableDigest(view)
 	if !rv64FreshRootedGC(view) || !view.requiredFeatures.IsEnabled(CoreFeatureSIMD) || view.tableCount() != 0 || len(view.passiveElems) != 1 ||
-		!validTable || tableDigest != view.validateMemo.rv64FreshRootedGCTableDigest {
+		!validTable || tableDigest != view.validateMemo.rootedReceipt().tableDigest {
 		t.Fatalf("SIMD/array rooted receipt=%t features=%v tables=%d passive=%d table-digest=%t/%t", rv64FreshRootedGC(view), view.requiredFeatures,
-			view.tableCount(), len(view.passiveElems), validTable, tableDigest == view.validateMemo.rv64FreshRootedGCTableDigest)
+			view.tableCount(), len(view.passiveElems), validTable, tableDigest == view.validateMemo.rootedReceipt().tableDigest)
 	}
 	mutated := cloneCompiledMetadata(view)
 	mutated.passiveElems = slices.Clone(mutated.passiveElems)
@@ -2925,7 +2925,7 @@ func TestRV64RootedScalarImportedMemoryExecutes(t *testing.T) {
 		globalDigest, globalValid := rv64RootedGlobalDigest(view)
 		tableDigest, tableValid := rv64RootedTableDigest(view)
 		importDigest, importValid := rv64RootedImportDigest(view)
-		t.Fatalf("rooted imported-memory receipt=%t count=%d key=%q/%q export=%t/%t data=%t/%t global=%t/%t table=%t/%t import=%t/%t has=%t minmax=%d/%d/%t dir=%+v fields=%+v roots=%v validation=%v", rv64FreshRootedGC(view), view.memoryCount(), view.memoryImport, view.memoryDef(0).ImportKey, exportValid, exportDigest == view.validateMemo.rv64FreshRootedGCExportDigest, dataValid, dataDigest == view.validateMemo.rv64FreshRootedGCDataDigest, globalValid, globalDigest == view.validateMemo.rv64FreshRootedGCGlobalDigest, tableValid, tableDigest == view.validateMemo.rv64FreshRootedGCTableDigest, importValid, importDigest == view.validateMemo.rv64FreshRootedGCImportDigest, view.HasMemory, view.MemMinPages, view.MemMaxPages, view.MemHasMax, view.memoryDir, view.memoryDef(0), validateCompiledGCFrameRoots(view, view.genericGCFrameRoots()), railshotValidateCompiled(view))
+		t.Fatalf("rooted imported-memory receipt=%t count=%d key=%q/%q export=%t/%t data=%t/%t global=%t/%t table=%t/%t import=%t/%t has=%t minmax=%d/%d/%t dir=%+v fields=%+v roots=%v validation=%v", rv64FreshRootedGC(view), view.memoryCount(), view.memoryImport, view.memoryDef(0).ImportKey, exportValid, exportDigest == view.validateMemo.rootedReceipt().exportDigest, dataValid, dataDigest == view.validateMemo.rootedReceipt().dataDigest, globalValid, globalDigest == view.validateMemo.rootedReceipt().globalDigest, tableValid, tableDigest == view.validateMemo.rootedReceipt().tableDigest, importValid, importDigest == view.validateMemo.rootedReceipt().importDigest, view.HasMemory, view.MemMinPages, view.MemMaxPages, view.MemHasMax, view.memoryDir, view.memoryDef(0), validateCompiledGCFrameRoots(view, view.genericGCFrameRoots()), railshotValidateCompiled(view))
 	}
 	for name, mutate := range map[string]func(*Compiled){
 		"key": func(candidate *Compiled) {
@@ -2980,8 +2980,8 @@ func TestRV64RootedScalarImportedMemoryExecutes(t *testing.T) {
 	}
 	defer unstaged.Close()
 	unstagedView := unstaged.executionView()
-	if !rv64FreshRootedGC(unstagedView) || unstagedView.memoryDir.staged || unstagedView.validateMemo.rv64FreshRootedGCMemoryStaged {
-		t.Fatalf("MVP imported memory lost its exact unstaged receipt: fresh=%t staged=%t/%t", rv64FreshRootedGC(unstagedView), unstagedView.memoryDir.staged, unstagedView.validateMemo.rv64FreshRootedGCMemoryStaged)
+	if !rv64FreshRootedGC(unstagedView) || unstagedView.memoryDir.staged || unstagedView.validateMemo.rootedReceipt().memoryStaged {
+		t.Fatalf("MVP imported memory lost its exact unstaged receipt: fresh=%t staged=%t/%t", rv64FreshRootedGC(unstagedView), unstagedView.memoryDir.staged, unstagedView.validateMemo.rootedReceipt().memoryStaged)
 	}
 	mvpMemory, err := NewMemory(1, 2)
 	if err != nil {
@@ -6393,7 +6393,7 @@ func TestRV64RootedScalarDeclarativeTableExecutes(t *testing.T) {
 	view := compiled.executionView()
 	if !rv64FreshRootedGC(view) || len(view.Elems) != 1 || len(view.passiveElems) != 2 || view.passiveElems[0].Mode != ElemModeActive || len(view.passiveElems[0].Values) != 0 || view.passiveElems[1].Mode != ElemModeDeclarative || len(view.passiveElems[1].Values) != 0 {
 		digest, valid := rv64RootedTableDigest(view)
-		t.Fatalf("declarative-table original-index state is missing: fresh=%t validation=%v digest=%t/%t active=%+v state=%+v", rv64FreshRootedGC(view), railshotValidateCompiled(view), valid, digest == view.validateMemo.rv64FreshRootedGCTableDigest, view.Elems, view.passiveElems)
+		t.Fatalf("declarative-table original-index state is missing: fresh=%t validation=%v digest=%t/%t active=%+v state=%+v", rv64FreshRootedGC(view), railshotValidateCompiled(view), valid, digest == view.validateMemo.rootedReceipt().tableDigest, view.Elems, view.passiveElems)
 	}
 	for range 2 {
 		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, VerifyAfterCollect: true}})
@@ -7434,7 +7434,7 @@ func TestRV64RootedScalarMutableStructGlobalExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+	if roots := instance.publicGCState().globalRootMappings(); len(roots) != 1 || roots[0].GlobalIndex != 0 {
 		t.Fatalf("generic rooted mutable-global roots=%+v", roots)
 	}
 	for range 16 {
@@ -7563,7 +7563,7 @@ func TestRV64RootedScalarMutableAbstractStructGlobalExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+	if roots := instance.publicGCState().globalRootMappings(); len(roots) != 1 || roots[0].GlobalIndex != 0 {
 		t.Fatalf("generic rooted abstract-global roots=%+v", roots)
 	}
 	initial, err := instance.GlobalValue("root")
@@ -7653,7 +7653,7 @@ func TestRV64RootedScalarMutableArrayGlobalExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+	if roots := instance.publicGCState().globalRootMappings(); len(roots) != 1 || roots[0].GlobalIndex != 0 {
 		t.Fatalf("generic rooted mutable-array-global roots=%+v", roots)
 	}
 	for range 16 {
@@ -7692,7 +7692,7 @@ func TestRV64RootedScalarI31GlobalExecutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	if roots := instance.publicGCState().globalRoots; len(roots) != 1 || roots[0].GlobalIndex != 0 {
+	if roots := instance.publicGCState().globalRootMappings(); len(roots) != 1 || roots[0].GlobalIndex != 0 {
 		t.Fatalf("generic rooted i31-global roots=%+v", roots)
 	}
 	for range 16 {

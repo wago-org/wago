@@ -9,7 +9,10 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 // Public instantiation owns the authoritative initializer metadata. Admission
 // checks shapes without retaining private copies or placeholder values.
@@ -26,13 +29,17 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 		return err
 	}
 	localCall := admitMutableFunctionGlobalLocalCall(m)
-	primitiveReferences := admitPublicPrimitiveReferenceModule(m, true)
-	parser := newRootedScalarAggregateParser(m)
+	primitiveReferences := buildfeatures.ReferenceSignatures && admitPublicPrimitiveReferenceModule(m, true)
+	rootedScalar := buildfeatures.RISCV64CollectorFrameRoots && len(rooted) != 0 && rooted[0]
+	var parser *rootedScalarReferenceInitializer
+	if rootedScalar {
+		parser = newRootedScalarReferenceInitializer(m)
+	}
 	for i, global := range m.Globals {
-		if len(rooted) != 0 && rooted[0] && (wasm.ExternReferenceType(global.Type.Type) || wasm.CollectorReferenceType(m, global.Type.Type)) && rootedScalarAggregateGlobal(global, parser, m.ImportedGlobalCount()+i) {
+		if rootedScalar && (wasm.ExternReferenceType(global.Type.Type) || wasm.CollectorReferenceType(m, global.Type.Type)) && rootedScalarReferenceGlobalInitializer(global, parser, m.ImportedGlobalCount()+i) {
 			continue
 		}
-		if (primitiveReferences || wasm.ExternReferenceType(global.Type.Type)) && global.Type.Type.Kind() == wasm.ValRef {
+		if buildfeatures.ReferenceSignatures && (primitiveReferences || wasm.ExternReferenceType(global.Type.Type)) && global.Type.Type.Kind() == wasm.ValRef {
 			if !admitPrimitiveReferenceGlobalInitializer(global, m, m.ImportedGlobalCount()+i) {
 				return unsupported("SWAR primitive reference global initializer")
 			}
@@ -43,7 +50,7 @@ func admitSWARPublicInitializersWithMemories(m *wasm.Module, memories []wasm.Mem
 			// initializer; runtime initialization owns the mutable cell itself.
 			continue
 		}
-		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
+		if buildfeatures.ReferenceSignatures && wasm.EqualValType(global.Type.Type, wasm.FuncRef) {
 			if err := admitLocalFunctionGlobal(global, m, m.ImportedGlobalCount()+i, localMutableReferences); err != nil {
 				return err
 			}

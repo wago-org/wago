@@ -7,7 +7,7 @@ import "testing"
 // An initially domain-free session must observe newly reachable GC topology on
 // its next call, even if that topology currently contains no collector domains.
 func TestPreparedSessionGCAdmissionRefresh(t *testing.T) {
-	in := &Instance{refStore: &referenceStore{gcDomains: &gcDomainTopology{}}}
+	in := &Instance{refStore: &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{})}}
 	state := &preparedSessionState{
 		fn: &WasmFunc{in: in}, guardCalls: true,
 		lease: preparedInvocationLease{state: &instancePluginState{invocationID: newInvocationID()}},
@@ -16,7 +16,7 @@ func TestPreparedSessionGCAdmissionRefresh(t *testing.T) {
 	if err := state.beginCall(&lease); err != nil {
 		t.Fatal(err)
 	}
-	if lease.acquired || !state.active.Load() {
+	if lease.isAcquired() || !state.active.Load() {
 		t.Fatal("domain-free call did not preserve its active guard")
 	}
 	var rejected gcInvocationLease
@@ -29,7 +29,7 @@ func TestPreparedSessionGCAdmissionRefresh(t *testing.T) {
 	if err := state.beginCall(&lease); err != nil {
 		t.Fatal(err)
 	}
-	if !lease.acquired || !lease.dynamic || lease.topology != in.refStore.gcDomains {
+	if !lease.isAcquired() || !lease.isDynamic() || lease.leasedTopology() != in.refStore.gcTopologyLocked() {
 		state.endCall(&lease)
 		t.Fatal("session omitted the newly reachable topology lease")
 	}

@@ -355,7 +355,11 @@ func TestRV64PublicImportReferencePluginState(t *testing.T) {
 			}
 			defer in.Close()
 			state := in.importState.Load()
-			if state == nil || len(state.pluginGCImports) != 1 || len(in.importReferenceEntries()) != 1 {
+			wantPluginImports := 0
+			if wasmGCBuilt {
+				wantPluginImports = 1
+			}
+			if state == nil || len(state.gcImports()) != wantPluginImports || len(in.importReferenceEntries()) != 1 {
 				t.Fatal("construction replaced import state")
 			}
 			if got, err := in.Invoke("call", 5, 0); err != nil || !slices.Equal(got, []uint64{6, 9}) {

@@ -21,10 +21,13 @@ import (
 // canonical descriptor snapshots; a bare producer keeps its existing anchor.
 // Counts are checked without allocating any converted signatures or images.
 func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCounts, metadata int, err error) {
-	if _, err = (rv64TailCodeOwner{in}).nativeOwnerCodeView(true); err != nil {
+	if _, err = rv64PublishedCodeView(in, true); err != nil {
 		return counts, 0, err
 	}
 	c := in.c
+	if !hostFunctionImportsBuilt && c.NumImports != 0 {
+		return counts, 0, rv64TailGenerationError("imported owner exceeds the standalone runtime profile")
+	}
 	if !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.registerABIDisabled || in.hostEvents != nil || c.NumImports < 0 || c.NumImports > railshot.MaxHostFunctionImports || len(c.importFuncSigs) != c.NumImports {
 		return counts, 0, rv64TailGenerationError("native owner ABI")
 	}
@@ -50,17 +53,17 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 			continue
 		}
 		var sig FuncSig
-		if i < c.NumImports {
+		if hostFunctionImportsBuilt && i < c.NumImports {
 			sig = c.importFuncSigs[i]
 		} else {
 			sig = c.Funcs[i-c.NumImports]
 		}
-		values, e := rv64NativeTailSignatureValues(sig, primitiveReferences || publicReferenceCarriers && i == 0 || publicDynamicHostReferenceCarriers && i <= 1 || mutableReferenceCarriers && i <= 1, rv64FreshRootedGC(c))
+		values, e := rv64NativeCallSignatureValues(sig, primitiveReferences || publicReferenceCarriers && i == 0 || publicDynamicHostReferenceCarriers && i <= 1 || mutableReferenceCarriers && i <= 1, rv64FreshRootedGC(c))
 		if e != nil {
 			return counts, 0, e
 		}
 		counts.Values += values
-		if i < c.NumImports {
+		if hostFunctionImportsBuilt && i < c.NumImports {
 			target, native := rv64NativeFunctionAttachment(in, i)
 			if !native {
 				if _, e := rv64HostTailAttached(in, i); e != nil {
@@ -95,7 +98,7 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 			metadata += bytes + int(unsafe.Sizeof(railshot.NativeTailCodeImage{})) + int(unsafe.Sizeof(rv64TailCodeOwner{}))
 		}
 	}
-	if c.NumImports == 0 {
+	if !hostFunctionImportsBuilt || c.NumImports == 0 {
 		if c.nativeReferenceFunctionABI {
 			metadata, err = railshot.NativeTailSparseDefinedOwnerBytes(n, counts.NonCallable, counts.Values)
 		} else {
@@ -128,46 +131,13 @@ func rv64NativeTailOwnerCounts(in *Instance) (counts railshot.NativeTailOwnerCou
 	return counts, metadata, err
 }
 
-func rv64NativeTailSignatureValues(sig FuncSig, referenceCarriers bool, collectorProof ...bool) (int, error) {
-	for _, list := range [][]ValType{sig.Params, sig.Results} {
-		if len(list) > 256 {
-			return 0, rv64TailGenerationError("native owner signature count")
-		}
-		cells := 0
-		for _, typ := range list {
-			switch typ {
-			case ValI32, ValI64, ValF32, ValF64:
-				cells++
-			case ValV128:
-				cells += 2
-			case ValAnyRef, ValI31Ref, ValExnRef:
-				if len(collectorProof) != 1 || !collectorProof[0] {
-					return 0, rv64TailGenerationError("native collector owner signature proof")
-				}
-				cells++
-			case ValFuncRef, ValExternRef:
-				if !referenceCarriers {
-					return 0, rv64TailGenerationError("native owner signature type")
-				}
-				cells++
-			default:
-				return 0, rv64TailGenerationError("native owner signature type")
-			}
-		}
-		if cells > railshot.MaxNativeCallSlots {
-			return 0, rv64TailGenerationError("native owner physical signature bound")
-		}
-	}
-	return len(sig.Params) + len(sig.Results), nil
-}
-
 // Called only after the generation reserves the complete graph's code and
 // metadata. It owns all snapshots directly, with no persistent instance cache.
 func rv64NewNativeTailOwner(in *Instance, counts railshot.NativeTailOwnerCounts) (*railshot.NativeTailOwner, error) {
 	if counts.Owners == 0 {
 		return nil, nil
 	}
-	if in.c.NumImports == 0 {
+	if !hostFunctionImportsBuilt || in.c.NumImports == 0 {
 		return rv64NewNativeDefinedTailOwner(in, counts.Functions, counts.Values)
 	}
 	var image *railshot.NativeTailCodeImage

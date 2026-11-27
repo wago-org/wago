@@ -12,6 +12,7 @@ package amd64
 import (
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -566,8 +567,13 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStr
 		wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
 		wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
 		event = shared.LocalEventInvalidate
-	case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
-		wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+	case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU:
+		if buildfeatures.WideArithmetic == 0 {
+			return
+		}
+		event = shared.LocalEventFixedReg
+		h.noteFixedScratchLease()
+	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
 		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
 		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
@@ -582,8 +588,7 @@ func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStr
 		}
 	}
 	switch kind {
-	case wasm.InstrI64MulWideS, wasm.InstrI64MulWideU,
-		wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU:
 		h.noteFixedScratchLease()
 	}
@@ -1015,7 +1020,6 @@ var physicalEventByOpcode = [256]shared.LocalEventKind{
 	0x0d: shared.LocalEventBranch, 0x0e: shared.LocalEventBranch, 0x0f: shared.LocalEventBranch,
 	0x10: shared.LocalEventCall, 0x11: shared.LocalEventCall,
 	0x12: shared.LocalEventCall, 0x13: shared.LocalEventCall,
-	0x14: shared.LocalEventCall, 0x15: shared.LocalEventCall,
 	0x24: shared.LocalEventInvalidate, 0x26: shared.LocalEventInvalidate, 0x40: shared.LocalEventInvalidate,
 	0x6d: shared.LocalEventFixedReg, 0x6e: shared.LocalEventFixedReg,
 	0x6f: shared.LocalEventFixedReg, 0x70: shared.LocalEventFixedReg,
@@ -1174,6 +1178,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
+			if buildfeatures.TypedFunctionReferences == 0 || buildfeatures.TailCall == 0 && op == 0x15 {
+				return true, 0, wasm.SkipInstructionImmediate(&s.r.Reader, op)
+			}
+			s.h.noteBoundaryEvent(shared.LocalEventCall, depth)
 			if tape := s.h.inlineCaller; tape != nil {
 				tape.blocked = true
 			}
@@ -1367,7 +1375,7 @@ func (s *byteBodyScanner) scanExtendedHint(op byte, depth int, prevOp byte, prev
 	if op == 0xfd {
 		s.h.flags.set(hintHasSIMD)
 	}
-	if imm.Kind == wasm.InstrI64MulWideS || imm.Kind == wasm.InstrI64MulWideU {
+	if buildfeatures.WideArithmetic != 0 && (imm.Kind == wasm.InstrI64MulWideS || imm.Kind == wasm.InstrI64MulWideU) {
 		s.h.noteFixedScratchLease()
 		s.h.noteBoundaryEvent(shared.LocalEventFixedReg, depth)
 	}
@@ -1383,7 +1391,7 @@ func (s *byteBodyScanner) scanExtendedHint(op byte, depth int, prevOp byte, prev
 		s.h.markUnsupportedDynamicCall()
 		calls = true
 	}
-	if op == 0xfb {
+	if buildfeatures.GC != 0 && op == 0xfb {
 		switch imm.Kind {
 		case wasm.InstrArrayFill:
 			if prevOp == 0x41 && directGCArrayFillResolver(s.m, s.gcTypeLayouts, imm.Index, prevI32) {

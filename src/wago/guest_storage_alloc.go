@@ -33,6 +33,9 @@ type GuestGCArrayAllocatorHostModule interface {
 }
 
 func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, initialize func([]byte, GuestGCArrayInfo) error) (uint64, error) {
+	if !wasmGCBuilt {
+		return 0, fmt.Errorf("wago: GC array allocation is disabled in this build")
+	}
 	if !h.valid() || h.in == nil {
 		return 0, fmt.Errorf("wago: GC result allocation is outside its active host callback: %w", ErrPermissionDenied)
 	}
@@ -44,7 +47,7 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if required.Kind != ValueTypeReference || !required.Ref.Heap.Defined {
 		return 0, fmt.Errorf("wago: host result %d is not a defined GC reference type", resultIndex)
 	}
-	if h.ephemeralGCResults == nil {
+	if h.referenceCall == nil {
 		return 0, fmt.Errorf("wago: GC result allocation requires the active host dispatch: %w", ErrPermissionDenied)
 	}
 	localType := required.Ref.Heap.TypeIndex
@@ -104,9 +107,7 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 	if err != nil {
 		return 0, err
 	}
-	temps := h.ephemeralGCResults
-	temps.setToken(temps.count, token)
-	temps.count++
+	h.referenceCall.addGCResult(token)
 	return token, nil
 }
 
@@ -115,13 +116,14 @@ func (h instanceHostModule) NewGCArrayResult(resultIndex int, length uint32, ini
 // domain, and state.mu so a newly allocated object cannot move between
 // allocation and publication.
 func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref, required ValueTypeDescriptor, localType uint32, domainType gc.TypeID) (uint64, error) {
-	if source == nil || source.refStore == nil || source.gc == nil || state == nil || ref.IsNull() || !ref.IsObj() {
+	if !collectorObjectTokensBuilt || source == nil || source.refStore == nil || source.gc == nil || state == nil || ref.IsNull() || !ref.IsObj() {
 		return 0, fmt.Errorf("wago: invalid host GC result")
 	}
 	if required.Kind != ValueTypeReference || !source.gcRefMatchesValueType(ref, required) {
 		return 0, fmt.Errorf("wago: allocated GC result type %d does not match host result type", localType)
 	}
-	ownerIndex := state.nextResultSlot()
+	slots := state.resultSlots()
+	ownerIndex := slots.nextResultSlot()
 
 	s := source.refStore
 	s.mu.Lock()
@@ -137,19 +139,9 @@ func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref,
 		}
 	}()
 
-	var slot uint32
-	if ownerIndex == state.resultRootsMade {
-		var err error
-		slot, err = source.gc.NewCheckedClassifiedGlobalSlot(ref, gc.RootPublicToken)
-		if err != nil {
-			return 0, fmt.Errorf("wago: root host GC result: %w", err)
-		}
-		state.appendResultRootSlot(slot)
-	} else {
-		slot = state.resultRootSlot(ownerIndex)
-		if err := source.gc.SetGlobalSlot(slot, ref); err != nil {
-			return 0, fmt.Errorf("wago: root host GC result: %w", err)
-		}
+	slot, err := slots.root(source.gc, ref, ownerIndex)
+	if err != nil {
+		return 0, fmt.Errorf("wago: root host GC result: %w", err)
 	}
 
 	exact := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{
@@ -164,15 +156,11 @@ func issueHostGCResultLocked(source *Instance, state *gcPublicState, ref gc.Ref,
 	}
 	token, err := s.newTokenLocked()
 	if err == nil {
-		if s.gcByToken == nil {
-			s.gcByToken = make(map[uint64]gcRefTokenEntry)
-		}
-		s.gcByToken[token] = gcRefTokenEntry{
-			token: token, ref: ref, slot: slot, ownerIndex: ownerIndex,
-			exact: exact, domainType: domainType, owner: source,
-		}
-		state.setResultToken(ownerIndex, token)
-		state.resultTokenCount++
+		s.insertObjectTokenLocked(gcRefTokenEntry{
+			gcResultRoot: gcResultRoot{token: token, slot: slot, ownerIndex: ownerIndex, owner: source},
+			ref:          ref, exact: exact, domainType: domainType,
+		})
+		slots.publish(ownerIndex, token)
 	}
 	s.mu.Unlock()
 	if err != nil {

@@ -1,4 +1,4 @@
-//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo && !wago_guardpage
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo && !wago_guardpage && !wago_no_gc
 
 package wago
 
@@ -254,7 +254,7 @@ func TestPreparedGCFrameObservesLateReferenceStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	lease := in.lockGCInvocation(newInvocationID())
-	if !lease.acquired {
+	if !lease.isAcquired() {
 		t.Fatal("late store did not provide a domain lease")
 	}
 	done := make(chan error, 1)

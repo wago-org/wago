@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -338,6 +339,15 @@ func TestPublicReferenceCallBoundaryScalarSignatureAdmission(t *testing.T) {
 func TestPublicReferenceCallBoundaryScalarTailAdmission(t *testing.T) {
 	m := publicReferenceScalarCallBoundaryDecode(t, false)
 	m.Code[2].BodyBytes[10] = 0x15
+	if buildfeatures.TailCall == 0 {
+		if admitPublicReferenceCallBoundary(m) {
+			t.Fatal("scalar public return_call_ref boundary survived the disabled profile")
+		}
+		if err := admitClosedReferenceFunctionModule(m, false); !errors.Is(err, ErrUnsupported) {
+			t.Fatal("disabled scalar public return_call_ref reached lowering", err)
+		}
+		return
+	}
 	if !admitPublicReferenceCallBoundary(m) {
 		t.Fatal("scalar public return_call_ref boundary was not recognized")
 	}

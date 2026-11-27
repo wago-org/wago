@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -274,7 +275,7 @@ func exceptionWireValueCandidate(r *wasm.Reader) bool {
 }
 
 func AdmitExceptionHandlingSource(source []byte) bool {
-	if len(source) < 8 || len(source) > MaxModuleBytes || !bytes.Equal(source[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) || !exceptionWireCandidate(source[8:]) {
+	if buildfeatures.ExceptionHandling == 0 || len(source) < 8 || len(source) > MaxModuleBytes || !bytes.Equal(source[:8], []byte{0, 'a', 's', 'm', 1, 0, 0, 0}) || !exceptionWireCandidate(source[8:]) {
 		return false
 	}
 	m, err := wasm.DecodeModule(source)
@@ -282,14 +283,14 @@ func AdmitExceptionHandlingSource(source []byte) bool {
 }
 
 func AdmitExceptionHandlingInitializers(m *wasm.Module) error {
-	if !AdmitExceptionHandlingModule(m) {
+	if buildfeatures.ExceptionHandling == 0 || !AdmitExceptionHandlingModule(m) {
 		return unsupported("exception initializer source")
 	}
 	return AdmitPublicInitializers(exceptionAdmissionProjection(m))
 }
 
 func AdmitExceptionHandlingModule(m *wasm.Module) bool {
-	if m == nil || len(m.Code) > MaxModuleFunctions || m.TagCount() > MaxModuleTags {
+	if buildfeatures.ExceptionHandling == 0 || m == nil || len(m.Code) > MaxModuleFunctions || m.TagCount() > MaxModuleTags {
 		return false
 	}
 	hasException := m.TagCount() != 0 || exceptionReferenceDeclarations(m)
@@ -437,7 +438,7 @@ func exceptionReferenceDeclarations(m *wasm.Module) bool {
 }
 
 func ManagedExceptionReferences(m *wasm.Module) bool {
-	if m == nil {
+	if buildfeatures.ExceptionHandling == 0 || m == nil {
 		return false
 	}
 	if exceptionReferenceDeclarations(m) {
@@ -466,6 +467,9 @@ func ManagedExceptionReferences(m *wasm.Module) bool {
 
 // ExceptionOwnedCopyCount is the static count of allocating catch-ref routes.
 func ExceptionOwnedCopyCount(m *wasm.Module, function int) (int, error) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return 0, unsupported("exception-handling is disabled in this build")
+	}
 	if m == nil || function < 0 || function >= len(m.Code) {
 		return 0, unsupported("exception root function index")
 	}

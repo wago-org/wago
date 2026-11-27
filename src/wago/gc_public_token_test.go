@@ -130,7 +130,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 						t.Fatalf("wrong-type GC token ingress = %v", err)
 					}
 					state := in.existingPublicGCState()
-					if state == nil || state.argumentRootCount != 0 || state.argumentRootsMade != 2 || !in.gc.GlobalSlot(state.argumentRootSlots[0]).IsNull() || !in.gc.GlobalSlot(state.argumentRootSlots[1]).IsNull() {
+					if state == nil || state.argumentRoots().count != 0 || state.argumentRoots().made != 2 || !in.gc.GlobalSlot(state.argumentRoots().slot(0)).IsNull() || !in.gc.GlobalSlot(state.argumentRoots().slot(1)).IsNull() {
 						in.Close()
 						t.Fatalf("cleared argument roots = %+v", state)
 					}
@@ -229,11 +229,11 @@ func TestGenericGCResultTokensGrowAndReuse(t *testing.T) {
 		refs[i] = ValueOf(ValAnyRef, bits[0]).GCRef()
 	}
 	state := in.existingPublicGCState()
-	if state == nil || int(state.resultTokenCount) != live || int(state.resultRootsMade) != live || len(state.resultTokensExtra) != live-gcPublicSlotLimit {
+	if state == nil || int(state.resultSlots().resultTokenCount) != live || int(state.resultSlots().resultRootsMade) != live || len(state.resultSlots().resultTokensExtra) != live-gcPublicSlotLimit {
 		t.Fatalf("wide result-token state = %+v", state)
 	}
 	const released = 17
-	releasedSlot := state.resultRootSlot(released)
+	releasedSlot := state.resultSlots().resultRootSlot(released)
 	stale := refs[released]
 	if err := in.ReleaseGCRef(stale); err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestGenericGCResultTokensGrowAndReuse(t *testing.T) {
 		t.Fatalf("reissue into released slot = %v, %v", bits, err)
 	}
 	refs[released] = ValueOf(ValAnyRef, bits[0]).GCRef()
-	if state.resultTokenCount != live || state.resultRootsMade != live || state.resultRootSlot(released) != releasedSlot {
+	if state.resultSlots().resultTokenCount != live || state.resultSlots().resultRootsMade != live || state.resultSlots().resultRootSlot(released) != releasedSlot {
 		t.Fatalf("reused result-token state = %+v", state)
 	}
 	pair, err := in.Invoke("new_pair")
@@ -263,8 +263,8 @@ func TestGenericGCResultTokensGrowAndReuse(t *testing.T) {
 			t.Fatalf("release token %d: %v", i, err)
 		}
 	}
-	if state.resultTokenCount != 0 {
-		t.Fatalf("live result token count = %d, want 0", state.resultTokenCount)
+	if state.resultSlots().resultTokenCount != 0 {
+		t.Fatalf("live result token count = %d, want 0", state.resultSlots().resultTokenCount)
 	}
 }
 
@@ -426,11 +426,11 @@ func TestGenericGCArgumentRootsGrowAndReuse(t *testing.T) {
 	}
 	in.clearGCRefArgumentRoots()
 	state := in.existingPublicGCState()
-	if state == nil || state.argumentRootCount != 0 || state.argumentRootsMade != roots || len(state.argumentRootSlotsExtra) != roots-gcPublicSlotLimit {
+	if state == nil || state.argumentRoots().count != 0 || state.argumentRoots().made != roots || len(state.argumentRoots().extra) != roots-gcPublicSlotLimit {
 		t.Fatalf("wide argument-root state = %+v", state)
 	}
 	for _, index := range []uint32{0, 63, 64, roots - 1} {
-		if !in.gc.GlobalSlot(state.argumentRootSlot(index)).IsNull() {
+		if !in.gc.GlobalSlot(state.argumentRoots().slot(index)).IsNull() {
 			t.Fatalf("argument root %d remained live", index)
 		}
 	}
@@ -494,8 +494,8 @@ func TestGenericGCArgumentRootRacesTokenRelease(t *testing.T) {
 			t.Fatalf("iteration %d call error = %v", i, callErr)
 		}
 		state := consumer.existingPublicGCState()
-		if state != nil && state.argumentRootCount != 0 {
-			t.Fatalf("iteration %d left %d argument roots", i, state.argumentRootCount)
+		if state != nil && state.argumentRoots().count != 0 {
+			t.Fatalf("iteration %d left %d argument roots", i, state.argumentRoots().count)
 		}
 	}
 }

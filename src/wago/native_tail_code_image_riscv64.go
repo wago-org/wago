@@ -12,6 +12,7 @@ package wago
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -24,7 +25,7 @@ import (
 type rv64TailCodeOwner struct{ instance *Instance }
 
 func (o rv64TailCodeOwner) NativeTailCodeView() ([]byte, error) {
-	return o.nativeOwnerCodeView(false)
+	return rv64PublishedCodeView(o.instance, false)
 }
 
 func (o rv64TailCodeOwner) NativeTailFunctionKey(index uint32, params, results []wasm.ValType) (uint64, error) {
@@ -32,7 +33,7 @@ func (o rv64TailCodeOwner) NativeTailFunctionKey(index uint32, params, results [
 }
 
 func (o rv64TailCodeOwner) nativeTailFunctionKey(index uint32, params, results []wasm.ValType, allowEmpty bool) (uint64, error) {
-	if _, err := o.nativeOwnerCodeView(allowEmpty); err != nil {
+	if _, err := rv64PublishedCodeView(o.instance, allowEmpty); err != nil {
 		return 0, err
 	}
 	c := o.instance.c
@@ -59,12 +60,12 @@ func (o rv64TailCodeOwner) nativeTailFunctionKey(index uint32, params, results [
 }
 
 func (o rv64TailCodeOwner) NativeTailTypeKey(index uint32, params, results []wasm.ValType) (uint64, error) {
-	if _, err := o.nativeOwnerCodeView(false); err != nil {
+	if _, err := rv64PublishedCodeView(o.instance, false); err != nil {
 		return 0, err
 	}
 	c := o.instance.c
-	indexes := c.loadCompileIndexes()
-	if uint64(index) >= uint64(len(c.Types)) || !(indexes != nil && uint64(index) < uint64(len(indexes.railshotTail.primitiveTailTypeKeys)) && (rv64FreshRootedGC(c) || indexes.railshotTail.primitiveReferences)) {
+	key, ok := rv64PublishedTailTypeKey(c, index)
+	if !ok {
 		return 0, fmt.Errorf("%w: RV64 tail declared type owner", railshot.ErrUnsupported)
 	}
 	typ := &c.Types[index]
@@ -72,7 +73,22 @@ func (o rv64TailCodeOwner) NativeTailTypeKey(index uint32, params, results []was
 		return 0, fmt.Errorf("%w: RV64 tail declared transport signature", railshot.ErrUnsupported)
 	}
 
-	return indexes.railshotTail.primitiveTailTypeKeys[index], nil
+	return key, nil
+}
+
+func rv64PublishedTailTypeKey(c *Compiled, index uint32) (uint64, bool) {
+	if buildfeatures.TailCall == 0 || uint64(index) >= uint64(len(c.Types)) {
+		return 0, false
+	}
+	indexes := c.loadCompileIndexes()
+	if indexes == nil {
+		return 0, false
+	}
+	keys := indexes.railshotTail.tailCode.get().declaredTypeKeys
+	if uint64(index) >= uint64(len(keys)) || (!rv64FreshRootedGC(c) && !indexes.railshotTail.primitiveReferences) {
+		return 0, false
+	}
+	return keys[index], true
 }
 
 type rv64TailFunctionTypeOwner interface {
@@ -126,8 +142,10 @@ func (o rv64TailCodeOwner) NativeTailTypeMatchesFunction(index uint32, target ra
 		return false, err
 	}
 	c := o.instance.c
-	indexes := c.loadCompileIndexes()
-	if uint64(index) >= uint64(len(c.Types)) || c.Types[index].Kind != CompositeTypeFunction || !(indexes != nil && uint64(index) < uint64(len(indexes.railshotTail.primitiveTailTypeKeys)) && (rv64FreshRootedGC(c) || indexes.railshotTail.primitiveReferences)) {
+	if uint64(index) >= uint64(len(c.Types)) || c.Types[index].Kind != CompositeTypeFunction {
+		return false, rv64TailGenerationError("subtype caller declared type")
+	}
+	if _, ok := rv64PublishedTailTypeKey(c, index); !ok {
 		return false, rv64TailGenerationError("subtype caller declared type")
 	}
 	owner, ok := target.(rv64TailFunctionTypeOwner)
@@ -181,8 +199,14 @@ func rv64TailTransportEqual(expected []ValType, actual []wasm.ValType) bool {
 		case ValExternRef:
 			want = wasm.ExternRef
 		case ValAnyRef:
+			if !wasmGCBuilt {
+				return false
+			}
 			want = wasm.AnyRef
 		case ValI31Ref:
+			if !wasmGCBuilt {
+				return false
+			}
 			want = wasm.I31Ref
 		case ValExnRef:
 			want = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
@@ -197,7 +221,7 @@ func rv64TailTransportEqual(expected []ValType, actual []wasm.ValType) bool {
 }
 
 func (o rv64TailCodeOwner) NativeTailContextView() (*coreruntime.JobMemory, []byte, error) {
-	if _, err := o.nativeOwnerCodeView(false); err != nil {
+	if _, err := rv64PublishedCodeView(o.instance, false); err != nil {
 		return nil, nil, err
 	}
 	if !rv64NativeOwnerContextValid(o.instance) {
@@ -206,52 +230,4 @@ func (o rv64TailCodeOwner) NativeTailContextView() (*coreruntime.JobMemory, []by
 	// Validation above proves this exact first arena allocation. Preserve its
 	// slice provenance instead of reconstructing it from the integer address.
 	return o.instance.jm, o.instance.ar.AllocatedPrefix(railshotNativeInvocationContextBytes), nil
-}
-
-// Import-only relays retain a mapped cache and native import thunks, but have
-// no executable guest span. Owner-graph validation may accept that empty view;
-// tail certificates still require the nonempty NativeTailCodeView contract.
-func (o rv64TailCodeOwner) nativeOwnerCodeView(allowEmpty bool) ([]byte, error) {
-	in := o.instance
-	if in == nil {
-		return nil, fmt.Errorf("%w: RV64 published image has no instance", railshot.ErrUnsupported)
-	}
-	in.lifeMu.Lock()
-	defer in.lifeMu.Unlock()
-	if in.resourcesClosed || in.c == nil || in.jm == nil || in.ar == nil || in.base == 0 || in.nativeContext == 0 || in.resourceRefs == 0 && in.invocationState.Load()&instanceInvocationCount == 0 {
-		return nil, fmt.Errorf("%w: RV64 published image has no physical instance lease", railshot.ErrUnsupported)
-	}
-	cc := in.c.loadCodeCache()
-	if cc == nil {
-		return nil, fmt.Errorf("%w: RV64 published image has no code cache", railshot.ErrUnsupported)
-	}
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-	b := in.c.code
-	indexes := in.c.loadCompileIndexes()
-	// Closing the execution snapshot itself clears its readable code slice,
-	// while the particular instance's cache reference keeps the RX mapping live.
-	// Recover only that mapping's recorded logical span, never page padding.
-	if cc.closed && b == nil && indexes != nil {
-		n := indexes.railshotTail.mappedCodeBytes
-		if n > 0 && n <= len(cc.mem) {
-			b = cc.mem[:n:n]
-		}
-	}
-	// Logical Close is allowed: this particular instance still owns its job,
-	// arena/context and code reference. A shared cache's refs alone cannot prove
-	// that those resources survive for this instance.
-	if !cc.sealed || cc.refs <= 0 || cc.base != in.base || indexes == nil || len(b) != indexes.railshotTail.mappedCodeBytes || len(b) > len(cc.mem) || offHeapSlicePtr(cc.mem) != cc.base {
-		return nil, fmt.Errorf("%w: RV64 published image differs from sealed code cache", railshot.ErrUnsupported)
-	}
-	if len(b) == 0 {
-		if allowEmpty && in.c.NumImports > 0 && len(in.c.Funcs) == 0 && len(in.c.Entry) == 0 && len(in.c.InternalEntry) == 0 && !in.c.nativeReferenceFunctionABI && !in.c.nativeReferenceCallABI && !in.c.nativeReferenceControlABI && rv64NativeTailModule(in.c) == nil {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("%w: RV64 owner has no executable guest span", railshot.ErrUnsupported)
-	}
-	if offHeapSlicePtr(b) != cc.base {
-		return nil, fmt.Errorf("%w: RV64 published code has a different base", railshot.ErrUnsupported)
-	}
-	return b[:len(b):len(b)], nil
 }

@@ -535,6 +535,10 @@ func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
 func ValidatePluginSet(set PluginSet) error { return impl.ValidatePluginSet(set) }
 
+func ValidateStandaloneExecutionConfig(c *RuntimeConfig) error {
+	return impl.ValidateStandaloneExecutionConfig(c)
+}
+
 func ValueExnRef(v ExnRef) Value { return impl.ValueExnRef(v) }
 
 func ValueExternRef(v ExternRef) Value { return impl.ValueExternRef(v) }

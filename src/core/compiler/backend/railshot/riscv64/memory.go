@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -254,44 +255,12 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		return s, nil
 	}
 	gcRootedScalar := admitRV64GCRootedScalarModule(m)
-	gcTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m) != 0
-	gcTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingle(m)
-	gcTypeSubtypingReferenceFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m) != 0 || admitRV64GCTypeSubtypingRuntimeCallCast(m) || admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m) || admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) || gcTypeSubtypingRefTestSingle || admitRV64GCTypeSubtypingLink(m) != 0 || admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0
-	gcTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m) != 0
-	gcTypeSubtypingStructLink := admitRV64GCTypeSubtypingStructLink(m) != 0
-	gcTypeSubtypingStructProjectionLink := admitRV64GCTypeSubtypingStructProjectionLink(m) != 0
-	gcTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m) != 0
-	gcTypeSubtypingCrossGroupMismatchLink := admitRV64GCTypeSubtypingCrossGroupMismatchLink(m) != 0
-	gcTypeSubtypingTransitiveMismatchLink := admitRV64GCTypeSubtypingTransitiveMismatchLink(m) != 0
-	gcTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m) != 0
-	gcTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m) != 0
-	gcTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m) != 0 || admitRV64GCTypeSubtypingExtendedRecursiveLink(m) != 0
-	gcRefEq := admitRV64GCRefEq(m)
-	gcRefTestTable := admitRV64GCRefTestTable(m)
-	gcBrOnCastNullability := admitRV64GCBrOnCastNullability(m) || admitRV64GCBrOnCastFailNullability(m)
-	gcRefTestConcrete := admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || gcBrOnCastNullability
-	gcExtern := admitRV64GCExtern(m)
-	gcRefCastAbstract := admitRV64GCRefCastAbstract(m)
-	gcBrOnCastAbstract := admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m)
-	gcRefTestAbstract := admitRV64GCRefTestAbstract(m) || gcExtern || gcRefCastAbstract || gcBrOnCastAbstract
-	gcStructGet := admitRV64GCStructGet(m)
-	gcStructMutation := admitRV64GCStructMutation(m)
-	gcStructNull := admitRV64GCStructNull(m)
-	gcStructPacked := admitRV64GCStructPacked(m)
-	gcStructBasic := admitRV64GCStructBasic(m)
-	gcStructNumericGlobals := admitRV64GCStructNumericGlobals(m)
-	gcArrayLocal := admitRV64GCArrayLocal(m)
-	gcArrayUniform := admitRV64GCArrayUniform(m)
-	gcArrayFixedLocal := admitRV64GCArrayFixedLocal(m)
-	gcArrayFixedOfficial := admitRV64GCArrayOfficial(m)
-	gcArrayPackedData := admitRV64GCArrayPackedData(m)
-	gcArrayReference := admitRV64GCArrayReference(m)
-	gcArrayInitElem := admitRV64GCArrayInitElem(m)
-	gcArrayInitData := admitRV64GCArrayInitData(m)
-	gcArrayFill := admitRV64GCArrayFill(m)
-	gcArrayCopy := admitRV64GCArrayCopy(m)
-	i31Core := admitRV64I31Core(m) || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy
-	i31RefEq := gcRootedScalar || admitRV64ImmediateReferenceModule(m) || i31Core && (admitRV64I31RefEqPilot(m) || gcRefEq)
+	var legacyGC legacyGCStateProducts
+	if buildfeatures.GC != 0 {
+		legacyGC = admitLegacyGCStateProducts(m)
+	}
+	legacyI31 := buildfeatures.GC != 0 && legacyGC.i31Core
+	i31RefEq := gcRootedScalar || buildfeatures.GC != 0 && (admitRV64ImmediateReferenceModule(m) || legacyI31 && (admitRV64I31RefEqPilot(m) || legacyGC.refEq))
 	s.mutableFuncrefGlobalClear = admitMutableFunctionGlobalClear(m)
 	s.mutableFuncrefGlobalSetSelf = admitMutableFunctionGlobalSetSelf(m)
 	s.mutableFuncrefGlobalCopy = admitMutableFunctionGlobalCopy(m)
@@ -303,7 +272,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 	s.mutableFuncrefGlobalLocalExport = admitMutableFunctionGlobalLocalExport(m)
 	s.mutableFuncrefGlobalLocalObserve = admitMutableFunctionGlobalLocalObserve(m)
 	s.mutableFuncrefGlobalLocalCall = admitMutableFunctionGlobalLocalCall(m)
-	s.publicReferenceStores = s.publicReferences && (admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true))
+	s.publicReferenceStores = buildfeatures.ReferenceSignatures && s.publicReferences && (admitPublicPrimitiveReferenceModule(m, false) || admitPublicPrimitiveReferenceModule(m, true))
 	s.importReferences = production && (importedTables || gcRootedScalar)
 	if production && gcRootedScalar {
 		// Rooted admission proves every compact reference global and every
@@ -336,7 +305,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			t, _ := m.TableType(uint32(index))
 			s.tableAddr64[index] = t.Limits.Addr64
 			elem := wasm.RefVal(t.Ref)
-			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || gcRootedScalar && rootedScalarTableReference(elem, m) || (gcRefTestTable || gcRefTestConcrete) && wasm.EqualValType(elem, wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapStruct), false))) || i31Core && (immediateCollectorType(elem) || wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef) || i31RefEq && wasm.EqualValType(elem, wasm.EqRef))
+			s.tableCompactRef[index] = wasm.EqualValType(elem, wasm.ExternRef) || gcRootedScalar && rootedScalarTableReference(elem, m) || (legacyGC.refTestTable || legacyGC.refTestConcrete) && wasm.EqualValType(elem, wasm.RefVal(wasm.Ref(true, wasm.AbsHeap(wasm.HeapStruct), false))) || legacyI31 && (immediateCollectorType(elem) || wasm.EqualValType(elem, wasm.I31Ref) || isI31CoreRef(elem) || wasm.EqualValType(elem, wasm.AnyRef) || i31RefEq && wasm.EqualValType(elem, wasm.EqRef))
 			if index == 0 {
 				// The frontend reserves max(1024,2*min) for observable no-max growth.
 				s.table64 = t.Limits.Addr64
@@ -414,14 +383,14 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 		return s, unsupported("state count bound")
 	}
 	importedGlobals := len(s.globals)
-	stateOnlyExternrefs := admitStateOnlyExternrefGlobals(m, production, publicExports)
-	var aggregateParser *rootedScalarAggregateParser
+	stateOnlyExternrefs := buildfeatures.ReferenceTypes != 0 && admitStateOnlyExternrefGlobals(m, production, publicExports)
+	var aggregateParser *rootedScalarReferenceInitializer
 	if gcRootedScalar {
-		aggregateParser = newRootedScalarAggregateParser(m)
+		aggregateParser = newRootedScalarReferenceInitializer(m)
 	}
-	immediate := production && publicExports && admitRV64ImmediateReferenceModule(m)
+	immediate := buildfeatures.GC != 0 && production && publicExports && admitRV64ImmediateReferenceModule(m)
 	for i, g := range m.Globals {
-		if production && publicExports && abstractCollectorNullInitializer(g) || immediate && immediateCollectorType(g.Type.Type) && immediateReferenceInitializer(g.Init, m) {
+		if buildfeatures.ReferenceSignatures && production && publicExports && abstractCollectorNullInitializer(g) || immediate && immediateCollectorType(g.Type.Type) && immediateReferenceInitializer(g.Init, m) {
 			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
 		}
@@ -433,7 +402,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			continue
 		}
 		if gcRootedScalar && g.Type.Type.Kind() == wasm.ValRef {
-			if !admitPrimitiveReferenceGlobalInitializer(g, m, importedGlobals+i) && !rootedScalarAggregateGlobal(g, aggregateParser, importedGlobals+i) {
+			if !admitPrimitiveReferenceGlobalInitializer(g, m, importedGlobals+i) && !rootedScalarReferenceGlobalInitializer(g, aggregateParser, importedGlobals+i) {
 				return s, unsupported("generic rooted reference global initializer")
 			}
 			s.globals = append(s.globals, globalSpec{wide: true, reference: true, mutable: g.Type.Mutable, typ: g.Type.Type})
@@ -450,20 +419,20 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 			s.globals = append(s.globals, globalSpec{wide: true, reference: true, typ: g.Type.Type})
 			continue
 		}
-		if gcTypeSubtypingRefFuncGlobals && g.Type.Type.Kind() == wasm.ValRef {
+		if legacyGC.typeSubtypingRefFuncGlobals && g.Type.Type.Kind() == wasm.ValRef {
 			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
 			continue
 		}
-		if gcExtern && g.Type.Type.Kind() == wasm.ValRef {
+		if legacyGC.extern && g.Type.Type.Kind() == wasm.ValRef {
 			// The exact classifier pins both conversion initializers to null.
 			s.globals = append(s.globals, globalSpec{wide: true, typ: g.Type.Type})
 			continue
 		}
-		if (gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && g.Type.Type.Kind() == wasm.ValRef {
+		if (legacyGC.structPacked || legacyGC.structBasic || legacyGC.structNumericGlobals || legacyGC.arrayFixedOfficial || legacyGC.arrayPackedData || legacyGC.arrayReference || legacyGC.arrayInitElem || legacyGC.arrayInitData || legacyGC.arrayFill || legacyGC.arrayCopy) && g.Type.Type.Kind() == wasm.ValRef {
 			s.globals = append(s.globals, globalSpec{wide: true, mutable: g.Type.Mutable, typ: g.Type.Type})
 			continue
 		}
-		if i31Core && (isI31CoreRef(g.Type.Type) || wasm.EqualValType(g.Type.Type, wasm.I31Ref) || wasm.EqualValType(g.Type.Type, wasm.AnyRef)) {
+		if legacyI31 && (isI31CoreRef(g.Type.Type) || wasm.EqualValType(g.Type.Type, wasm.I31Ref) || wasm.EqualValType(g.Type.Type, wasm.AnyRef)) {
 			v, err := i31CoreGlobalValue(g.Init)
 			if err != nil {
 				return s, err
@@ -568,7 +537,7 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				ft, _ = s.sourceFunctions.function(flatTypeIndex)
 			}
 			fn := functionSpec{params: make([]bool, len(ft.Params)), results: make([]bool, len(ft.Results)), signature: ft}
-			if ft.Kind == wasm.CompFunc && (s.ownedTable || s.importReferences || gcTypeSubtypingRefTestSingle || gcRootedScalar) && !((gcTypeSubtypingDeclarations || gcTypeSubtypingRefFuncGlobals || gcTypeSubtypingStructLink || gcTypeSubtypingStructProjectionLink || gcTypeSubtypingStructMismatchLink || gcTypeSubtypingCrossGroupMismatchLink || gcTypeSubtypingTransitiveMismatchLink || gcTypeSubtypingIndependentStructLink || gcTypeSubtypingExtendedProjectionLink || gcTypeSubtypingDuplicateRecursiveLink || gcTypeSubtypingRefTestSingle || gcRootedScalar || gcRefEq || gcRefTestTable || gcRefTestConcrete || gcRefTestAbstract || gcStructGet || gcStructMutation || gcStructNull || gcStructPacked || gcStructBasic || gcStructNumericGlobals || gcArrayLocal || gcArrayUniform || gcArrayFixedLocal || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && ft.Kind != wasm.CompFunc) {
+			if ft.Kind == wasm.CompFunc && (s.ownedTable || s.importReferences || legacyGC.typeSubtypingRefTestSingle || gcRootedScalar) && !((legacyGC.typeSubtypingDeclarations || legacyGC.typeSubtypingRefFuncGlobals || legacyGC.typeSubtypingStructLink || legacyGC.typeSubtypingStructProjectionLink || legacyGC.typeSubtypingStructMismatchLink || legacyGC.typeSubtypingCrossGroupMismatchLink || legacyGC.typeSubtypingTransitiveMismatchLink || legacyGC.typeSubtypingIndependentStructLink || legacyGC.typeSubtypingExtendedProjectionLink || legacyGC.typeSubtypingDuplicateRecursiveLink || legacyGC.typeSubtypingRefTestSingle || gcRootedScalar || legacyGC.refEq || legacyGC.refTestTable || legacyGC.refTestConcrete || legacyGC.refTestAbstract || legacyGC.structGet || legacyGC.structMutation || legacyGC.structNull || legacyGC.structPacked || legacyGC.structBasic || legacyGC.structNumericGlobals || legacyGC.arrayLocal || legacyGC.arrayUniform || legacyGC.arrayFixedLocal || legacyGC.arrayFixedOfficial || legacyGC.arrayPackedData || legacyGC.arrayReference || legacyGC.arrayInitElem || legacyGC.arrayInitData || legacyGC.arrayFill || legacyGC.arrayCopy) && ft.Kind != wasm.CompFunc) {
 				var ok bool
 				fn.key, ok = m.StructuralTypeKeyChecked(flatTypeIndex)
 				if !ok {
@@ -576,10 +545,10 @@ func admitStatePolicy(m *wasm.Module, production, hostImports, publicExports, im
 				}
 			}
 			for k, t := range ft.Params {
-				fn.params[k] = scalarWide(t) || (gcRootedScalar || gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+				fn.params[k] = scalarWide(t) || (gcRootedScalar || legacyGC.typeSubtypingReferenceFunctions || legacyGC.typeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || legacyI31 && (isI31CoreRef(t) || (legacyGC.refTestAbstract || legacyGC.brOnCastNullability || legacyGC.structPacked || legacyGC.structBasic || legacyGC.arrayFixedOfficial || legacyGC.arrayPackedData || legacyGC.arrayReference || legacyGC.arrayInitElem || legacyGC.arrayInitData || legacyGC.arrayFill || legacyGC.arrayCopy) && t.Kind() == wasm.ValRef)
 			}
 			for k, t := range ft.Results {
-				fn.results[k] = scalarWide(t) || (gcRootedScalar || gcTypeSubtypingReferenceFunctions || gcTypeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || i31Core && (isI31CoreRef(t) || (gcRefTestAbstract || gcBrOnCastNullability || gcStructPacked || gcStructBasic || gcArrayFixedOfficial || gcArrayPackedData || gcArrayReference || gcArrayInitElem || gcArrayInitData || gcArrayFill || gcArrayCopy) && t.Kind() == wasm.ValRef)
+				fn.results[k] = scalarWide(t) || (gcRootedScalar || legacyGC.typeSubtypingReferenceFunctions || legacyGC.typeSubtypingRefFuncGlobals) && t.Kind() == wasm.ValRef || legacyI31 && (isI31CoreRef(t) || (legacyGC.refTestAbstract || legacyGC.brOnCastNullability || legacyGC.structPacked || legacyGC.structBasic || legacyGC.arrayFixedOfficial || legacyGC.arrayPackedData || legacyGC.arrayReference || legacyGC.arrayInitElem || legacyGC.arrayInitData || legacyGC.arrayFill || legacyGC.arrayCopy) && t.Kind() == wasm.ValRef)
 			}
 			s.types = append(s.types, fn)
 			flatTypeIndex++
@@ -802,7 +771,7 @@ func (f *integerEmitter) memorySizeGrowTypedAt(index uint32, grow, address64 boo
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}
-	if address64 && !f.mode.production {
+	if buildfeatures.Memory64 != 0 && address64 && !f.mode.production {
 		f.err = unsupported("private memory64 growth")
 		return
 	}

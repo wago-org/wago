@@ -2,6 +2,58 @@ package gc
 
 import "testing"
 
+func TestValidatePlainFunctionTypeDescs(t *testing.T) {
+	plain := []TypeDesc{{Kind: KindFunc, Final: true}, {ID: 1, Kind: KindFunc}}
+	if err := ValidatePlainFunctionTypeDescs(plain); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		desc TypeDesc
+	}{
+		{"index", TypeDesc{ID: 2, Kind: KindFunc}},
+		{"heap kind", TypeDesc{ID: 1, Kind: KindStruct}},
+		{"heap layout", TypeDesc{ID: 1, Kind: KindFunc, Size: 8}},
+		{"supertype", TypeDesc{ID: 1, Kind: KindFunc, HasSuper: true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidatePlainFunctionTypeDescs([]TypeDesc{plain[0], test.desc}); err == nil {
+				t.Fatal("accepted a descriptor outside the plain function profile")
+			}
+		})
+	}
+}
+
+func TestValidateFunctionTypeDescs(t *testing.T) {
+	first := TypeDesc{Kind: KindFunc, HasSuper: true, Super: 1}
+	second := TypeDesc{ID: 1, Kind: KindFunc}
+	if err := ValidateFunctionTypeDescs([]TypeDesc{first, second}); err != nil {
+		t.Fatalf("valid forward super rejected: %v", err)
+	}
+	structDesc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name  string
+		descs []TypeDesc
+	}{
+		{"incorrect ID", []TypeDesc{{Kind: KindFunc, ID: 1}}},
+		{"heap kind", []TypeDesc{structDesc}},
+		{"heap layout", []TypeDesc{{Kind: KindFunc, HasRefs: true}}},
+		{"invalid super", []TypeDesc{first}},
+		{"self super", []TypeDesc{{Kind: KindFunc, HasSuper: true}}},
+		{"final super", []TypeDesc{first, {ID: 1, Kind: KindFunc, Final: true}}},
+		{"cyclic supers", []TypeDesc{first, {ID: 1, Kind: KindFunc, HasSuper: true}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateFunctionTypeDescs(test.descs); err == nil {
+				t.Fatal("accepted malformed function descriptors")
+			}
+		})
+	}
+}
+
 func TestValidateTypeDescs(t *testing.T) {
 	pf, _ := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
 	pf.Final = false

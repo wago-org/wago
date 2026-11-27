@@ -43,7 +43,7 @@ func newRV64FunctionDependencyGraph(nodes, receipts int) (*dependencyGraph, erro
 // completed Close earlier. Retry only after the exact receipt has left the graph;
 // the strict collector rechecks lifecycle, external roots and member identities.
 func rv64RecheckReleasedDependencyComponent(member *dependencyMember) {
-	if member == nil || member.owner == nil || !member.active.Load() {
+	if !terminalDependencyCollectionBuilt || member == nil || member.owner == nil || !member.active.Load() {
 		return
 	}
 	owner := member.owner
@@ -454,7 +454,9 @@ func railshotReconcileClosedReferenceProxies(in *Instance) {
 		in.proxyReconciled = in.proxyReconciled || complete
 		in.lifeMu.Unlock()
 	}()
-	retainProducerRootsInImportedContainersForFinalization(in)
+	if funcrefStorageImportsBuilt {
+		retainProducerRootsInImportedContainersForFinalization(in)
+	}
 	complete = true
 }
 
@@ -785,7 +787,9 @@ func rv64RetryDependencyComponentHolders(owner *Instance, cleanup *resourceClean
 	cleanup.run(func() { railshotDrainInstanceFunctionDependencies(owner) })
 	cleanup.run(func() { railshotDrainInstanceGlobalDependencies(owner) })
 	cleanup.run(func() { railshotReleaseInstanceGlobalReferences(owner) })
-	cleanup.run(func() { railshotDrainInstanceTableDependencies(owner) })
+	if tableImportsForImage {
+		cleanup.run(func() { railshotDrainInstanceTableDependencies(owner) })
+	}
 	cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(owner) })
 	cleanup.run(func() { railshotReleaseOwnedGlobalDescriptorDependencies(owner) })
 	cleanup.run(func() { railshotDrainInstanceMemoryDependencies(owner) })

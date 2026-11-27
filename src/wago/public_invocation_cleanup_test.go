@@ -333,7 +333,7 @@ func TestPublicHostScalarBodyPanicStillReconciles(t *testing.T) {
 			}
 			var callErr error
 			value, panicked := cleanupTestPanic(func() {
-				_, callErr = owner.invokeEntry("run", []uint64{41}, invocationContextSet{}, false, true)
+				_, callErr = owner.invokeEntry("run", []uint64{41}, invocationContextSet{})
 			})
 			var wantPanic any
 			if test.bodyPanics && !test.nilBody {

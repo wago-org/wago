@@ -10,6 +10,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"math/bits"
 )
@@ -63,11 +64,17 @@ func foldUnaryConst(op wOp, a int64, typ machineType) (int64, machineType, bool)
 	case opZExt32: // i64 <- low 32 zero-extended (i64.extend_i32_u)
 		return int64(uint32(a)), mtI64, true
 	case opSExt8: // sign-extend low 8, result width = operand width
+		if buildfeatures.SignExtensionOps == 0 {
+			break
+		}
 		if w {
 			return int64(int8(a)), mtI64, true
 		}
 		return int64(int32(int8(a))), mtI32, true
 	case opSExt16: // sign-extend low 16, result width = operand width
+		if buildfeatures.SignExtensionOps == 0 {
+			break
+		}
 		if w {
 			return int64(int16(a)), mtI64, true
 		}

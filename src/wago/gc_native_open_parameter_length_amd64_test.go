@@ -78,7 +78,7 @@ func TestGCNativeOpenParameterArrayLength(t *testing.T) {
 							t.Fatal(err)
 						}
 						defer in.Close()
-						localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView.LocalTypes)), in.gcNativeView.LocalTypeCount)
+						localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView().LocalTypes)), in.gcNativeView().LocalTypeCount)
 						if len(localTypes) <= 2 || localTypes[1] == 1 || localTypes[2] == 2 {
 							t.Fatal("fixture did not remap array types")
 						}

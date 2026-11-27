@@ -85,7 +85,7 @@ func foreignCloneSourceToken(t testing.TB, source *Instance) GCRef {
 func checkForeignCloneCycle(t testing.TB, target *Instance, token GCRef) {
 	t.Helper()
 	target.refStore.mu.Lock()
-	entry, ok := target.refStore.gcByToken[token.token]
+	entry, ok := target.refStore.objectTokensLocked()[token.token]
 	target.refStore.mu.Unlock()
 	if !ok || entry.owner != target {
 		t.Fatal("clone token has the wrong owner")
@@ -127,7 +127,7 @@ func TestForeignClonePreservesParkedGuestRoots(t *testing.T) {
 				var cloned GCRef
 				imports := testImports("host.tick", slotHostFunc(func(_ HostModule, _, _ []uint64) {
 					state := target.existingPublicGCState()
-					if state == nil || state.hostActivationCount == 0 {
+					if state == nil || !state.hasGCHostActivations() {
 						t.Fatal("test did not park a guest frame")
 					}
 					if mode == "rollback" {

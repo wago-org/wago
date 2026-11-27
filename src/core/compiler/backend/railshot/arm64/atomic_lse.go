@@ -10,6 +10,7 @@
 package arm64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
@@ -17,7 +18,7 @@ import (
 var atomicLSEEnabled = true
 
 func (f *fn) useAtomicLSE() bool {
-	return f.opt(optAtomicLSE) && shared.ARM64SupportsLSE()
+	return buildfeatures.Threads != 0 && f.opt(optAtomicLSE) && shared.ARM64SupportsLSE()
 }
 
 func (f *fn) atomicRMWLSE(d shared.Atomic, value, old, addr Reg) {

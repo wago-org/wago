@@ -126,7 +126,7 @@ func TestRV64PublicHostTailScalarTransport(t *testing.T) {
 						}
 					}
 					in := rv64HostTailInstantiate(t, rt, c, testImports("env.tail", host))
-					if in.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+					if in.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil {
 						t.Fatal("host tail factory absent")
 					}
 					if kind == "owned" && len(in.thunkMem) == 0 {
@@ -178,7 +178,7 @@ func TestRV64PublicHostTailScalarTransport(t *testing.T) {
 					if err := in.Close(); err != nil {
 						t.Fatal(err)
 					}
-					if in.pluginState.Load().railshotInvocation.tailDispatcher != nil || len(in.thunkMem) != 0 {
+					if in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || len(in.thunkMem) != 0 {
 						t.Fatal("host tail physical retirement")
 					}
 					if owner != nil {
@@ -367,7 +367,7 @@ func TestRV64PublicHostTailCancellationAndClose(t *testing.T) {
 				} else {
 					cancel()
 				}
-				if in.jm == nil || in.pluginState.Load().railshotInvocation.tailDispatcher == nil {
+				if in.jm == nil || in.pluginState.Load().railshotInvocation.tailForTest().dispatcher == nil {
 					t.Fatal("parked host factory retired")
 				}
 				if owner != nil {
@@ -408,7 +408,7 @@ func TestRV64PublicHostTailCancellationAndClose(t *testing.T) {
 				if err := in.Close(); err != nil {
 					t.Fatal(err)
 				}
-				if in.pluginState.Load().railshotInvocation.tailDispatcher != nil || len(in.thunkMem) != 0 {
+				if in.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || len(in.thunkMem) != 0 {
 					t.Fatal("host tail cleanup leaked")
 				}
 				if owner != nil {

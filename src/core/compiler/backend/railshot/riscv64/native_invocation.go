@@ -14,6 +14,11 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+func emitBaseOffsetAddress(a *enc.Asm, dst, base enc.Reg, offset int) {
+	a.Constant64(dst, int64(offset))
+	a.Add(dst, base, dst)
+}
+
 // A public invocation view is either the Engine's exact reserved top or a full
 // activation-owned view above the current frame and below the root bridge.
 // Bound the entire span before reading it. This is an explicit retained-context
@@ -109,16 +114,16 @@ func (f *target) initializeNativeInvocation(frame int, info FunctionInfo) []int 
 // activation's descent. The new view owns only its actual transport; all storage
 // and code lifetime obligations stay with the root execution lease.
 func nativeInvocationActivation(a *enc.Asm, parent enc.Reg, viewOffset, argsOffset, resultsOffset, transportBytes int) {
-	tailRAAddress(a, enc.X9, enc.SP, viewOffset)
+	emitBaseOffsetAddress(a, enc.X9, enc.SP, viewOffset)
 	a.Constant64(enc.Scratch0, int64(abi.RV64InvocationMagic))
 	a.Sd(enc.Scratch0, enc.X9, 0)
 	for _, off := range []int32{abi.RV64InvocationFenceOffset, abi.RV64InvocationTopOffset} {
 		a.Ld(enc.Scratch0, parent, off)
 		a.Sd(enc.Scratch0, enc.X9, off)
 	}
-	tailRAAddress(a, enc.Scratch0, enc.SP, argsOffset)
+	emitBaseOffsetAddress(a, enc.Scratch0, enc.SP, argsOffset)
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationArgumentsOffset)
-	tailRAAddress(a, enc.Scratch0, enc.SP, resultsOffset)
+	emitBaseOffsetAddress(a, enc.Scratch0, enc.SP, resultsOffset)
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationResultsOffset)
 	a.Constant64(enc.Scratch0, int64(transportBytes))
 	a.Sd(enc.Scratch0, enc.X9, abi.RV64InvocationArgumentBytesOffset)

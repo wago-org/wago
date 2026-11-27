@@ -185,6 +185,10 @@ type DefinedTypeDescriptor struct {
 	Array   FieldTypeDescriptor
 }
 
+func (d DefinedTypeDescriptor) hasTypeLinks() bool {
+	return len(d.Supers) != 0 || d.HasDescribes || d.HasDescriptor
+}
+
 type wasmTypeDescriptorConverter struct {
 	m             *wasm.Module
 	groupAt       []uint32
@@ -928,6 +932,9 @@ func validateFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) error {
 				if _, ok := valueTypeDescriptorFromValType(value); !ok {
 					return fmt.Errorf("value %d: unsupported ABI value type %s", i, value)
 				}
+				if !referenceTypeDescriptorsForImage && isReferenceValType(value) {
+					return fmt.Errorf("value %d: reference type exceeds the standalone runtime profile", i)
+				}
 			}
 		}
 		return nil
@@ -1034,49 +1041,17 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup i
 		if err := c.valueTypesInto(d.Results, st.Comp.Results, sourceGroup); err != nil {
 			return d, wrapContextError("results", err)
 		}
-	case wasm.CompStruct:
-		d.Kind = CompositeTypeStruct
-		d.Fields = make([]FieldTypeDescriptor, len(st.Comp.Fields))
-		for i := range st.Comp.Fields {
-			f, err := c.fieldType(st.Comp.Fields[i], sourceGroup)
-			if err != nil {
-				return d, fmt.Errorf("field %d: %w", i, err)
-			}
-			d.Fields[i] = f
+	case wasm.CompStruct, wasm.CompArray:
+		if !wasmGCBuilt {
+			return d, fmt.Errorf("gc is disabled in this build")
 		}
-	case wasm.CompArray:
-		d.Kind = CompositeTypeArray
-		f, err := c.fieldType(st.Comp.Array, sourceGroup)
-		if err != nil {
-			return d, wrapContextError("array field", err)
+		if err := c.lowerAggregateTypeFields(&d, &st.Comp, sourceGroup); err != nil {
+			return d, err
 		}
-		d.Array = f
 	default:
 		return d, fmt.Errorf("unknown composite type kind %d", st.Comp.Kind)
 	}
 	return d, nil
-}
-
-func (c wasmTypeDescriptorConverter) fieldType(f wasm.FieldType, group int) (FieldTypeDescriptor, error) {
-	out := FieldTypeDescriptor{Mutable: f.Mut() == wasm.Var}
-	if f.Storage().Packed() {
-		out.Storage.Packed = true
-		switch f.Storage().Pack() {
-		case wasm.PackI8:
-			out.Storage.PackedType = PackedTypeI8
-		case wasm.PackI16:
-			out.Storage.PackedType = PackedTypeI16
-		default:
-			return out, fmt.Errorf("unknown packed type 0x%x", byte(f.Storage().Pack()))
-		}
-		return out, nil
-	}
-	v, err := c.valueType(f.Storage().Val(), group)
-	if err != nil {
-		return out, err
-	}
-	out.Storage.Value = v
-	return out, nil
 }
 
 func (c wasmTypeDescriptorConverter) valueTypes(ts []wasm.ValType, group int) ([]ValueTypeDescriptor, error) {
@@ -1182,6 +1157,9 @@ func validateValueTypeDescriptor(context string, t ValueTypeDescriptor, types []
 		}
 		return nil
 	}
+	if !referenceTypeDescriptorsForImage {
+		return fmt.Errorf("compiled metadata invalid: %s reference type exceeds the standalone runtime profile", context)
+	}
 	if t.Ref.Heap.Defined {
 		if int(t.Ref.Heap.TypeIndex) >= len(types) {
 			return fmt.Errorf("compiled metadata invalid: %s type index %d out of range", context, t.Ref.Heap.TypeIndex)
@@ -1211,22 +1189,8 @@ func validateDefinedTypeDescriptors(types []DefinedTypeDescriptor) error {
 		return nil
 	}
 	group := uint32(0)
-	validateValue := func(context string, t ValueTypeDescriptor) error {
-		return validateValueTypeDescriptor(context, t, types)
-	}
-	validateField := func(context string, f FieldTypeDescriptor) error {
-		if f.Storage.Packed {
-			if f.Storage.PackedType > PackedTypeI16 {
-				return fmt.Errorf("compiled metadata invalid: %s packed type %d invalid", context, f.Storage.PackedType)
-			}
-			if f.Storage.Value != (ValueTypeDescriptor{}) {
-				return fmt.Errorf("compiled metadata invalid: %s packed field carries value metadata", context)
-			}
-			return nil
-		}
-		return validateValue(context, f.Storage.Value)
-	}
-	for i, d := range types {
+	for i := range types {
+		d := &types[i]
 		if i == 0 {
 			if d.RecGroup != 0 {
 				return fmt.Errorf("compiled metadata invalid: type 0 recursive group %d, want 0", d.RecGroup)
@@ -1235,16 +1199,20 @@ func validateDefinedTypeDescriptors(types []DefinedTypeDescriptor) error {
 			return fmt.Errorf("compiled metadata invalid: type %d recursive group %d does not follow %d", i, d.RecGroup, group)
 		}
 		group = d.RecGroup
-		for _, x := range d.Supers {
-			if int(x) >= len(types) {
-				return fmt.Errorf("compiled metadata invalid: type %d supertype %d out of range", i, x)
+		if typeLinksForImage {
+			for _, super := range d.Supers {
+				if int(super) >= len(types) {
+					return fmt.Errorf("compiled metadata invalid: type %d supertype %d out of range", i, super)
+				}
 			}
-		}
-		if d.HasDescribes && int(d.Describes) >= len(types) {
-			return fmt.Errorf("compiled metadata invalid: type %d describes index %d out of range", i, d.Describes)
-		}
-		if d.HasDescriptor && int(d.Descriptor) >= len(types) {
-			return fmt.Errorf("compiled metadata invalid: type %d descriptor index %d out of range", i, d.Descriptor)
+			if d.HasDescribes && int(d.Describes) >= len(types) {
+				return fmt.Errorf("compiled metadata invalid: type %d describes index %d out of range", i, d.Describes)
+			}
+			if d.HasDescriptor && int(d.Descriptor) >= len(types) {
+				return fmt.Errorf("compiled metadata invalid: type %d descriptor index %d out of range", i, d.Descriptor)
+			}
+		} else if d.hasTypeLinks() {
+			return fmt.Errorf("compiled metadata invalid: type %d links exceed the standalone runtime profile", i)
 		}
 		switch d.Kind {
 		case CompositeTypeFunction:
@@ -1252,29 +1220,23 @@ func validateDefinedTypeDescriptors(types []DefinedTypeDescriptor) error {
 				return fmt.Errorf("compiled metadata invalid: function type %d carries field metadata", i)
 			}
 			for j, t := range d.Params {
-				if err := validateValue(fmt.Sprintf("type %d param %d", i, j), t); err != nil {
+				if err := validateValueTypeDescriptor(fmt.Sprintf("type %d param %d", i, j), t, types); err != nil {
 					return err
 				}
 			}
 			for j, t := range d.Results {
-				if err := validateValue(fmt.Sprintf("type %d result %d", i, j), t); err != nil {
+				if err := validateValueTypeDescriptor(fmt.Sprintf("type %d result %d", i, j), t, types); err != nil {
 					return err
 				}
 			}
-		case CompositeTypeStruct:
-			if len(d.Params) != 0 || len(d.Results) != 0 || d.Array != (FieldTypeDescriptor{}) {
-				return fmt.Errorf("compiled metadata invalid: struct type %d carries non-field metadata", i)
+		case CompositeTypeStruct, CompositeTypeArray:
+			if !aggregateTypesForImage {
+				return fmt.Errorf("compiled metadata invalid: aggregate type %d exceeds the standalone runtime profile", i)
 			}
-			for j, f := range d.Fields {
-				if err := validateField(fmt.Sprintf("type %d field %d", i, j), f); err != nil {
-					return err
-				}
+			if !wasmGCBuilt {
+				return checkCompiledFeatures(CoreFeatureGC)
 			}
-		case CompositeTypeArray:
-			if len(d.Params) != 0 || len(d.Results) != 0 || len(d.Fields) != 0 {
-				return fmt.Errorf("compiled metadata invalid: array type %d carries non-array metadata", i)
-			}
-			if err := validateField(fmt.Sprintf("type %d array field", i), d.Array); err != nil {
+			if err := validateAggregateTypeFields(d, i, types); err != nil {
 				return err
 			}
 		default:

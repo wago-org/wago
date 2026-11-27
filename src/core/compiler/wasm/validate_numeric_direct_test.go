@@ -6,8 +6,9 @@ import (
 )
 
 func TestDirectNumericStackEffectParity(t *testing.T) {
+	ensureValidationEffects()
 	types := []ValType{I32, I64, F32, F64, V128, ValType{}}
-	for opcode := 0x45; opcode <= 0xc4; opcode++ {
+	for opcode := 0x45; opcode <= lastDirectNumericOpcode; opcode++ {
 		kind := simpleOpcode[opcode]
 		for _, unreachable := range []bool{false, true} {
 			for height := 0; height < 2; height++ {

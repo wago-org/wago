@@ -18,18 +18,6 @@ var rv64GCTypeSubtypingRefFuncGlobalWires = [][]byte{
 	mustDecodeGCTypeSubtypingRefFuncGlobalWire("0061736d0100000001c780808000044e025000600001647050010060000164004e025000600001647050010260000164024e02500100600001647050010460000164044e025001026000016470500106600001640603838080800002040506b18080800008640000d2000b640200d2000b640000d2010b640200d2010b640400d2000b640600d2000b640500d2010b640700d2010b0a918080800002838080800000000b838080800000000b"),
 }
 
-var rv64GCTypeSubtypingRefFuncGlobalModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingRefFuncGlobalWires))
-	for i, wire := range rv64GCTypeSubtypingRefFuncGlobalWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingRefFuncGlobalWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

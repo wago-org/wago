@@ -324,7 +324,7 @@ func replayStagedGCBrOnCastScript(t *testing.T, base, tmp string, script stagedS
 			if c.stagedGCStructProduct() != wantProduct {
 				_ = c.Close()
 				counts.Failures++
-				t.Errorf("%s.wast:%d product=%s, want %s", base, cmd.Line, c.stagedGCStructProduct(), wantProduct)
+				t.Errorf("%s.wast:%d product=%v, want %v", base, cmd.Line, c.stagedGCStructProduct(), wantProduct)
 				continue
 			}
 			in, instantiateErr := instantiateCore(c, InstantiateOptions{})

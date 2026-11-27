@@ -15,8 +15,12 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+const tinygoPreparedIntForImage = buildfeatures.StandaloneDirectIntFixed
+const tinygoPreparedLightIntForImage = tinygoPreparedIntForImage && buildfeatures.StandaloneDirectIntBoundedLight
 
 // TinyGo cannot assemble the Plan9 arm64 trampolines. Its indirect func calls
 // use AAPCS64: X0-X3 carry the wrapper arguments, X4 carries the foreign stack
@@ -110,8 +114,13 @@ func initTinyGoARM64Entries() error {
 		return nil
 	}
 	wrapper := tinygoARM64EntryCode()
-	lightInt := tinygoARM64IntEntryCode(true)
-	fullInt := tinygoARM64IntEntryCode(false)
+	var lightInt, fullInt []byte
+	if tinygoPreparedLightIntForImage {
+		lightInt = tinygoARM64IntEntryCode(true)
+	}
+	if tinygoPreparedIntForImage {
+		fullInt = tinygoARM64IntEntryCode(false)
+	}
 	code := make([]byte, 0, len(wrapper)+len(lightInt)+len(fullInt))
 	code = append(code, wrapper...)
 	code = append(code, lightInt...)
@@ -122,9 +131,14 @@ func initTinyGoARM64Entries() error {
 	}
 	// This one executable image stays mapped for the process lifetime.
 	base := uintptr(unsafe.Pointer(&mem[0]))
-	tinygoARM64Entries.Store(&tinygoARM64EntryPoints{
-		wrapper: base, lightInt: base + uintptr(len(wrapper)), fullInt: base + uintptr(len(wrapper)+len(lightInt)),
-	})
+	entries := &tinygoARM64EntryPoints{wrapper: base}
+	if tinygoPreparedLightIntForImage {
+		entries.lightInt = base + uintptr(len(wrapper))
+	}
+	if tinygoPreparedIntForImage {
+		entries.fullInt = base + uintptr(len(wrapper)+len(lightInt))
+	}
+	tinygoARM64Entries.Store(entries)
 	return nil
 }
 

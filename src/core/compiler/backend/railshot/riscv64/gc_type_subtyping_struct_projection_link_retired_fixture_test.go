@@ -14,18 +14,6 @@ var rv64GCTypeSubtypingStructProjectionLinkWires = [][]byte{
 	mustDecodeGCTypeSubtypingStructProjectionLinkWire("0061736d0100000001b980808000034e02500060000050005f016400004e02500060000050005f016402004e025001006000005001015f0564000064000064020064020064040002888080800001024d3401670004"),
 }
 
-var rv64GCTypeSubtypingStructProjectionLinkModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingStructProjectionLinkWires))
-	for i, wire := range rv64GCTypeSubtypingStructProjectionLinkWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingStructProjectionLinkWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

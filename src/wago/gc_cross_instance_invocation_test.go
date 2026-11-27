@@ -753,13 +753,13 @@ func TestGCRefReleaseDoesNotInvertDynamicTopologyLock(t *testing.T) {
 		_, callErr := relay.Invoke("run")
 		invokeDone <- callErr
 	}()
-	topology := rt.refStore.gcDomains
+	topology := rt.refStore.gcTopologyLocked()
 	if topology == nil {
 		domain.mu.Unlock()
 		t.Fatal("Runtime GC domain topology is unavailable")
 	}
-	for topology.TryLock() {
-		topology.Unlock()
+	for topology.gate.TryLock() {
+		topology.gate.Unlock()
 		if time.Now().After(deadline) {
 			domain.mu.Unlock()
 			t.Fatal("dynamic invocation did not acquire the topology read lease")

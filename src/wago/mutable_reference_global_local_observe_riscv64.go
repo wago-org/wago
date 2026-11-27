@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -24,7 +25,7 @@ var rv64MutableFuncrefLocalObserveCodeDigest = [sha256.Size]byte{0x1c, 0xe0, 0xb
 var rv64MutableFuncrefLocalObserveCheckedCodeDigest = [sha256.Size]byte{0xed, 0xbc, 0x37, 0x81, 0x59, 0xa9, 0x85, 0xbe, 0x2b, 0xf7, 0x15, 0xdf, 0x07, 0x3b, 0x0f, 0x27, 0x4c, 0x59, 0x97, 0x1a, 0x86, 0x8b, 0x50, 0x04, 0x7e, 0xbe, 0x51, 0x5c, 0x92, 0x67, 0xd1, 0x2a}
 
 func rv64MutableFuncrefGlobalLocalObserveExecutionCode(c *Compiled) bool {
-	if c == nil {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil {
 		return false
 	}
 	switch len(c.code) {
@@ -42,7 +43,7 @@ func rv64MutableFuncrefGlobalLocalObserveExecutionCode(c *Compiled) bool {
 // sole read reduces the retained descriptor to nullness, so it cannot leak an
 // unrooted raw carrier across the public function boundary.
 func rv64MutableFuncrefGlobalLocalObserve(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 6 || len(c.FuncTypeID) != 6 || len(c.Exports) != 6 || len(c.Types) != 2 || len(c.GCTypeDescs) != 2 {
@@ -60,7 +61,7 @@ func rv64MutableFuncrefGlobalLocalObserve(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	voidType := &wasm.CompType{Kind: wasm.CompFunc}

@@ -139,7 +139,7 @@ func newNativeTailDefinedOwner(image *NativeTailCodeImage, job *coreruntime.JobM
 			end = entries[i+1]
 		}
 		frame, _ := NativeFrameBytes(code[:end], entry)
-		info := FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: uint32(i)}}
+		info := tailRAFunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, production: true, interruptible: true, invocationContext: true, functionIndex: uint32(i)}
 		var frozen *wasm.CompType
 		if sig := signature(i); sig != nil {
 			// Do not retain inactive empty slice backing storage from the input.

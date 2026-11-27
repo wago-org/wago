@@ -8,6 +8,7 @@
 package wago
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -47,7 +48,7 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 	atomicWaitHelpers := false
 	indexedFuncRefTest, indexedFuncRefCast := false, false
 	arm64GCRefTestHelper := false
-	if frontend.ModuleNonCodeRequiresSIMD(m) {
+	if buildfeatures.SIMD != 0 && frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
 	if m.TagCount() != 0 {
@@ -216,15 +217,16 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 			instrsModuleRequirements(fn.Body.Instrs, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
 		}
 	}
-	if programmaticCode && frontend.ModuleRequiresSIMD(m) {
+	if buildfeatures.SIMD != 0 && programmaticCode && frontend.ModuleRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
+	sharedMemoryGrowth := false
 	for index, used := range moduleFacts.MemoryGrowUsed {
 		if !used {
 			continue
 		}
 		if mt, ok := m.MemoryType(uint32(index)); ok && mt.Shared {
-			atomicWaitHelpers = true
+			sharedMemoryGrowth = true
 			break
 		}
 	}
@@ -233,7 +235,7 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 		elemStateCount:       elemStateCount,
 		dataStateCount:       dataStateCount,
 		moduleFacts:          moduleFacts,
-		atomicWaitHelpers:    atomicWaitHelpers,
+		atomicWaitHelpers:    atomicWaitHelpers || sharedMemoryGrowth,
 		indexedFuncRefTest:   indexedFuncRefTest,
 		indexedFuncRefCast:   indexedFuncRefCast,
 		arm64GCRefTestHelper: arm64GCRefTestHelper,
@@ -293,11 +295,6 @@ func analyzeConstExprRequirements(expr wasm.Expr, importedGlobals int) (CoreFeat
 		body = encoded
 	}
 	return analyzeConstExprBytes(body, importedGlobals)
-}
-
-func requiredFeaturesForConstExprBytes(body []byte, importedGlobals int) CoreFeatures {
-	features, _ := analyzeConstExprBytes(body, importedGlobals)
-	return features
 }
 
 func analyzeConstExprBytes(body []byte, importedGlobals int) (CoreFeatures, bool) {
@@ -744,11 +741,8 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		return 0
 	}
 	out := c.requiredFeatures
-	if compiledMetadataUsesSIMD(c) {
-		out |= CoreFeatureSIMD
-	}
-	out |= compiledAggregateStorageRequiredFeatures(c)
-	for _, typ := range c.Types {
+	for i := range c.Types {
+		typ := &c.Types[i]
 		if !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor || typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
 			out |= CoreFeatureGC
 		}
@@ -759,17 +753,19 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 			if len(typ.Results) > 1 {
 				out |= CoreFeatureMultiValue
 			}
+		case CompositeTypeStruct, CompositeTypeArray:
+			if aggregateTypesForImage {
+				out |= aggregateStorageRequiredFeatures(typ)
+			}
 		}
 	}
-	for _, sig := range c.importFuncSigs {
-		if len(sig.Results) > 1 {
-			out |= CoreFeatureMultiValue
-		}
-		out |= requiredFeaturesForPublicValTypes(sig.Params)
-		out |= requiredFeaturesForPublicValTypes(sig.Results)
-		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
-			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
-			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+	if hostFunctionImportsBuilt {
+		for _, sig := range c.importFuncSigs {
+			if len(sig.Results) > 1 {
+				out |= CoreFeatureMultiValue
+			}
+			out |= requiredFeaturesForPublicValTypes(sig.Params)
+			out |= requiredFeaturesForPublicValTypes(sig.Results)
 		}
 	}
 	for _, sig := range c.Funcs {
@@ -778,107 +774,126 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
-		if sig.HasTypeIndex && int(sig.TypeIndex) < len(c.Types) && c.Types[sig.TypeIndex].Kind == CompositeTypeFunction {
-			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Params)
-			out |= requiredFeaturesForTypeDescriptors(c.Types[sig.TypeIndex].Results)
+	}
+	if globalImportsForImage {
+		for _, g := range c.GlobalImports {
+			out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+			if g.Mutable {
+				out |= CoreFeatureMutableGlobal
+			}
 		}
 	}
-	for _, g := range c.GlobalImports {
-		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
-		if g.Mutable {
-			out |= CoreFeatureMutableGlobal
-		}
-	}
-	for _, g := range c.Globals {
-		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
-		if g.HasInitGlobal && g.InitGlobal >= len(c.GlobalImports) {
-			out |= CoreFeatureExtendedConstExpressions
-		}
-	}
-	for _, index := range c.GlobalExports {
-		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
-			out |= CoreFeatureMutableGlobal
-		}
-	}
-	if c.memoryCount() > 1 {
-		out |= CoreFeatureMultiMemory
-	}
-	for i := 0; i < c.memoryCount(); i++ {
-		memory := c.memoryDef(i)
-		if memory.Addr64 {
-			out |= CoreFeatureMemory64
-		}
-		if memory.Shared {
-			out |= CoreFeatureThreads
-		}
-	}
-	if c.hasExternrefTable() || c.tableCount() > 1 {
-		out |= CoreFeatureReferenceTypes
-	}
-	for i := 0; i < c.tableCount(); i++ {
-		def := c.tableDef(i)
-		out |= requiredFeaturesForStoredType(c, c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, true)
-		if c.tableDef(i).Addr64 {
-			out |= CoreFeatureTable64
-		}
-	}
-	for _, elem := range c.Elems {
-		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		for _, value := range elem.Values {
-			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
-			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+	if globalsForImage {
+		for _, g := range c.Globals {
+			if globalInitExpressionsForImage {
+				out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
+			}
+			out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
+			if g.HasInitGlobal && g.InitGlobal >= len(c.GlobalImports) {
 				out |= CoreFeatureExtendedConstExpressions
 			}
 		}
-		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
-		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
-			out |= CoreFeatureReferenceTypes
-		}
-	}
-	for _, elem := range c.passiveElems {
-		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		for _, value := range elem.Values {
-			out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
-			if value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
-				out |= CoreFeatureExtendedConstExpressions
+		for _, index := range c.GlobalExports {
+			if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
+				out |= CoreFeatureMutableGlobal
 			}
 		}
-		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
-		if elem.RefType == ValExternRef {
+	}
+	if memoriesForImage {
+		if c.memoryCount() > 1 {
+			out |= CoreFeatureMultiMemory
+		}
+		for i := 0; i < c.memoryCount(); i++ {
+			memory := c.memoryDef(i)
+			if memory.Addr64 {
+				out |= CoreFeatureMemory64
+			}
+			if memory.Shared {
+				out |= CoreFeatureThreads
+			}
+		}
+	}
+	if tablesForImage {
+		if c.hasExternrefTable() || c.tableCount() > 1 {
 			out |= CoreFeatureReferenceTypes
 		}
-		if elem.Mode != ElemModeActive {
-			out |= CoreFeatureBulkMemoryOperations
+		for i := 0; i < c.tableCount(); i++ {
+			def := c.tableDef(i)
+			out |= requiredFeaturesForStoredType(c, c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, true)
+			if def.Addr64 {
+				out |= CoreFeatureTable64
+			}
 		}
 	}
-	for i := 0; i < c.activeDataCount(); i++ {
-		data, _ := c.activeDataInfoAt(i)
-		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
+	if activeElementsForImage {
+		for _, elem := range c.Elems {
+			out |= compiledElementRequiredFeatures(c, elem)
+			if elem.TableIndex != 0 {
+				out |= CoreFeatureReferenceTypes
+			}
+		}
 	}
-	if len(c.PassiveData) != 0 {
+	if passiveElementsForImage {
+		for _, elem := range c.passiveElems {
+			out |= compiledElementRequiredFeatures(c, elem)
+			if elem.Mode != ElemModeActive {
+				out |= CoreFeatureBulkMemoryOperations
+			}
+		}
+	}
+	if activeDataForImage && segmentOffsetExpressionsForImage {
+		for i := 0; i < c.activeDataCount(); i++ {
+			data, _ := c.activeDataInfoAt(i)
+			out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
+		}
+	}
+	if passiveDataForImage && len(c.PassiveData) != 0 {
 		out |= CoreFeatureBulkMemoryOperations
 	}
 	return out
 }
 
-func compiledAggregateStorageRequiredFeatures(c *Compiled) CoreFeatures {
-	if c == nil {
-		return 0
+func compiledElementRequiredFeatures(c *Compiled, elem ElemInit) CoreFeatures {
+	out := requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
+	if elem.RefType == ValExternRef {
+		out |= CoreFeatureReferenceTypes
 	}
+	if segmentOffsetExpressionsForImage {
+		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
+	}
+	if elementExpressionsForImage || elementGlobalsForImage {
+		for _, value := range elem.Values {
+			if elementExpressionsForImage {
+				out |= requiredFeaturesForConstExprBytes(value.Expr, len(c.GlobalImports))
+			}
+			if elementGlobalsForImage && value.HasGlobal && int(value.GlobalIndex) >= len(c.GlobalImports) {
+				out |= CoreFeatureExtendedConstExpressions
+			}
+		}
+	}
+	return out
+}
+
+func compiledAggregateStorageRequiredFeatures(c *Compiled) CoreFeatures {
 	var out CoreFeatures
-	for _, typ := range c.Types {
-		switch typ.Kind {
-		case CompositeTypeStruct:
-			for _, field := range typ.Fields {
-				if !field.Storage.Packed {
-					out |= requiredFeaturesForTypeDescriptor(field.Storage.Value)
-				}
+	for i := range c.Types {
+		out |= aggregateStorageRequiredFeatures(&c.Types[i])
+	}
+	return out
+}
+
+func aggregateStorageRequiredFeatures(typ *DefinedTypeDescriptor) CoreFeatures {
+	var out CoreFeatures
+	switch typ.Kind {
+	case CompositeTypeStruct:
+		for _, field := range typ.Fields {
+			if !field.Storage.Packed {
+				out |= requiredFeaturesForTypeDescriptor(field.Storage.Value)
 			}
-		case CompositeTypeArray:
-			if !typ.Array.Storage.Packed {
-				out |= requiredFeaturesForTypeDescriptor(typ.Array.Storage.Value)
-			}
+		}
+	case CompositeTypeArray:
+		if !typ.Array.Storage.Packed {
+			out |= requiredFeaturesForTypeDescriptor(typ.Array.Storage.Value)
 		}
 	}
 	return out
@@ -890,7 +905,12 @@ func requiredFeaturesForStoredType(c *Compiled, abi ValType, hasExact bool, exac
 		if mvpFuncref && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == AbstractHeapFunc {
 			return 0 // nullable funcref storage is an MVP shape
 		}
-		return requiredFeaturesForTypeDescriptor(exact)
+		out := requiredFeaturesForTypeDescriptor(exact)
+		// The compiled ABI also carries the global's vector storage shape.
+		if abi == ValV128 {
+			out |= CoreFeatureSIMD
+		}
+		return out
 	}
 	if mvpFuncref && abi == ValFuncRef {
 		return 0
@@ -910,7 +930,7 @@ func requiredFeaturesForTypeDescriptor(typ ValueTypeDescriptor) CoreFeatures {
 	if typ.Kind == ValueTypeV128 {
 		return CoreFeatureSIMD
 	}
-	if typ.Kind != ValueTypeReference {
+	if !referenceTypeDescriptorsForImage || typ.Kind != ValueTypeReference {
 		return 0
 	}
 	out := CoreFeatureReferenceTypes

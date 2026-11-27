@@ -131,7 +131,7 @@ func TestRV64PublicReferenceFunctionImportsForeignOwners(t *testing.T) {
 								}
 								defer caller.unlockNativeEntry(entry)
 								found := false
-								for _, g := range entry.tables.targets.tailActive {
+								for _, g := range entry.tables.targets.tailForTest().active {
 									for i, owner := range g.owners {
 										if owner == producer {
 											counts, _, err := rv64NativeTailOwnerCounts(owner)

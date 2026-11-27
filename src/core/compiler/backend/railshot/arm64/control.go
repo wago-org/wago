@@ -15,6 +15,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -1309,6 +1310,13 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
 		}
 		return nil, nil, nil, mtI64, nil
 	}
+	if buildfeatures.MultiValue == 0 {
+		return nil, nil, nil, mtNone, fmt.Errorf("multi-value is disabled in this build")
+	}
+	return f.indexedBlockType(r)
+}
+
+func (f *fn) indexedBlockType(r *wasm.Reader) (params, results, frameTypes []machineType, res0 machineType, err error) {
 	x, e := r.I64()
 	if e != nil {
 		return nil, nil, nil, mtNone, e
@@ -1752,12 +1760,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
-	if kind == cfIf && !f.unreachable && pN == 0 && rN == 0 {
+	if buildfeatures.TailCall != 0 && kind == cfIf && !f.unreachable && pN == 0 && rN == 0 {
 		if done, err := f.tryInlineColdReturn(r); done || err != nil {
 			return err
 		}
 	}
-	if kind == cfIf && !f.unreachable && pN == 0 {
+	if buildfeatures.TailCall != 0 && kind == cfIf && !f.unreachable && pN == 0 {
 		if done, err := f.tryTailArgumentSelect(r); done || err != nil {
 			return err
 		}
@@ -3019,9 +3027,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		} else {
 			f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(&fr, false), frameGCRootFlags(baseGCRoots, resultGCRoots))
 		}
-		f.markEHReferenceResults(&fr)
+		if buildfeatures.ExceptionHandling != 0 {
+			f.markEHReferenceResults(&fr)
+		}
 	}
-	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
+	if buildfeatures.ExceptionHandling != 0 && fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
 		if endReachable {
 			f.restorePreviousEHHandler(recordOff)
@@ -3068,6 +3078,9 @@ func (f *fn) branchHandlerRecord(fi int) int {
 
 // Emit only on the taken edge, alongside its value/local reconciliation.
 func (f *fn) restoreBranchHandlers(fi int) {
+	if buildfeatures.ExceptionHandling == 0 {
+		return
+	}
 	if record := f.branchHandlerRecord(fi); record >= 0 {
 		f.restorePreviousEHHandler(f.ehRecordOff(record))
 	}

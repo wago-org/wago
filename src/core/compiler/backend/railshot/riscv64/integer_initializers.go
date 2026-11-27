@@ -9,16 +9,22 @@
 
 package riscv64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 const MaxIntegerInitializerBytes = 128
 const MaxIntegerInitializerValues = 8
 
 // ValidateIntegerInitializer checks the public integer constant-expression
 // profile without evaluating values or allocating an operand stack. resolve
-// supplies only immutable global types available in the initializer context. Source and artifact admission
-// share this parser before the generic constant evaluator can fold or execute.
+// supplies only immutable global types available in the initializer context.
+// Source and artifact admission share this parser. A sealed standalone image
+// limits it to the opcodes recorded in its retained expressions.
 func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func(uint32) (wasm.ValType, bool)) error {
+	const arithmetic = buildfeatures.StandaloneConstExprArithmeticOpcodes
+	const i64Arithmetic = arithmetic & (7 << (0x7c - 0x40))
 	if !scalarType(expected, false) || len(body) == 0 || len(body) > MaxIntegerInitializerBytes {
 		return unsupported("bounded integer initializer required")
 	}
@@ -31,19 +37,19 @@ func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func
 			return err
 		}
 		var typ wasm.ValType
-		switch op {
-		case 0x0b:
+		switch {
+		case op == 0x0b:
 			if r.HasNext() || depth != 1 || !wasm.EqualValType(stack[0], expected) {
 				return unsupported("integer initializer result/end")
 			}
 			return nil
-		case 0x41:
+		case buildfeatures.StandaloneConstExprNumericOpcodes&(1<<(0x41-0x40)) != 0 && op == 0x41:
 			_, err = r.I32()
 			typ = wasm.I32
-		case 0x42:
+		case buildfeatures.StandaloneConstExprNumericOpcodes&(1<<(0x42-0x40)) != 0 && op == 0x42:
 			_, err = r.I64()
 			typ = wasm.I64
-		case 0x23:
+		case buildfeatures.StandaloneConstExprLowOpcodes&(1<<0x23) != 0 && op == 0x23:
 			if resolve == nil {
 				return unsupported("integer initializer has no available globals")
 			}
@@ -56,9 +62,9 @@ func ValidateIntegerInitializer(body []byte, expected wasm.ValType, resolve func
 					return unsupported("integer initializer requires an available immutable integer")
 				}
 			}
-		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
+		case buildfeatures.ExtendedConstArithmetic && arithmetic != 0 && arithmetic&(uint64(1)<<(op-0x40)) != 0:
 			typ = wasm.I32
-			if op >= 0x7c {
+			if i64Arithmetic != 0 && op >= 0x7c {
 				typ = wasm.I64
 			}
 			if depth < 2 || !wasm.EqualValType(stack[depth-1], typ) || !wasm.EqualValType(stack[depth-2], typ) {
@@ -89,25 +95,31 @@ func admitModuleIntegerInitializer(expr wasm.Expr, expected wasm.ValType, m *was
 		return unsupported("integer initializer must be byte-backed")
 	}
 	return ValidateIntegerInitializer(expr.BodyBytes, expected, func(index uint32) (wasm.ValType, bool) {
-		if uint64(index) >= uint64(limit) {
-			return wasm.ValType{}, false
-		}
-		typ, ok := m.GlobalTypeByIndex(index)
-		return typ.Type, ok && !typ.Mutable
+		typ, ok := availableInitializerGlobal(m, index, limit)
+		return typ.Type, ok
 	})
 }
 
 // AdmitPublicInitializers runs on the original decoded expressions before
 // frontend folding. Literal folding must not erase source resource limits.
 func AdmitPublicInitializers(m *wasm.Module) error {
-	immediate := admitRV64ImmediateReferenceModule(m)
+	immediate := buildfeatures.GC != 0 && admitRV64ImmediateReferenceModule(m)
 	if m == nil || len(m.Imports) > MaxPublicImports || len(m.Memories) > MaxProductionMemories || m.MemCount() > MaxProductionMemories || m.TableCount() > MaxModuleTables || m.ImportedGlobalCount()+len(m.Globals) > MaxPublicGlobals || uint64(len(m.Data)) > uint64(MaxPublicCodeBytes)/16 || len(m.Elements) > MaxPublicElementSegments {
 		return unsupported("public initializer count bound")
 	}
-	aggregateParser := newRootedScalarAggregateParser(m)
+	var aggregateParser *rootedScalarReferenceInitializer
+	if buildfeatures.ReferenceSignatures {
+		aggregateParser = newRootedScalarReferenceInitializer(m)
+	}
 	rootedInitializerEntries := uint64(0)
 	rootedInitializerSegments := 0
 	for _, table := range m.Tables {
+		if !buildfeatures.ReferenceSignatures {
+			if table.Init != nil {
+				return unsupported("table initializer expression requires reference types")
+			}
+			continue
+		}
 		if table.Init != nil && table.Type.Ref.Nullable() && wasm.ExternReferenceType(wasm.RefVal(table.Type.Ref)) && rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
 			continue
 		}
@@ -121,7 +133,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 				continue
 			}
 			if rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
-				if !rootedScalarAggregateElementExpressionWithParser(*table.Init, table.Type.Ref, aggregateParser, m.ImportedGlobalCount()+len(m.Globals)) {
+				if !aggregateParser.validateExpression(*table.Init, table.Type.Ref, m.ImportedGlobalCount()+len(m.Globals)) {
 					return unsupported("aggregate table initializer expression")
 				}
 				if rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
@@ -136,7 +148,7 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 			}
 			global := false
 			var err error
-			if admitRV64I31OfficialTableGlobalInitializer(m) {
+			if buildfeatures.GC != 0 && admitRV64I31OfficialTableGlobalInitializer(m) {
 				global = true
 			} else {
 				global, err = admitTableInitializer(*table.Init, m, table.Type.Ref)
@@ -173,13 +185,13 @@ func AdmitPublicInitializers(m *wasm.Module) error {
 		}
 	}
 	for i, global := range m.Globals {
-		if abstractCollectorNullInitializer(global) || immediate && immediateCollectorType(global.Type.Type) && immediateReferenceInitializer(global.Init, m) {
+		if buildfeatures.ReferenceSignatures && abstractCollectorNullInitializer(global) || immediate && immediateCollectorType(global.Type.Type) && immediateReferenceInitializer(global.Init, m) {
 			continue
 		}
-		if rootedScalarAggregateGlobal(global, aggregateParser, m.ImportedGlobalCount()+i) {
+		if buildfeatures.ReferenceSignatures && rootedScalarReferenceGlobalInitializer(global, aggregateParser, m.ImportedGlobalCount()+i) {
 			continue
 		}
-		if i == 0 && admitRV64I31OfficialGlobalInitializer(m) {
+		if buildfeatures.GC != 0 && i == 0 && admitRV64I31OfficialGlobalInitializer(m) {
 			continue
 		}
 		if wasm.EqualValType(global.Type.Type, wasm.FuncRef) {

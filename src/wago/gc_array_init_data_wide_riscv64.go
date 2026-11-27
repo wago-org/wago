@@ -45,7 +45,7 @@ func rv64GCArrayInitDataWideMetadata(c *Compiled) bool {
 		}
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := []string{"f0", "f1", "f2", "f3", "f4", "f9", "g0", "g1", "g4", "g7", "g8", "g9"}

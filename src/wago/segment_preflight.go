@@ -15,36 +15,36 @@ import (
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
-// Core 1 validates every active segment's bounds before modifying shared store
-// state. Core 2's bulk-memory semantics instead retain earlier completed writes.
-func core1SegmentOffset(c *Compiled, globals []*Global, offset OffsetInit, context constExprContext, addr64 bool) (uint64, error) {
-	value := uint64(offset.Base)
-	if offset.HasGlobal {
+func (offset OffsetInit) needsRuntimeOffset() bool {
+	return segmentGlobalOffsetsForImage && offset.HasGlobal || segmentOffsetExpressionsForImage && len(offset.Expr) != 0
+}
+
+func activeSegmentOffset(c *Compiled, globals []*Global, offset OffsetInit, context constExprContext, addr64 bool) (uint64, error) {
+	if segmentGlobalOffsetsForImage && offset.HasGlobal {
 		if offset.Global < 0 || offset.Global >= len(c.Globals) || offset.Global >= len(globals) || globals[offset.Global] == nil {
-			return 0, fmt.Errorf("active segment offset global %d out of range", offset.Global)
+			return 0, fmt.Errorf("global %d out of range", offset.Global)
 		}
-		value = readGlobalObject(globals[offset.Global], c.Globals[offset.Global].Type)
-		if !addr64 {
-			value = uint64(uint32(value))
-		}
+		return uint64(uint32(readGlobalObject(globals[offset.Global], c.Globals[offset.Global].Type))), nil
 	}
-	if len(offset.Expr) != 0 {
+	if segmentOffsetExpressionsForImage && len(offset.Expr) != 0 {
 		want := ValI32
 		if addr64 {
 			want = ValI64
 		}
 		bits, err := evalCompiledScalarConstExpr(offset.Expr, want, globals, c.Globals, constExprGlobalScope{context: context, limit: len(c.Globals)})
 		if err != nil {
-			return 0, err
+			return 0, wrapContextError("extended expression", err)
 		}
-		value = bits
 		if !addr64 {
-			value = uint64(uint32(value))
+			bits = uint64(uint32(bits))
 		}
+		return bits, nil
 	}
-	return value, nil
+	return uint64(offset.Base), nil
 }
 
+// Core 1 validates every active segment's bounds before modifying shared store
+// state. Core 2's bulk-memory semantics instead retain earlier completed writes.
 func preflightCore1DataSegments(c *Compiled, globals []*Global, primary *runtime.JobMemory, memories []*Memory) error {
 	for seg := 0; seg < c.activeDataCount(); seg++ {
 		data, payloadBytes := c.activeDataInfoAt(seg)
@@ -59,9 +59,12 @@ func preflightCore1DataSegments(c *Compiled, globals []*Global, primary *runtime
 		if err != nil {
 			return fmt.Errorf("active data segment %d host access: %w", seg, err)
 		}
-		offset, err := core1SegmentOffset(c, globals, data.Offset, constExprDataOffset, c.memoryDef(int(data.MemoryIndex)).Addr64)
-		if err != nil {
-			return fmt.Errorf("active data segment %d offset: %w", seg, err)
+		offset := uint64(data.Offset.Base)
+		if data.Offset.needsRuntimeOffset() {
+			offset, err = activeSegmentOffset(c, globals, data.Offset, constExprDataOffset, c.memoryDef(int(data.MemoryIndex)).Addr64)
+			if err != nil {
+				return fmt.Errorf("active data segment %d offset: %w", seg, err)
+			}
 		}
 		if offset > uint64(len(bytes)) || uint64(payloadBytes) > uint64(len(bytes))-offset {
 			return fmt.Errorf("active data segment %d out of bounds on memory %d: offset %d + length %d > memory size %d", seg, data.MemoryIndex, offset, payloadBytes, len(bytes))
@@ -74,13 +77,20 @@ func preflightCore1ElementSegments(c *Compiled, globals []*Global, primary, dire
 	for seg, element := range c.Elems {
 		header := primary
 		if element.TableIndex != 0 {
+			if !multiTableForImage {
+				return fmt.Errorf("active element segment %d targets a table outside the standalone runtime profile", seg)
+			}
 			ptr := uintptr(binary.LittleEndian.Uint64(directory[int(element.TableIndex)*8:]))
 			header = unsafe.Slice((*byte)(offHeapPtr(ptr)), 8)
 		}
 		size := uint64(binary.LittleEndian.Uint32(header))
-		offset, err := core1SegmentOffset(c, globals, element.Offset, constExprElementOffset, c.tableDef(int(element.TableIndex)).Addr64)
-		if err != nil {
-			return fmt.Errorf("active element segment %d offset: %w", seg, err)
+		offset := uint64(element.Offset.Base)
+		if element.Offset.needsRuntimeOffset() {
+			var err error
+			offset, err = activeSegmentOffset(c, globals, element.Offset, constExprElementOffset, c.tableDef(int(element.TableIndex)).Addr64)
+			if err != nil {
+				return fmt.Errorf("active element segment %d offset: %w", seg, err)
+			}
 		}
 		if offset > size || uint64(len(element.Values)) > size-offset {
 			return fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, element.TableIndex, offset, len(element.Values), size)

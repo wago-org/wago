@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestInstantiateArenaNeedOmitsCallBuffers(t *testing.T) {
+	empty, err := InstantiateArenaNeed(InstantiateFootprint{OmitCallBuffers: true})
+	if err != nil || empty != 0 {
+		t.Fatalf("empty footprint = %d, %v", empty, err)
+	}
+	for _, footprint := range []InstantiateFootprint{
+		{GlobalCount: 1},
+		{GlobalCount: 1, MaxParamSlots: 2, MaxResultSlots: 3},
+	} {
+		full, err := InstantiateArenaNeed(footprint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		footprint.OmitCallBuffers = true
+		reduced, err := InstantiateArenaNeed(footprint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := TrapBufferBytes + 8*(max(1, footprint.MaxParamSlots)+max(1, footprint.MaxResultSlots))
+		if full-reduced != want {
+			t.Fatalf("call buffers use %d bytes, want %d", full-reduced, want)
+		}
+	}
+}
+
 func TestInstantiateArenaNeedAccountsDynamicFuncrefTypeIDs(t *testing.T) {
 	base, err := InstantiateArenaNeed(InstantiateFootprint{})
 	if err != nil {

@@ -1,10 +1,8 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
 import (
-	"encoding/binary"
-	"runtime"
 	"testing"
 	"unsafe"
 
@@ -19,14 +17,32 @@ type compactExternTestRoots struct {
 	scratch   gc.Root
 }
 
-type compactExternNativeTestRoots struct{ gcNativeFrameRoots }
+func TestRV64CompactExternForwardsPublicToken(t *testing.T) {
+	store := newReferenceStore(true)
+	value := new(int)
+	token, err := store.issueExternref(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.releaseExternref(token)
 
-func (r *compactExternNativeTestRoots) RangeRoots(fn func(gc.RootSlot) bool) {
-	r.rangeChain(fn, nil, nil)
+	instance := &Instance{refStore: store}
+	got, err := instance.issueCompactExternPublicToken(token)
+	if err != nil || got != token {
+		t.Fatalf("forwarded externref = %d, %v; want %d", got, err, token)
+	}
+	if instance.existingPublicGCState() != nil {
+		t.Fatal("forwarding an existing externref allocated collector state")
+	}
 }
 
-func (r *compactExternNativeTestRoots) RangeRootRefs(sink gc.RootRefSink) bool {
-	return r.rangeChain(nil, sink, nil)
+func TestRV64CompactExternPublicTokenFootprint(t *testing.T) {
+	if got := unsafe.Sizeof(gcResultRoot{}); got != 24 {
+		t.Fatalf("public collector root uses %d bytes, want 24", got)
+	}
+	if got := unsafe.Sizeof(compactExternPublicToken{}); got != 32 {
+		t.Fatalf("compact externref token uses %d bytes, want 32", got)
+	}
 }
 
 func TestRV64CompactExternRootGeometry(t *testing.T) {
@@ -41,41 +57,6 @@ func TestRV64CompactExternRootGeometry(t *testing.T) {
 		if validGCFrameOffsetsKinds(offsets, 24, true, true) {
 			t.Fatalf("ambiguous/out-of-range extern root admitted: %v", offsets)
 		}
-	}
-}
-
-func TestRV64CompactExternNativeFrameRoots(t *testing.T) {
-	in, _ := ownedExceptionTestInstance(t, gc.ProfileThroughput, nil)
-	state, err := in.compactExternCollector(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	leaf, err := in.gc.NewStructDefault(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	word, err := state.externFromAny(leaf, gc.EmptyRoots{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	frame := make([]byte, 16)
-	var pin runtime.Pinner
-	pin.Pin(&frame[0])
-	defer pin.Unpin()
-	binary.LittleEndian.PutUint64(frame[8:], word)
-	roots := compactExternNativeTestRoots{gcNativeFrameRoots{owner: in, base: uintptr(unsafe.Pointer(&frame[0])), offsets: []uint32{shared.GCFrameExternRefRootFlag | 8}, frameBytes: 16, frameLayout: gcNativeFrameLayoutRISCV64, codeBase: 1, codeBytes: 1, allowExternalReturn: true}}
-	if err := in.gc.CollectFull(&roots); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := in.gc.ObjectType(leaf); err != nil || binary.LittleEndian.Uint64(frame[8:]) != word {
-		t.Fatalf("extern frame lost its value or rewrote opaque word: %v", err)
-	}
-	binary.LittleEndian.PutUint64(frame[8:], 0)
-	if err := in.gc.CollectFull(&roots); err != nil {
-		t.Fatal(err)
-	}
-	if len(state.shells) != 0 {
-		t.Fatal("cleared extern frame retained its shell")
 	}
 }
 
@@ -105,7 +86,7 @@ func (r *compactExternTestRoots) RangeRootRefs(sink gc.RootRefSink) bool {
 func TestRV64CompactForeignExternPinAndReclaim(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 		t.Run(map[gc.Profile]string{gc.ProfileThroughput: "throughput", gc.ProfileTiny: "tiny"}[profile], func(t *testing.T) {
-			in, _ := ownedExceptionTestInstance(t, profile, nil)
+			in := managedCollectorTestInstance(t, profile)
 			token, err := in.refStore.issueExternref("foreign")
 			if err != nil {
 				t.Fatal(err)
@@ -132,7 +113,7 @@ func TestRV64CompactForeignExternPinAndReclaim(t *testing.T) {
 			if err := in.gc.CollectFull(roots); err != nil {
 				t.Fatal(err)
 			}
-			drainExceptionReclaims(in.gc)
+			drainGCMetadataReclaims(in.gc)
 			if state.foreign[ref] != token || state.byToken[token] != ref {
 				t.Fatal("rooted foreign wrapper lost its identity")
 			}
@@ -147,7 +128,7 @@ func TestRV64CompactForeignExternPinAndReclaim(t *testing.T) {
 			if err := in.gc.CollectFull(gc.EmptyRoots{}); err != nil {
 				t.Fatal(err)
 			}
-			drainExceptionReclaims(in.gc)
+			drainGCMetadataReclaims(in.gc)
 			if len(state.foreign) != 0 || len(state.byToken) != 0 || !in.refStore.releaseExternref(token) {
 				t.Fatal("unreachable foreign wrapper retained identity or extern pin")
 			}
@@ -162,7 +143,7 @@ func TestRV64CompactForeignExternPinAndReclaim(t *testing.T) {
 func TestRV64CompactConvertedExternShellReclamation(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 		t.Run(map[gc.Profile]string{gc.ProfileThroughput: "throughput", gc.ProfileTiny: "tiny"}[profile], func(t *testing.T) {
-			in, _ := ownedExceptionTestInstance(t, profile, nil)
+			in := managedCollectorTestInstance(t, profile)
 			state, err := in.compactExternCollector(nil)
 			if err != nil {
 				t.Fatal(err)
@@ -206,7 +187,7 @@ func TestRV64CompactConvertedExternShellReclamation(t *testing.T) {
 			if err := in.gc.CollectFull(roots); err != nil {
 				t.Fatal(err)
 			}
-			drainExceptionReclaims(in.gc)
+			drainGCMetadataReclaims(in.gc)
 			if len(state.shells) != 0 || len(state.byValue) != 0 {
 				t.Fatal("unreachable converted extern shells retained metadata")
 			}
@@ -251,7 +232,7 @@ func (r compactExternPersistentTestRoots) RangeRootRefs(sink gc.RootRefSink) boo
 func TestRV64CompactExternPersistentCells(t *testing.T) {
 	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
 		t.Run(map[gc.Profile]string{gc.ProfileThroughput: "throughput", gc.ProfileTiny: "tiny"}[profile], func(t *testing.T) {
-			in, _ := ownedExceptionTestInstance(t, profile, nil)
+			in := managedCollectorTestInstance(t, profile)
 			state, err := in.compactExternCollector(nil)
 			if err != nil {
 				t.Fatal(err)

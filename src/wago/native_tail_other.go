@@ -11,6 +11,11 @@ package wago
 
 func railshotNativeTailSource() bool { return false }
 
+//lint:ignore U1000 Used by the standalone generator outside RISC-V.
+func railshotStandaloneNativeTail(*Compiled) standaloneNativeTailProfile {
+	return standaloneNativeTailProfile{}
+}
+
 type railshotRuntimeConfigState struct{}
 type railshotTailCompiledState struct{}
 
@@ -20,7 +25,9 @@ func railshotStagedTailFeatures(*RuntimeConfig) CoreFeatures                    
 func railshotStagedGCFeatures(*RuntimeConfig) CoreFeatures                              { return 0 }
 func railshotI31Frontend(*RuntimeConfig) bool                                           { return false }
 func railshotConfigureNativeTail(CoreFeatures, *RuntimeConfig, *railshotCompileOptions) {}
-func railshotStoreNativeTail(*Compiled, *railshotCompiledModule, *RuntimeConfig) error  { return nil }
+func railshotStoreCompileMetadata(*Compiled, *railshotCompiledModule, *RuntimeConfig) error {
+	return nil
+}
 
 func railshotPrepareNativeTail(*Instance, resolvedImports, uintptr, []int, map[uint32]uint64) error {
 	return nil

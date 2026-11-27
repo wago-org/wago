@@ -6,10 +6,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"math"
 	"reflect"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 func floatBits(x float64, wide bool) uint64 {
@@ -242,11 +244,16 @@ func TestProductionFloatTrappingAndSaturatingConversions(t *testing.T) {
 		}
 		fs = append(fs, fixtureFunc{params: []byte{in}, result: result, body: []byte{0x20, 0, op, 0x0b}})
 	}
-	for sub := byte(0); sub < 8; sub++ {
-		fn := fs[sub]
-		fn.body = []byte{0x20, 0, 0xfc, sub, 0x0b}
-		fs = append(fs, fn)
+	modes := []bool{false}
+	if buildfeatures.NonTrappingFloatToIntConversion != 0 {
+		for sub := byte(0); sub < 8; sub++ {
+			fn := fs[sub]
+			fn.body = []byte{0x20, 0, 0xfc, sub, 0x0b}
+			fs = append(fs, fn)
+		}
+		modes = append(modes, true)
 	}
+	trapRecovery := len(fs)
 	fs = append(fs, fixtureFunc{result: 0x7d, body: []byte{0x43, 0, 0, 0x80, 0x3f, 0x0b}})
 	f := productionCallsWithOptions(t, binaryModule(fs...), ProductionOptions{Interruptible: true})
 	for sub := byte(0); sub < 8; sub++ {
@@ -260,7 +267,7 @@ func TestProductionFloatTrappingAndSaturatingConversions(t *testing.T) {
 		for _, value := range []float64{-0.999, -1.001, -2147483648.75, 2147483647.75, 4294967295.75, -2147483649, 4294967296} {
 			vals = append(vals, floatBits(value, wide))
 		}
-		for _, saturating := range []bool{false, true} {
+		for _, saturating := range modes {
 			for _, bits := range vals {
 				want, traps := truncExpected(floatValue(bits, wide), resultWide, unsigned, saturating)
 				arg := bits
@@ -278,7 +285,7 @@ func TestProductionFloatTrappingAndSaturatingConversions(t *testing.T) {
 					if !errors.As(err, &trap) || trap.Code != coreruntime.TrapTruncOverflow || got[0] != 0xfeedbeef || len(trap.Frames) != 1 || trap.Frames[0].FunctionIndex != uint32(index) || trap.Frames[0].ProgramCounter != 3 {
 						t.Fatalf("conversion trap sub=%d bits=%x got=%x err=%v", sub, bits, got, err)
 					}
-					if err := f.invoke(16, nil, got); err != nil || got[0] != 0x3f800000 {
+					if err := f.invoke(trapRecovery, nil, got); err != nil || got[0] != 0x3f800000 {
 						t.Fatal("FP conversion trap reuse", got, err)
 					}
 				} else if err != nil || got[0] != want {

@@ -33,7 +33,7 @@ func railshotTransferTableDependency(*Instance, *Table) bool              { retu
 func railshotTransferredTableDependency(*Instance, *Table) (bool, bool)   { return false, false }
 
 func railshotAcquireGlobalDependency(_ *globalImportAttachments, global *Global, store *referenceStore, collector *gc.Collector, _ *resourceCleanup) error {
-	if isReferenceValType(global.Type) {
+	if referenceSignaturesBuilt && isReferenceValType(global.Type) {
 		return global.attachReferenceImporterWithCollector(store, collector)
 	}
 	return global.attachNumericImporter()
@@ -76,10 +76,7 @@ func railshotDependencyComponentCollectionPrepared(*Instance) bool              
 func railshotTerminalClosedDependencyCollectionEnabled(*Instance, *instanceCloseState) bool {
 	return false
 }
-func railshotCollectClosingDependencyComponent(*Instance, *instanceCloseState) {}
 func railshotCollectTerminalClosedDependencyComponent(*Instance, *instanceCloseState) {
-}
-func railshotCompleteClosingDependencyCollection(*Instance, *instanceCloseState) {
 }
 func railshotRetryClosedDependencyComponent(*Instance) error     { return nil }
 func railshotRequestClosedContainerDependencyAdoption(*Instance) {}

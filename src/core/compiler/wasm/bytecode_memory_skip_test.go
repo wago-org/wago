@@ -5,7 +5,7 @@ import "testing"
 func checkScalarMemorySkip(t *testing.T, data []byte) {
 	t.Helper()
 	for _, multi := range []bool{false, true} {
-		for _, widths := range []memargWidths{{}, {fixed64: true}, {indexed64: []uint64{2, 1}}} {
+		for _, widths := range parityMemargWidths {
 			classifier := ModuleInstructionClassifier{widths: widths, multiMemory: multi}
 			reference, direct := ReaderFrom(data), ReaderFrom(data)
 			var imm InstructionImmediate

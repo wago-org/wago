@@ -317,7 +317,9 @@ func (m *Memory) Close() error {
 		return fmt.Errorf("wago: memory has %d live importer(s); close consumers before the memory", count)
 	}
 	s.set(memoryStateClosed, true)
-	s.closeWaitersLocked()
+	if memoryWaitQueuesForImage {
+		s.closeWaitersLocked(m.jm)
+	}
 	jm := m.jm
 	m.jm = nil
 	s.mu.Unlock()
@@ -460,11 +462,15 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 		return fmt.Errorf("memory shared type does not match prior export")
 	}
 	if s.has(memoryStateAddr64) != def.Addr64 {
-		// The first export can establish memory64 after owner observation.
-		count := s.importerCount()
-		s.setImporterCount(0)
-		s.set(memoryStateAddr64, def.Addr64)
-		s.setImporterCount(count)
+		if memoryImportsForImage {
+			// The first export can establish memory64 after owner observation.
+			count := s.importerCount()
+			s.setImporterCount(0)
+			s.set(memoryStateAddr64, def.Addr64)
+			s.setImporterCount(count)
+		} else {
+			s.set(memoryStateAddr64, def.Addr64)
+		}
 	}
 	// The original local owner defines the provider's exact external type. A
 	// re-exported import forwards that type rather than replacing it with the
@@ -629,7 +635,9 @@ func (m *Memory) ownerClosed() {
 	}
 	s.mu.Lock()
 	s.set(memoryStateClosed, true)
-	s.closeWaitersLocked()
+	if memoryWaitQueuesForImage {
+		s.closeWaitersLocked(m.jm)
+	}
 	m.jm = nil
 	s.mu.Unlock()
 }

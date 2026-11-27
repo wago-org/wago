@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -369,6 +369,9 @@ func (m *managedFunctionMark) collect() error {
 		m.members[i].owner.lifeMu.Unlock()
 	}
 	dependencies.mu.Unlock()
+	if !nativeCollectorFrameRootsBuilt {
+		return nil
+	}
 	// Dead owners remain claimed until physical cleanup retires their member.
 	// Their native cells can still contain collected references while outgoing
 	// receipt cleanup runs; no external lifetime may resurrect that state.

@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -76,6 +76,62 @@ func TestRV64ManagedFunctionExceptionPayloadRetention(t *testing.T) {
 			drainManagedFunctionReclaims(in.gc)
 			if producer.hasPhysicalResources() || len(state.(*managedFunctionCollector).envs) != 0 || len(owned.records) != 0 {
 				t.Fatal("dropped exception retained function producer or metadata")
+			}
+		})
+	}
+}
+
+func TestRV64ManagedFunctionEnvPinAndReclaim(t *testing.T) {
+	for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
+		t.Run(map[gc.Profile]string{gc.ProfileThroughput: "throughput", gc.ProfileTiny: "tiny"}[profile], func(t *testing.T) {
+			in, _ := ownedExceptionTestInstance(t, profile, nil)
+			exceptions := in.ownedExceptionCollector(nil)
+			state := in.managedFunctionCollector(nil)
+			ref, err := state.newManagedFunctionEnv(in, gc.EmptyRoots{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if in.resourceRefs != 1 {
+				t.Fatalf("producer roots=%d", in.resourceRefs)
+			}
+			again, err := state.newManagedFunctionEnv(in, gc.EmptyRoots{})
+			if err != nil || ref != again || in.resourceRefs != 1 {
+				t.Fatalf("cached Env=%v roots=%d err=%v", again, in.resourceRefs, err)
+			}
+			if allocs := testing.AllocsPerRun(1000, func() {
+				if got, err := state.newManagedFunctionEnv(in, gc.EmptyRoots{}); err != nil || got != ref {
+					panic("cached Env changed")
+				}
+			}); allocs != 0 {
+				t.Fatalf("cached Env lookup allocations=%v", allocs)
+			}
+			slot := in.gc.NewGlobalSlot(ref)
+			if err := in.gc.CollectFull(gc.EmptyRoots{}); err != nil {
+				t.Fatal(err)
+			}
+			drainManagedFunctionReclaims(in.gc)
+			if in.resourceRefs != 1 || len(state.envs) != 1 {
+				t.Fatal("rooted Env lost physical producer")
+			}
+			if err := in.gc.SetGlobalSlot(slot, gc.Null()); err != nil {
+				t.Fatal(err)
+			}
+			if err := in.gc.CollectFull(gc.EmptyRoots{}); err != nil {
+				t.Fatal(err)
+			}
+			drainManagedFunctionReclaims(in.gc)
+			if in.resourceRefs != 0 || len(state.envs) != 0 || len(state.byOwner) != 0 || len(state.graph.members) != 0 {
+				t.Fatalf("reclaimed roots=%d envs=%d owners=%d graph=%d", in.resourceRefs, len(state.envs), len(state.byOwner), len(state.graph.members))
+			}
+			if value, ok := ownedExceptionCollectors.Load(in.gc); !ok || value != exceptions {
+				t.Fatal("Env observer replaced exception observer")
+			}
+			in.gc.Close()
+			if _, ok := managedFunctionCollectors.Load(in.gc); ok {
+				t.Fatal("closed collector sidecar retained")
+			}
+			if _, ok := managedFunctionGraphs.Load(in.refStore); ok {
+				t.Fatal("empty graph retained")
 			}
 		})
 	}

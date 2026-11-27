@@ -12,6 +12,7 @@ package riscv64
 import (
 	"bytes"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -34,7 +35,7 @@ func admitRV64I31CoreWire(data []byte) bool {
 // or an existing bounded i31 product. Callers must pass this source proof back
 // in CompileOptions; legacy exact products retain their wire-shape check.
 func AdmitI31CoreSource(data []byte) bool {
-	return admitRV64I31CoreWire(data)
+	return buildfeatures.GC != 0 && admitRV64I31CoreWire(data)
 }
 
 // admitRV64I31Core independently proves the decoded shape used to select the
@@ -48,7 +49,7 @@ func admitRV64I31Core(m *wasm.Module) bool {
 // Live GC reference carriers are confined to compact i31 values; function
 // references use the separate callable descriptor lifetime.
 func AdmitGeneralI31Module(m *wasm.Module) bool {
-	if m == nil || !admitRV64GCRootedScalarModule(m) || m.TagCount() != 0 {
+	if buildfeatures.GC == 0 || m == nil || !admitRV64GCRootedScalarModule(m) || m.TagCount() != 0 {
 		return false
 	}
 	structs, arrays, ok := rootedScalarHelperProfile(m)

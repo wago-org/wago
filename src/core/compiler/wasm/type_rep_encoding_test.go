@@ -71,6 +71,23 @@ func TestPackedTypeRepresentationSemanticSurface(t *testing.T) {
 	}
 }
 
+func TestBuiltinReferenceTypeEncoding(t *testing.T) {
+	for _, tc := range []struct {
+		value, want ValType
+	}{
+		{FuncRef, RefVal(AbsRef(HeapFunc))},
+		{ExternRef, RefVal(AbsRef(HeapExtern))},
+		{AnyRef, RefVal(AbsRef(HeapAny))},
+		{EqRef, RefVal(AbsRef(HeapEq))},
+		{I31Ref, RefVal(AbsRef(HeapI31))},
+		{StringRef, RefVal(Ref(true, AbsHeap(HeapString), false))},
+	} {
+		if tc.value != tc.want {
+			t.Errorf("%s encoding = %#v, want %#v", tc.want, tc.value, tc.want)
+		}
+	}
+}
+
 func TestPackedFieldRepresentationRoundTrip(t *testing.T) {
 	storages := []StorageType{
 		StorageVal(I32),

@@ -178,7 +178,7 @@ func replayStagedGCRefEqScript(t *testing.T, tmp string, script stagedSpecScript
 				if c.stagedGCStructProduct() != stagedGCStructRefEq {
 					_ = c.Close()
 					counts.Failures++
-					t.Errorf("gc/ref_eq.wast:%d compiled as product %s", cmd.Line, c.stagedGCStructProduct())
+					t.Errorf("gc/ref_eq.wast:%d compiled as product %v", cmd.Line, c.stagedGCStructProduct())
 					continue
 				}
 				in, instantiateErr := instantiateCore(c, InstantiateOptions{})

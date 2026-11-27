@@ -32,6 +32,9 @@ func TestGCTypeMappingRejectsConflictingCanonicalTypes(t *testing.T) {
 }
 
 func TestGCRefMatchesExactDefinedType(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires exact collector type mapping")
+	}
 	root, err := gc.NewStructDesc(0, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +58,7 @@ func TestGCRefMatchesExactDefinedType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := &Instance{gc: collector, gcTypeMap: &gcTypeMapping{localToDomain: []gc.TypeID{0, 1}}}
+	in := &Instance{gc: collector, instanceCollectorMetadata: newInstanceCollectorMetadata(&gcTypeMapping{localToDomain: []gc.TypeID{0, 1}}, nil)}
 	required := ValueTypeDescriptor{
 		Kind: ValueTypeReference,
 		Ref: ReferenceTypeDescriptor{
@@ -77,6 +80,9 @@ func TestGCRefMatchesExactDefinedType(t *testing.T) {
 }
 
 func TestGCModuleDomainProbeCachesCanonicalPlan(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires a compiled collector mapping cache")
+	}
 	compiled := &Compiled{
 		Types:        []DefinedTypeDescriptor{{Kind: CompositeTypeStruct, RecGroup: 0}},
 		GCTypeDescs:  []gc.TypeDesc{{ID: 0}},

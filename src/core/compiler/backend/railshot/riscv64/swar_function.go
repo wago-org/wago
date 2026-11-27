@@ -14,6 +14,7 @@ import (
 	"fmt"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -149,7 +150,7 @@ func walkSWARPairsWithOwnedExceptions(fn *wasm.Func, ft *wasm.CompType, profile 
 }
 
 func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, profile memoryProfile, types, functions []*wasm.CompType, globals []wasm.GlobalType, dataCount int, table *wasm.TableType, typeKeys []uint64, elementCount, importedFunctions int, foreignTableCalls, borrowedTable, localTailCalls, localMutableReferences, importTailCalls, dynamicTailCalls, referenceCalls, referenceFunctions, parkedMutableReferenceGlobals, gcRootedScalar bool, rootedDirectory internalReferenceTypeDirectory, exceptionModule *wasm.Module, plugins *pluginInstructionDirectory, tableModule *wasm.Module, ownedExceptions bool, emit *integerEmitter, directoriesAdmitted bool, primitiveTypes ...*sourceFunctionTypeDirectory) (swarSummary, error) {
-	primitive := len(primitiveTypes) != 0 && primitiveTypes[0] != nil
+	primitive := buildfeatures.ReferenceSignatures && len(primitiveTypes) != 0 && primitiveTypes[0] != nil
 	mutationModule := tableModule
 	if mutationModule == nil {
 		mutationModule = exceptionModule
@@ -194,7 +195,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarSummary{}, unsupported("private reference functions require same-image direct calls")
 	}
 	publicReferenceCarriers := parkedMutableReferenceGlobals && len(types) != 0 && publicReferenceVectorCarrierTarget(types[0])
-	publicPrimitiveGlobals := foreignTableCalls && tableModule != nil && admitPublicPrimitiveReferenceModule(tableModule, true)
+	publicPrimitiveGlobals := buildfeatures.ReferenceSignatures && foreignTableCalls && tableModule != nil && admitPublicPrimitiveReferenceModule(tableModule, true)
 	referenceTypes := internalReferenceTypes{sourceDirectory: sourceFunctionTypeDirectory{module: tableModule}, exception: exceptionModule != nil, publicReferences: referenceFunctions || publicPrimitiveGlobals, swar: types, rootedDirectory: rootedDirectory, gcRootedScalar: gcRootedScalar, publicReferenceCarriers: publicReferenceCarriers}
 	functionClass := func(typ wasm.ValType) swarClass {
 		if referenceFunctions || gcRootedScalar || exceptionModule != nil {
@@ -206,7 +207,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 		return swarClassOf(typ)
 	}
 	globalReference := func(global wasm.GlobalType) bool {
-		return gcRootedScalar && wasm.ExternReferenceType(global.Type) || foreignTableCalls && (!global.Mutable || localMutableReferences || publicPrimitiveGlobals) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
+		return gcRootedScalar && wasm.ExternReferenceType(global.Type) || buildfeatures.ReferenceSignatures && foreignTableCalls && (!global.Mutable || localMutableReferences || publicPrimitiveGlobals) && internalFunctionReferenceWithTypes(global.Type, referenceCalls, referenceTypes)
 	}
 
 	descriptorRefs := privateRefs
@@ -277,12 +278,12 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 	}
 	nlocals := len(ft.Params)
 	for _, run := range fn.Locals.Runs {
-		if (!swarCarrierType(run.Type) && !(privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
+		if (!swarCarrierType(run.Type) && !(buildfeatures.ReferenceSignatures && privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes))) || uint64(run.Count) > uint64(maxSWARLocals-nlocals) {
 			return swarSummary{}, unsupported("SWAR local type/bound")
 		}
 		for i := uint32(0); i < run.Count; i++ {
 			localClasses[nlocals] = swarClassOf(run.Type)
-			if privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes) {
+			if buildfeatures.ReferenceSignatures && privateRefs && internalFunctionReferenceWithTypes(run.Type, referenceCalls, referenceTypes) {
 				localClasses[nlocals] = swarFuncRef
 			}
 			nlocals++
@@ -314,7 +315,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 	left, right, mask := swarPair{enc.X5, enc.X6}, swarPair{enc.X7, enc.X9}, swarPair{enc.X10, enc.X11}
 	local := func(i int) int32 { return int32(header + 16*i) }
 	ehBytes := 0
-	if exceptionModule != nil {
+	if buildfeatures.ExceptionHandling != 0 && exceptionModule != nil {
 		classifier := wasm.NewModuleInstructionClassifier(exceptionModule, true)
 		shape, err := shared.ScanEHFrameShape(&classifier, fn.BodyBytes)
 		if err != nil {
@@ -431,7 +432,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, err
 			}
 		}
-		if op != 0xfb && (gcRootedScalar || ownedExceptions) && (op == 0x24 || op == 0x26 || op == 0xfc) {
+		if buildfeatures.RISCV64CollectorFrameRoots && (gcRootedScalar || ownedExceptions) && (op == 0x24 || op == 0x26 || op == 0xfc) {
 			probe := r
 			var imm wasm.InstructionImmediate
 			if err := profile.classifier.ClassifyInto(&probe, op, &imm); err != nil {
@@ -444,6 +445,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 		switch op {
 		case 0x01: // nop
 		case 0xd5, 0xd6:
+			if buildfeatures.TypedFunctionReferences == 0 {
+				return swarSummary{}, unsupported("typed-function-references is disabled in this build")
+			}
 			label, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -571,6 +575,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 		case 0x12:
+			if buildfeatures.TailCall == 0 {
+				return swarSummary{}, unsupported("tail calls are disabled in this build")
+			}
 			index, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -619,7 +626,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 			if emit != nil && (!importedTail || flow.live) {
-				if flow.live {
+				if buildfeatures.ExceptionHandling != 0 && flow.live {
 					emit.restoreExceptionHandlers(0)
 				}
 				if importedTail {
@@ -633,7 +640,13 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			flow.frames[flow.depth-1].unreachable = true
 			h = flow.floor()
 		case 0x14, 0x15:
-			tail := op == 0x15
+			if buildfeatures.TailCall == 0 && op == 0x15 {
+				return swarSummary{}, unsupported("tail calls are disabled in this build")
+			}
+			if buildfeatures.TypedFunctionReferences == 0 {
+				return swarSummary{}, unsupported("typed-function-references is disabled in this build")
+			}
+			tail := buildfeatures.TailCall != 0 && op == 0x15
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -699,7 +712,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			usesTraps = true
 			if emit != nil && flow.live {
 				if tail {
-					emit.restoreExceptionHandlers(0)
+					if buildfeatures.ExceptionHandling != 0 {
+						emit.restoreExceptionHandlers(0)
+					}
 					emit.dynamicReferenceTailCall(typeIndex, sig, base, h-1, spill, 16)
 				} else {
 					key := wasm.StructuralFuncTypeKey(sig)
@@ -723,6 +738,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 		case 0x11, 0x13:
+			if buildfeatures.TailCall == 0 && op == 0x13 {
+				return swarSummary{}, unsupported("tail calls are disabled in this build")
+			}
 			typeIndex, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
@@ -739,7 +757,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			if err := swarCallSignature(sig); err != nil && !(gcRootedScalar && referenceCallCarriesCollector(sig)) && !(primitive && primitiveReferenceTargetWithTypes(sig, referenceTypes, true)) {
 				return swarSummary{}, err
 			}
-			tail := op == 0x13
+			tail := buildfeatures.TailCall != 0 && op == 0x13
 			if tail {
 				if !localTailCalls || !dynamicTailCalls && (foreignTableCalls || importedFunctions != 0) {
 					return swarSummary{}, unsupported("SWAR owned defined indirect tail profile required")
@@ -843,8 +861,8 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				h--
 				functionGlobal := global.Type.Kind() == wasm.ValRef && (global.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex || global.Type.Ref().Heap() == wasm.AbsHeap(wasm.HeapFunc) || global.Type.Ref().Heap() == wasm.AbsHeap(wasm.HeapNoFunc))
 				indexedGlobalStore := reference && publicPrimitiveGlobals && functionGlobal
-				externGlobalStore := gcRootedScalar && wasm.ExternReferenceType(global.Type)
-				parkedGlobalStore := externGlobalStore || indexedGlobalStore || reference && parkedMutableReferenceGlobals && index == 0
+				externGlobalStore := buildfeatures.RISCV64CollectorFrameRoots && gcRootedScalar && wasm.ExternReferenceType(global.Type)
+				parkedGlobalStore := buildfeatures.ReferenceSignatures && (externGlobalStore || indexedGlobalStore || reference && parkedMutableReferenceGlobals && index == 0)
 				if parkedGlobalStore {
 					calls++
 					if calls > maxFunctionCallSites {
@@ -1077,7 +1095,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, err
 				}
 				class = swarByteClass(typ)
-				if privateRefs && (typ == 0x70 || plugins.hasCustom() && typ == 0x6f) {
+				if privateRefs && (buildfeatures.ReferenceSignatures && typ == 0x70 || plugins.hasCustom() && typ == 0x6f) {
 					class = swarFuncRef
 				}
 				if class == swarInvalid {
@@ -1145,7 +1163,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			}
 			h -= 2
 		case 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0x25, 0x26:
-			if !privateRefs {
+			if !buildfeatures.ReferenceSignatures || !privateRefs {
 				return swarSummary{}, unsupported("SWAR reference instruction without public reference profile")
 			}
 			if err := reserve(1024); err != nil {
@@ -1185,6 +1203,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				stackClasses[h-1] = swarI32
 			case 0xd4:
+				if buildfeatures.TypedFunctionReferences == 0 {
+					return swarSummary{}, unsupported("typed-function-references is disabled in this build")
+				}
 				if !referenceCalls {
 					return swarSummary{}, unsupported("SWAR ref.as_non_null requires private typed-reference profile")
 				}
@@ -1260,7 +1281,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 					return swarSummary{}, unsupported("SWAR table operand class/underflow")
 				}
 				usesTraps = true
-				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref))) || ownedExceptions && exceptionReferenceType(wasm.RefVal(resolvedTable.Ref))
+				collectorTable := buildfeatures.RISCV64CollectorFrameRoots && (gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref))) || ownedExceptions && exceptionReferenceType(wasm.RefVal(resolvedTable.Ref)))
 				if arity == 2 && collectorTable {
 					calls++
 					if calls > maxFunctionCallSites {
@@ -1306,7 +1327,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if sub == 12 || sub == 13 {
+			if buildfeatures.BulkMemoryOperations != 0 && buildfeatures.ReferenceTypes != 0 && (sub == 12 || sub == 13) {
 				index, err := r.U32()
 				if err != nil {
 					return swarSummary{}, err
@@ -1363,7 +1384,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 					}
 				}
 				flow.usesLoops = true
-				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
+				collectorTable := buildfeatures.RISCV64CollectorFrameRoots && gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
 				if collectorTable {
 					calls++
 					if calls > maxFunctionCallSites {
@@ -1384,7 +1405,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				h = base
 				continue
 			}
-			if sub >= 14 && sub <= 17 {
+			if buildfeatures.ReferenceTypes != 0 && sub >= 14 && sub <= 17 && (sub != 14 || buildfeatures.BulkMemoryOperations != 0) {
 				index, err := r.U32()
 				if err != nil {
 					return swarSummary{}, err
@@ -1440,7 +1461,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 				usesTraps = true
 				flow.usesLoops = flow.usesLoops || sub != 16
-				collectorTable := gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
+				collectorTable := buildfeatures.RISCV64CollectorFrameRoots && gcRootedScalar && (rv64CollectorFrameRefType(tableModule, wasm.RefVal(resolvedTable.Ref)) || wasm.ExternReferenceType(wasm.RefVal(resolvedTable.Ref)))
 				if collectorTable && sub != 16 {
 					calls++
 					if calls > maxFunctionCallSites {
@@ -1452,7 +1473,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 						emit.swarCompactGCArguments(base, len(operands), spill)
 						switch sub {
 						case 14:
-							emit.gcObjectTableCopy(helperBase(base), index, sourceIndex, emit.externPersistentRoots(wasm.InstrTableCopy, index, sourceIndex, hiddenRefs(h))...)
+							if buildfeatures.BulkMemoryOperations != 0 {
+								emit.gcObjectTableCopy(helperBase(base), index, sourceIndex, emit.externPersistentRoots(wasm.InstrTableCopy, index, sourceIndex, hiddenRefs(h))...)
+							}
 						case 15:
 							emit.gcObjectTableGrow(helperBase(base), index, emit.externPersistentRoots(wasm.InstrTableGrow, index, 0, hiddenRefs(h))...)
 						case 17:
@@ -1476,7 +1499,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 						emit.Load(6, spill(base), wide)
 						emit.Load(7, spill(base+1), sub == 17 || sourceWide)
 						emit.Load(5, spill(base+2), countClass == swarI64)
-						if sub == 14 {
+						if buildfeatures.BulkMemoryOperations != 0 && sub == 14 {
 							emit.privateTableCopyBetween(index, sourceIndex, compact)
 						} else {
 							emit.privateTableFillAt(index, compact)
@@ -1504,7 +1527,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				continue
 			}
 			dataOffset := int32(0)
-			if sub == 8 || sub == 9 {
+			if buildfeatures.BulkMemoryOperations != 0 && (sub == 8 || sub == 9) {
 				index, err := r.U32()
 				if err != nil {
 					return swarSummary{}, err
@@ -1523,7 +1546,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 					continue
 				}
 			}
-			if sub == 8 || sub == 10 || sub == 11 {
+			if buildfeatures.BulkMemoryOperations != 0 && (sub == 8 || sub == 10 || sub == 11) {
 				if memoryCount == 0 {
 					return swarSummary{}, unsupported("SWAR bulk memory without resource")
 				}
@@ -1580,6 +1603,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				h = base
 				continue
 			}
+			if buildfeatures.NonTrappingFloatToIntConversion == 0 {
+				return swarSummary{}, unsupported("SWAR non-conversion prefixed scalar lowering is pending")
+			}
 			conversion, ok := swarSaturatingFloatOpcode(sub)
 			if !ok {
 				return swarSummary{}, unsupported("SWAR non-conversion prefixed scalar lowering is pending")
@@ -1596,12 +1622,15 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			usesFP = true
 			if emit != nil {
 				emit.Load(5, spill(h-1), !conversion.input.narrow())
-				emit.floatTrunc(conversion.input == swarF64, conversion.output == swarI64, sub&1 != 0, true)
+				emit.floatTruncSaturating(conversion.input == swarF64, conversion.output == swarI64, sub&1 != 0)
 				emit.Store(spill(h-1), 5, true)
 				emit.Store(spill(h-1)+8, uint8(enc.Zero), true)
 			}
 			stackClasses[h-1] = conversion.output
 		case 0xfb:
+			if buildfeatures.GC == 0 {
+				return swarSummary{}, unsupported("gc is disabled in this build")
+			}
 			var imm wasm.InstructionImmediate
 			if err := profile.classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return swarSummary{}, err
@@ -2330,6 +2359,9 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				return swarSummary{}, unsupported("SWAR GC opcode lowering is pending")
 			}
 		case 0xfe:
+			if buildfeatures.Threads == 0 {
+				return swarSummary{}, unsupported("threads is disabled in this build")
+			}
 			d, err := shared.DecodeAtomic(&r)
 			if err != nil {
 				return swarSummary{}, err
@@ -2412,19 +2444,29 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				}
 			}
 		case 0xfd:
+			if buildfeatures.SIMD == 0 {
+				return swarSummary{}, unsupported("simd is disabled in this build")
+			}
 			immediateReader := r
 			kind, err := r.U32()
 			if err != nil {
 				return swarSummary{}, err
 			}
-			if core, ok := swarRelaxedCoreOpcode(kind); ok {
-				kind = core
+			if buildfeatures.RelaxedSIMD == 0 && kind >= 256 && kind <= 275 {
+				return swarSummary{}, unsupported("relaxed-simd is disabled in this build")
 			}
+			var maddWidth uint8
+			var maddNegative, madd bool
+			if buildfeatures.RelaxedSIMD != 0 {
+				if core, ok := swarRelaxedCoreOpcode(kind); ok {
+					kind = core
+				}
+				maddWidth, maddNegative, madd = swarRelaxedMaddOpcode(kind)
+			}
+			relaxedDot := buildfeatures.RelaxedSIMD != 0 && (kind == 274 || kind == 275)
 			bound := 512
 			_, memoryOp := swarMemoryOpcode(kind)
-			if memoryOp || kind == 130 || kind == 186 || kind == 274 || kind == 275 {
-				bound = 1024
-			} else if _, _, ok := swarRelaxedMaddOpcode(kind); ok {
+			if memoryOp || kind == 130 || kind == 186 || relaxedDot || madd {
 				bound = 1024
 			} else if _, ok := swarFloatConversionOpcode(kind); ok {
 				bound = 1024
@@ -2452,7 +2494,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 			if err := reserve(bound); err != nil {
 				return swarSummary{}, err
 			}
-			if kind == 274 || kind == 275 {
+			if relaxedDot {
 				arity := 2
 				if kind == 275 {
 					arity = 3
@@ -2475,7 +2517,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 				h -= arity - 1
 				continue
 			}
-			if width, negative, ok := swarRelaxedMaddOpcode(kind); ok {
+			if madd {
 				usesFP = true
 				if err := flow.prepareDead(swarV128, swarV128, swarV128); err != nil {
 					return swarSummary{}, err
@@ -2487,7 +2529,7 @@ func walkSWARPairsWithAdmittedDirectories(fn *wasm.Func, ft *wasm.CompType, prof
 					emit.swarLoad(spill(h-3), left)
 					emit.swarLoad(spill(h-2), right)
 					emit.swarLoad(spill(h-1), swarPair{enc.X12, enc.X13})
-					emit.swarRelaxedMadd(width, negative)
+					emit.swarRelaxedMadd(maddWidth, maddNegative)
 					emit.swarStore(spill(h-3), left)
 				}
 				h -= 2
@@ -3210,10 +3252,7 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 		}
 	}
 	profile := makeMemoryProfile(memories, indexedMemories)
-	rootedDirectory := internalReferenceTypeDirectory{}
-	if mode.gcRootedDirectory != nil {
-		rootedDirectory = *mode.gcRootedDirectory
-	}
+	rootedDirectory := mode.rootedTypeDirectory()
 	summary, err := walkSWARPairsWithAdmittedDirectories(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, nil, mode.swarDirectoriesAdmitted, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
@@ -3228,55 +3267,38 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if summary.usesTraps && !mode.production {
 		return nil, FunctionInfo{}, nil, unsupported("SWAR traps require production trap bridge")
 	}
-	f := integerEmitter{target: target{nlocals: summary.locals * 2, mode: mode}, gcFrameRoots: mode.gcFrameRoots}
+	f := integerEmitter{target: target{nlocals: summary.locals * 2, mode: mode}}
 	if mode.customInstructions.hasCustom() {
 		f.customSpillOffsets = append([]int32(nil), summary.spillOffsets[:summary.peak+1]...)
 	}
 	if len(functions) != 0 {
 		f.header = callFrameHeader
 	}
-	f.exception, err = newExceptionFrame(mode.exceptionModule, fn, f.LocalOffset(summary.locals*2))
-	if err != nil {
-		return nil, FunctionInfo{}, nil, err
-	}
-	collectorModule := mode.tableModuleSource
-	if collectorModule == nil {
-		collectorModule = mode.exceptionModule
-	}
-	if err := f.prepareCollectorOperands(collectorModule, fn, true); err != nil {
-		return nil, FunctionInfo{}, nil, err
-	}
 	ehSlots := 0
-	if f.exception != nil {
-		ehSlots = f.exception.slots()
-		f.spillPrefix = int32(ehSlots * 8)
+	if buildfeatures.ExceptionHandling != 0 {
+		f.exception, err = newExceptionFrame(mode.exceptionModule, fn, f.LocalOffset(summary.locals*2))
+		if err != nil {
+			return nil, FunctionInfo{}, nil, err
+		}
+		if f.exception != nil {
+			ehSlots = f.exception.slots()
+			f.spillPrefix = int32(ehSlots * 8)
+		}
+	}
+	if err := f.prepareCollectorOperands(fn, true); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
 	frame, err := checkedFrameBytes(f.frameHeader(), summary.locals*2, summary.spillSlots()+ehSlots)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
 	}
 	f.frameBytes = frame
-	if summary.allocations != 0 && f.gcFrameRoots == nil {
-		return nil, FunctionInfo{}, nil, unsupported("SWAR allocating GC requires exact frame roots")
+	if err := f.initializeGCFrameRoots(summary.locals, 2, summary.allocations); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
-	if f.gcFrameRoots != nil {
-		f.gcFrameRoots.ResetSafepoints()
-		f.gcFrameRoots.ResetCallsites()
-		f.gcFrameRoots.FrameBytes = uint32(frame)
-		if !f.gcFrameRoots.Candidate || !f.gcFrameRoots.Exact || !f.gcFrameRoots.ValidLiveMasks() || f.gcFrameRoots.AllocationMaskCount() != summary.allocations {
-			return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root plan")
-		}
-		previous := uint32(0)
-		for i, root := range f.gcFrameRoots.Locals {
-			offset := uint32(f.LocalOffset(int(root.Index) * 2))
-			if uint64(root.Index) >= uint64(summary.locals) || i != 0 && root.Index <= previous || shared.GCFrameRootOffset(root.Offset) != offset || uint64(shared.GCFrameRootOffset(root.Offset)) > uint64(frame-8) || root.Offset&shared.GCFrameFuncRefRootFlag != 0 && !mode.functionEnvironmentRoots() || root.Offset&shared.GCFrameExternRefRootFlag != 0 && !mode.opaqueExternRoots() {
-				f.gcFrameRoots.Exact = false
-				return nil, FunctionInfo{}, nil, unsupported("invalid SWAR GC frame-root local home")
-			}
-			previous = root.Index
-		}
+	if buildfeatures.ExceptionHandling != 0 {
+		f.initializeExceptionRoots()
 	}
-	f.initializeExceptionRoots()
 	actual, err := walkSWARPairsWithAdmittedDirectories(fn, ft, profile, types, functions, globals, dataCount, table, typeKeys, elementCount, importedFunctions, mode.foreignTableCalls, mode.borrowedTable, mode.localTailCalls, mode.localMutableReferences, mode.importTailCalls, mode.dynamicTailCalls, mode.referenceCalls, mode.referenceFunctions, mode.parkedMutableReferenceGlobals, mode.gcRootedScalar, rootedDirectory, mode.exceptionModule, mode.customInstructions, mode.tableModuleSource, mode.ownedExceptionReferences, &f, mode.swarDirectoriesAdmitted, mode.primitiveTailTypes)
 	if err != nil {
 		return nil, FunctionInfo{}, nil, err
@@ -3284,8 +3306,8 @@ func compileSWARPairsWithMemories(fn *wasm.Func, ft *wasm.CompType, memories []w
 	if actual != summary {
 		return nil, FunctionInfo{}, nil, fmt.Errorf("rv64: SWAR admission changed")
 	}
-	if f.gcFrameRoots != nil && (!f.gcFrameRoots.Exact || f.gcFrameRoots.SafepointCount() != summary.allocations || f.gcFrameRoots.CallsiteCount() != f.gcFrameRoots.CallMaskCount()) {
-		return nil, FunctionInfo{}, nil, unsupported("incomplete SWAR GC frame-root callsites")
+	if err := f.finishSWARGCFrameRoots(summary.allocations); err != nil {
+		return nil, FunctionInfo{}, nil, err
 	}
 	f.profileUnknown()
 	if len(f.traps) != 0 {

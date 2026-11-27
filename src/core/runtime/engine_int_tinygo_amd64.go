@@ -9,7 +9,12 @@
 
 package runtime
 
-import "unsafe"
+import (
+	"errors"
+	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
 	call.code, call.linMem, call.stack = code, linMem, e.stackTop
@@ -36,42 +41,60 @@ func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a
 // func-value context in R9. The generated thunk rearranges those registers into
 // Wago's direct integer ABI and performs the same foreign-stack transition as
 // the standard Go assembly entry.
-var tinygoIntThunkTemplate = []byte{
-	0x49, 0xba, 0, 0, 0, 0, 0, 0, 0, 0, // movabs stackTop, r10
-	0x49, 0x83, 0xea, 0x40, // sub $64, r10
-	0x49, 0x89, 0x22, // mov rsp, 0(r10)
-	0x49, 0x89, 0x6a, 0x08, // mov rbp, 8(r10)
-	0x49, 0x89, 0x5a, 0x10, // mov rbx, 16(r10)
-	0x4d, 0x89, 0x62, 0x18, // mov r12, 24(r10)
-	0x4d, 0x89, 0x6a, 0x20, // mov r13, 32(r10)
-	0x4d, 0x89, 0x72, 0x28, // mov r14, 40(r10)
-	0x4d, 0x89, 0x7a, 0x30, // mov r15, 48(r10)
-	0x41, 0x0f, 0xae, 0x5a, 0x38, // stmxcsr 56(r10)
-	0x0f, 0xae, 0x15, 0, 0, 0, 0, // ldmxcsr [rip+defaultMXCSR]
-	0x48, 0x89, 0xfb, // mov rdi, rbx (linMem)
-	0x49, 0x8d, 0x7a, 0xf8, // lea -8(r10), rdi
-	0x48, 0x89, 0x7b, 0xe8, // mov rdi, -24(rbx)
-	0x49, 0x89, 0xcb, // mov rcx, r11 (preserve a2)
-	0x48, 0x89, 0xf0, // mov rsi, rax (a0)
-	0x48, 0x89, 0xd1, // mov rdx, rcx (a1)
-	0x4c, 0x89, 0xda, // mov r11, rdx (a2)
-	0x4c, 0x89, 0xd4, // mov r10, rsp
-	0x31, 0xed, // xor ebp, ebp
-	0x41, 0xff, 0xd1, // call r9 (func-value context = code)
-	0x0f, 0xae, 0x54, 0x24, 0x38, // ldmxcsr 56(rsp)
-	0x48, 0x8b, 0x6c, 0x24, 0x08, // mov 8(rsp), rbp
-	0x48, 0x8b, 0x5c, 0x24, 0x10, // mov 16(rsp), rbx
-	0x4c, 0x8b, 0x64, 0x24, 0x18, // mov 24(rsp), r12
-	0x4c, 0x8b, 0x6c, 0x24, 0x20, // mov 32(rsp), r13
-	0x4c, 0x8b, 0x74, 0x24, 0x28, // mov 40(rsp), r14
-	0x4c, 0x8b, 0x7c, 0x24, 0x30, // mov 48(rsp), r15
-	0x48, 0x8b, 0x24, 0x24, // mov 0(rsp), rsp
-	0xc3, // ret
+const tinygoIntThunkPrologue = "\x49\xba\x00\x00\x00\x00\x00\x00\x00\x00" + // movabs stackTop, r10
+	"\x49\x83\xea\x40" + // sub $64, r10
+	"\x49\x89\x22" + // mov rsp, 0(r10)
+	"\x49\x89\x6a\x08" + // mov rbp, 8(r10)
+	"\x49\x89\x5a\x10" + // mov rbx, 16(r10)
+	"\x4d\x89\x62\x18" + // mov r12, 24(r10)
+	"\x4d\x89\x6a\x20" + // mov r13, 32(r10)
+	"\x4d\x89\x72\x28" + // mov r14, 40(r10)
+	"\x4d\x89\x7a\x30" + // mov r15, 48(r10)
+	"\x41\x0f\xae\x5a\x38" + // stmxcsr 56(r10)
+	"\x0f\xae\x15\x00\x00\x00\x00" + // ldmxcsr [rip+defaultMXCSR]
+	"\x48\x89\xfb" + // mov rdi, rbx (linMem)
+	"\x49\x8d\x7a\xf8" + // lea -8(r10), rdi
+	"\x48\x89\x7b\xe8" // mov rdi, -24(rbx)
+
+func tinygoIntThunk() string {
+	const (
+		saveA2 = "\x49\x89\xcb" // mov rcx, r11
+		moveA0 = "\x48\x89\xf0" // mov rsi, rax
+		moveA1 = "\x48\x89\xd1" // mov rdx, rcx
+		moveA2 = "\x4c\x89\xda" // mov r11, rdx
+	)
+	switch buildfeatures.StandaloneFixedIntArgCount {
+	case 0:
+		return tinygoIntThunkPrologue + tinygoIntThunkEpilogue
+	case 1:
+		return tinygoIntThunkPrologue + moveA0 + tinygoIntThunkEpilogue
+	case 2:
+		return tinygoIntThunkPrologue + moveA0 + moveA1 + tinygoIntThunkEpilogue
+	default:
+		// The fourth argument already occupies R8.
+		return tinygoIntThunkPrologue + saveA2 + moveA0 + moveA1 + moveA2 + tinygoIntThunkEpilogue
+	}
 }
+
+const tinygoIntThunkEpilogue = "\x4c\x89\xd4" + // mov r10, rsp
+	"\x31\xed" + // xor ebp, ebp
+	"\x41\xff\xd1" + // call r9 (func-value context = code)
+	"\x0f\xae\x54\x24\x38" + // ldmxcsr 56(rsp)
+	"\x48\x8b\x6c\x24\x08" + // mov 8(rsp), rbp
+	"\x48\x8b\x5c\x24\x10" + // mov 16(rsp), rbx
+	"\x4c\x8b\x64\x24\x18" + // mov 24(rsp), r12
+	"\x4c\x8b\x6c\x24\x20" + // mov 32(rsp), r13
+	"\x4c\x8b\x74\x24\x28" + // mov 40(rsp), r14
+	"\x4c\x8b\x7c\x24\x30" + // mov 48(rsp), r15
+	"\x48\x8b\x24\x24" + // mov 0(rsp), rsp
+	"\xc3" // ret
 
 const tinygoIntThunkStackTopOff = 2
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
+	if !tinygoPreparedIntForImage {
+		return 0, errors.New("tinygo prepared integer entry is unavailable in this image")
+	}
 	// NewEngine initializes the executable mapping and keeps its base in
 	// stackTop. Only an engine without a mapping needs the cold setup path.
 	if e.preparedInt.mem == nil {

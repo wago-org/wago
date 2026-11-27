@@ -40,15 +40,11 @@ func TestTinyGoSupportsCooperativeInterruption(t *testing.T) {
 	if err := runGo(dir, environment, false, "run", "-trimpath", "-tags=wago_standalone_generator,wago_target_tinygo", "."); err != nil {
 		t.Fatal(err)
 	}
-	generated := map[string][]byte{}
-	for _, name := range []string{"standalone_module.go", "standalone_dispatcher.go"} {
-		body, err := os.ReadFile(filepath.Join(dir, name+".txt"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		generated[name] = body
+	body, err := os.ReadFile(filepath.Join(dir, "standalone_module.go.txt"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := linkNativeModule(nativeRuntime, generated); err != nil {
+	if err := linkNativeModule(nativeRuntime, map[string][]byte{"standalone_module.go": body}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(interruptionTinyGoRunnerSource), 0644); err != nil {

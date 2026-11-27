@@ -181,15 +181,19 @@ func testRV64FunctionStorageFixtureTyping(t *testing.T, foreign bool) {
 }
 
 func TestRV64FunctionEnvironmentRootGrammar(t *testing.T) {
-	c := &Compiled{requiredFeatures: CoreFeatureGC, codeCache: &compiledCodeCache{gcStructProduct: stagedGCStructGeneric}, validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}, GCTypeDescs: []gc.TypeDesc{{Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageFuncRefNull}}}}}
+	if !wasmGCBuilt {
+		t.Skip("requires Wasm GC")
+	}
+	c := &Compiled{requiredFeatures: CoreFeatureGC, codeCache: &compiledCodeCache{}, validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})}, GCTypeDescs: []gc.TypeDesc{{Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageFuncRefNull}}}}}
+	c.codeCache.setGCProducts(compiledGCProducts{gcStructProduct: stagedGCStructGeneric})
 	c.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
 	if !c.functionEnvironmentFrameRoots() || !c.usesManagedFunctionStorage() {
 		t.Fatal("qualified generic function-storage grammar rejected")
 	}
 	for name, change := range map[string]func(*Compiled){
 		"ABI":     func(c *Compiled) { c.codeCache.setNativeGCABIVersion(0) },
-		"maps":    func(c *Compiled) { c.validateMemo.gcFrameRoots = nil },
-		"product": func(c *Compiled) { c.codeCache.gcStructProduct = 0 },
+		"maps":    func(c *Compiled) { c.validateMemo.compiledGCFrameRootState = compiledGCFrameRootState{} },
+		"product": func(c *Compiled) { c.codeCache.setGCProducts(compiledGCProducts{}) },
 		"feature": func(c *Compiled) { c.requiredFeatures = 0 },
 		"storage": func(c *Compiled) { c.GCTypeDescs = nil },
 	} {

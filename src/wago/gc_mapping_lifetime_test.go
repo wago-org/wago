@@ -25,7 +25,7 @@ func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer live.Close()
-	original := live.gcTypeMap
+	original := live.gcTypeMap()
 	store := newReferenceStore(false)
 	defer store.closeRuntime()
 	var firstDomain uint64
@@ -35,6 +35,7 @@ func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
 			t.Fatal(err)
 		}
 		domain := in.gcInvocationDomain()
+		domainTypeCount := len(domain.typeReps)
 		if i == 0 {
 			firstDomain = domain.id
 		}
@@ -43,7 +44,7 @@ func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if in.gcTypeMap != peer.gcTypeMap {
+		if in.gcTypeMap() != peer.gcTypeMap() {
 			t.Fatal("same-domain mapping not reused")
 		}
 		if err := peer.Close(); err != nil {
@@ -53,8 +54,8 @@ func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
 			t.Fatal(err)
 		}
 		store.mu.Lock()
-		domains := store.gcDomains.n
-		codeRetained := store.gcDomains.codeRanges != nil || store.gcDomains.singleCodeOwner != nil
+		domains := store.gcTopologyLocked().n
+		codeRetained := store.gcTopologyLocked().gcFrameCodeDirectory != (gcFrameCodeDirectory{})
 		store.mu.Unlock()
 		if codeRetained {
 			t.Fatalf("cycle %d: retired code owner retained", i)
@@ -62,18 +63,18 @@ func TestGCMappingCacheBoundedAcrossRetiredDomains(t *testing.T) {
 		if domains != 0 {
 			t.Fatalf("cycle %d: %d domains retained", i, domains)
 		}
-		entry := c.loadCompileIndexes().gcTypeMapping
-		if entry == nil || entry.domainID != domain.id {
+		mapping := c.cachedGCTypeMapping(domain.id, domainTypeCount)
+		if mapping == nil {
 			t.Fatal("cache does not contain only the latest mapping")
 		}
 		if i > 0 && c.cachedGCTypeMapping(firstDomain, len(c.Types)) != nil {
 			t.Fatal("retired mapping retained")
 		}
-		if len(entry.mapping.localToDomain) != len(c.Types) || len(entry.mapping.domainToLocalSparse)+len(entry.mapping.domainToLocal) > len(c.Types) {
+		if len(mapping.localToDomain) != len(c.Types) || len(mapping.domainToLocalSparse)+len(mapping.domainToLocal) > len(c.Types) {
 			t.Fatal("mapping storage exceeds module type count")
 		}
 	}
-	if live.gcTypeMap != original {
+	if live.gcTypeMap() != original {
 		t.Fatal("cache replacement changed live mapping")
 	}
 	if out, err := live.Invoke("set", 42); err != nil || len(out) != 1 || out[0] != 42 {

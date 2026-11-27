@@ -59,8 +59,8 @@ func rv64GCTypeSubtypingRefFuncGlobalsProfileWithCode(c *Compiled, allowUnrestor
 		return 0
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 ||
-		len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 ||
+		len(d.gcArrayGlobals()) != 0 || d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return 0
 	}
 	for _, g := range c.Globals {

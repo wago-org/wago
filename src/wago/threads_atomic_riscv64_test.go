@@ -198,6 +198,31 @@ func TestRV64AtomicWaitNotifyCancel(t *testing.T) {
 	}
 }
 
+func TestRV64AtomicWaitWithoutPublicCallSlots(t *testing.T) {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	imp = append(imp, 2, 3, 1, 2)
+	body := []byte{0x41, 0, 0x41, 0, 0x42, 1, 0xfe, 1, 2, 0, 0x1a, 0x0b}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	memory, err := NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = memory.Close() })
+	in := rv64AtomicInstance(t, source, memory)
+	if len(in.serArgs) < 4*8 || len(in.results) < 8 {
+		t.Fatalf("atomic wait buffers are %d/%d bytes, want at least 32/8", len(in.serArgs), len(in.results))
+	}
+	if results, err := in.Invoke("run"); err != nil || len(results) != 0 {
+		t.Fatalf("atomic wait = %v, %v", results, err)
+	}
+}
+
 func rv64SharedGrowthModule(mixed ...bool) []byte {
 	growBody := []byte{0x20, 0, 0x40, 0, 0x0b}
 	if len(mixed) != 0 && mixed[0] {

@@ -3,6 +3,8 @@ package wasm
 import (
 	"bytes"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func wideValidationModule(params, results []byte, body []byte) []byte {
@@ -17,6 +19,12 @@ func TestWideArithmeticDecodeEncodeAndClassify(t *testing.T) {
 	for sub := byte(19); sub <= 22; sub++ {
 		data := []byte{0xfc, sub, 0x0b}
 		expr, err := decodeExpr(&reader{data: data}, 0)
+		if buildfeatures.WideArithmetic == 0 {
+			checkDisabledInstructionDecode(t, err, 2, "wide-arithmetic")
+			_, err = ClassifyInstructionImmediate(NewReader(data[1:]), 0xfc)
+			checkDisabledInstructionDecode(t, err, 1, "wide-arithmetic")
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,6 +49,12 @@ func TestWideArithmeticDecodeEncodeAndClassify(t *testing.T) {
 }
 
 func TestWideArithmeticValidationSignatures(t *testing.T) {
+	if buildfeatures.WideArithmetic == 0 {
+		for _, kind := range []InstrKind{InstrI64Add128, InstrI64Sub128, InstrI64MulWideS, InstrI64MulWideU} {
+			expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: kind}), ErrUnsupportedFeature)
+		}
+		return
+	}
 	for sub := byte(19); sub <= 22; sub++ {
 		count := 2
 		if sub < 21 {

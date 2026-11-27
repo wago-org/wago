@@ -28,6 +28,7 @@ type CompilationRequest struct {
 // CompilationSelection is the immutable, architecture-filtered result of
 // settings precedence for one runtime compilation configuration.
 type CompilationSelection struct {
+	Build                  *BuildProfile
 	Core                   int
 	FunctionWorkers        int
 	DeferredBoundsChecking bool
@@ -107,7 +108,7 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 		}
 	}
 	return CompilationSelection{
-		Core: core, FunctionWorkers: workers, DeferredBoundsChecking: deferred,
+		Core: core, FunctionWorkers: workers, DeferredBoundsChecking: deferred, Build: config.Build.clone(),
 		Features: features, Optimizations: optimizations,
 	}, nil
 }

@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -69,6 +70,12 @@ func TestFoldUnaryConstUnit(t *testing.T) {
 	}
 	for _, c := range cases {
 		got, gotT, ok := foldUnaryConst(c.op, c.a, c.typ)
+		if buildfeatures.SignExtensionOps == 0 && (c.op == opSExt8 || c.op == opSExt16) {
+			if ok || isConvert(c.op) {
+				t.Errorf("disabled sign extension %d is still classified", c.op)
+			}
+			continue
+		}
 		if !ok {
 			t.Errorf("foldUnaryConst(%d, %d, %v) not ok", c.op, c.a, c.typ)
 			continue

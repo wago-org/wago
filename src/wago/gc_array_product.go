@@ -12,7 +12,6 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // stagedGCArrayProduct identifies exact compile-only gc/array products. It is
@@ -44,62 +43,17 @@ const stagedGCArrayNumericLocalSHA256 = "cfa515e66b094db434e59a3bbd21b66e99f391a
 const stagedGCArrayNumericUniformSHA256 = "5b421e8a65c997be7b20bd188c5a1f1b167716b93abb55b46af8f45959c4515a"
 const stagedGCArrayNumericFixedLocalSHA256 = "41268de7a6cb79d22fc75f6907c8e8aee8f87025222091b7621c4fa5932c4645"
 
-func (p stagedGCArrayProduct) String() string {
-	switch p {
-	case stagedGCArrayProductDeclarations:
-		return "declarations"
-	case stagedGCArrayProductBindings:
-		return "bindings"
-	case stagedGCArrayProductNumericDefault:
-		return "numeric-default"
-	case stagedGCArrayProductNumericFixed:
-		return "numeric-fixed"
-	case stagedGCArrayProductPackedData:
-		return "packed-data"
-	case stagedGCArrayProductReferenceElements:
-		return "reference-elements"
-	case stagedGCArrayProductNullDereference:
-		return "null-dereference"
-	case stagedGCArrayProductNumericLocal:
-		return "numeric-local-helper"
-	case stagedGCArrayProductNumericUniform:
-		return "numeric-uniform-helper"
-	case stagedGCArrayProductNumericFixedLocal:
-		return "numeric-fixed-local-helper"
-	case stagedGCArrayProductBulkFill:
-		return "bulk-fill"
-	case stagedGCArrayProductBulkCopy:
-		return "bulk-copy"
-	case stagedGCArrayProductInitData:
-		return "init-data"
-	case stagedGCArrayProductInitElem:
-		return "init-elem"
-	case stagedGCArrayProductNewData:
-		return "new-data"
-	case stagedGCArrayProductNewElem:
-		return "new-elem"
-	case stagedGCArrayProductGeneric:
-		return "generic"
-	default:
-		return "unknown"
-	}
-}
-
 func (p stagedGCArrayProduct) requiresHelpers() bool {
 	return p == stagedGCArrayProductNumericLocal || p == stagedGCArrayProductNumericUniform || p == stagedGCArrayProductNumericFixedLocal || p == stagedGCArrayProductNumericDefault || p == stagedGCArrayProductNumericFixed || p == stagedGCArrayProductPackedData || p == stagedGCArrayProductReferenceElements || p == stagedGCArrayProductNullDereference || p == stagedGCArrayProductBulkFill || p == stagedGCArrayProductBulkCopy || p == stagedGCArrayProductInitData || p == stagedGCArrayProductInitElem || p == stagedGCArrayProductNewData || p == stagedGCArrayProductNewElem || p == stagedGCArrayProductGeneric
 }
 
-func (p stagedGCArrayProduct) metadataOnly() bool {
-	return p == stagedGCArrayProductDeclarations || p == stagedGCArrayProductBindings
+// Use the same admission rule for lowering and for the standalone dispatcher.
+func gcArrayHelpersRequired(arrays stagedGCArrayProduct, structs stagedGCStructProduct) bool {
+	return arrays.requiresHelpers() || structs.requiresArrayHelpers()
 }
 
-func configureStagedGCArrayTypeDescs(_ stagedGCArrayProduct, descs []gc.TypeDesc) error {
-	// Keep decoded reference storage intact for every product. Compact GC/i31
-	// references remain traced, while function and extern references retain
-	// their opaque non-scanned storage kinds. array.init_elem now uses the same
-	// generic typed store path as array.new_elem instead of rewriting fixtures to
-	// an untyped i64 layout.
-	return gc.ValidateTypeDescs(descs)
+func (p stagedGCArrayProduct) metadataOnly() bool {
+	return p == stagedGCArrayProductDeclarations || p == stagedGCArrayProductBindings
 }
 
 func stagedGCArrayOpcodeProduct(m *wasm.Module) (stagedGCArrayProduct, bool) {

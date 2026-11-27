@@ -135,7 +135,7 @@ func rv64PublicReferenceSourceArtifact(t *testing.T, ordinary bool) {
 						} else if err != nil || !slices.Equal(got, want) {
 							t.Fatal("reference tail transport", got, want, err)
 						}
-						if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+						if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 							t.Fatal("cold reference tail retained generation")
 						}
 					}

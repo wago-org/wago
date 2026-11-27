@@ -154,20 +154,24 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			}
 			tableImportIndex++
 		case wasm.ExternTag:
-			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.TagType().Type.Index})
+			if err := c.memoryDir.appendExceptionTag(compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.TagType().Type.Index}); err != nil {
+				return err
+			}
 			c.validateMemo.importModuleEnds[importedFuncs+importedTables+importedMemories+tagImportIndex] = exactImportModuleEnd(im.Module)
 			tagImportIndex++
 		}
 	}
 	if features.ExceptionHandling {
 		for i := range m.Tags {
-			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{TypeIndex: m.Tags[i].Type.Index})
+			if err := c.memoryDir.appendExceptionTag(compiledTagDef{TypeIndex: m.Tags[i].Type.Index}); err != nil {
+				return err
+			}
 		}
 	}
 	// Code generation checks tag payloads only where a tag is thrown or caught.
 	// Reject every declared tag the bounded tag directory cannot represent here,
 	// so an unused one fails compilation clearly instead of instance validation.
-	for i, tag := range c.memoryDir.ehTags {
+	for i, tag := range c.memoryDir.exceptionTags() {
 		if int(tag.TypeIndex) < len(c.Types) && c.Types[tag.TypeIndex].Kind == CompositeTypeFunction {
 			if n := len(c.Types[tag.TypeIndex].Params); n > maxStagedEHTagParams {
 				return fmt.Errorf("bounded exception handling supports at most %d tag parameters; tag %d has %d", maxStagedEHTagParams, i, n)
@@ -204,10 +208,13 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		funcABIValueAt = resultsEnd
 	}
 	for i := range m.Globals {
-		globalIndex := len(c.GlobalImports) + i
-		_, gcStructGlobal := c.gcStructGlobalInit(globalIndex)
-		_, gcArrayGlobal := c.gcArrayGlobalInit(globalIndex)
-		gcGlobal := gcStructGlobal || gcArrayGlobal
+		gcGlobal := false
+		if wasmGCBuilt {
+			globalIndex := len(c.GlobalImports) + i
+			_, gcStructGlobal := c.gcStructGlobalInit(globalIndex)
+			_, gcArrayGlobal := c.gcArrayGlobalInit(globalIndex)
+			gcGlobal = gcStructGlobal || gcArrayGlobal
+		}
 		v := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 		if !gcGlobal {
 			var err error
@@ -250,10 +257,9 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 			}
 			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternTag:
-			if c.memoryDir.ehTagExports == nil {
-				c.memoryDir.ehTagExports = make(map[string]int)
+			if err := c.memoryDir.setExceptionTagExport(m.Exports[i].Name, int(m.Exports[i].Index.Index)); err != nil {
+				return err
 			}
-			c.memoryDir.ehTagExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		}
 	}
 
@@ -320,80 +326,16 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	// local ref.func/table descriptor payloads. Key EH to the analyzed required
 	// feature so tag-free try_table/catch_all modules receive the header too.
 	c.needsFuncRefContextHeader = moduleFacts.UsesCallRef || requirements.features.IsEnabled(CoreFeatureExceptionHandling) || railshotNeedsImportContextHeader(c)
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
-	for i := range m.Tables {
-		tableIndex := importedTables + i
-		if m.Tables[i].Init == nil {
-			continue
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptorsFromFacts(m, moduleFacts) || wasmGCBuilt && gcTypeSubtypingProduct.usesLinkFunctionIdentity() || indexedFunctionRefOps
+	if referenceSignaturesBuilt {
+		if err := compileTableInitializers(c, constExprCtx, importedTables); err != nil {
+			return err
 		}
-		initBody := m.Tables[i].Init.BodyBytes
-		if len(initBody) == 0 {
-			initBody, _ = wasm.EncodeExpr(*m.Tables[i].Init)
-		}
-		if _, matched, i31Err := evalI31ConstExprBytes(initBody, wasm.RefVal(m.Tables[i].Type.Ref), constExprCtx); matched && i31Err == nil {
-			def := c.tableDef(tableIndex)
-			values := make([]RefInit, def.Size)
-			for j := range values {
-				values[j] = RefInit{Expr: append([]byte(nil), initBody...)}
+	} else {
+		for i := range m.Tables {
+			if m.Tables[i].Init != nil {
+				return fmt.Errorf("table %d initializer requires reference support", importedTables+i)
 			}
-			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
-			continue
-		}
-		if isRefNullConstExpr(initBody) {
-			// Table storage starts zeroed, which is null for every reference
-			// representation, so a null initializer of any heap type is a no-op.
-			continue
-		}
-		payload, err := funcrefExprPayload(*m.Tables[i].Init)
-		if err != nil {
-			body := m.Tables[i].Init.BodyBytes
-			if len(body) == 0 {
-				body, _ = wasm.EncodeExpr(*m.Tables[i].Init)
-			}
-			r := wasm.NewReader(body)
-			op, opErr := r.Byte()
-			globalIndex, indexErr := r.U32()
-			end, endErr := r.Byte()
-			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
-				// Core 3 table initializers are general constant expressions. Reuse
-				// the element-segment evaluator. The spec evaluates the initializer
-				// once and stores that one reference in every slot, so an expression
-				// payload is evaluated for slot 0 only and repeated: an allocating
-				// initializer must yield one shared object, not one per slot.
-				def := c.tableDef(tableIndex)
-				seg := wasm.Elem{Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: m.Tables[i].Type.Ref, Exprs: []wasm.Expr{*m.Tables[i].Init}}}
-				_, _, inits, exprErr := elementPayloads(m, c.Types, constExprCtx, &seg)
-				if exprErr != nil || len(inits) != 1 {
-					return fmt.Errorf("table %d initializer: %w", tableIndex, err)
-				}
-				values := make([]RefInit, def.Size)
-				for j := range values {
-					if j > 0 && len(inits[0].Expr) != 0 {
-						values[j] = RefInit{RepeatPrevious: true}
-						continue
-					}
-					values[j] = inits[0]
-				}
-				c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
-				continue
-			}
-			def := c.tableDef(tableIndex)
-			values := make([]RefInit, def.Size)
-			for j := range values {
-				values[j] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
-			}
-			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
-			continue
-		}
-		if payload == nullFuncRefIndex {
-			continue
-		}
-		if tableIndex == 0 {
-			c.HasTableInitFunc = true
-			c.TableInitFunc = payload
-		} else {
-			c.extraTables[tableIndex-1].HasInitFunc = true
-			c.extraTables[tableIndex-1].InitFunc = payload
 		}
 	}
 	for i := range m.Memories {
@@ -468,7 +410,7 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 		var refType ValType
 		var exactType ValueTypeDescriptor
 		var values []RefInit
-		if gcArrayProduct == stagedGCArrayProductReferenceElements && c.memoryDir.gcArrayElement != nil && uint32(i) == c.memoryDir.gcArrayElement.SegmentIndex {
+		if gcArrayProduct == stagedGCArrayProductReferenceElements && c.memoryDir.gcArrayElement() != nil && uint32(i) == c.memoryDir.gcArrayElement().SegmentIndex {
 			var err error
 			exactType, err = typeConverter.valueType(wasm.RefVal(e.Kind.Ref), -1)
 			if err != nil {
@@ -591,6 +533,80 @@ func compileModuleMetadata(c *Compiled, constExprCtx *constExprCompileContext, f
 	return nil
 }
 
+func compileTableInitializers(c *Compiled, constExprCtx *constExprCompileContext, importedTables int) error {
+	m := constExprCtx.module
+	for i := range m.Tables {
+		tableIndex := importedTables + i
+		if m.Tables[i].Init == nil {
+			continue
+		}
+		initBody := m.Tables[i].Init.BodyBytes
+		if len(initBody) == 0 {
+			initBody, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+		}
+		if wasmGCBuilt && c.addI31TableInitializer(tableIndex, initBody, wasm.RefVal(m.Tables[i].Type.Ref), constExprCtx) {
+			continue
+		}
+		if isRefNullConstExpr(initBody) {
+			// Table storage starts zeroed, which is null for every reference
+			// representation, so a null initializer of any heap type is a no-op.
+			continue
+		}
+		payload, err := funcrefExprPayload(*m.Tables[i].Init)
+		if err != nil {
+			body := m.Tables[i].Init.BodyBytes
+			if len(body) == 0 {
+				body, _ = wasm.EncodeExpr(*m.Tables[i].Init)
+			}
+			r := wasm.NewReader(body)
+			op, opErr := r.Byte()
+			globalIndex, indexErr := r.U32()
+			end, endErr := r.Byte()
+			if opErr != nil || op != 0x23 || indexErr != nil || endErr != nil || end != 0x0b || r.BytesLeft() != 0 {
+				// Core 3 table initializers are general constant expressions. Reuse
+				// the element-segment evaluator. The spec evaluates the initializer
+				// once and stores that one reference in every slot, so an expression
+				// payload is evaluated for slot 0 only and repeated: an allocating
+				// initializer must yield one shared object, not one per slot.
+				def := c.tableDef(tableIndex)
+				seg := wasm.Elem{Kind: wasm.ElemKind{Kind: wasm.ElemTypedExprs, Ref: m.Tables[i].Type.Ref, Exprs: []wasm.Expr{*m.Tables[i].Init}}}
+				_, _, inits, exprErr := elementPayloads(m, c.Types, constExprCtx, &seg)
+				if exprErr != nil || len(inits) != 1 {
+					return fmt.Errorf("table %d initializer: %w", tableIndex, err)
+				}
+				values := make([]RefInit, def.Size)
+				for j := range values {
+					if j > 0 && len(inits[0].Expr) != 0 {
+						values[j] = RefInit{RepeatPrevious: true}
+						continue
+					}
+					values[j] = inits[0]
+				}
+				c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+				continue
+			}
+			def := c.tableDef(tableIndex)
+			values := make([]RefInit, def.Size)
+			for j := range values {
+				values[j] = RefInit{GlobalIndex: globalIndex, HasGlobal: true}
+			}
+			c.Elems = append(c.Elems, ElemInit{TableIndex: uint32(tableIndex), RefType: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, Mode: ElemModeActive, Values: values})
+			continue
+		}
+		if payload == nullFuncRefIndex {
+			continue
+		}
+		if tableIndex == 0 {
+			c.HasTableInitFunc = true
+			c.TableInitFunc = payload
+		} else {
+			c.extraTables[tableIndex-1].HasInitFunc = true
+			c.extraTables[tableIndex-1].InitFunc = payload
+		}
+	}
+	return nil
+}
+
 // isRefNullConstExpr reports whether body is exactly `ref.null <heaptype> end`.
 func isRefNullConstExpr(body []byte) bool {
 	r := wasm.NewReader(body)
@@ -602,4 +618,15 @@ func isRefNullConstExpr(body []byte) bool {
 	}
 	end, err := r.Byte()
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
+}
+
+func funcrefExprPayload(e wasm.Expr) (uint32, error) {
+	payload, err := wasm.ParseFuncrefElementExpr(e)
+	if err != nil {
+		return 0, err
+	}
+	if payload.Null {
+		return nullFuncRefIndex, nil
+	}
+	return payload.FuncIndex, nil
 }

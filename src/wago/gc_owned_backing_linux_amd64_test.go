@@ -64,8 +64,8 @@ func TestMappedGCBackingSurvivesBorrowedClose(t *testing.T) {
 					}
 					ref := gc.Ref(uint32(readGlobalObject(in.globalCells[0], ValAnyRef)))
 					expected := gc.TypeID(0)
-					if in.gcTypeMap != nil {
-						expected = in.gcTypeMap.localToDomain[0]
+					if in.gcTypeMap() != nil {
+						expected = in.gcTypeMap().localToDomain[0]
 					}
 					payload, err := in.gc.StructPayloadReadOnly(ref, expected)
 					if err != nil {

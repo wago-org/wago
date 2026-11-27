@@ -43,8 +43,8 @@ func rv64AssertPublicReferenceScalarTailClear(t *testing.T, in *Instance) {
 	t.Helper()
 	rv64AssertPublicReferenceArgumentScopesClear(t, in)
 	state := &in.pluginState.Load().railshotInvocation
-	if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
-		t.Fatal("public scalar reference tail retained invocation state", state.tailGenerationBudget.count, state.definedTailOwner, rv64EntryCapability(in))
+	if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(in) != 0 {
+		t.Fatal("public scalar reference tail retained invocation state", state.tailForTest().generationBudget.count, state.tailForTest().definedOwner, rv64EntryCapability(in))
 	}
 }
 

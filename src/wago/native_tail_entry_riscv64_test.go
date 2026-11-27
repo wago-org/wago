@@ -30,7 +30,7 @@ func rv64EntryGenerationFixture(t *testing.T, vector bool) (*Instance, *Instance
 	for _, in := range []*Instance{root, producer, replacement} {
 		m := rv64NativeTailModule(in.c)
 		rv64StoreNativeTailModule(in.c, &encoder.NativeTailModule{Plans: rv64GenerationPlanForTest(t, in, vector)})
-		t.Cleanup(func() { in.c.ensureCompileIndexes().railshotTail.module = m })
+		t.Cleanup(func() { in.c.ensureCompileIndexes().railshotTail.tailCode.get().module = m })
 	}
 	return root, producer, table, replacement
 }
@@ -57,7 +57,7 @@ func TestRV64TailEntryGenerationLeaseResumeAndGrowth(t *testing.T) {
 					}
 				}()
 				scope := entry.tables.targets
-				if len(scope.tailActive) != 2 || scope.tailBudget.count != 2 || rv64EntryCapability(root) == 0 || rv64EntryCapability(producer) == 0 {
+				if len(scope.tailForTest().active) != 2 || scope.tailForTest().budget.count != 2 || rv64EntryCapability(root) == 0 || rv64EntryCapability(producer) == 0 {
 					t.Fatal("entry omitted complete owner generation set")
 				}
 				outer := railshotCurrentNativeTableTargets(root)
@@ -134,16 +134,16 @@ func TestRV64TailEntryGenerationLeaseResumeAndGrowth(t *testing.T) {
 				}
 				// The replaced producer remains leased even after table pruning.
 				railshotRefreshNativeTableTargets(outer)
-				if len(scope.tailActive) != 3 || len(scope.tailGenerations) != 5 || scope.tailBudget.count != 5 || rv64EntryCapability(producer) == outerCap {
+				if len(scope.tailForTest().active) != 3 || len(scope.tailForTest().generations) != 5 || scope.tailForTest().budget.count != 5 || rv64EntryCapability(producer) == outerCap {
 					t.Fatal("growth did not preserve old and bind new complete generations")
 				}
-				old := scope.tailGenerations[0]
+				old := scope.tailForTest().generations[0]
 				if !old.reserved || !old.ready || old.factory == nil {
 					t.Fatal("parked code retired early")
 				}
 				locked = false
 				root.unlockNativeEntry(entry)
-				if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || cap(scope.tailActive) != 0 || cap(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
+				if scope.count != 0 || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || cap(scope.tailForTest().active) != 0 || cap(scope.tailForTest().generations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 || rv64EntryCapability(replacement) != 0 {
 					t.Fatal("cold exit retained generation or binding")
 				}
 			})
@@ -168,14 +168,14 @@ func TestRV64TailEntryGenerationFailedDetachQuarantinesAndRetries(t *testing.T) 
 		defer func() { caught = recover() }()
 		root.unlockNativeEntry(entry)
 	}()
-	if _, ok := caught.(invalidHostReference); !ok || gate.railshotInvocation.tableDepth != 1 || !scope.tailRetiring || scope.count != 2 || scope.tailBudget.count != 1 {
+	if _, ok := caught.(invalidHostReference); !ok || gate.railshotInvocation.tableDepth != 1 || !scope.tailForTest().retiring || scope.count != 2 || scope.tailForTest().budget.count != 1 {
 		t.Fatal("failed detach lost exact physical lease", caught)
 	}
 	// Failed retirement unlocked execution, revoked readiness, and prevents
 	// another entry from allocating while the capability remains corrupted.
-	before := producer.pluginState.Load().railshotInvocation.tailGenerationBudget
+	before := producer.pluginState.Load().railshotInvocation.tailForTest().generationBudget
 	for n := 0; n < 2; n++ {
-		if next, err := root.beginNativeEntry(); !errors.Is(err, railshot.ErrUnsupported) || next.tables.targets != nil || producer.pluginState.Load().railshotInvocation.tailGenerationBudget != before {
+		if next, err := root.beginNativeEntry(); !errors.Is(err, railshot.ErrUnsupported) || next.tables.targets != nil || producer.pluginState.Load().railshotInvocation.tailForTest().generationBudget != before {
 			t.Fatal("unrepaired retirement permitted entry", err)
 		}
 	}
@@ -186,7 +186,7 @@ func TestRV64TailEntryGenerationFailedDetachQuarantinesAndRetries(t *testing.T) 
 	if err != nil {
 		t.Fatal("retry repaired lease", err)
 	}
-	if gate.railshotInvocation.tableDepth != 1 || next.tables.targets.tailRetiring {
+	if gate.railshotInvocation.tableDepth != 1 || next.tables.targets.tailForTest().retiring {
 		t.Fatal("quarantine slot not reclaimed")
 	}
 	root.unlockNativeEntry(next)
@@ -261,8 +261,8 @@ func TestRV64TailEntryGenerationDetachedCleanupTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := &root.c.ensureCompileIndexes().railshotTail
-	if len(state.retiredGenerations) != 1 || state.retiredGenerations[0].factory != factory || state.retiredGenerationCode != code || state.retiredGenerationMetadata != metadata || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || g.state.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) || g.reserved || g.factory != nil || len(g.owners) != 0 || len(g.snapshots) != 0 {
+	state := root.c.ensureCompileIndexes().railshotTail.tailCode.get()
+	if len(state.retiredGenerations) != 1 || state.retiredGenerations[0].factory != factory || state.retiredGenerationCode != code || state.retiredGenerationMetadata != metadata || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || g.state.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) || g.reserved || g.factory != nil || len(g.owners) != 0 || len(g.snapshots) != 0 {
 		t.Fatal("detached charge/owner transfer")
 	}
 	cc := root.c.loadCodeCache()
@@ -442,8 +442,8 @@ func rv64TailEntryGenerationClosedRetryDrainsPanickingFinalizers(t *testing.T, p
 	if err := root.WaitClosed(nil); !errors.Is(err, ErrCallbackPanic) {
 		t.Fatal("completed close lost callback panic", err)
 	}
-	if !root.closeState.Load().completed.Load() || !root.resourcesClosed || !producer.resourcesClosed || physical != [2]int{1, 1} || gate.invokeMu.state.Load()&invocationGateHeld != 0 || gate.railshotInvocation.tableDepth != 0 || entry.tables.targets.count != 0 || entry.tables.targets.tailRetiring {
-		t.Fatal("panic interrupted exact-scope drain or close completion", physical, root.closeState.Load().completed.Load(), root.resourcesClosed, producer.resourcesClosed, gate.invokeMu.state.Load(), gate.railshotInvocation.tableDepth, entry.tables.targets.count, entry.tables.targets.tailRetiring, root.resourceRefs)
+	if !root.closeState.Load().completed.Load() || !root.resourcesClosed || !producer.resourcesClosed || physical != [2]int{1, 1} || gate.invokeMu.state.Load()&invocationGateHeld != 0 || gate.railshotInvocation.tableDepth != 0 || entry.tables.targets.count != 0 || entry.tables.targets.tailForTest().retiring {
+		t.Fatal("panic interrupted exact-scope drain or close completion", physical, root.closeState.Load().completed.Load(), root.resourcesClosed, producer.resourcesClosed, gate.invokeMu.state.Load(), gate.railshotInvocation.tableDepth, entry.tables.targets.count, entry.tables.targets.tailForTest().retiring, root.resourceRefs)
 	}
 	_ = root.Close()
 	if physical != [2]int{1, 1} {
@@ -467,7 +467,7 @@ func TestRV64TailEntryGenerationPartialGrowthFailurePreservesBindings(t *testing
 	}()
 	scope := entry.tables.targets
 	rootCap, producerCap := rv64EntryCapability(root), rv64EntryCapability(producer)
-	first, second := scope.tailActive[0], scope.tailActive[1]
+	first, second := scope.tailForTest().active[0], scope.tailForTest().active[1]
 	copy(table.desc[8:40], replacement.funcRefDescs[80:112])
 	if entry.local != nil {
 		entry.local.Unlock()
@@ -494,25 +494,25 @@ func TestRV64TailEntryGenerationPartialGrowthFailurePreservesBindings(t *testing
 	bad := *original
 	indexes := &compiledCacheIndexes{}
 	indexes.railshotTail.mappedCodeBytes = original.loadCompileIndexes().railshotTail.mappedCodeBytes
-	indexes.railshotTail.module = &encoder.NativeTailModule{Plans: append([]encoder.NativeTailPlan(nil), rv64NativeTailModule(original).Plans...)}
-	indexes.railshotTail.module.Plans[0].FrameBytes += 16
+	indexes.railshotTail.tailCode.get().module = &encoder.NativeTailModule{Plans: append([]encoder.NativeTailPlan(nil), rv64NativeTailModule(original).Plans...)}
+	indexes.railshotTail.tailCode.get().module.Plans[0].FrameBytes += 16
 	bad.validateMemo = &validateMemo{compileIndexes: indexes}
 	producer.c = &bad
 	err = scope.refreshTailGenerations()
 	producer.c = original
-	if !errors.Is(err, railshot.ErrUnsupported) || len(scope.tailGenerations) != 3 || scope.tailBudget.count != 3 || !scope.tailGenerations[2].ready || !scope.tailGenerations[2].reserved {
-		t.Fatal("growth failure did not retain its completed partial candidate", err, len(scope.tailGenerations), scope.tailBudget.count)
+	if !errors.Is(err, railshot.ErrUnsupported) || len(scope.tailForTest().generations) != 3 || scope.tailForTest().budget.count != 3 || !scope.tailForTest().generations[2].ready || !scope.tailForTest().generations[2].reserved {
+		t.Fatal("growth failure did not retain its completed partial candidate", err, len(scope.tailForTest().generations), scope.tailForTest().budget.count)
 	}
-	if len(scope.tailActive) != 2 || scope.tailActive[0] != first || scope.tailActive[1] != second || rv64EntryCapability(root) != rootCap || rv64EntryCapability(producer) != producerCap || rv64EntryCapability(replacement) != 0 {
+	if len(scope.tailForTest().active) != 2 || scope.tailForTest().active[0] != first || scope.tailForTest().active[1] != second || rv64EntryCapability(root) != rootCap || rv64EntryCapability(producer) != producerCap || rv64EntryCapability(replacement) != 0 {
 		t.Fatal("partial graph publication changed existing bindings")
 	}
 	locked = false
 	root.unlockNativeEntry(entry)
-	if scope.count != 0 || scope.tailBudget != (rv64NativeTailGenerationBudget{}) || len(scope.tailGenerations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 {
+	if scope.count != 0 || scope.tailForTest().budget != (rv64NativeTailGenerationBudget{}) || len(scope.tailForTest().generations) != 0 || rv64EntryCapability(root) != 0 || rv64EntryCapability(producer) != 0 {
 		t.Fatal("failed growth leaked candidate or roots")
 	}
 	for _, in := range []*Instance{root, producer, replacement} {
-		if in.pluginState.Load().railshotInvocation.tailGenerationBudget != (rv64NativeTailGenerationBudget{}) {
+		if in.pluginState.Load().railshotInvocation.tailForTest().generationBudget != (rv64NativeTailGenerationBudget{}) {
 			t.Fatal("failed growth leaked caller charge")
 		}
 	}

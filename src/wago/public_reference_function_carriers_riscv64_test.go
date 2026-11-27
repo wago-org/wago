@@ -56,8 +56,8 @@ func rv64AssertPublicReferenceCarrierStateClear(t *testing.T, in *Instance, reta
 	if len(retainedCapability) != 0 {
 		wantCapability = retainedCapability[0]
 	}
-	if state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != wantCapability {
-		t.Fatal("public reference carrier call retained invocation state", state.tailGenerationBudget.count, state.definedTailOwner, rv64EntryCapability(in), wantCapability)
+	if state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(in) != wantCapability {
+		t.Fatal("public reference carrier call retained invocation state", state.tailForTest().generationBudget.count, state.tailForTest().definedOwner, rv64EntryCapability(in), wantCapability)
 	}
 }
 

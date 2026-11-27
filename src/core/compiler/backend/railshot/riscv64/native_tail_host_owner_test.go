@@ -28,7 +28,7 @@ func TestNativeTailHostOwnerIdentityAndBudgets(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: source.job, context: source.context, directory: source.directory, info: FunctionInfo{CodeBytes: len(code)}}
+				host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: source.job, context: source.context, directory: source.directory, info: tailRAFunctionInfo{CodeBytes: len(code)}}
 				host, hostLease := tailPublishedFunctionForTest(t, host)
 				o := tailDynamicOwnerForTest(t, []tailRAFunction{host, source})
 				host, source = o.functions[0], o.functions[1]
@@ -126,7 +126,7 @@ func TestNativeTailHostOwnerMixedCertifiedProxy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: source.job, context: source.context, directory: source.directory, info: FunctionInfo{CodeBytes: len(code)}}
+	host := tailRAFunction{code: tailRAProofBuffer(t, code), snapshot: code, signature: &sig, job: source.job, context: source.context, directory: source.directory, info: tailRAFunctionInfo{CodeBytes: len(code)}}
 	o := tailDynamicOwnerForTest(t, []tailRAFunction{host, proxy, source})
 	host, proxy, source = o.functions[0], o.functions[1], o.functions[2]
 	tailDynamicProxyRowsForTest(&o, []tailRAFunction{host, target, source}, []*tailRADynamicProxy{nil, proof, nil})

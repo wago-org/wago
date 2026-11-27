@@ -48,7 +48,7 @@ func TestRV64PublicGCArrayInitDataExecutionAndArtifact(t *testing.T) {
 			compiled := rv64PublicGCArrayInitDataCompile(t, artifact)
 			view := compiled.executionView()
 			if err := railshotValidateCompiled(view); !rv64SourceContractValid(view) || err != nil {
-				t.Fatalf("missing exact array.init_data witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals)
+				t.Fatalf("missing exact array.init_data witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals())
 			}
 			if params, results, err := railshotImportedCallSlots(view, 3, 0); err != nil || params != 3 || results != 0 {
 				t.Fatalf("array.init_data call arena=%d/%d,%v, want 3/0", params, results, err)
@@ -79,9 +79,9 @@ func TestRV64PublicGCArrayInitDataExecutionAndArtifact(t *testing.T) {
 					state := in.pluginState.Load()
 					var roots []gcGlobalRootMapping
 					if state != nil {
-						roots = append(roots, state.gcGlobalRoots[:state.gcGlobalRootCount]...)
+						roots = append(roots, state.stagedGlobalRoots()...)
 					}
-					roots = append(roots, in.publicGCState().globalRoots...)
+					roots = append(roots, in.publicGCState().globalRootMappings()...)
 					if len(roots) != 3 {
 						t.Fatalf("array.init_data global roots=%d, want 3", len(roots))
 					}

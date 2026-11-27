@@ -58,6 +58,76 @@ func rv64PublicTailModule(types []wasm.ValType, ordinary bool) []byte {
 	}
 	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))), wasmtest.Section(2, wasmtest.Vec(im)), wasmtest.Section(3, indices), wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, export))), wasmtest.Section(10, wasmtest.Vec(codes...)))
 }
+
+func TestRV64LocalTailOmitsHostControl(t *testing.T) {
+	types := []wasm.ValType{wasm.I32}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(types, types))),
+		wasmtest.Section(3, []byte{2, 0, 0}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x12, 0, 0x0b}),
+		)),
+	)
+	cfg := compatibilityDefaultConfig().WithCoreFeatures(CoreFeaturesV1 | CoreFeatureTailCall)
+	c, err := cfg.Compile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if tail := rv64NativeTailModule(c); tail == nil || len(tail.Plans) != 0 {
+		t.Fatal("expected empty native tail plan metadata")
+	}
+	if c.importsRequireSync(nil, false) {
+		t.Fatal("local tail jump retained synchronous host control")
+	}
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("run", 77); err != nil || !slices.Equal(got, []uint64{77}) {
+		t.Fatalf("local tail jump = %v, %v", got, err)
+	}
+}
+
+func TestBuildProfileRV64NumericTailWithoutReferenceSignatures(t *testing.T) {
+	if referenceSignaturesBuilt || !SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
+		t.Skip("requires tail calls in a build without reference signatures")
+	}
+	cfg := rv64NativeTailConfig().WithCoreFeatures(CoreFeaturesV1 | CoreFeatureTailCall)
+	types := []wasm.ValType{wasm.I32}
+	producerCode, err := cfg.Compile(rv64PublicNativeIdentityModule(types))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producerCode.Close()
+	producer, err := Instantiate(producerCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerCode, err := cfg.Compile(rv64PublicTailModule(types, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer callerCode.Close()
+	caller, err := Instantiate(callerCode, testImports("env.tail", target))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	got, err := caller.Invoke("call", 35)
+	if err != nil || !slices.Equal(got, []uint64{42}) {
+		t.Fatalf("numeric tail = %v, %v", got, err)
+	}
+}
+
 func TestRV64PublicNativeTailSourceArtifactTransportLifetime(t *testing.T) {
 	for _, artifact := range []bool{false, true} {
 		for _, shape := range []string{"zero", "mixed", "pair", "continuation"} {
@@ -95,6 +165,9 @@ func TestRV64PublicNativeTailSourceArtifactTransportLifetime(t *testing.T) {
 				if m == nil || len(m.Plans) != 1 {
 					t.Fatal("missing persisted source plan")
 				}
+				if !railshotRequiresNativeHostControl(c) {
+					t.Fatal("tail dispatch plan omitted synchronous host control")
+				}
 				roots := producer.referenceLifetime().snapshot().ResourceRoots
 				caller, err := Instantiate(c, testImports("env.tail", target))
 				if err != nil {
@@ -102,7 +175,7 @@ func TestRV64PublicNativeTailSourceArtifactTransportLifetime(t *testing.T) {
 				}
 				defer caller.Close()
 				state := caller.pluginState.Load()
-				if state == nil || state.railshotInvocation.tailDispatcher == nil || producer.referenceLifetime().snapshot().ResourceRoots != roots+1 || binary.LittleEndian.Uint64(rv64NativeInvocationContext(caller)[120:]) == 0 {
+				if state == nil || state.railshotInvocation.tailForTest().dispatcher == nil || producer.referenceLifetime().snapshot().ResourceRoots != roots+1 || binary.LittleEndian.Uint64(rv64NativeInvocationContext(caller)[120:]) == 0 {
 					t.Fatal("physical tail binding")
 				}
 				for i := 0; i < 3; i++ {
@@ -437,7 +510,7 @@ func rv64TailCancellationAndCloseWhileProducerParked(t *testing.T, dynamic, refe
 			case <-time.After(5 * time.Second):
 				t.Fatal("foreign unwind did not finish")
 			}
-			if closeRoot && (producer.jm != nil || consumer.pluginState.Load().railshotInvocation.tailDispatcher != nil) {
+			if closeRoot && (producer.jm != nil || consumer.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil) {
 				t.Fatal("foreign physical ownership leaked after unwind")
 			}
 			if flag.Get() != 0 {

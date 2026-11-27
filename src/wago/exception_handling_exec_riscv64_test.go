@@ -85,13 +85,13 @@ func TestRV64ExceptionMixedNullDeclarations(t *testing.T) {
 					}{
 						{"owned mode", func(c *Compiled) { c.setOwnedExceptionReferences(false) }},
 						{"native ABI", func(c *Compiled) { c.codeCache.setNativeGCABIVersion(0) }},
-						{"exact roots", func(c *Compiled) { c.validateMemo.gcFrameRoots = nil }},
+						{"exact roots", func(c *Compiled) { c.validateMemo.compiledGCFrameRootState = compiledGCFrameRootState{} }},
 						{"context header", func(c *Compiled) { c.needsFuncRefContextHeader = false }},
 					} {
 						t.Run("missing "+change.name, func(t *testing.T) {
 							candidate := cloneCompiledMetadata(c)
 							indexes := compiledCacheIndexes{railshotTail: c.loadCompileIndexes().railshotTail}
-							candidate.validateMemo = &validateMemo{gcFrameRoots: c.genericGCFrameRoots(), compileIndexes: &indexes}
+							candidate.validateMemo = &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(c.genericGCFrameRoots()), compileIndexes: &indexes}
 							candidate.codeCache = &compiledCodeCache{gcMetadataFlags: c.codeCache.gcMetadataFlags}
 							change.mutate(candidate)
 							if err := candidate.validate(); err == nil {

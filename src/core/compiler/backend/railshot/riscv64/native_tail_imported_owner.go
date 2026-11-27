@@ -60,7 +60,7 @@ func nativeTailPublishedFunction(image *NativeTailCodeImage, job *coreruntime.Jo
 		return tailRAFunction{}, err
 	}
 	f := tailRAFunction{published: image, snapshot: code, job: job, context: context, directory: anchor, signature: signature,
-		info: FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(signature.Params), Results: swarSignatureSlots(signature.Results), mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: functionIndex}}}
+		info: tailRAFunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, Params: swarSignatureSlots(signature.Params), Results: swarSignatureSlots(signature.Results), production: true, interruptible: true, invocationContext: true, functionIndex: functionIndex}}
 	if err := f.validate(true); err != nil {
 		return tailRAFunction{}, err
 	}
@@ -235,9 +235,9 @@ func newNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 			if !wasm.FuncTypeEqual(sig, p.Target.function.signature) {
 				return nil, unsupported("native imported tail owner ordered signature")
 			}
-			f := tailRAFunction{published: p.Image, snapshot: p.Image.Bytes(), job: job, context: context, directory: descriptors, signature: sig, info: FunctionInfo{Entry: p.Offset, CodeBytes: p.CodeBytes}}
+			f := tailRAFunction{published: p.Image, snapshot: p.Image.Bytes(), job: job, context: context, directory: descriptors, signature: sig, info: tailRAFunctionInfo{Entry: p.Offset, CodeBytes: p.CodeBytes}}
 			proxy := tailRADynamicProxy{certificate: p.Certificate, importIndex: uint32(i), arguments: p.Arguments, results: p.Results}
-			if err := proxy.validate(f, p.Target.function, trampoline); err != nil {
+			if err := proxy.validate(&f, &p.Target.function, trampoline); err != nil {
 				return nil, err
 			}
 		} else {
@@ -280,7 +280,7 @@ func newNativeTailImportedOwner(image *NativeTailCodeImage, job *coreruntime.Job
 				o.owner.functions[i], o.owner.targets[i], o.owner.hosts[i] = f, f, p.Host
 				continue
 			}
-			o.owner.functions[i] = tailRAFunction{published: p.Image, snapshot: p.Image.Bytes(), job: job, context: context, directory: descriptors, signature: frozen, info: FunctionInfo{Entry: p.Offset, CodeBytes: p.CodeBytes}}
+			o.owner.functions[i] = tailRAFunction{published: p.Image, snapshot: p.Image.Bytes(), job: job, context: context, directory: descriptors, signature: frozen, info: tailRAFunctionInfo{Entry: p.Offset, CodeBytes: p.CodeBytes}}
 			o.owner.targets[i] = p.Target.function
 			o.owner.proxies[i] = &tailRADynamicProxy{certificate: p.Certificate, importIndex: uint32(i), arguments: p.Arguments, results: p.Results}
 		} else {
@@ -321,7 +321,7 @@ func nativeTailImportedLocal(image *NativeTailCodeImage, job *coreruntime.JobMem
 	if err != nil {
 		return tailRAFunction{}, err
 	}
-	f := tailRAFunction{published: image, snapshot: code, job: job, context: context, directory: anchor, info: FunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, mode: emissionMode{production: true, interruptible: true, invocationContext: true, functionIndex: index}}}
+	f := tailRAFunction{published: image, snapshot: code, job: job, context: context, directory: anchor, info: tailRAFunctionInfo{Entry: entry, CodeBytes: end - entry, FrameBytes: frame, FrameHeaderBytes: callFrameHeader, production: true, interruptible: true, invocationContext: true, functionIndex: index}}
 	if err := f.validateFrame(true); err != nil {
 		return tailRAFunction{}, err
 	}

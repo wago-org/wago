@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -20,7 +21,7 @@ import (
 var rv64MutableFuncrefGetCodeDigest = [sha256.Size]byte{0xf2, 0x8e, 0x26, 0x87, 0xa5, 0x9c, 0x8d, 0x50, 0xce, 0x32, 0x3b, 0x5f, 0x53, 0x90, 0x88, 0x08, 0x77, 0xa2, 0xf9, 0x1a, 0x58, 0x73, 0xc0, 0x10, 0x9e, 0x63, 0x30, 0x11, 0x73, 0xb4, 0x6f, 0xd6}
 
 func rv64MutableFuncrefGlobalGetExecutionCode(c *Compiled) bool {
-	return c != nil && len(c.code) == 620 && sha256.Sum256(c.code) == rv64MutableFuncrefGetCodeDigest
+	return rv64MutableFuncrefGlobalsForImage && buildfeatures.MutableGlobal != 0 && c != nil && len(c.code) == 620 && sha256.Sum256(c.code) == rv64MutableFuncrefGetCodeDigest
 }
 
 // rv64MutableFuncrefGlobalGet authenticates the first executable mutable
@@ -28,7 +29,7 @@ func rv64MutableFuncrefGlobalGetExecutionCode(c *Compiled) bool {
 // it to i32 through ref.is_null; no descriptor can escape or be written by guest
 // code. The code digest keeps trusted artifacts on that exact lowering.
 func rv64MutableFuncrefGlobalGet(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 1 || len(c.FuncTypeID) != 1 || len(c.Exports) != 1 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
@@ -46,7 +47,7 @@ func rv64MutableFuncrefGlobalGet(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	sig := c.Funcs[0]

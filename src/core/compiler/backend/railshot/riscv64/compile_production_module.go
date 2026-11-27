@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
@@ -31,10 +32,16 @@ func AdmitProductionSource(data []byte) error {
 	if len(data) > MaxPublicCodeBytes {
 		return unsupported("bounded source size")
 	}
-	if AdmitExceptionHandlingSource(data) {
+	if buildfeatures.ExceptionHandling != 0 && AdmitExceptionHandlingSource(data) {
 		return nil
 	}
-	if admitRV64GCRootedScalarWire(data) || admitCore3RefDeclarationsWire(data) || isCore3RefIsNullExecutionWire(data) || admitCore3BrOnNullDeclarationsWire(data) || admitCore3BrOnNonNullDeclarationsWire(data) || admitCore3RefAsNonNullDeclarationsWire(data) || admitCore3RefIsNullDeclarationsWire(data) || admitPublicReferenceCallBoundaryWire(data) || admitPublicHostReferenceBoundaryWire(data) || admitPublicDynamicHostReferenceBoundaryWire(data) || admitMutableFunctionGlobalLocalCallWire(data) || admitRV64I31CoreWire(data) || admitRV64GCRefEqWire(data) || admitRV64GCRefTestTableWire(data) || admitRV64GCRefTestConcreteWire(data) || admitRV64GCRefTestAbstractWire(data) || admitRV64GCExternWire(data) || admitRV64GCRefCastAbstractWire(data) || admitRV64GCRefCastConcreteWire(data) || admitRV64GCBrOnCastAbstractWire(data) || admitRV64GCBrOnCastFailAbstractWire(data) || admitRV64GCBrOnCastConcreteWire(data) || admitRV64GCBrOnCastFailConcreteWire(data) || admitRV64GCBrOnCastNullabilityWire(data) || admitRV64GCBrOnCastFailNullabilityWire(data) || admitRV64GCTypeSubtypingDeclarationsWire(data) || admitRV64GCTypeSubtypingRecursiveFunctionsWire(data) || admitRV64GCTypeSubtypingRefFuncGlobalsWire(data) || admitRV64GCTypeSubtypingRuntimeCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeFinalityCallCastWire(data) || admitRV64GCTypeSubtypingRuntimeTypedTableCallWire(data) || admitRV64GCTypeSubtypingRefTestSingleWire(data) || admitRV64GCTypeSubtypingLinkWire(data) || admitRV64GCTypeSubtypingFinalityLinkWire(data) || admitRV64GCTypeSubtypingStructLinkWire(data) || admitRV64GCTypeSubtypingStructProjectionLinkWire(data) || admitRV64GCTypeSubtypingStructMismatchLinkWire(data) || admitRV64GCTypeSubtypingIndependentStructLinkWire(data) || admitRV64GCTypeSubtypingExtendedProjectionLinkWire(data) || admitRV64GCTypeSubtypingDuplicateRecursiveLinkWire(data) || admitRV64GCTypeSubtypingExtendedRecursiveLinkWire(data) || admitRV64GCTypeSubtypingCrossGroupMismatchLinkWire(data) || admitRV64GCTypeSubtypingTransitiveMismatchLinkWire(data) || admitRV64GCTypeSubtypingNonFlatExportWire(data) || admitRV64GCStructGetWire(data) || admitRV64GCStructMutationWire(data) || admitRV64GCStructNullWire(data) || admitRV64GCStructPackedWire(data) || admitRV64GCStructBasicWire(data) || admitRV64GCStructNumericGlobalsWire(data) || admitRV64GCArrayLocalWire(data) || admitRV64GCArrayUniformWire(data) || admitRV64GCArrayFixedLocalWire(data) || admitRV64GCArrayFixedOfficialWire(data) || admitRV64GCArrayDefaultOfficialWire(data) || admitRV64GCArrayPackedDataWire(data) || admitRV64GCArrayReferenceWire(data) || admitRV64GCArrayInitElemWire(data) || admitRV64GCArrayInitDataWire(data) || admitRV64GCArrayFillWire(data) || admitRV64GCArrayCopyWire(data) {
+	if buildfeatures.RISCV64CollectorFrameRoots && admitRV64GCRootedScalarWire(data) {
+		return nil
+	}
+	if buildfeatures.ReferenceTypes != 0 && admitReferenceWire(data) {
+		return nil
+	}
+	if buildfeatures.GC != 0 && admitLegacyGCWire(data) {
 		return nil
 	}
 	if err := admitWireStartProfile(data, true, true, true); err != nil {
@@ -49,11 +56,17 @@ func AdmitProductionSource(data []byte) error {
 // The public integration also calls AdmitProductionSource. Current bounded
 // admission is deliberately retained until the complete port is qualified.
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule, error) {
+	if !buildfeatures.RISCV64CollectorFrameRoots && (opts.GCFrameRoots != nil || opts.GCFrameRootsSource) {
+		return nil, unsupported("GC frame-root source plan")
+	}
 	if opts.referenceFunctions {
 		return nil, unsupported("private reference function modules cannot be staged")
 	}
 	if opts.dynamicTailCalls {
 		return nil, unsupported("private dynamic source plans have no public artifact/runtime contract")
+	}
+	if !buildfeatures.ReferenceSignatures && (opts.NativeReferenceCalls || opts.NativeReferenceFunctions) {
+		return nil, unsupported("reference ABI is disabled in this build")
 	}
 	if opts.InvocationContext && !opts.Interruptible {
 		return nil, unsupported("invocation views require cooperative production")
@@ -62,6 +75,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, unsupported("typed references require retained cooperative invocation ABI")
 	}
 	if opts.NativeTailCalls {
+		if buildfeatures.TailCall == 0 {
+			return nil, unsupported("tail calls are disabled in this build")
+		}
 		if !opts.InvocationContext || !opts.Interruptible {
 			return nil, unsupported("staged tails require authenticated cooperative invocation ABI")
 		}
@@ -81,273 +97,275 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		return nil, err
 	}
 	opts.pluginDirectory = pluginInstructions(opts.CustomInstructions)
-	if opts.ExceptionHandlingSource {
+	if buildfeatures.ExceptionHandling != 0 && opts.ExceptionHandlingSource {
 		return compileExceptionHandlingModule(m, opts)
 	}
-	opts.gcRootedScalar = opts.GCFrameRootsSource && opts.GCFrameRoots != nil && admitRV64GCRootedScalarModule(m, opts.pluginDirectory)
-	decodedGCTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m)
-	if opts.GCTypeSubtypingDeclarationsSource != decodedGCTypeSubtypingDeclarations {
-		return nil, unsupported("gc type-subtyping declarations source provenance")
+	opts.gcRootedScalar = buildfeatures.RISCV64CollectorFrameRoots && opts.GCFrameRootsSource && opts.GCFrameRoots != nil && admitRV64GCRootedScalarModule(m, opts.pluginDirectory)
+	if buildfeatures.GC != 0 {
+		decodedGCTypeSubtypingDeclarations := admitRV64GCTypeSubtypingDeclarations(m)
+		if opts.GCTypeSubtypingDeclarationsSource != decodedGCTypeSubtypingDeclarations {
+			return nil, unsupported("gc type-subtyping declarations source provenance")
+		}
+		opts.gcTypeSubtypingDeclarations = decodedGCTypeSubtypingDeclarations != 0
+		decodedGCTypeSubtypingRecursiveFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m)
+		if opts.GCTypeSubtypingRecursiveFunctionsSource != decodedGCTypeSubtypingRecursiveFunctions {
+			return nil, unsupported("gc type-subtyping recursive-functions source provenance")
+		}
+		opts.gcTypeSubtypingRecursiveFunctions = decodedGCTypeSubtypingRecursiveFunctions != 0
+		decodedGCTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m)
+		if opts.GCTypeSubtypingRefFuncGlobalsSource != decodedGCTypeSubtypingRefFuncGlobals {
+			return nil, unsupported("gc type-subtyping ref.func-globals source provenance")
+		}
+		opts.gcTypeSubtypingRefFuncGlobals = decodedGCTypeSubtypingRefFuncGlobals != 0
+		decodedGCTypeSubtypingRuntimeCallCast := admitRV64GCTypeSubtypingRuntimeCallCast(m)
+		if opts.GCTypeSubtypingRuntimeCallCastSource != decodedGCTypeSubtypingRuntimeCallCast {
+			return nil, unsupported("gc type-subtyping runtime call/cast source provenance")
+		}
+		opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast
+		decodedGCTypeSubtypingRuntimeFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
+		if opts.GCTypeSubtypingRuntimeFinalityCallCastSource != decodedGCTypeSubtypingRuntimeFinalityCallCast {
+			return nil, unsupported("gc type-subtyping runtime finality call/cast source provenance")
+		}
+		opts.gcTypeSubtypingFinalityCallCast = decodedGCTypeSubtypingRuntimeFinalityCallCast
+		// The shared runtime-call mode supplies framed table/cast mechanics; the
+		// dedicated flags preserve the exact finality and typed-table relations.
+		opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeFinalityCallCast
+		decodedGCTypeSubtypingRuntimeTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
+		if opts.GCTypeSubtypingRuntimeTypedTableCallSource != decodedGCTypeSubtypingRuntimeTypedTableCall {
+			return nil, unsupported("gc type-subtyping runtime typed-table call source provenance")
+		}
+		opts.gcTypeSubtypingTypedTableCall = decodedGCTypeSubtypingRuntimeTypedTableCall
+		opts.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeTypedTableCall
+		decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingleVariant(m)
+		if opts.GCTypeSubtypingRefTestSingleSource != decodedGCTypeSubtypingRefTestSingle {
+			return nil, unsupported("gc type-subtyping ref.test source provenance")
+		}
+		opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle != 0
+		opts.gcTypeSubtypingRefTestVariant = decodedGCTypeSubtypingRefTestSingle
+		decodedGCTypeSubtypingLink := admitRV64GCTypeSubtypingLink(m)
+		if opts.GCTypeSubtypingLinkSource != decodedGCTypeSubtypingLink {
+			return nil, unsupported("gc type-subtyping link source provenance")
+		}
+		opts.gcTypeSubtypingLink = decodedGCTypeSubtypingLink
+		// The provider returns indexed nullable function references. Reuse the
+		// reviewed table-free reference-function carrier lowering; the dedicated
+		// link flag retains its distinct staging and artifact contract.
+		opts.gcTypeSubtypingRefFuncGlobals = opts.gcTypeSubtypingRefFuncGlobals || decodedGCTypeSubtypingLink != 0
+		decodedGCTypeSubtypingFinalityLink := admitRV64GCTypeSubtypingFinalityLink(m)
+		if opts.GCTypeSubtypingFinalityLinkSource != decodedGCTypeSubtypingFinalityLink {
+			return nil, unsupported("gc type-subtyping finality-link source provenance")
+		}
+		opts.gcTypeSubtypingFinalityLink = decodedGCTypeSubtypingFinalityLink
+		decodedGCTypeSubtypingStructLink := admitRV64GCTypeSubtypingStructLink(m)
+		if opts.GCTypeSubtypingStructLinkSource != decodedGCTypeSubtypingStructLink {
+			return nil, unsupported("gc type-subtyping struct-link source provenance")
+		}
+		opts.gcTypeSubtypingStructLink = decodedGCTypeSubtypingStructLink
+		decodedGCTypeSubtypingStructProjectionLink := admitRV64GCTypeSubtypingStructProjectionLink(m)
+		if opts.GCTypeSubtypingStructProjectionSource != decodedGCTypeSubtypingStructProjectionLink {
+			return nil, unsupported("gc type-subtyping struct-projection-link source provenance")
+		}
+		opts.gcTypeSubtypingStructProjection = decodedGCTypeSubtypingStructProjectionLink
+		decodedGCTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m)
+		if opts.GCTypeSubtypingStructMismatchSource != decodedGCTypeSubtypingStructMismatchLink {
+			return nil, unsupported("gc type-subtyping struct-mismatch-link source provenance")
+		}
+		opts.gcTypeSubtypingStructMismatch = decodedGCTypeSubtypingStructMismatchLink
+		decodedGCTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m)
+		if opts.GCTypeSubtypingIndependentStructSource != decodedGCTypeSubtypingIndependentStructLink {
+			return nil, unsupported("gc type-subtyping independent-struct-link source provenance")
+		}
+		opts.gcTypeSubtypingIndependentStruct = decodedGCTypeSubtypingIndependentStructLink
+		decodedGCTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m)
+		if opts.GCTypeSubtypingExtendedProjectionSource != decodedGCTypeSubtypingExtendedProjectionLink {
+			return nil, unsupported("gc type-subtyping extended-projection-link source provenance")
+		}
+		opts.gcTypeSubtypingExtendedProjection = decodedGCTypeSubtypingExtendedProjectionLink
+		decodedGCTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m)
+		if opts.GCTypeSubtypingDuplicateRecursiveSource != decodedGCTypeSubtypingDuplicateRecursiveLink {
+			return nil, unsupported("gc type-subtyping duplicate-recursive-link source provenance")
+		}
+		opts.gcTypeSubtypingDuplicateRecursive = decodedGCTypeSubtypingDuplicateRecursiveLink
+		decodedGCTypeSubtypingExtendedRecursiveLink := admitRV64GCTypeSubtypingExtendedRecursiveLink(m)
+		if opts.GCTypeSubtypingExtendedRecursiveSource != decodedGCTypeSubtypingExtendedRecursiveLink {
+			return nil, unsupported("gc type-subtyping extended-recursive-link source provenance")
+		}
+		opts.gcTypeSubtypingExtendedRecursive = decodedGCTypeSubtypingExtendedRecursiveLink
+		decodedGCTypeSubtypingCrossGroupMismatchLink := admitRV64GCTypeSubtypingCrossGroupMismatchLink(m)
+		if opts.GCTypeSubtypingCrossGroupMismatchSource != decodedGCTypeSubtypingCrossGroupMismatchLink {
+			return nil, unsupported("gc type-subtyping cross-group-mismatch-link source provenance")
+		}
+		opts.gcTypeSubtypingCrossGroupMismatch = decodedGCTypeSubtypingCrossGroupMismatchLink
+		decodedGCTypeSubtypingTransitiveMismatchLink := admitRV64GCTypeSubtypingTransitiveMismatchLink(m)
+		if opts.GCTypeSubtypingTransitiveMismatchSource != decodedGCTypeSubtypingTransitiveMismatchLink {
+			return nil, unsupported("gc type-subtyping transitive-mismatch-link source provenance")
+		}
+		opts.gcTypeSubtypingTransitiveMismatch = decodedGCTypeSubtypingTransitiveMismatchLink
+		decodedGCTypeSubtypingNonFlatExport := admitRV64GCTypeSubtypingNonFlatExport(m)
+		if opts.GCTypeSubtypingNonFlatExportSource != decodedGCTypeSubtypingNonFlatExport {
+			return nil, unsupported("gc type-subtyping non-flat-export source provenance")
+		}
+		opts.gcTypeSubtypingNonFlatExport = decodedGCTypeSubtypingNonFlatExport
+		decodedI31Core := admitRV64I31Core(m)
+		if opts.I31CoreSource != decodedI31Core {
+			return nil, unsupported("i31 core source provenance")
+		}
+		decodedGeneralI31 := AdmitGeneralI31Module(m)
+		if opts.GeneralI31Source != decodedGeneralI31 {
+			return nil, unsupported("general i31 source provenance")
+		}
+		opts.i31Core = decodedI31Core || decodedGeneralI31
+		decodedGCRefEq := admitRV64GCRefEq(m)
+		if opts.GCRefEqSource != decodedGCRefEq {
+			return nil, unsupported("gc ref.eq source provenance")
+		}
+		opts.gcRefEq = decodedGCRefEq
+		decodedGCRefTestTable := admitRV64GCRefTestTable(m)
+		if opts.GCRefTestTableSource != decodedGCRefTestTable {
+			return nil, unsupported("gc ref.test table source provenance")
+		}
+		opts.gcRefTestTable = decodedGCRefTestTable
+		decodedGCRefTestConcrete := admitRV64GCRefTestConcrete(m)
+		if opts.GCRefTestConcreteSource != decodedGCRefTestConcrete {
+			return nil, unsupported("gc concrete ref.test source provenance")
+		}
+		opts.gcRefTestConcrete = decodedGCRefTestConcrete
+		decodedGCRefTestAbstract := admitRV64GCRefTestAbstract(m)
+		if opts.GCRefTestAbstractSource && !decodedGCRefTestAbstract {
+			return nil, unsupported("gc abstract ref.test source provenance")
+		}
+		decodedGCExtern := admitRV64GCExtern(m)
+		if opts.GCExternSource && !decodedGCExtern {
+			return nil, unsupported("gc extern source provenance")
+		}
+		decodedGCRefCastAbstract := admitRV64GCRefCastAbstract(m)
+		if opts.GCRefCastAbstractSource && !decodedGCRefCastAbstract {
+			return nil, unsupported("gc abstract ref.cast source provenance")
+		}
+		// These exact products use the same reviewed wide-reference helper path.
+		// Their wire provenance and retained artifact classifiers remain distinct.
+		decodedGCBrOnCastAbstract := admitRV64GCBrOnCastAbstract(m)
+		if opts.GCBrOnCastAbstractSource && !decodedGCBrOnCastAbstract {
+			return nil, unsupported("gc abstract br_on_cast source provenance")
+		}
+		decodedGCBrOnCastFailAbstract := admitRV64GCBrOnCastFailAbstract(m)
+		if opts.GCBrOnCastFailAbstractSource && !decodedGCBrOnCastFailAbstract {
+			return nil, unsupported("gc abstract br_on_cast_fail source provenance")
+		}
+		opts.gcRefTestAbstract = opts.GCRefTestAbstractSource || opts.GCExternSource || opts.GCRefCastAbstractSource || opts.GCBrOnCastAbstractSource || opts.GCBrOnCastFailAbstractSource
+		opts.gcExtern = opts.GCExternSource
+		opts.gcRefCastAbstract = opts.GCRefCastAbstractSource
+		decodedGCRefCastConcrete := admitRV64GCRefCastConcrete(m)
+		if opts.GCRefCastConcreteSource != decodedGCRefCastConcrete {
+			return nil, unsupported("gc concrete ref.cast source provenance")
+		}
+		// The concrete ref.cast product uses the reviewed concrete subtype helper
+		// state while retaining a distinct source and artifact identity.
+		decodedGCBrOnCastConcrete := admitRV64GCBrOnCastConcrete(m)
+		if opts.GCBrOnCastConcreteSource != decodedGCBrOnCastConcrete {
+			return nil, unsupported("gc concrete br_on_cast source provenance")
+		}
+		decodedGCBrOnCastFailConcrete := admitRV64GCBrOnCastFailConcrete(m)
+		if opts.GCBrOnCastFailConcreteSource != decodedGCBrOnCastFailConcrete {
+			return nil, unsupported("gc concrete br_on_cast_fail source provenance")
+		}
+		decodedGCBrOnCastNullability := admitRV64GCBrOnCastNullability(m)
+		if opts.GCBrOnCastNullabilitySource != decodedGCBrOnCastNullability {
+			return nil, unsupported("gc nullability br_on_cast source provenance")
+		}
+		decodedGCBrOnCastFailNullability := admitRV64GCBrOnCastFailNullability(m)
+		if opts.GCBrOnCastFailNullabilitySource != decodedGCBrOnCastFailNullability {
+			return nil, unsupported("gc nullability br_on_cast_fail source provenance")
+		}
+		opts.gcBrOnCastNullability = decodedGCBrOnCastNullability || decodedGCBrOnCastFailNullability
+		opts.gcRefTestConcrete = opts.gcRefTestConcrete || decodedGCRefCastConcrete || decodedGCBrOnCastConcrete || decodedGCBrOnCastFailConcrete || opts.gcBrOnCastNullability
+		decodedGCStructGet := admitRV64GCStructGet(m)
+		if opts.GCStructGetSource != decodedGCStructGet {
+			return nil, unsupported("gc struct.get source provenance")
+		}
+		opts.gcStructGet = decodedGCStructGet
+		decodedGCStructMutation := admitRV64GCStructMutation(m)
+		if opts.GCStructMutationSource != decodedGCStructMutation {
+			return nil, unsupported("gc struct mutation source provenance")
+		}
+		opts.gcStructMutation = decodedGCStructMutation
+		decodedGCStructNull := admitRV64GCStructNull(m)
+		if opts.GCStructNullSource != decodedGCStructNull {
+			return nil, unsupported("gc struct null source provenance")
+		}
+		opts.gcStructNull = decodedGCStructNull
+		decodedGCStructPacked := admitRV64GCStructPacked(m)
+		if opts.GCStructPackedSource != decodedGCStructPacked {
+			return nil, unsupported("gc struct packed source provenance")
+		}
+		opts.gcStructPacked = decodedGCStructPacked
+		decodedGCStructBasic := admitRV64GCStructBasic(m)
+		if opts.GCStructBasicSource != decodedGCStructBasic {
+			return nil, unsupported("gc struct basic source provenance")
+		}
+		opts.gcStructBasic = decodedGCStructBasic
+		decodedGCStructNumericGlobals := admitRV64GCStructNumericGlobals(m)
+		if opts.GCStructGlobalsSource != decodedGCStructNumericGlobals {
+			return nil, unsupported("gc struct numeric globals source provenance")
+		}
+		opts.gcStructGlobals = decodedGCStructNumericGlobals
+		// Rooted modules use the general array helpers and exact frame maps.
+		// Legacy source markers select only the older private implementation.
+		decodedGCArrayLocal := !opts.gcRootedScalar && admitRV64GCArrayLocal(m)
+		if opts.GCArrayLocalSource != decodedGCArrayLocal {
+			return nil, unsupported("gc array local source provenance")
+		}
+		opts.gcArrayLocal = decodedGCArrayLocal
+		decodedGCArrayUniform := !opts.gcRootedScalar && admitRV64GCArrayUniform(m)
+		if opts.GCArrayUniformSource != decodedGCArrayUniform {
+			return nil, unsupported("gc array uniform source provenance")
+		}
+		opts.gcArrayUniform = decodedGCArrayUniform
+		decodedGCArrayFixedLocal := !opts.gcRootedScalar && admitRV64GCArrayFixedLocal(m)
+		if opts.GCArrayFixedLocalSource != decodedGCArrayFixedLocal {
+			return nil, unsupported("gc array fixed local source provenance")
+		}
+		opts.gcArrayFixedLocal = decodedGCArrayFixedLocal
+		decodedGCArrayFixedOfficial := !opts.gcRootedScalar && admitRV64GCArrayFixedOfficial(m)
+		if opts.GCArrayFixedOfficialSource != decodedGCArrayFixedOfficial {
+			return nil, unsupported("gc array fixed official source provenance")
+		}
+		decodedGCArrayDefaultOfficial := !opts.gcRootedScalar && admitRV64GCArrayDefaultOfficial(m)
+		if opts.GCArrayDefaultOfficialSource != decodedGCArrayDefaultOfficial {
+			return nil, unsupported("gc array default official source provenance")
+		}
+		opts.gcArrayFixedOfficial = decodedGCArrayFixedOfficial || decodedGCArrayDefaultOfficial
+		decodedGCArrayPackedData := !opts.gcRootedScalar && admitRV64GCArrayPackedData(m)
+		if opts.GCArrayPackedDataSource != decodedGCArrayPackedData {
+			return nil, unsupported("gc array packed data source provenance")
+		}
+		opts.gcArrayPackedData = decodedGCArrayPackedData
+		decodedGCArrayReference := !opts.gcRootedScalar && admitRV64GCArrayReference(m)
+		if opts.GCArrayReferenceSource != decodedGCArrayReference {
+			return nil, unsupported("gc array reference source provenance")
+		}
+		opts.gcArrayReference = decodedGCArrayReference
+		decodedGCArrayInitElem := !opts.gcRootedScalar && admitRV64GCArrayInitElem(m)
+		if opts.GCArrayInitElemSource != decodedGCArrayInitElem {
+			return nil, unsupported("gc array init elem source provenance")
+		}
+		opts.gcArrayInitElem = decodedGCArrayInitElem
+		decodedGCArrayInitData := !opts.gcRootedScalar && admitRV64GCArrayInitData(m)
+		if opts.GCArrayInitDataSource != decodedGCArrayInitData {
+			return nil, unsupported("gc array init data source provenance")
+		}
+		opts.gcArrayInitData = decodedGCArrayInitData
+		decodedGCArrayFill := !opts.gcRootedScalar && admitRV64GCArrayFill(m)
+		if opts.GCArrayFillSource != decodedGCArrayFill {
+			return nil, unsupported("gc array fill source provenance")
+		}
+		opts.gcArrayFill = decodedGCArrayFill
+		decodedGCArrayCopy := !opts.gcRootedScalar && admitRV64GCArrayCopy(m)
+		if opts.GCArrayCopySource != decodedGCArrayCopy {
+			return nil, unsupported("gc array copy source provenance")
+		}
+		opts.gcArrayCopy = decodedGCArrayCopy
 	}
-	opts.gcTypeSubtypingDeclarations = decodedGCTypeSubtypingDeclarations != 0
-	decodedGCTypeSubtypingRecursiveFunctions := admitRV64GCTypeSubtypingRecursiveFunctions(m)
-	if opts.GCTypeSubtypingRecursiveFunctionsSource != decodedGCTypeSubtypingRecursiveFunctions {
-		return nil, unsupported("gc type-subtyping recursive-functions source provenance")
-	}
-	opts.gcTypeSubtypingRecursiveFunctions = decodedGCTypeSubtypingRecursiveFunctions != 0
-	decodedGCTypeSubtypingRefFuncGlobals := admitRV64GCTypeSubtypingRefFuncGlobals(m)
-	if opts.GCTypeSubtypingRefFuncGlobalsSource != decodedGCTypeSubtypingRefFuncGlobals {
-		return nil, unsupported("gc type-subtyping ref.func-globals source provenance")
-	}
-	opts.gcTypeSubtypingRefFuncGlobals = decodedGCTypeSubtypingRefFuncGlobals != 0
-	decodedGCTypeSubtypingRuntimeCallCast := admitRV64GCTypeSubtypingRuntimeCallCast(m)
-	if opts.GCTypeSubtypingRuntimeCallCastSource != decodedGCTypeSubtypingRuntimeCallCast {
-		return nil, unsupported("gc type-subtyping runtime call/cast source provenance")
-	}
-	opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast
-	decodedGCTypeSubtypingRuntimeFinalityCallCast := admitRV64GCTypeSubtypingRuntimeFinalityCallCast(m)
-	if opts.GCTypeSubtypingRuntimeFinalityCallCastSource != decodedGCTypeSubtypingRuntimeFinalityCallCast {
-		return nil, unsupported("gc type-subtyping runtime finality call/cast source provenance")
-	}
-	opts.gcTypeSubtypingFinalityCallCast = decodedGCTypeSubtypingRuntimeFinalityCallCast
-	// The shared runtime-call mode supplies framed table/cast mechanics; the
-	// dedicated flags preserve the exact finality and typed-table relations.
-	opts.gcTypeSubtypingRuntimeCallCast = decodedGCTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeFinalityCallCast
-	decodedGCTypeSubtypingRuntimeTypedTableCall := admitRV64GCTypeSubtypingRuntimeTypedTableCall(m)
-	if opts.GCTypeSubtypingRuntimeTypedTableCallSource != decodedGCTypeSubtypingRuntimeTypedTableCall {
-		return nil, unsupported("gc type-subtyping runtime typed-table call source provenance")
-	}
-	opts.gcTypeSubtypingTypedTableCall = decodedGCTypeSubtypingRuntimeTypedTableCall
-	opts.gcTypeSubtypingRuntimeCallCast = opts.gcTypeSubtypingRuntimeCallCast || decodedGCTypeSubtypingRuntimeTypedTableCall
-	decodedGCTypeSubtypingRefTestSingle := admitRV64GCTypeSubtypingRefTestSingleVariant(m)
-	if opts.GCTypeSubtypingRefTestSingleSource != decodedGCTypeSubtypingRefTestSingle {
-		return nil, unsupported("gc type-subtyping ref.test source provenance")
-	}
-	opts.gcTypeSubtypingRefTestSingle = decodedGCTypeSubtypingRefTestSingle != 0
-	opts.gcTypeSubtypingRefTestVariant = decodedGCTypeSubtypingRefTestSingle
-	decodedGCTypeSubtypingLink := admitRV64GCTypeSubtypingLink(m)
-	if opts.GCTypeSubtypingLinkSource != decodedGCTypeSubtypingLink {
-		return nil, unsupported("gc type-subtyping link source provenance")
-	}
-	opts.gcTypeSubtypingLink = decodedGCTypeSubtypingLink
-	// The provider returns indexed nullable function references. Reuse the
-	// reviewed table-free reference-function carrier lowering; the dedicated
-	// link flag retains its distinct staging and artifact contract.
-	opts.gcTypeSubtypingRefFuncGlobals = opts.gcTypeSubtypingRefFuncGlobals || decodedGCTypeSubtypingLink != 0
-	decodedGCTypeSubtypingFinalityLink := admitRV64GCTypeSubtypingFinalityLink(m)
-	if opts.GCTypeSubtypingFinalityLinkSource != decodedGCTypeSubtypingFinalityLink {
-		return nil, unsupported("gc type-subtyping finality-link source provenance")
-	}
-	opts.gcTypeSubtypingFinalityLink = decodedGCTypeSubtypingFinalityLink
-	decodedGCTypeSubtypingStructLink := admitRV64GCTypeSubtypingStructLink(m)
-	if opts.GCTypeSubtypingStructLinkSource != decodedGCTypeSubtypingStructLink {
-		return nil, unsupported("gc type-subtyping struct-link source provenance")
-	}
-	opts.gcTypeSubtypingStructLink = decodedGCTypeSubtypingStructLink
-	decodedGCTypeSubtypingStructProjectionLink := admitRV64GCTypeSubtypingStructProjectionLink(m)
-	if opts.GCTypeSubtypingStructProjectionSource != decodedGCTypeSubtypingStructProjectionLink {
-		return nil, unsupported("gc type-subtyping struct-projection-link source provenance")
-	}
-	opts.gcTypeSubtypingStructProjection = decodedGCTypeSubtypingStructProjectionLink
-	decodedGCTypeSubtypingStructMismatchLink := admitRV64GCTypeSubtypingStructMismatchLink(m)
-	if opts.GCTypeSubtypingStructMismatchSource != decodedGCTypeSubtypingStructMismatchLink {
-		return nil, unsupported("gc type-subtyping struct-mismatch-link source provenance")
-	}
-	opts.gcTypeSubtypingStructMismatch = decodedGCTypeSubtypingStructMismatchLink
-	decodedGCTypeSubtypingIndependentStructLink := admitRV64GCTypeSubtypingIndependentStructLink(m)
-	if opts.GCTypeSubtypingIndependentStructSource != decodedGCTypeSubtypingIndependentStructLink {
-		return nil, unsupported("gc type-subtyping independent-struct-link source provenance")
-	}
-	opts.gcTypeSubtypingIndependentStruct = decodedGCTypeSubtypingIndependentStructLink
-	decodedGCTypeSubtypingExtendedProjectionLink := admitRV64GCTypeSubtypingExtendedProjectionLink(m)
-	if opts.GCTypeSubtypingExtendedProjectionSource != decodedGCTypeSubtypingExtendedProjectionLink {
-		return nil, unsupported("gc type-subtyping extended-projection-link source provenance")
-	}
-	opts.gcTypeSubtypingExtendedProjection = decodedGCTypeSubtypingExtendedProjectionLink
-	decodedGCTypeSubtypingDuplicateRecursiveLink := admitRV64GCTypeSubtypingDuplicateRecursiveLink(m)
-	if opts.GCTypeSubtypingDuplicateRecursiveSource != decodedGCTypeSubtypingDuplicateRecursiveLink {
-		return nil, unsupported("gc type-subtyping duplicate-recursive-link source provenance")
-	}
-	opts.gcTypeSubtypingDuplicateRecursive = decodedGCTypeSubtypingDuplicateRecursiveLink
-	decodedGCTypeSubtypingExtendedRecursiveLink := admitRV64GCTypeSubtypingExtendedRecursiveLink(m)
-	if opts.GCTypeSubtypingExtendedRecursiveSource != decodedGCTypeSubtypingExtendedRecursiveLink {
-		return nil, unsupported("gc type-subtyping extended-recursive-link source provenance")
-	}
-	opts.gcTypeSubtypingExtendedRecursive = decodedGCTypeSubtypingExtendedRecursiveLink
-	decodedGCTypeSubtypingCrossGroupMismatchLink := admitRV64GCTypeSubtypingCrossGroupMismatchLink(m)
-	if opts.GCTypeSubtypingCrossGroupMismatchSource != decodedGCTypeSubtypingCrossGroupMismatchLink {
-		return nil, unsupported("gc type-subtyping cross-group-mismatch-link source provenance")
-	}
-	opts.gcTypeSubtypingCrossGroupMismatch = decodedGCTypeSubtypingCrossGroupMismatchLink
-	decodedGCTypeSubtypingTransitiveMismatchLink := admitRV64GCTypeSubtypingTransitiveMismatchLink(m)
-	if opts.GCTypeSubtypingTransitiveMismatchSource != decodedGCTypeSubtypingTransitiveMismatchLink {
-		return nil, unsupported("gc type-subtyping transitive-mismatch-link source provenance")
-	}
-	opts.gcTypeSubtypingTransitiveMismatch = decodedGCTypeSubtypingTransitiveMismatchLink
-	decodedGCTypeSubtypingNonFlatExport := admitRV64GCTypeSubtypingNonFlatExport(m)
-	if opts.GCTypeSubtypingNonFlatExportSource != decodedGCTypeSubtypingNonFlatExport {
-		return nil, unsupported("gc type-subtyping non-flat-export source provenance")
-	}
-	opts.gcTypeSubtypingNonFlatExport = decodedGCTypeSubtypingNonFlatExport
-	decodedI31Core := admitRV64I31Core(m)
-	if opts.I31CoreSource != decodedI31Core {
-		return nil, unsupported("i31 core source provenance")
-	}
-	decodedGeneralI31 := AdmitGeneralI31Module(m)
-	if opts.GeneralI31Source != decodedGeneralI31 {
-		return nil, unsupported("general i31 source provenance")
-	}
-	opts.i31Core = decodedI31Core || decodedGeneralI31
-	decodedGCRefEq := admitRV64GCRefEq(m)
-	if opts.GCRefEqSource != decodedGCRefEq {
-		return nil, unsupported("gc ref.eq source provenance")
-	}
-	opts.gcRefEq = decodedGCRefEq
-	decodedGCRefTestTable := admitRV64GCRefTestTable(m)
-	if opts.GCRefTestTableSource != decodedGCRefTestTable {
-		return nil, unsupported("gc ref.test table source provenance")
-	}
-	opts.gcRefTestTable = decodedGCRefTestTable
-	decodedGCRefTestConcrete := admitRV64GCRefTestConcrete(m)
-	if opts.GCRefTestConcreteSource != decodedGCRefTestConcrete {
-		return nil, unsupported("gc concrete ref.test source provenance")
-	}
-	opts.gcRefTestConcrete = decodedGCRefTestConcrete
-	decodedGCRefTestAbstract := admitRV64GCRefTestAbstract(m)
-	if opts.GCRefTestAbstractSource && !decodedGCRefTestAbstract {
-		return nil, unsupported("gc abstract ref.test source provenance")
-	}
-	decodedGCExtern := admitRV64GCExtern(m)
-	if opts.GCExternSource && !decodedGCExtern {
-		return nil, unsupported("gc extern source provenance")
-	}
-	decodedGCRefCastAbstract := admitRV64GCRefCastAbstract(m)
-	if opts.GCRefCastAbstractSource && !decodedGCRefCastAbstract {
-		return nil, unsupported("gc abstract ref.cast source provenance")
-	}
-	// These exact products use the same reviewed wide-reference helper path.
-	// Their wire provenance and retained artifact classifiers remain distinct.
-	decodedGCBrOnCastAbstract := admitRV64GCBrOnCastAbstract(m)
-	if opts.GCBrOnCastAbstractSource && !decodedGCBrOnCastAbstract {
-		return nil, unsupported("gc abstract br_on_cast source provenance")
-	}
-	decodedGCBrOnCastFailAbstract := admitRV64GCBrOnCastFailAbstract(m)
-	if opts.GCBrOnCastFailAbstractSource && !decodedGCBrOnCastFailAbstract {
-		return nil, unsupported("gc abstract br_on_cast_fail source provenance")
-	}
-	opts.gcRefTestAbstract = opts.GCRefTestAbstractSource || opts.GCExternSource || opts.GCRefCastAbstractSource || opts.GCBrOnCastAbstractSource || opts.GCBrOnCastFailAbstractSource
-	opts.gcExtern = opts.GCExternSource
-	opts.gcRefCastAbstract = opts.GCRefCastAbstractSource
-	decodedGCRefCastConcrete := admitRV64GCRefCastConcrete(m)
-	if opts.GCRefCastConcreteSource != decodedGCRefCastConcrete {
-		return nil, unsupported("gc concrete ref.cast source provenance")
-	}
-	// The concrete ref.cast product uses the reviewed concrete subtype helper
-	// state while retaining a distinct source and artifact identity.
-	decodedGCBrOnCastConcrete := admitRV64GCBrOnCastConcrete(m)
-	if opts.GCBrOnCastConcreteSource != decodedGCBrOnCastConcrete {
-		return nil, unsupported("gc concrete br_on_cast source provenance")
-	}
-	decodedGCBrOnCastFailConcrete := admitRV64GCBrOnCastFailConcrete(m)
-	if opts.GCBrOnCastFailConcreteSource != decodedGCBrOnCastFailConcrete {
-		return nil, unsupported("gc concrete br_on_cast_fail source provenance")
-	}
-	decodedGCBrOnCastNullability := admitRV64GCBrOnCastNullability(m)
-	if opts.GCBrOnCastNullabilitySource != decodedGCBrOnCastNullability {
-		return nil, unsupported("gc nullability br_on_cast source provenance")
-	}
-	decodedGCBrOnCastFailNullability := admitRV64GCBrOnCastFailNullability(m)
-	if opts.GCBrOnCastFailNullabilitySource != decodedGCBrOnCastFailNullability {
-		return nil, unsupported("gc nullability br_on_cast_fail source provenance")
-	}
-	opts.gcBrOnCastNullability = decodedGCBrOnCastNullability || decodedGCBrOnCastFailNullability
-	opts.gcRefTestConcrete = opts.gcRefTestConcrete || decodedGCRefCastConcrete || decodedGCBrOnCastConcrete || decodedGCBrOnCastFailConcrete || opts.gcBrOnCastNullability
-	decodedGCStructGet := admitRV64GCStructGet(m)
-	if opts.GCStructGetSource != decodedGCStructGet {
-		return nil, unsupported("gc struct.get source provenance")
-	}
-	opts.gcStructGet = decodedGCStructGet
-	decodedGCStructMutation := admitRV64GCStructMutation(m)
-	if opts.GCStructMutationSource != decodedGCStructMutation {
-		return nil, unsupported("gc struct mutation source provenance")
-	}
-	opts.gcStructMutation = decodedGCStructMutation
-	decodedGCStructNull := admitRV64GCStructNull(m)
-	if opts.GCStructNullSource != decodedGCStructNull {
-		return nil, unsupported("gc struct null source provenance")
-	}
-	opts.gcStructNull = decodedGCStructNull
-	decodedGCStructPacked := admitRV64GCStructPacked(m)
-	if opts.GCStructPackedSource != decodedGCStructPacked {
-		return nil, unsupported("gc struct packed source provenance")
-	}
-	opts.gcStructPacked = decodedGCStructPacked
-	decodedGCStructBasic := admitRV64GCStructBasic(m)
-	if opts.GCStructBasicSource != decodedGCStructBasic {
-		return nil, unsupported("gc struct basic source provenance")
-	}
-	opts.gcStructBasic = decodedGCStructBasic
-	decodedGCStructNumericGlobals := admitRV64GCStructNumericGlobals(m)
-	if opts.GCStructGlobalsSource != decodedGCStructNumericGlobals {
-		return nil, unsupported("gc struct numeric globals source provenance")
-	}
-	opts.gcStructGlobals = decodedGCStructNumericGlobals
-	// Rooted modules use the general array helpers and exact frame maps.
-	// Legacy source markers select only the older private implementation.
-	decodedGCArrayLocal := !opts.gcRootedScalar && admitRV64GCArrayLocal(m)
-	if opts.GCArrayLocalSource != decodedGCArrayLocal {
-		return nil, unsupported("gc array local source provenance")
-	}
-	opts.gcArrayLocal = decodedGCArrayLocal
-	decodedGCArrayUniform := !opts.gcRootedScalar && admitRV64GCArrayUniform(m)
-	if opts.GCArrayUniformSource != decodedGCArrayUniform {
-		return nil, unsupported("gc array uniform source provenance")
-	}
-	opts.gcArrayUniform = decodedGCArrayUniform
-	decodedGCArrayFixedLocal := !opts.gcRootedScalar && admitRV64GCArrayFixedLocal(m)
-	if opts.GCArrayFixedLocalSource != decodedGCArrayFixedLocal {
-		return nil, unsupported("gc array fixed local source provenance")
-	}
-	opts.gcArrayFixedLocal = decodedGCArrayFixedLocal
-	decodedGCArrayFixedOfficial := !opts.gcRootedScalar && admitRV64GCArrayFixedOfficial(m)
-	if opts.GCArrayFixedOfficialSource != decodedGCArrayFixedOfficial {
-		return nil, unsupported("gc array fixed official source provenance")
-	}
-	decodedGCArrayDefaultOfficial := !opts.gcRootedScalar && admitRV64GCArrayDefaultOfficial(m)
-	if opts.GCArrayDefaultOfficialSource != decodedGCArrayDefaultOfficial {
-		return nil, unsupported("gc array default official source provenance")
-	}
-	opts.gcArrayFixedOfficial = decodedGCArrayFixedOfficial || decodedGCArrayDefaultOfficial
-	decodedGCArrayPackedData := !opts.gcRootedScalar && admitRV64GCArrayPackedData(m)
-	if opts.GCArrayPackedDataSource != decodedGCArrayPackedData {
-		return nil, unsupported("gc array packed data source provenance")
-	}
-	opts.gcArrayPackedData = decodedGCArrayPackedData
-	decodedGCArrayReference := !opts.gcRootedScalar && admitRV64GCArrayReference(m)
-	if opts.GCArrayReferenceSource != decodedGCArrayReference {
-		return nil, unsupported("gc array reference source provenance")
-	}
-	opts.gcArrayReference = decodedGCArrayReference
-	decodedGCArrayInitElem := !opts.gcRootedScalar && admitRV64GCArrayInitElem(m)
-	if opts.GCArrayInitElemSource != decodedGCArrayInitElem {
-		return nil, unsupported("gc array init elem source provenance")
-	}
-	opts.gcArrayInitElem = decodedGCArrayInitElem
-	decodedGCArrayInitData := !opts.gcRootedScalar && admitRV64GCArrayInitData(m)
-	if opts.GCArrayInitDataSource != decodedGCArrayInitData {
-		return nil, unsupported("gc array init data source provenance")
-	}
-	opts.gcArrayInitData = decodedGCArrayInitData
-	decodedGCArrayFill := !opts.gcRootedScalar && admitRV64GCArrayFill(m)
-	if opts.GCArrayFillSource != decodedGCArrayFill {
-		return nil, unsupported("gc array fill source provenance")
-	}
-	opts.gcArrayFill = decodedGCArrayFill
-	decodedGCArrayCopy := !opts.gcRootedScalar && admitRV64GCArrayCopy(m)
-	if opts.GCArrayCopySource != decodedGCArrayCopy {
-		return nil, unsupported("gc array copy source provenance")
-	}
-	opts.gcArrayCopy = decodedGCArrayCopy
 	if err := AdmitPublicInitializers(m); err != nil {
 		return nil, err
 	}
@@ -389,13 +407,13 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 		}
 	}
 	usesSWAR = usesSWAR || opts.pluginDirectory.hasCustom()
-	if !opts.NativeReferenceFunctions && opts.NativeReferenceCalls && !opts.ExceptionHandlingSource && !opts.OwnedExceptionReferences && admitPublicPrimitiveReferenceModule(pluginBudgetModule(m, opts.pluginDirectory), usesSWAR) {
+	if buildfeatures.ReferenceSignatures && !opts.NativeReferenceFunctions && opts.NativeReferenceCalls && !opts.ExceptionHandlingSource && !opts.OwnedExceptionReferences && admitPublicPrimitiveReferenceModule(pluginBudgetModule(m, opts.pluginDirectory), usesSWAR) {
 		opts.NativeReferenceFunctions = true
 	}
 	if admitPublicTypeDeclarations(m) {
 		usesSWAR = false
 	}
-	if opts.NativeReferenceFunctions && !opts.gcRootedScalar {
+	if buildfeatures.ReferenceSignatures && opts.NativeReferenceFunctions && !opts.gcRootedScalar {
 		opts.referenceFunctions, err = hasDefinedReferenceFunctions(m, opts.pluginDirectory)
 		if err != nil {
 			return nil, err
@@ -411,7 +429,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	}
 	var referenceTails, indirectTails, referenceCalls, referenceControl bool
 	if !opts.gcTypeSubtypingDeclarations && !opts.gcTypeSubtypingRecursiveFunctions && !opts.gcTypeSubtypingRefFuncGlobals && !opts.gcTypeSubtypingRuntimeCallCast && !opts.gcTypeSubtypingRefTestSingle && opts.gcTypeSubtypingFinalityLink == 0 && opts.gcTypeSubtypingStructLink == 0 && opts.gcTypeSubtypingStructProjection == 0 && opts.gcTypeSubtypingStructMismatch == 0 && opts.gcTypeSubtypingIndependentStruct == 0 && opts.gcTypeSubtypingExtendedProjection == 0 && opts.gcTypeSubtypingDuplicateRecursive == 0 && opts.gcTypeSubtypingExtendedRecursive == 0 && opts.gcTypeSubtypingCrossGroupMismatch == 0 && opts.gcTypeSubtypingTransitiveMismatch == 0 && !opts.gcTypeSubtypingNonFlatExport && !opts.i31Core && !opts.gcRefEq && !opts.gcRefTestTable && !opts.gcRefTestConcrete && !opts.gcRefTestAbstract && !opts.gcStructGet && !opts.gcStructMutation && !opts.gcStructNull && !opts.gcStructPacked && !opts.gcStructBasic && !opts.gcStructGlobals && !opts.gcArrayLocal && !opts.gcArrayUniform && !opts.gcArrayFixedLocal && !opts.gcArrayFixedOfficial && !opts.gcArrayPackedData && !opts.gcArrayReference && !opts.gcArrayInitElem && !opts.gcArrayInitData && !opts.gcArrayFill && !opts.gcArrayCopy {
-		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionDynamicTails(pluginBudgetModule(m, opts.pluginDirectory), opts.NativeReferenceCalls || opts.gcRootedScalar, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions || opts.gcRootedScalar)
+		referenceTails, indirectTails, referenceCalls, referenceControl, err = admitProductionControlTransfers(pluginBudgetModule(m, opts.pluginDirectory), opts.NativeReferenceCalls || opts.gcRootedScalar, opts.dynamicTailCalls, usesSWAR, opts.referenceFunctions || opts.gcRootedScalar)
 		if err != nil {
 			return nil, err
 		}
@@ -425,7 +443,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	opts.indirectTailInstructions = indirectTails
 	opts.referenceCallInstructions = referenceCalls
 	opts.referenceControlInstructions = referenceControl
-	if opts.referenceFunctions {
+	if buildfeatures.ReferenceSignatures && opts.referenceFunctions {
 		opts.dynamicTailCalls = referenceTails || indirectTails
 		if err := admitClosedReferenceProductionOptions(opts); err != nil {
 			return nil, err
@@ -460,61 +478,63 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*enc.CompiledModule
 	if err != nil {
 		return nil, err
 	}
-	if opts.gcTypeSubtypingFinalityCallCast {
-		return stageGCTypeSubtypingRuntimeFinalityCallCast(c, opts, m)
+	if buildfeatures.GC != 0 {
+		if opts.gcTypeSubtypingFinalityCallCast {
+			return stageGCTypeSubtypingRuntimeFinalityCallCast(c, opts, m)
+		}
+		if opts.gcTypeSubtypingTypedTableCall {
+			return stageGCTypeSubtypingRuntimeTypedTableCall(c, opts, m)
+		}
+		if opts.gcTypeSubtypingRefTestSingle {
+			return stageGCTypeSubtypingRefTestSingle(c, opts, m)
+		}
+		if opts.gcTypeSubtypingLink != 0 {
+			return stageGCTypeSubtypingLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingFinalityLink != 0 {
+			return stageGCTypeSubtypingFinalityLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingStructLink != 0 {
+			return stageGCTypeSubtypingStructLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingStructProjection != 0 {
+			return stageGCTypeSubtypingStructProjectionLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingStructMismatch != 0 {
+			return stageGCTypeSubtypingStructMismatchLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingIndependentStruct != 0 {
+			return stageGCTypeSubtypingIndependentStructLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingExtendedProjection != 0 {
+			return stageGCTypeSubtypingExtendedProjectionLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingDuplicateRecursive != 0 {
+			return stageGCTypeSubtypingDuplicateRecursiveLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingExtendedRecursive != 0 {
+			return stageGCTypeSubtypingExtendedRecursiveLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingCrossGroupMismatch != 0 {
+			return stageGCTypeSubtypingCrossGroupMismatchLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingTransitiveMismatch != 0 {
+			return stageGCTypeSubtypingTransitiveMismatchLink(c, opts, m)
+		}
+		if opts.gcTypeSubtypingNonFlatExport {
+			return stageGCTypeSubtypingNonFlatExport(c, opts, m)
+		}
+		if opts.gcTypeSubtypingRuntimeCallCast {
+			return stageGCTypeSubtypingRuntimeCallCast(c, opts, m)
+		}
+		if opts.gcTypeSubtypingRecursiveFunctions {
+			return stageGCTypeSubtypingRecursiveFunctions(c, opts, m)
+		}
+		if opts.gcTypeSubtypingRefFuncGlobals {
+			return stageGCTypeSubtypingRefFuncGlobals(c, opts, m)
+		}
 	}
-	if opts.gcTypeSubtypingTypedTableCall {
-		return stageGCTypeSubtypingRuntimeTypedTableCall(c, opts, m)
-	}
-	if opts.gcTypeSubtypingRefTestSingle {
-		return stageGCTypeSubtypingRefTestSingle(c, opts, m)
-	}
-	if opts.gcTypeSubtypingLink != 0 {
-		return stageGCTypeSubtypingLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingFinalityLink != 0 {
-		return stageGCTypeSubtypingFinalityLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingStructLink != 0 {
-		return stageGCTypeSubtypingStructLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingStructProjection != 0 {
-		return stageGCTypeSubtypingStructProjectionLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingStructMismatch != 0 {
-		return stageGCTypeSubtypingStructMismatchLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingIndependentStruct != 0 {
-		return stageGCTypeSubtypingIndependentStructLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingExtendedProjection != 0 {
-		return stageGCTypeSubtypingExtendedProjectionLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingDuplicateRecursive != 0 {
-		return stageGCTypeSubtypingDuplicateRecursiveLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingExtendedRecursive != 0 {
-		return stageGCTypeSubtypingExtendedRecursiveLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingCrossGroupMismatch != 0 {
-		return stageGCTypeSubtypingCrossGroupMismatchLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingTransitiveMismatch != 0 {
-		return stageGCTypeSubtypingTransitiveMismatchLink(c, opts, m)
-	}
-	if opts.gcTypeSubtypingNonFlatExport {
-		return stageGCTypeSubtypingNonFlatExport(c, opts, m)
-	}
-	if opts.gcTypeSubtypingRuntimeCallCast {
-		return stageGCTypeSubtypingRuntimeCallCast(c, opts, m)
-	}
-	if opts.gcTypeSubtypingRecursiveFunctions {
-		return stageGCTypeSubtypingRecursiveFunctions(c, opts, m)
-	}
-	if opts.gcTypeSubtypingRefFuncGlobals {
-		return stageGCTypeSubtypingRefFuncGlobals(c, opts, m)
-	}
-	if opts.referenceFunctions {
+	if buildfeatures.ReferenceSignatures && opts.referenceFunctions {
 		return stageClosedReferenceProductionModule(c, opts, m, false)
 	}
 	return stageProductionModule(c, opts)
@@ -956,11 +976,17 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 		return err
 	}
 	retainedTypeMetadata := len(opts.Codegen.Module.GCTypeDescs) != 0 || len(opts.Codegen.Module.GCTypeLayouts) != 0 || opts.Codegen.Module.Features.GC
-	metadataOnlyGC := retainedTypeMetadata && (admitPublicTypeDeclarations(m) || admitPublicPrimitiveReferenceModule(m, allowSWAR))
-	opts.gcRootedScalar = opts.GCFrameRootsSource && opts.GCFrameRoots != nil && (admitRV64GCRootedScalarModule(m, pluginInstructions(opts.CustomInstructions)) || opts.ExceptionHandlingSource && opts.OwnedExceptionReferences)
-	opts.gcFunctionEnvironments = opts.gcRootedScalar && wasm.ModuleFunctionReferenceCarriers(m)
-	if err := prepareCollectorOperandPlans(m, opts); err != nil {
-		return err
+	metadataOnlyGC := buildfeatures.ReferenceSignatures && retainedTypeMetadata && (admitPublicTypeDeclarations(m) || admitPublicPrimitiveReferenceModule(m, allowSWAR))
+	// Numeric function descriptors still have to agree with their source types.
+	// This comparison needs only the type section, with no primitive-reference
+	// instruction witness or permission to use collector metadata.
+	retainedNumericTypes := !buildfeatures.ReferenceSignatures && retainedTypeMetadata
+	opts.gcRootedScalar = buildfeatures.RISCV64CollectorFrameRoots && opts.GCFrameRootsSource && opts.GCFrameRoots != nil && (admitRV64GCRootedScalarModule(m, pluginInstructions(opts.CustomInstructions)) || opts.ExceptionHandlingSource && opts.OwnedExceptionReferences)
+	if buildfeatures.RISCV64CollectorFrameRoots {
+		opts.gcFunctionEnvironments = opts.gcRootedScalar && wasm.ModuleFunctionReferenceCarriers(m)
+		if err := prepareCollectorOperandPlans(m, opts); err != nil {
+			return err
+		}
 	}
 	var rootedStructHelpers, rootedArrayHelpers, rootedHelperProfile bool
 	if opts.gcRootedScalar {
@@ -1069,8 +1095,8 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.gcArrayCopy && (opts.GCStructHelpers || !opts.GCArrayHelpers || opts.SyncHostSlots < 7) {
 		return unsupported(fmt.Sprintf("gc array copy helper contract struct=%t array=%t slots=%d", opts.GCStructHelpers, opts.GCArrayHelpers, opts.SyncHostSlots))
 	}
-	if metadataOnlyGC || opts.gcRootedScalar || opts.i31Core || opts.gcTypeSubtypingDeclarations || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingFinalityLink != 0 || opts.gcTypeSubtypingStructLink != 0 || opts.gcTypeSubtypingStructProjection != 0 || opts.gcTypeSubtypingStructMismatch != 0 || opts.gcTypeSubtypingIndependentStruct != 0 || opts.gcTypeSubtypingExtendedProjection != 0 || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.gcTypeSubtypingCrossGroupMismatch != 0 || opts.gcTypeSubtypingTransitiveMismatch != 0 || opts.gcTypeSubtypingNonFlatExport || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy {
-		expected, err := frontend.BuildGCTypeMetadataWithOptions(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: opts.OwnedExceptionReferences})
+	if retainedNumericTypes || metadataOnlyGC || opts.gcRootedScalar || opts.i31Core || opts.gcTypeSubtypingDeclarations || opts.gcTypeSubtypingRecursiveFunctions || opts.gcTypeSubtypingRefFuncGlobals || opts.gcTypeSubtypingRuntimeCallCast || opts.gcTypeSubtypingRefTestSingle || opts.gcTypeSubtypingFinalityLink != 0 || opts.gcTypeSubtypingStructLink != 0 || opts.gcTypeSubtypingStructProjection != 0 || opts.gcTypeSubtypingStructMismatch != 0 || opts.gcTypeSubtypingIndependentStruct != 0 || opts.gcTypeSubtypingExtendedProjection != 0 || opts.gcTypeSubtypingDuplicateRecursive != 0 || opts.gcTypeSubtypingExtendedRecursive != 0 || opts.gcTypeSubtypingCrossGroupMismatch != 0 || opts.gcTypeSubtypingTransitiveMismatch != 0 || opts.gcTypeSubtypingNonFlatExport || opts.gcRefEq || opts.gcRefTestTable || opts.gcRefTestConcrete || opts.gcRefTestAbstract || opts.gcStructGet || opts.gcStructMutation || opts.gcStructNull || opts.gcStructPacked || opts.gcStructBasic || opts.gcStructGlobals || opts.gcArrayLocal || opts.gcArrayUniform || opts.gcArrayFixedLocal || opts.gcArrayFixedOfficial || opts.gcArrayPackedData || opts.gcArrayReference || opts.gcArrayInitElem || opts.gcArrayInitData || opts.gcArrayFill || opts.gcArrayCopy {
+		expected, err := frontend.BuildCompileTypeMetadata(m, frontend.GCTypeMetadataOptions{OwnedExceptionReferences: opts.OwnedExceptionReferences})
 		if err != nil {
 			return err
 		}
@@ -1085,7 +1111,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 			return unsupported("production GC descriptor lowering is pending")
 		}
 	}
-	if err := gc.ValidateTypeDescs(opts.Codegen.Module.GCTypeDescs); err != nil {
+	if err := frontend.ValidateCompileTypeDescs(opts.Codegen.Module.GCTypeDescs); err != nil {
 		return err
 	}
 	if opts.Stats != nil && !diagnosticsEnabled {
@@ -1103,7 +1129,7 @@ func admitProductionOptions(m *wasm.Module, opts *CompileOptions, allowSWAR bool
 	if opts.Profile && opts.Stats == nil {
 		opts.Stats = &ModuleStats{}
 	}
-	if _, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
+	if _, err := optimizationBindings().ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas); err != nil {
 		return err
 	}
 	return nil
@@ -1120,49 +1146,14 @@ func stageProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModul
 // profile/ownership staging implementation can allocate a code image.
 func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.CompiledModule, error) {
 	var tail *enc.NativeTailModule
-	if opts.NativeTailCalls {
-		if _, _, err := NativeTailInstanceBudget(len(*opts.tailPlans), len(c.code)); err != nil {
+	if buildfeatures.TailCall != 0 {
+		var err error
+		tail, err = stageNativeTailMetadata(c, opts)
+		if err != nil {
 			return nil, err
 		}
-		tail = &enc.NativeTailModule{}
-		values := 0
-		for _, p := range *opts.tailPlans {
-			if opts.tailModule == nil {
-				return nil, unsupported("staged tail module metadata")
-			}
-			var sig *wasm.CompType
-			var ok bool
-			switch p.kind {
-			case enc.NativeTailDirectImport:
-				sig, ok = opts.tailModule.FuncSignature(p.importIndex)
-			case enc.NativeTailIndirect, enc.NativeTailReference:
-				if !opts.dynamicTailCalls {
-					return nil, unsupported("indirect tail requires native owner generations")
-				}
-				sig, ok = opts.tailModule.TypeFunc(p.typeIndex)
-			default:
-				return nil, unsupported("unknown native tail runtime attachment")
-			}
-			if !ok {
-				return nil, unsupported("staged tail signature metadata")
-			}
-			values += len(sig.Params) + len(sig.Results)
-			if err := NativeTailMetadataBudget(len(*opts.tailPlans), values); err != nil {
-				return nil, err
-			}
-			local := int(p.functionIndex) - c.state.importedFunctions
-			if local < 0 || local >= len(c.functions) || c.functions[local].FrameHeaderBytes != callFrameHeader {
-				return nil, unsupported("staged tail finalized frame metadata")
-			}
-			tail.Plans = append(tail.Plans, enc.NativeTailPlan{Kind: p.kind, TypeIndex: p.typeIndex, ReferenceBase: p.referenceBase, FunctionIndex: p.functionIndex, ImportIndex: p.importIndex, SourcePC: p.sourcePC, FrameBytes: c.functions[local].FrameBytes, SourceBase: p.sourceBase, SourceStride: p.sourceStride})
-		}
-	}
-	// The validated source can contain only unreachable dynamic tails. Those
-	// instructions emit no code and need no plan. Each emitted plan above still
-	// requires the retained source, native owner protocol and finalized frame.
-	if (opts.referenceTailInstructions || opts.referenceFunctions && opts.indirectTailInstructions) &&
-		(tail == nil || !opts.dynamicTailCalls || opts.tailModule == nil) {
-		return nil, unsupported("dynamic tails require qualified native source metadata")
+	} else if opts.NativeTailCalls || opts.referenceTailInstructions || opts.referenceFunctions && opts.indirectTailInstructions {
+		return nil, unsupported("tail calls are disabled in this build")
 	}
 	if err := c.prepareProfileCode(c.code, c.functions, opts.UnwindMaps); err != nil {
 		return nil, err
@@ -1198,13 +1189,13 @@ func stageAdmittedProductionModule(c *Compiled, opts CompileOptions) (*enc.Compi
 // Ordinary references require their distinct retained normal-return protocol.
 // Reference control retains carriers without requiring declared-call transport.
 // Instruction bytes were bounded before this pass.
-func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
+func admitProductionControlTransfers(m *wasm.Module, referenceCalls, dynamicTails, vector, referenceFunctions bool) (bool, bool, bool, bool, error) {
 	referenceTails, indirectTails, hasReferenceCall, hasReferenceControl := false, false, false, false
 	if admitPublicTypeDeclarations(m) {
 		return false, false, false, false, nil
 	}
 	publicReferenceBoundary := referenceFunctions && (!vector && admitPublicReferenceCarrierBoundary(m) || admitMutableFunctionGlobalLocalCall(m) && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp))
-	rootedScalar := admitRV64GCRootedScalarModule(m)
+	rootedScalar := buildfeatures.RISCV64CollectorFrameRoots && admitRV64GCRootedScalarModule(m)
 	var rootedDirectory internalReferenceTypeDirectory
 	if rootedScalar {
 		var ok bool
@@ -1217,7 +1208,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 	if directoryErr != nil {
 		return false, false, false, false, directoryErr
 	}
-	primitiveDeclarations := admitPublicPrimitiveReferenceModule(m, vector)
+	primitiveDeclarations := buildfeatures.ReferenceSignatures && admitPublicPrimitiveReferenceModule(m, vector)
 	types := internalReferenceTypes{
 		sourceDirectory:          sourceDirectory,
 		publicReferences:         primitiveDeclarations,
@@ -1284,7 +1275,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 	for _, fn := range m.Code {
 		for _, run := range fn.Locals.Runs {
 			if run.Type.Kind() == wasm.ValRef {
-				if !internalFunctionReferenceWithTypes(run.Type, referenceCalls, types) {
+				if !buildfeatures.ReferenceSignatures || !internalFunctionReferenceWithTypes(run.Type, referenceCalls, types) {
 					return false, false, false, false, unsupported("reference local requires an admitted retained function-reference type")
 				}
 				hasReferenceControl = hasReferenceControl || !run.Type.Ref().Nullable() || run.Type.Ref().Heap().Kind() == wasm.HeapTypeIndex
@@ -1298,6 +1289,9 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 			}
 			if op == 0x02 || op == 0x03 || op == 0x04 {
 				if lead, ok := r.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+					if !buildfeatures.ReferenceSignatures {
+						return false, false, false, false, unsupported("reference block type is disabled in this build")
+					}
 					probe := r
 					witness, err := internalExplicitBlockReferenceType(&probe, referenceCalls, types)
 					if err != nil {
@@ -1316,6 +1310,9 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 					return false, false, false, false, unsupported("typed select requires one value type")
 				}
 				if lead, ok := probe.Peek(); ok && (lead == 0x63 || lead == 0x64) {
+					if !buildfeatures.ReferenceSignatures {
+						return false, false, false, false, unsupported("reference select type is disabled in this build")
+					}
 					witness, err := internalExplicitReferenceType(&probe, referenceCalls, types)
 					if err != nil {
 						return false, false, false, false, err
@@ -1324,7 +1321,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				}
 			}
 			if op == 0x14 {
-				if !referenceCalls {
+				if !buildfeatures.ReferenceSignatures || !referenceCalls {
 					return false, false, false, false, unsupported("call_ref requires retained native reference protocol")
 				}
 				hasReferenceCall = true
@@ -1337,7 +1334,7 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				}
 				if heap >= 0 {
 					indexed := uint32(heap)
-					if !(referenceCalls || dynamicTails && !referenceFunctions) || !types.function(indexed) && !types.rootedStruct(indexed) && !types.rootedArray(indexed) {
+					if !buildfeatures.ReferenceSignatures || !(referenceCalls || dynamicTails && !referenceFunctions) || !types.function(indexed) && !types.rootedStruct(indexed) && !types.rootedArray(indexed) {
 						return false, false, false, false, unsupported("indexed ref.null requires retained typed-reference protocol and an admitted indexed type")
 					}
 					// A typed null still requires the persisted feature witness even
@@ -1346,20 +1343,25 @@ func admitProductionDynamicTails(m *wasm.Module, referenceCalls, dynamicTails, v
 				}
 			}
 			if op == 0xd4 || op == 0xd5 || op == 0xd6 {
-				if !referenceCalls {
+				if !buildfeatures.ReferenceSignatures || !referenceCalls {
 					return false, false, false, false, unsupported("reference control requires retained typed-reference protocol")
 				}
 				hasReferenceControl = true
 			}
-			if op == 0x15 {
+			if buildfeatures.TailCall != 0 && op == 0x15 {
+				if !buildfeatures.ReferenceSignatures {
+					return false, false, false, false, unsupported("return_call_ref requires retained native reference protocol")
+				}
 				referenceTails = true
 				// Public tail arguments need the same invocation-scoped owner
 				// graph as ordinary call_ref. Private reference tails keep their
 				// existing internal-only marker.
 				hasReferenceCall = hasReferenceCall || publicReferenceBoundary || rootedScalar
 			}
-			indirectTails = indirectTails || op == 0x13
-			hasReferenceCall = hasReferenceCall || rootedScalar && op == 0x13
+			if buildfeatures.TailCall != 0 && op == 0x13 {
+				indirectTails = true
+				hasReferenceCall = hasReferenceCall || rootedScalar
+			}
 			var imm wasm.InstructionImmediate
 			if err := classifier.ClassifyInto(&r, op, &imm); err != nil {
 				return false, false, false, false, err

@@ -36,11 +36,14 @@ func (in *Instance) referenceLifetime() referenceLifetime { return referenceLife
 
 func (lifetime referenceLifetime) notifyStore(store *referenceStore, event referenceLifetimeEvent) {
 	in := lifetime.instance
-	if in == nil || store == nil {
+	if !referenceStoreForImage || in == nil || store == nil {
 		return
 	}
 	store.advanceInstanceLifetime(in, event)
 }
+
+// These profiles have work that must run outside lifeMu before physical release.
+const coordinatedReferenceFinalization = funcrefStorageImportsBuilt || referenceStoreForImage || terminalDependencyCollectionBuilt
 
 // finalize owns the exactly-once transition from logically closed to physically
 // released. Persistent roots transfer only after invocation quiescence; the
@@ -51,26 +54,39 @@ func (lifetime referenceLifetime) finalize() {
 		return
 	}
 	in.lifeMu.Lock()
-	if !in.closed || in.finalizing || in.resourcesClosed || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
+	if !in.referenceReleaseReadyLocked() || coordinatedReferenceFinalization && in.finalizing {
 		in.lifeMu.Unlock()
 		return
 	}
-	in.finalizing = true
-	store := in.refStore
-	in.lifeMu.Unlock()
 
-	// These scans can detach transferred attachments and synchronously finalize
-	// another producer. A callback panic must not strand our finalizing claim or
-	// skip the later scan, store notification, and eligible physical teardown.
 	var cleanup resourceCleanup
-	cleanup.run(func() { retainProducerRootsInImportedContainersForFinalization(in) })
-	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeQuiesced) })
-
-	in.lifeMu.Lock()
-	in.finalizing = false
-	if in.resourcesClosed || !in.closed || in.resourceRefs != 0 || in.constructionActive || in.invocationState.Load()&instanceInvocationCount != 0 {
+	var store *referenceStore
+	ready := true
+	if coordinatedReferenceFinalization {
+		in.finalizing = true
+		if referenceStoreForImage {
+			store = in.refStore
+		}
 		in.lifeMu.Unlock()
-		cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(in) })
+
+		// Either scan may synchronously finalize another producer. Preserve its
+		// panic and still finish our journal and release claim.
+		if funcrefStorageImportsBuilt {
+			cleanup.run(func() { retainProducerRootsInImportedContainersForFinalization(in) })
+		}
+		if referenceStoreForImage {
+			cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeQuiesced) })
+		}
+
+		in.lifeMu.Lock()
+		in.finalizing = false
+		ready = in.referenceReleaseReadyLocked()
+	}
+	if !ready || in.resourceRefs != 0 {
+		in.lifeMu.Unlock()
+		if terminalDependencyCollectionBuilt {
+			cleanup.run(func() { railshotRequestClosedContainerDependencyAdoption(in) })
+		}
 		cleanup.finish()
 		return
 	}
@@ -79,15 +95,23 @@ func (lifetime referenceLifetime) finalize() {
 	in.finalizers = nil
 	in.lifeMu.Unlock()
 
-	cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeResourcesReleased) })
+	if referenceStoreForImage {
+		cleanup.run(func() { lifetime.notifyStore(store, referenceLifetimeResourcesReleased) })
+	}
 	in.releaseResources(&cleanup)
 	if finalizers != nil && finalizers.physical != nil {
 		cleanup.run(finalizers.physical)
 	}
 	// resourcesClosed was only the claim. Registration retirement must wait for
 	// native teardown and the complete physical callback journal, including panic.
-	railshotFunctionDependencyCleanupCompleted(in)
+	if terminalDependencyCollectionBuilt {
+		railshotFunctionDependencyCleanupCompleted(in)
+	}
 	cleanup.finish()
+}
+
+func (in *Instance) referenceReleaseReadyLocked() bool {
+	return in.closed && !in.resourcesClosed && !in.constructionActive && in.invocationState.Load()&instanceInvocationCount == 0
 }
 
 func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
@@ -176,6 +200,9 @@ func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
 }
 
 func (in *Instance) ownsTransferredMemoryAttachment(memory *Memory) bool {
+	if !crossInstanceDependenciesForImage {
+		return false
+	}
 	if transferred, managed := railshotTransferredMemoryDependency(in, memory); managed {
 		return transferred
 	}

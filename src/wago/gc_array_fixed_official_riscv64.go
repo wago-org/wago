@@ -47,18 +47,18 @@ func rv64GCArrayFixedOfficialMetadata(c *Compiled, requireInitializer bool) bool
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	if requireInitializer {
-		if len(d.gcArrayGlobals) != 1 {
+		if len(d.gcArrayGlobals()) != 1 {
 			return false
 		}
-		init := d.gcArrayGlobals[0]
+		init := d.gcArrayGlobals()[0]
 		if init.GlobalIndex != 0 || init.TypeID != 0 || init.Length != 2 || init.Mode != gcArrayGlobalInitFixed || !slices.Equal(init.Bits, []uint64{0x3f800000, 0x40000000}) {
 			return false
 		}
-	} else if len(d.gcArrayGlobals) != 0 {
+	} else if len(d.gcArrayGlobals()) != 0 {
 		return false
 	}
 	wantExports := map[string]int{"new": 0, "get": 2, "set_get": 4, "len": 6}

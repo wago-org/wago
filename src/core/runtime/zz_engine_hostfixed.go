@@ -99,14 +99,14 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 			foreignN := int(raw & 0xffff)
 			foreignNres := int(raw >> 16)
 			if foreignN > maxHostArity || foreignNres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, foreignN, foreignNres)
+				if !wideHostControlForImage {
+					return hostCtrlFixedArityError(foreignN, foreignNres)
+				}
+				args, wideResults, err := prepareWideHostCall(ctrl, foreignN, foreignNres)
 				if err != nil {
 					return err
 				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
-				clear(wideResults[:foreignNres])
-				host(ctrlPtr, imp, args[:foreignN], wideResults[:foreignNres])
+				host(ctrlPtr, imp, args, wideResults)
 				goto resume
 			}
 			if scalar != nil && foreignN <= 2 && foreignNres <= 2 {

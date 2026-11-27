@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && !tinygo
+//go:build linux && !tinygo && (!wago_no_reference_types || !wago_no_typed_function_references || !wago_no_gc || !wago_no_exception_handling)
 
 package riscv64
 
@@ -131,8 +131,4 @@ func admitPublicHostReferenceBoundary(m *wasm.Module) bool {
 
 func admitPublicReferenceCarrierBoundary(m *wasm.Module) bool {
 	return admitPublicReferenceCallBoundary(m) || admitPublicHostReferenceBoundary(m) || admitPublicDynamicHostReferenceBoundary(m) || admitMutableFunctionGlobalReferenceCarrierCall(m)
-}
-
-func admitMutableFunctionGlobalReferenceCarrierCall(m *wasm.Module) bool {
-	return admitMutableFunctionGlobalLocalCall(m) && len(m.Types) == 2 && len(m.Types[0].SubTypes) == 1 && publicReferenceVectorCarrierTarget(&m.Types[0].SubTypes[0].Comp)
 }

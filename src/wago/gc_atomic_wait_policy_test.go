@@ -1,3 +1,5 @@
+//go:build !wago_no_gc
+
 package wago
 
 import (
@@ -12,8 +14,8 @@ func TestGCAtomicWaitDynamicFuncrefReachabilityRejected(t *testing.T) {
 		HasTable:  true,
 		TableType: ValFuncRef,
 		codeCache: &compiledCodeCache{
-			gcStructProduct: stagedGCStructGeneric,
-			flags:           compiledCacheAtomicWaitHelpers,
+			compiledGCProductState: compiledGCProductState{compiledGCProducts{gcStructProduct: stagedGCStructGeneric}},
+			flags:                  compiledCacheAtomicWaitHelpers,
 		},
 	}
 
@@ -24,14 +26,17 @@ func TestGCAtomicWaitDynamicFuncrefReachabilityRejected(t *testing.T) {
 }
 
 func TestGCAtomicWaitReferenceImportRejected(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires compiled native frame roots")
+	}
 	collector := new(gc.Collector)
-	store := &referenceStore{gcDomains: &gcDomainTopology{first: &gcStoreDomain{collector: collector}, n: 1}}
-	store.gcDomains.last = store.gcDomains.first
+	store := &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{first: &gcStoreDomain{collector: collector}, n: 1})}
+	store.gcTopologyLocked().last = store.gcTopologyLocked().first
 	producer := &Instance{
 		c: &Compiled{
 			Entry:        []int{0},
 			Funcs:        []FuncSig{{Params: []ValType{ValAnyRef}, Results: []ValType{ValI32}}},
-			validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
+			validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})},
 		},
 		gc:       collector,
 		refStore: store,
@@ -41,10 +46,10 @@ func TestGCAtomicWaitReferenceImportRejected(t *testing.T) {
 		Imports:        []string{"env.read"},
 		importFuncSigs: []FuncSig{{Params: []ValType{ValAnyRef}, Results: []ValType{ValI32}}},
 		codeCache: &compiledCodeCache{
-			gcStructProduct: stagedGCStructGeneric,
-			flags:           compiledCacheAtomicWaitHelpers,
+			compiledGCProductState: compiledGCProductState{compiledGCProducts{gcStructProduct: stagedGCStructGeneric}},
+			flags:                  compiledCacheAtomicWaitHelpers,
 		},
-		validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
+		validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})},
 	}
 
 	err := consumer.validateImportBindings(testImports("env.read", export).bindings, store)
@@ -54,9 +59,12 @@ func TestGCAtomicWaitReferenceImportRejected(t *testing.T) {
 }
 
 func TestGCAtomicWaitScalarRuntimeGCDomainImportRejected(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires compiled native frame roots")
+	}
 	collector := new(gc.Collector)
 	domain := &gcStoreDomain{collector: collector}
-	store := &referenceStore{gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1}}
+	store := &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{first: domain, last: domain, n: 1})}
 	producer := &Instance{
 		c: &Compiled{
 			Entry: []int{0},
@@ -70,10 +78,10 @@ func TestGCAtomicWaitScalarRuntimeGCDomainImportRejected(t *testing.T) {
 		Imports:        []string{"env.notify"},
 		importFuncSigs: []FuncSig{{Results: []ValType{ValI32}}},
 		codeCache: &compiledCodeCache{
-			gcStructProduct: stagedGCStructGeneric,
-			flags:           compiledCacheAtomicWaitHelpers,
+			compiledGCProductState: compiledGCProductState{compiledGCProducts{gcStructProduct: stagedGCStructGeneric}},
+			flags:                  compiledCacheAtomicWaitHelpers,
 		},
-		validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
+		validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})},
 	}
 
 	err := consumer.validateImportBindings(testImports("env.notify", export).bindings, store)
@@ -83,9 +91,12 @@ func TestGCAtomicWaitScalarRuntimeGCDomainImportRejected(t *testing.T) {
 }
 
 func TestGCAtomicWaitForeignRuntimeGCDomainImportRejected(t *testing.T) {
+	if !nativeCollectorFrameRootsBuilt {
+		t.Skip("requires compiled native frame roots")
+	}
 	collector := new(gc.Collector)
 	domain := &gcStoreDomain{collector: collector}
-	producerStore := &referenceStore{gcDomains: &gcDomainTopology{first: domain, last: domain, n: 1}}
+	producerStore := &referenceStore{gcDomainStoreState: testGCDomainStoreState(t, &gcDomainTopology{first: domain, last: domain, n: 1})}
 	producer := &Instance{
 		c: &Compiled{
 			Entry: []int{0},
@@ -99,10 +110,10 @@ func TestGCAtomicWaitForeignRuntimeGCDomainImportRejected(t *testing.T) {
 		Imports:        []string{"env.notify"},
 		importFuncSigs: []FuncSig{{Results: []ValType{ValI32}}},
 		codeCache: &compiledCodeCache{
-			gcStructProduct: stagedGCStructGeneric,
-			flags:           compiledCacheAtomicWaitHelpers,
+			compiledGCProductState: compiledGCProductState{compiledGCProducts{gcStructProduct: stagedGCStructGeneric}},
+			flags:                  compiledCacheAtomicWaitHelpers,
 		},
-		validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}},
+		validateMemo: &validateMemo{compiledGCFrameRootState: testCompiledGCFrameRootState(&compiledGCFrameRoots{})},
 	}
 	consumerStore := newReferenceStore(false)
 

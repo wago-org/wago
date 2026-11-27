@@ -9,6 +9,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 // valueFacts is bounded semantic provenance carried directly by a Valent node.
 // It shares one metadata byte with GC/EH root state, so facts neither allocate
 // nor enlarge the operand-stack arena. Facts describe the value, not its current
@@ -78,9 +80,13 @@ func deferredResultFacts(op wOp, typ machineType) valueFacts {
 	switch op {
 	case opAdd, opSub, opAnd, opOr, opXor,
 		opShl, opShrU, opShrS, opRotl, opRotr,
-		opMul, opDivU, opDivS, opRemU, opRemS, opSExt8, opSExt16,
+		opMul, opDivU, opDivS, opRemU, opRemS,
 		opClz, opCtz, opPopcnt:
 		return factUpper32Zero
+	case opSExt8, opSExt16:
+		if buildfeatures.SignExtensionOps != 0 {
+			return factUpper32Zero
+		}
 	}
 	return 0
 }

@@ -137,7 +137,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 							if activeTarget {
 								state := &in.pluginState.Load().railshotInvocation
 								if state.tableDepth != 0 {
-									for _, candidate := range state.tableTargets[state.tableDepth-1].tailActive {
+									for _, candidate := range state.tableTargets[state.tableDepth-1].tailForTest().active {
 										if candidate.caller == in {
 											generation = candidate
 										}
@@ -145,7 +145,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 								}
 							}
 							parkedCapability = capability
-							if activeTarget && (capability == 0 || in.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0) {
+							if activeTarget && (capability == 0 || in.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count == 0) {
 								panic("active private reference tail lacks generation")
 							}
 							if _, err := in.InvokeFromHost(context.Background(), caller, "clear"); err != nil {
@@ -300,7 +300,7 @@ func rv64ReferenceFunctionNumericCallsParked(t *testing.T, tableStage int) {
 						if start == 2 {
 							wantCalls++
 						}
-						if calls != wantCalls || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || gate.state.Load() != 0 || active.pluginState.Load().railshotInvocation.tailDispatcher != nil || active.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || (active.nativeContext != 0 && rv64EntryCapability(active) != 0) || readGlobalObject(provider.globalCells[1], ValI32) != 12 {
+						if calls != wantCalls || caller.valid() || active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || gate.state.Load() != 0 || active.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || active.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || (active.nativeContext != 0 && rv64EntryCapability(active) != 0) || readGlobalObject(provider.globalCells[1], ValI32) != 12 {
 							t.Fatal("private cell join retained scope/effects")
 						}
 						rv64ReferenceImportedStartRetired(t, native, nc)

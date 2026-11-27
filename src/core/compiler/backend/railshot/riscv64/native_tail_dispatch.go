@@ -14,6 +14,7 @@ import (
 	"errors"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -55,7 +56,7 @@ type NativeTailSite struct {
 // retaining its code across suspended records. External native serialization
 // and physical caller/target leases are required; no lease is acquired here.
 type NativeTailDispatcher struct {
-	code       *coreruntime.CodeBuffer
+	code       nativeTailDispatchMapping
 	arena      *coreruntime.Arena
 	capability []byte
 	contexts   [][]byte
@@ -188,6 +189,9 @@ func NewNativeTailDispatcherDetached(sites []NativeTailSite, guestCodeBytes int)
 }
 
 func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *coreruntime.Arena, bind bool) (*NativeTailDispatcher, error) {
+	if buildfeatures.TailCall == 0 {
+		return nil, unsupported("tail calls are disabled in this build")
+	}
 	bound, err := nativeTailDispatcherBoundForBinding(sites, guestCodeBytes, bind)
 	if err != nil {
 		return nil, err
@@ -197,7 +201,8 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 	// Seal mappings for cleanup. All aggregate checks above precede these calls.
 	for _, s := range sites {
 		if s.dynamic != nil {
-			for _, owner := range s.dynamic.owners {
+			for n := range s.dynamic.owners {
+				owner := &s.dynamic.owners[n]
 				for i := 0; i < len(owner.functions)+len(owner.targets); i++ {
 					f := owner.retainedFunction(i)
 					if err := f.publishCode(); err != nil {
@@ -212,11 +217,12 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 		return nil, err
 	}
 	o := &NativeTailDispatcher{callerHome: sites[0].CallerHome}
-	o.code, err = coreruntime.NewCodeBuffer(bound)
+	var base uintptr
+	o.code, base, err = coreruntime.ReserveWritableCode(bound)
 	if err != nil {
 		return o, err
 	}
-	base := o.code.Base()
+	image := nativeTailDispatchImage{remaining: o.code[:bound:bound], next: base}
 	if arena == nil {
 		o.arena, err = coreruntime.NewArena(tailRACapHeader + len(sites)*tailRASiteRow)
 		if err != nil {
@@ -253,33 +259,16 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 		if p.dynamic != nil {
 			o.dynamic = append(o.dynamic, nativeTailDynamicLease{site: p.dynamic, trampoline: s.Target.HostTrampoline, params: p.params, results: p.results})
 		}
-		// Emit into the reserved mapping. The bound above includes all sites;
-		// retain the ordinary append fallback if emission outgrows its tail.
-		tail, err := o.code.AppendTail(0)
+		finalAddress := image.next
+		final, err := tailRAFinalizeInto(p, exit, image.remaining[:0])
 		if err != nil {
 			return o, err
 		}
-		final, err := tailRAFinalizeInto(p, exit, tail)
-		if err != nil {
+		if err = image.appendAligned(final); err != nil {
 			return o, err
 		}
-		finalAddress := o.code.Base() + uintptr(len(o.code.Bytes()))
-		if !o.code.CommitTail(final) {
-			if err = o.code.Append(final); err != nil {
-				return o, err
-			}
-		}
-		for len(o.code.Bytes())&15 != 0 {
-			if err = o.code.Append([]byte{0x13, 0, 0, 0}); err != nil {
-				return o, err
-			}
-		}
-		preAddress := o.code.Base() + uintptr(len(o.code.Bytes()))
-		tail, err = o.code.AppendTail(0)
-		if err != nil {
-			return o, err
-		}
-		pre, err := tailRAPreflightInto(p, exit, finalAddress, tail)
+		preAddress := image.next
+		pre, err := tailRAPreflightInto(p, exit, finalAddress, image.remaining[:0])
 		if err != nil {
 			return o, err
 		}
@@ -287,15 +276,8 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 		if len(final)+len(pre)+32 > tailRADispatchBound+128*len(s.Continuations)+dynamicCode {
 			return o, unsupported("native tail actual dispatcher bound")
 		}
-		if !o.code.CommitTail(pre) {
-			if err = o.code.Append(pre); err != nil {
-				return o, err
-			}
-		}
-		for len(o.code.Bytes())&15 != 0 {
-			if err = o.code.Append([]byte{0x13, 0, 0, 0}); err != nil {
-				return o, err
-			}
+		if err = image.appendAligned(pre); err != nil {
+			return o, err
 		}
 		row := o.capability[tailRACapHeader+n*tailRASiteRow:]
 		binary.LittleEndian.PutUint64(row, uint64(preAddress))
@@ -311,11 +293,8 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 			o.contexts = append(o.contexts, s.CallerContext)
 		}
 	}
-	if o.code.Base() != base || len(o.code.Bytes()) > bound {
-		return o, unsupported("native tail stable mapping bound")
-	}
-	if err = o.code.Seal(); err != nil {
-		return o, err
+	if err = coreruntime.SealCode(o.code); err != nil {
+		return o, errors.Join(err, o.unmapCode())
 	}
 	if bind {
 		for _, ctx := range o.contexts {
@@ -326,14 +305,59 @@ func newNativeTailDispatcher(sites []NativeTailSite, guestCodeBytes int, arena *
 	return o, nil
 }
 
+type nativeTailDispatchMapping []byte
+
+func (mapping nativeTailDispatchMapping) Base() uintptr { return tailRAPointer(mapping) }
+
+// nativeTailDispatchImage emits aligned stubs into a fixed reservation. Each
+// recorded entry address stays valid for the lifetime of the mapping.
+type nativeTailDispatchImage struct {
+	remaining []byte
+	next      uintptr
+}
+
+func (image *nativeTailDispatchImage) appendAligned(code []byte) error {
+	const alignment = 16
+	size := (len(code) + alignment - 1) &^ (alignment - 1)
+	if len(code)&3 != 0 || size > len(image.remaining) {
+		return unsupported("native tail stable mapping bound")
+	}
+	// The assembler normally writes directly into remaining. Copy also handles
+	// assembler output backed by a separate allocation.
+	if len(code) != 0 && unsafe.SliceData(code) != unsafe.SliceData(image.remaining) {
+		copy(image.remaining, code)
+	}
+	for offset := len(code); offset < size; offset += 4 {
+		binary.LittleEndian.PutUint32(image.remaining[offset:], 0x13) // nop
+	}
+	image.remaining = image.remaining[size:]
+	image.next += uintptr(size)
+	return nil
+}
+
+func (o *NativeTailDispatcher) unmapCode() error {
+	if o.code == nil {
+		return nil
+	}
+	if err := coreruntime.Unmap(o.code); err != nil {
+		return err
+	}
+	o.code = nil
+	return nil
+}
+
 // Close detaches before releasing either mapping, and retains failed cleanup
 // owners for a retry. Final instance retirement must exclude live guest entries.
 // Failed Detach still borrows the caller context; keep its arena alive through
 // retry. After successful Detach, failed mapping cleanup may outlive that arena.
 func (o *NativeTailDispatcher) Close() error {
-	if o == nil {
+	if buildfeatures.TailCall == 0 || o == nil {
 		return nil
 	}
+	return o.closeMappings()
+}
+
+func (o *NativeTailDispatcher) closeMappings() error {
 	// Cleanup failure must never make a partially retired factory callable again.
 	o.ready = false
 	if err := o.Detach(); err != nil {
@@ -347,12 +371,8 @@ func (o *NativeTailDispatcher) Close() error {
 		o.capability = nil
 	}
 	var errs []error
-	if o.code != nil {
-		if err := o.code.Close(); err != nil {
-			errs = append(errs, err)
-		} else {
-			o.code = nil
-		}
+	if err := o.unmapCode(); err != nil {
+		errs = append(errs, err)
 	}
 	if o.arena != nil {
 		if err := o.arena.Close(); err != nil {

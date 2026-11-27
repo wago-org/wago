@@ -968,7 +968,11 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		}
 	}
 	ft := &wasm.CompType{Kind: wasm.CompFunc, Params: params, Results: results}
-	return f.callHostSync(int(gcStructDispatchBit|payload), ft)
+	if err := f.callHostSync(int(gcStructDispatchBit|payload), ft); err != nil {
+		return err
+	}
+	f.gcHelperUses |= shared.GCHelperUseBit(dispatchHelper)
+	return nil
 }
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {

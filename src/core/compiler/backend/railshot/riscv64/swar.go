@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 )
@@ -134,6 +135,7 @@ func (f *integerEmitter) swarMemoryAddressAt(index uint32, offset uint64, footpr
 	f.swarMemoryAddressTypedAt(index, offset, footprint, false)
 }
 func (f *integerEmitter) swarMemoryAddressTypedAt(index uint32, offset uint64, footprint uint8, address64 bool) {
+	address64 = buildfeatures.Memory64 != 0 && address64
 	if f.err != nil || f.a.Err() != nil {
 		return
 	}

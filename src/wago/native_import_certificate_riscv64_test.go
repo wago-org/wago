@@ -182,7 +182,7 @@ func TestRV64NativeImportCertificateMetadataAdmission(t *testing.T) {
 	cost := railshotNativeImportMetadataBytes(in.c, in.imports)
 	base := in.c.arenaNeedForImports(in.imports, in.syncMode)
 	need := uint64(base + cost)
-	if cost == 0 || in.pluginState.Load().railshotInvocation.tailPolicy.metadataBase != need {
+	if cost == 0 || in.pluginState.Load().railshotInvocation.tail.get().policy.metadataBase != need {
 		t.Fatal("persistent certificate metadata not charged", cost, need)
 	}
 	for _, limit := range []uint64{need - 1, need} {

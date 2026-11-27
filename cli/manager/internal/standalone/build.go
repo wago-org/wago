@@ -59,6 +59,7 @@ type Request struct {
 	Core                   int
 	Features               wago.CoreFeatures
 	FeaturesSet            bool
+	BuildTags              []string
 	DeferredBoundsChecking bool
 	FunctionWorkers        int
 	Optimizations          map[string]bool
@@ -92,13 +93,10 @@ func Build(request Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	module, err := wasm.DecodeModule(source)
-	if err != nil {
+	if _, err := wasm.DecodeModule(source); err != nil {
 		return Result{}, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModule(module); err != nil {
-		return Result{}, fmt.Errorf("validate: %w", err)
-	}
+	// The generator validates under the selected profile and target build tags.
 	if request.Target.OS == "" {
 		request.Target, err = ParseTarget("")
 		if err != nil {
@@ -151,15 +149,19 @@ func Build(request Request) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("prepare plugins: %w", err)
 	}
-	selections, err := json.Marshal(inputs.Build.Selections)
-	if err != nil {
-		return Result{}, fmt.Errorf("encode plugin configuration: %w", err)
+	var selections []byte
+	hasPlugins := len(inputs.Build.ProviderImports) != 0 || len(inputs.Build.Selections) != 0
+	if hasPlugins {
+		selections, err = json.Marshal(inputs.Build.Selections)
+		if err != nil {
+			return Result{}, fmt.Errorf("encode plugin configuration: %w", err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(buildDir, "module.wasm"), source, 0o644); err != nil {
 		return Result{}, err
 	}
 	mainPath := filepath.Join(buildDir, "main.go")
-	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet), 0o644); err != nil {
+	if err := os.WriteFile(mainPath, mainSource(inputs.Build.ProviderImports, selections, request, generateModule), 0o644); err != nil {
 		return Result{}, err
 	}
 	environment := append(os.Environ(),
@@ -174,40 +176,20 @@ func Build(request Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	helper := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
-	helper = bytes.Replace(helper,
-		[]byte("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }"),
-		[]byte("func main() { sources, err := standalone.GenerateModule(module, pluginSet(), options); if err == nil { for name, source := range sources { if err = os.WriteFile(name+\".txt\", source, 0644); err != nil { break } } }; if err != nil { println(err.Error()); os.Exit(1) } }"), 1)
-	if err := os.WriteFile(mainPath, helper, 0644); err != nil {
-		return Result{}, err
-	}
-	tags := "wago_standalone_generator"
+	tags := strings.Join(append([]string{"wago_standalone_generator"}, request.BuildTags...), ",")
 	if request.TinyGo {
 		tags += ",wago_target_tinygo"
 	}
 	if err := runGo(buildDir, environment, request.Verbose, "run", "-trimpath", "-tags="+tags, "."); err != nil {
 		return Result{}, fmt.Errorf("compile standalone machine code: %w", err)
 	}
-	generated := map[string][]byte{}
-	for _, name := range []string{"standalone_module.go", "standalone_dispatcher.go"} {
-		body, err := os.ReadFile(filepath.Join(buildDir, name+".txt"))
-		if err != nil {
-			return Result{}, err
-		}
-		generated[name] = body
-	}
-	if err := linkNativeModule(nativeRuntime, generated); err != nil {
+	tagsForRuntime, err := linkStandaloneLauncher(buildDir, nativeRuntime, mainPath, inputs.Build.ProviderImports, selections, request)
+	if err != nil {
 		return Result{}, err
 	}
-	nativeMain := mainSource(inputs.Build.ProviderImports, selections, request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Optimizations, request.Features, request.FeaturesSet)
-	nativeMain = bytes.ReplaceAll(nativeMain, []byte("\t_ \"embed\"\n"), nil)
-	nativeMain = bytes.ReplaceAll(nativeMain, []byte("//go:embed module.wasm\nvar module []byte\n"), nil)
-	nativeMain = bytes.Replace(nativeMain, []byte("standalone.Run(module, pluginSet(), options, os.Args)"), []byte("standalone.RunCompiled(wago.StandaloneCompiled(), pluginSet(), options, os.Args)"), 1)
-	if err := os.WriteFile(mainPath, nativeMain, 0644); err != nil {
-		return Result{}, err
-	}
+	runtimeTags := "-tags=" + strings.Join(append(tagsForRuntime, request.BuildTags...), ",")
 	if request.TinyGo {
-		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", "-tags=wago_standalone"}
+		args := []string{"build", "-scheduler=tasks", "-opt=z", "-gc=conservative", runtimeTags}
 		args = append(args, wagopaths.TinyGoTargetFlags(request.Target.OS, request.Target.Arch)...)
 		if !request.KeepSymbols {
 			args = append(args, "-no-debug")
@@ -223,7 +205,7 @@ func Build(request Request) (Result, error) {
 		}
 		return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
 	}
-	args := []string{"build", "-buildvcs=false", "-trimpath", "-tags=wago_standalone"}
+	args := []string{"build", "-buildvcs=false", "-trimpath", runtimeTags}
 	if !request.KeepSymbols {
 		args = append(args, "-ldflags=-s -w")
 	}
@@ -232,6 +214,90 @@ func Build(request Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Output: output, Target: request.Target, Plugins: len(inputs.Build.Selections)}, nil
+}
+
+func linkStandaloneLauncher(buildDir, nativeRuntime, mainPath string, providerImports []string, selections []byte, request Request) ([]string, error) {
+	hasPlugins := len(providerImports) != 0 || len(selections) != 0
+	if !hasPlugins {
+		// The generator can prove some launchers terminate before reaching the
+		// compiled image. Older generators leave this optional source absent.
+		source, err := os.ReadFile(filepath.Join(buildDir, "standalone_diagnostic.go.txt"))
+		if err == nil {
+			return nil, os.WriteFile(mainPath, source, 0o644)
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	generated := map[string][]byte{}
+	names := []string{"standalone_module.go"}
+	hasProfile := false
+	if !hasPlugins {
+		// Generators before image specialization emit only the module and dispatcher.
+		profile, err := os.ReadFile(filepath.Join(buildDir, "standalone_profile.go.txt"))
+		if err == nil {
+			generated["standalone_profile.go"] = profile
+			hasProfile = true
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	if hasProfile {
+		registers, err := os.ReadFile(filepath.Join(buildDir, "standalone_registers.h.txt"))
+		if err == nil {
+			generated["standalone_registers.h"] = registers
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	} else {
+		names = append(names, "standalone_dispatcher.go")
+	}
+	for _, name := range names {
+		body, err := os.ReadFile(filepath.Join(buildDir, name+".txt"))
+		if err != nil {
+			return nil, err
+		}
+		generated[name] = body
+	}
+	if err := linkNativeModule(nativeRuntime, generated); err != nil {
+		return nil, err
+	}
+	var launcher []byte
+	mode := launchCompiled
+	usesGeneratedLauncher := false
+	if hasProfile {
+		mode = launchWithoutPlugins
+		// A generator with an image profile can supply its own launcher.
+		generated, err := os.ReadFile(filepath.Join(buildDir, "standalone_launcher.go.txt"))
+		if err == nil {
+			launcher = generated
+			usesGeneratedLauncher = true
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	if !usesGeneratedLauncher {
+		launcher = mainSource(providerImports, selections, request, mode)
+	}
+	if err := os.WriteFile(mainPath, launcher, 0o644); err != nil {
+		return nil, err
+	}
+	tagsForRuntime := []string{"wago_standalone"}
+	if hasProfile {
+		tagsForRuntime = append(tagsForRuntime, "wago_standalone_no_plugins", "wago_standalone_generated")
+		markers := []string{"standalone_no_reference_store", "standalone_no_collector"}
+		if usesGeneratedLauncher {
+			markers = append(markers, "standalone_one_shot")
+		}
+		for _, marker := range markers {
+			if _, err := os.Stat(filepath.Join(buildDir, marker+".txt")); err == nil {
+				tagsForRuntime = append(tagsForRuntime, "wago_"+marker)
+			} else if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+	}
+	return tagsForRuntime, nil
 }
 
 func requireToolchain(name string) error {
@@ -247,34 +313,69 @@ func requireToolchain(name string) error {
 Install %s and ensure %q is available on PATH: %s`, label, label, name, website)
 }
 
-func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, features wago.CoreFeatures, featuresSet bool) []byte {
+type mainMode uint8
+
+const (
+	generateModule mainMode = iota
+	launchCompiled
+	launchWithoutPlugins
+)
+
+func mainSource(providerImports []string, selections []byte, request Request, mode mainMode) []byte {
 	providerImports = append([]string(nil), providerImports...)
 	sort.Strings(providerImports)
+	hasPlugins := len(providerImports) != 0 || len(selections) != 0
 	var source bytes.Buffer
-	source.WriteString("package main\n\nimport (\n\t_ \"embed\"\n\t\"encoding/json\"\n\t\"os\"\n\n")
-	source.WriteString("\twago \"github.com/wago-org/wago\"\n")
+	source.WriteString("package main\n\nimport (\n\t\"os\"\n")
+	if mode == generateModule {
+		source.WriteString("\t_ \"embed\"\n")
+	}
+	if hasPlugins {
+		source.WriteString("\t\"encoding/json\"\n")
+	}
+	source.WriteString("\n\twago \"github.com/wago-org/wago\"\n")
 	source.WriteString("\t\"github.com/wago-org/wago/cli/standalone\"\n")
 	for index, providerImport := range providerImports {
 		fmt.Fprintf(&source, "\tprovider%d %q\n", index, providerImport)
 	}
-	source.WriteString(")\n\n//go:embed module.wasm\nvar module []byte\n\n")
-	fmt.Fprintf(&source, "var selectionJSON = []byte(%q)\n\n", selections)
-	source.WriteString("func pluginSet() wago.PluginSet {\n\tvar selections []wago.PluginSelection\n\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n\tvar providers []wago.PluginProvider\n")
-	for index := range providerImports {
-		fmt.Fprintf(&source, "\tproviders = append(providers, provider%d.Providers()...)\n", index)
+	source.WriteString(")\n\n")
+	if mode == generateModule {
+		source.WriteString("//go:embed module.wasm\nvar module []byte\n\n")
 	}
-	source.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
-	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, Features: %d, FeaturesSet: %t, OptimizationKnobs: map[string]bool{", invoke, core, deferredBoundsChecking, functionWorkers, features, featuresSet)
-	names := make([]string, 0, len(optimizations))
-	for name := range optimizations {
-		names = append(names, name)
+	pluginSet := "wago.PluginSet{}"
+	if hasPlugins {
+		pluginSet = "pluginSet()"
+		fmt.Fprintf(&source, "var selectionJSON = []byte(%q)\n\n", selections)
+		source.WriteString("func pluginSet() wago.PluginSet {\n\tvar selections []wago.PluginSelection\n\tif err := json.Unmarshal(selectionJSON, &selections); err != nil { panic(err) }\n\tvar providers []wago.PluginProvider\n")
+		for index := range providerImports {
+			fmt.Fprintf(&source, "\tproviders = append(providers, provider%d.Providers()...)\n", index)
+		}
+		source.WriteString("\treturn wago.PluginSet{Providers: providers, Selections: selections}\n}\n\n")
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		fmt.Fprintf(&source, "%q: %t, ", name, optimizations[name])
+	fmt.Fprintf(&source, "var options = standalone.Options{Invoke: %q, Core: %d, DeferBoundsChecks: %t, FunctionWorkers: %d, Features: %d, FeaturesSet: %t", request.Invoke, request.Core, request.DeferredBoundsChecking, request.FunctionWorkers, request.Features, request.FeaturesSet)
+	if mode != launchWithoutPlugins && len(request.Optimizations) != 0 {
+		source.WriteString(", OptimizationKnobs: map[string]bool{")
+		names := make([]string, 0, len(request.Optimizations))
+		for name := range request.Optimizations {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Fprintf(&source, "%q: %t, ", name, request.Optimizations[name])
+		}
+		source.WriteString("}")
 	}
-	source.WriteString("}}\n\n")
-	source.WriteString("func main() { os.Exit(standalone.Run(module, pluginSet(), options, os.Args)) }\n")
+	source.WriteString("}\n\n")
+	switch {
+	case mode == generateModule:
+		fmt.Fprintf(&source, "func main() {\n\tsources, err := standalone.GenerateModule(module, %s, options)\n", pluginSet)
+		source.WriteString("\tif err == nil {\n\t\tfor name, source := range sources {\n\t\t\tif err = os.WriteFile(name+\".txt\", source, 0644); err != nil { break }\n\t\t}\n\t}\n")
+		source.WriteString("\tif err != nil { println(err.Error()); os.Exit(1) }\n}\n")
+	case mode == launchWithoutPlugins:
+		source.WriteString("func main() { os.Exit(standalone.RunCompiledWithoutPlugins(wago.StandaloneCompiled(), options, os.Args)) }\n")
+	default:
+		fmt.Fprintf(&source, "func main() { os.Exit(standalone.RunCompiled(wago.StandaloneCompiled(), %s, options, os.Args)) }\n", pluginSet)
+	}
 	return source.Bytes()
 }
 

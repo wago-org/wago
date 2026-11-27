@@ -174,7 +174,7 @@ func TestRV64PublicReferenceBranchDeadWitness(t *testing.T) {
 						}
 					}
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tailDispatcher != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+					if state.tailForTest().dispatcher != nil || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 						t.Fatal("dead branch acquired tail generation")
 					}
 				})
@@ -235,7 +235,7 @@ func TestRV64PublicReferenceBranchRetiredGlobalOwner(t *testing.T) {
 					}
 					rv64ReferenceBranchInvoke(t, in, vector, nonNull)
 					state := &in.pluginState.Load().railshotInvocation
-					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailDispatcher != nil {
+					if state.tableTargets[0] == nil || state.tableDepth != 0 || state.tailForTest().dispatcher != nil {
 						t.Fatal("branch physical scope lifecycle")
 					}
 					if err := in.Close(); err != nil {

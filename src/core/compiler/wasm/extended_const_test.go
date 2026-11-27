@@ -3,6 +3,8 @@ package wasm
 import (
 	"errors"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func extULEB(v uint32) []byte {
@@ -67,6 +69,48 @@ func extendedConstBinaryModule() []byte {
 			extGlobalEntry(I32, false, []byte{0x23, 0x02, 0x41, 3, 0x6c, 0x0b}),
 		)),
 	)
+}
+
+func TestExtendedConstBuildFeature(t *testing.T) {
+	features := ValidationFeatures{ExtendedConstGlobals: true}
+	for _, tc := range []struct {
+		name    string
+		body    []byte
+		enabled bool
+	}{
+		{"imported global", []byte{0x23, 0, 0x0b}, true},
+		{"earlier local global", []byte{0x23, 1, 0x0b}, buildfeatures.ExtendedConstExpressions != 0},
+		{"integer arithmetic", []byte{0x41, 1, 0x41, 2, 0x6a, 0x0b}, buildfeatures.ExtendedConstArithmetic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := extModule(
+				extSection(2, extVec(extGlobalImportEntry("env", "seed", I32))),
+				extSection(6, extVec(
+					extGlobalEntry(I32, false, []byte{0x41, 7, 0x0b}),
+					extGlobalEntry(I32, false, tc.body),
+				)),
+			)
+			m, err := DecodeModule(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, err := range []error{
+				ValidateModuleWithFeatures(m, features),
+				ValidateByteBackedModuleWithFeatures(data, features),
+			} {
+				if tc.enabled {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					var invalid *ValidationError
+					if !errors.As(err, &invalid) || invalid.Code != ErrConstExprRequired {
+						t.Fatalf("error = %v, want constant-expression validation error", err)
+					}
+				}
+			}
+		})
+	}
 }
 
 func TestExtendedConstValidationByteBackedAndAST(t *testing.T) {

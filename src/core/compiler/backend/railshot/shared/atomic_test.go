@@ -1,8 +1,10 @@
 package shared
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -67,6 +69,12 @@ func TestDecodeAtomicMemory64Offsets(t *testing.T) {
 func TestDecodeAtomicExplicitMemoryZero(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		got, err := DecodeAtomicForMemory(wasm.NewReader([]byte{0x10, 0x42, 0, 7}), wide)
+		if buildfeatures.MultiMemory == 0 {
+			if err == nil || !strings.Contains(err.Error(), "multi-memory is disabled") {
+				t.Fatalf("error = %v, want disabled multi-memory", err)
+			}
+			continue
+		}
 		if err != nil || got.Align != 2 || got.Offset != 7 || got.Size != 4 {
 			t.Fatalf("explicit zero descriptor = %+v, %v", got, err)
 		}
@@ -78,6 +86,12 @@ func TestDecodeAtomicIndexedAddressWidth(t *testing.T) {
 		m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: !wide}}, {Limits: wasm.Limits{Addr64: wide}}}}
 		body := []byte{0x10, 0x42, 1, 7}
 		got, err := DecodeAtomicForModule(wasm.NewReader(body), m)
+		if buildfeatures.MultiMemory == 0 {
+			if err == nil || !strings.Contains(err.Error(), "multi-memory is disabled") {
+				t.Fatalf("error = %v, want disabled multi-memory", err)
+			}
+			continue
+		}
 		if err != nil || got.MemoryIndex != 1 || got.Offset != 7 || got.Align != 2 {
 			t.Fatalf("indexed descriptor = %+v, %v", got, err)
 		}

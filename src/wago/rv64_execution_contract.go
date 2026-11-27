@@ -48,10 +48,11 @@ func rv64ExecutionDigest(code, metadata []byte, slots uint16, capacities ...uint
 }
 
 func rv64ExecutionDigestProof(code, metadata []byte, slots uint16, storageFree bool, capacities ...uint32) [sha256.Size]byte {
+	hasCapacities := rv64TableCapacitiesForImage && len(capacities) != 0
 	h := sha256.New()
 	if storageFree {
 		h.Write([]byte("wago RV64 execution contract storage-free bodies v3 architecture4\x00"))
-	} else if len(capacities) == 0 {
+	} else if !hasCapacities {
 		h.Write([]byte("wago RV64 execution contract v1 architecture4\x00"))
 	} else {
 		h.Write([]byte("wago RV64 execution contract v2 architecture4\x00"))
@@ -63,7 +64,7 @@ func rv64ExecutionDigestProof(code, metadata []byte, slots uint16, storageFree b
 	h.Write(lengths[:])
 	h.Write(code)
 	h.Write(metadata)
-	if len(capacities) != 0 {
+	if hasCapacities {
 		var word [4]byte
 		binary.LittleEndian.PutUint32(word[:], uint32(len(capacities)))
 		h.Write(word[:])

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -19,8 +19,6 @@ import (
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-const gcExceptionAlloc uint32 = 45
-const gcExceptionPayload uint32 = 46
 const ownedExceptionPayloadBytes = 136
 
 func (c *Compiled) needsOwnedExceptionReferences() bool {
@@ -54,10 +52,13 @@ var exceptionTagSequence atomic.Uint64
 var exceptionTags = struct {
 	sync.Mutex
 	byID map[uint64]*exceptionTagMetadata
-}{byID: make(map[uint64]*exceptionTagMetadata)}
+}{}
 
 func newNativeExceptionTag(c *Compiled, index int, fallback uint64) uint64 {
-	def := c.memoryDir.ehTags[index]
+	if !ownedExceptionReferencesForImage {
+		return fallback
+	}
+	def := c.memoryDir.exceptionTags()[index]
 	if def.ImportKey != "" {
 		return fallback
 	}
@@ -79,6 +80,9 @@ func newNativeExceptionTag(c *Compiled, index int, fallback uint64) uint64 {
 		}
 	}
 	exceptionTags.Lock()
+	if exceptionTags.byID == nil {
+		exceptionTags.byID = make(map[uint64]*exceptionTagMetadata)
+	}
 	exceptionTags.byID[id] = metadata
 	exceptionTags.Unlock()
 	return id
@@ -107,10 +111,10 @@ func releaseExceptionTag(tag *exceptionTagMetadata) {
 	}
 }
 func releaseNativeExceptionTags(c *Compiled, directory []byte) {
-	if c == nil || c.memoryDir == nil {
+	if !ownedExceptionReferencesForImage || c == nil || c.memoryDir == nil {
 		return
 	}
-	for i, def := range c.memoryDir.ehTags {
+	for i, def := range c.memoryDir.exceptionTags() {
 		if def.ImportKey != "" || (i+1)*8 > len(directory) {
 			continue
 		}
@@ -129,8 +133,10 @@ func releaseInstanceExceptionTags(in *Instance) {
 	if state == nil || state.tagIdentityBase == 0 {
 		return
 	}
-	directory := unsafe.Slice((*byte)(unsafe.Pointer(state.tagIdentityBase)), len(in.c.memoryDir.ehTags)*8)
-	releaseNativeExceptionTags(in.c, directory)
+	if ownedExceptionReferencesForImage {
+		directory := unsafe.Slice((*byte)(unsafe.Pointer(state.tagIdentityBase)), len(in.c.memoryDir.exceptionTags())*8)
+		releaseNativeExceptionTags(in.c, directory)
+	}
 	state.tagIdentityBase = 0
 }
 
@@ -208,7 +214,7 @@ func (in *Instance) ownedExceptionCollector(domain *gcStoreDomain) *ownedExcepti
 			}
 		}
 		if ref.IsNull() {
-			drainExceptionReclaims(collector)
+			drainGCMetadataReclaims(collector)
 			if _, existed := ownedExceptionCollectors.LoadAndDelete(collector); existed {
 				ownedExceptionCollectorCount.Add(^uint32(0))
 			}
@@ -217,8 +223,7 @@ func (in *Instance) ownedExceptionCollector(domain *gcStoreDomain) *ownedExcepti
 	return state
 }
 func drainExceptionReclaims(collector *gc.Collector) {
-	drainCompactExternReclaims(collector)
-	if ownedExceptionCollectorCount.Load() == 0 {
+	if !ownedExceptionReferencesForImage || ownedExceptionCollectorCount.Load() == 0 {
 		return
 	}
 	value, ok := ownedExceptionCollectors.Load(collector)
@@ -249,14 +254,14 @@ func (in *Instance) dispatchGCExceptionHelper(ctrl uintptr, helper, safepoint ui
 	defer func() {
 		unlockGCCollector(domain)
 		if domain == nil {
-			drainExceptionReclaims(in.gc)
+			drainGCMetadataReclaims(in.gc)
 		}
 	}()
-	if helper == gcExceptionAlloc {
+	if exceptionAllocHelperForImage && helper == gcExceptionAlloc {
 		in.gc.CancelNativeAllocationBatch()
 	}
 	owned := in.ownedExceptionCollector(domain)
-	if helper == gcExceptionPayload {
+	if exceptionPayloadHelperForImage && helper == gcExceptionPayload {
 		ref := gc.Ref(uint32(args[0]))
 		owned.mu.Lock()
 		record := owned.records[ref]
@@ -275,13 +280,15 @@ func (in *Instance) dispatchGCExceptionHelper(ctrl uintptr, helper, safepoint ui
 		results[0] = uint64(uintptr(unsafe.Pointer(&payload[0])))
 		return
 	}
-	if helper != gcExceptionAlloc || args[0] == 0 {
+	if !exceptionAllocHelperForImage || helper != gcExceptionAlloc || args[0] == 0 {
 		panic(gcHelperFailuref("unknown owned exception helper"))
 	}
 	public := in.publicGCState()
 	public.mu.Lock()
 	defer public.mu.Unlock()
-	defer func() { public.frameRoots.physicalStack = nil }()
+	if nativeCollectorFrameRootsBuilt {
+		defer public.frameRoots.clearPhysicalStack()
+	}
 	roots := in.gcHelperRoots(ctrl, public, safepoint, stack)
 	packet := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(args[0]))), ownedExceptionPayloadBytes)
 	tag := retainExceptionTag(binary.LittleEndian.Uint64(packet))
@@ -410,7 +417,7 @@ func (in *Instance) dispatchGCExceptionHelper(ctrl uintptr, helper, safepoint ui
 		}
 		words, roots = constructor.words[:26+constructor.count], constructor
 	}
-	ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(typeID, words, roots, &public.initializerRoots)
+	ref, err := in.gc.NewStructWordsPrevalidatedWithRootScratch(typeID, words, roots, public.structInitializerScratch())
 	clear(owned.words[:])
 	if err != nil {
 		panic(gcHelperFailure(err))
@@ -423,16 +430,17 @@ func (in *Instance) dispatchGCExceptionHelper(ctrl uintptr, helper, safepoint ui
 }
 
 func dispatchOwnedExceptionHelper(in *Instance, ctrl uintptr, helper, safepoint uint32, args, results []uint64, stack *coreruntime.Engine) bool {
-	if helper != gcExceptionAlloc && helper != gcExceptionPayload {
+	if !(exceptionAllocHelperForImage && helper == gcExceptionAlloc ||
+		exceptionPayloadHelperForImage && helper == gcExceptionPayload) {
 		return false
 	}
 	in.dispatchGCExceptionHelper(ctrl, helper, safepoint, args, results, stack)
 	return true
 }
 
-func ownedExceptionReferencesRuntime() bool { return true }
+func ownedExceptionReferencesRuntime() bool { return ownedExceptionReferencesForImage }
 func ownedExceptionExactValueType(collector *gc.Collector, ref gc.Ref, typeID gc.TypeID) (ValueTypeDescriptor, bool) {
-	if ownedExceptionCollectorCount.Load() == 0 {
+	if !ownedExceptionReferencesForImage || ownedExceptionCollectorCount.Load() == 0 {
 		return ValueTypeDescriptor{}, false
 	}
 	value, ok := ownedExceptionCollectors.Load(collector)

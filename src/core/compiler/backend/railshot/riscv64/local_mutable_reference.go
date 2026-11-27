@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && !tinygo
+//go:build linux && !tinygo && (!wago_no_reference_types || !wago_no_typed_function_references || !wago_no_gc || !wago_no_exception_handling)
 
 package riscv64
 

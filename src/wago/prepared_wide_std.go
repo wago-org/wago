@@ -47,14 +47,11 @@ func (in *Instance) invokeDirectIntWideEntry(entry uintptr, paramWide, resultWid
 	}
 	var raw [8]uint64
 	for i, bits := range args {
-		if !paramWide[i] {
-			bits = uint64(uint32(bits))
-		}
-		raw[i] = bits
+		raw[i] = directBankValue(bits, i, paramWide, wideIntNarrowArgsForImage, wideIntWideArgsForImage)
 	}
 	wruntime.PreparePreparedIntTrap(in.trap)
 	var results [8]uint64
-	if len(resultWide) <= 5 {
+	if directWideFiveForImage && (!directOctResultsForImage || len(resultWide) <= 5) {
 		r0, r1, r2, r3, r4 := in.eng.EnterPreparedIntWideBounded(entry, in.jm.LinMemBase(), &raw)
 		results[0], results[1], results[2], results[3], results[4] = r0, r1, r2, r3, r4
 	} else {
@@ -68,10 +65,7 @@ func (in *Instance) invokeDirectIntWideEntry(entry uintptr, paramWide, resultWid
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:len(resultWide)]
 	for i := range out {
-		out[i] = results[i]
-		if !resultWide[i] {
-			out[i] = uint64(uint32(out[i]))
-		}
+		out[i] = directBankValue(results[i], i, resultWide, wideIntNarrowResultsForImage, wideIntWideResultsForImage)
 	}
 	return out, nil
 }

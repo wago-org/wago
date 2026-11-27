@@ -178,7 +178,7 @@ func TestRV64PublicReferenceFunctionsForeignOwner(t *testing.T) {
 						}
 						for _, in := range []*Instance{caller, producer} {
 							state := &in.pluginState.Load().railshotInvocation
-							if state.definedTailOwner != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != beforeCapabilities[in] {
+							if state.tailForTest().definedOwner != nil || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != beforeCapabilities[in] {
 								t.Fatal("completed entry retained generation")
 							}
 						}

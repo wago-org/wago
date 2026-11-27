@@ -9,7 +9,10 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
 
 var bulkFillCopyForwardEnabled = true
 
@@ -36,7 +39,7 @@ func bulkOperandKey(e *elem) (bulkValueKey, bool) {
 // filled-source proof. A shared source could be changed by another thread.
 func (f *fn) recordFilledCopy(r *wasm.Reader, memory uint32) {
 	f.filledCopyEnd = 0
-	if !f.opt(optBulkFillCopyForward) || f.localBase != 0 || len(f.customInstructions) != 0 ||
+	if !(buildfeatures.BulkMemoryOperations != 0 && f.opt(optBulkFillCopyForward)) || f.localBase != 0 || len(f.customInstructions) != 0 ||
 		f.memoryAddr64(memory) || f.memoryShared(memory) {
 		return
 	}

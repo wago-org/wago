@@ -122,6 +122,9 @@ func (s *gcExternConversionState) externFromAnyLocked(anyWord uint64) (uint64, e
 	if anyWord == 0 {
 		return 0, nil
 	}
+	if !nativeCollectorBuilt {
+		return 0, fmt.Errorf("GC extern conversion state is unavailable")
+	}
 	for i := range s.entries {
 		entry := &s.entries[i]
 		if entry.kind == gcExternConversionForeign && entry.anyWord == anyWord {
@@ -433,4 +436,32 @@ func (s *gcExternConversionState) close() error {
 	s.store = nil
 	s.collector = nil
 	return first
+}
+
+func (in *Instance) dispatchGCExternConversionLocked(helper uint32, args, results []uint64, domain *gcStoreDomain, roots gc.RootSet, compact bool) {
+	if len(args) != 1 || len(results) < 1 {
+		panic(gcHelperFailuref("gc extern conversion helper arity = %d/%d, want 1/at-least-1", len(args), len(results)))
+	}
+	if gcCompactExternDispatchForImage && compact {
+		results[0] = in.dispatchCompactExternConversion(domain, helper, args[0], roots)
+		return
+	}
+	state := in.existingGCRefTestTableState()
+	if !gcExternConversionForImage || state == nil || state.Conversion == nil {
+		panic(gcHelperFailuref("gc extern conversion state is unavailable"))
+	}
+	var value uint64
+	var err error
+	switch {
+	case gcHelperMaskForImage&(1<<gcAnyConvertExtern) != 0 && helper == gcAnyConvertExtern:
+		value, err = state.Conversion.anyFromExtern(args[0])
+	case gcHelperMaskForImage&(1<<gcExternConvertAny) != 0 && helper == gcExternConvertAny:
+		value, err = state.Conversion.externFromAny(args[0])
+	default:
+		panic(gcHelperFailuref("unknown gc extern conversion helper %d", helper))
+	}
+	if err != nil {
+		panic(gcHelperFailure(err))
+	}
+	results[0] = value
 }

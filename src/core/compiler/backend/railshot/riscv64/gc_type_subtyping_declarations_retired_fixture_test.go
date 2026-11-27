@@ -71,18 +71,6 @@ var rv64GCTypeSubtypingDeclarationsWires = [][]byte{
 	},
 }
 
-var rv64GCTypeSubtypingDeclarationsTypes = func() [][]wasm.RecType {
-	types := make([][]wasm.RecType, len(rv64GCTypeSubtypingDeclarationsWires))
-	for i, wire := range rv64GCTypeSubtypingDeclarationsWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		types[i] = m.Types
-	}
-	return types
-}()
-
 func gcTypeSubtypingDeclarationsSourceVariant(data []byte) uint8 {
 	if !admitExactProductWireShapeWithRecGroups(data, []byte{1}) {
 		return 0

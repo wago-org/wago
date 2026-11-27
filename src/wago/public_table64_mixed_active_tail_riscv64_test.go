@@ -105,7 +105,7 @@ func TestRV64PublicMixedTable64ActiveTail(t *testing.T) {
 				if !slices.Equal(imported.desc, beforeImported) || !slices.Equal(owned.desc, beforeOwned) {
 					t.Fatal("mixed table64 active tail trap changed storage", tc)
 				}
-				if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
+				if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || state.tableDepth != 0 || rv64EntryCapability(in) != 0 {
 					t.Fatal("mixed table64 active tail leaked generation", tc)
 				}
 			}

@@ -65,5 +65,5 @@ func railshotParkedNativeContextChanged(in *Instance, ctrl, view uintptr) bool {
 	if in == nil || in.jm == nil {
 		return false
 	}
-	return in.jm.CaptureInstanceContext().CustomCtx != ctrl || in.jm.RV64InvocationView() != view
+	return in.jm.CustomCtx() != ctrl || in.jm.RV64InvocationView() != view
 }

@@ -10,6 +10,7 @@
 package riscv64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -91,29 +92,11 @@ func tailRAResultMaskMode(types []wasm.ValType, public bool) ([8]uint64, int, er
 func tailRASignature(sig *wasm.CompType) error { return tailRASignatureMode(sig, false) }
 
 func tailRASignatureMode(sig *wasm.CompType, public bool) error {
-	if sig == nil || sig.Kind != wasm.CompFunc || len(sig.Params) > 256 || len(sig.Results) > 256 {
-		return unsupported("private tail exact signature")
-	}
-	limit := 256
+	limit := MaxVectorFunctionValues
 	if public {
 		limit = MaxNativeCallSlots
 	}
-	for _, list := range [][]wasm.ValType{sig.Params, sig.Results} {
-		cells := 0
-		for _, typ := range list {
-			if swarClassOf(typ) == swarInvalid && typ.Kind() != wasm.ValRef {
-				return unsupported("private tail carrier type")
-			}
-			cells++
-			if wasm.EqualValType(typ, wasm.V128) {
-				cells++
-			}
-			if cells > limit {
-				return unsupported("private tail physical signature bound")
-			}
-		}
-	}
-	return nil
+	return validateCallCarrierSignature(sig, limit)
 }
 
 func (s *tailRAProofSite) validate() error {
@@ -225,10 +208,6 @@ func (e *tailRAEmitter) finish() ([]byte, error) {
 	return e.a.B, nil
 }
 
-func tailRAAddress(a *enc.Asm, d, b enc.Reg, offset int) {
-	a.Constant64(d, int64(offset))
-	a.Add(d, b, d)
-}
 func tailRAMask(a *enc.Asm, d, s enc.Reg, mask int32) {
 	a.Addi(enc.Scratch0, enc.Zero, mask)
 	a.And(d, s, enc.Scratch0)
@@ -272,9 +251,9 @@ func (e *tailRAEmitter) disjoint(pointer enc.Reg, bytes int, base enc.Reg, size 
 		return
 	}
 	a := &e.a
-	tailRAAddress(a, enc.X29, base, size)
+	emitBaseOffsetAddress(a, enc.X29, base, size)
 	above := a.BranchLong(enc.GEU, pointer, enc.X29)
-	tailRAAddress(a, enc.X29, pointer, bytes)
+	emitBaseOffsetAddress(a, enc.X29, pointer, bytes)
 	e.fail(enc.LTU, base, enc.X29)
 	e.patch(above)
 }
@@ -299,7 +278,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 	a.Ld(enc.X29, record, 104)
 	a.Constant64(enc.Scratch0, int64(e.recordBytes()))
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
-	tailRAAddress(a, enc.Scratch0, record, e.recordBytes())
+	emitBaseOffsetAddress(a, enc.Scratch0, record, e.recordBytes())
 	a.Ld(enc.X29, record, 64)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	a.Ld(enc.X29, record, 72)
@@ -310,7 +289,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 	a.Ld(enc.Scratch0, record, 144)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	if e.invocationContext {
-		tailRAAddress(a, enc.X28, record, e.viewOffset())
+		emitBaseOffsetAddress(a, enc.X28, record, e.viewOffset())
 		a.Ld(enc.X29, enc.X25, -abi.RV64InvocationViewOffset)
 		e.fail(enc.NE, enc.X28, enc.X29)
 		e.bad = append(e.bad, nativeInvocationViewGuards(a, enc.X28, 0)...)
@@ -320,7 +299,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 			pointer, capacity int32
 			offset            int
 		}{{abi.RV64InvocationArgumentsOffset, abi.RV64InvocationArgumentBytesOffset, tailRAArgsOffset}, {abi.RV64InvocationResultsOffset, abi.RV64InvocationResultBytesOffset, e.resultsOffset()}} {
-			tailRAAddress(a, enc.X29, record, direction.offset)
+			emitBaseOffsetAddress(a, enc.X29, record, direction.offset)
 			a.Ld(enc.Scratch0, enc.X28, direction.pointer)
 			e.fail(enc.NE, enc.X29, enc.Scratch0)
 			a.Ld(enc.X29, enc.X28, direction.capacity)
@@ -339,7 +318,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 			if offset := e.maskOffset() + i*8; offset <= 2047 {
 				a.Ld(enc.X29, record, int32(offset))
 			} else {
-				tailRAAddress(a, enc.X29, record, offset)
+				emitBaseOffsetAddress(a, enc.X29, record, offset)
 				a.Ld(enc.X29, enc.X29, 0)
 			}
 			a.Constant64(enc.Scratch0, int64(m))
@@ -353,7 +332,7 @@ func (e *tailRAEmitter) record(record, exit enc.Reg, s *tailRAProofSite) {
 			if offset := e.maskOffset() + i*8; offset <= 2047 {
 				a.Ld(enc.X29, record, int32(offset))
 			} else {
-				tailRAAddress(a, enc.X29, record, offset)
+				emitBaseOffsetAddress(a, enc.X29, record, offset)
 				a.Ld(enc.X29, enc.X29, 0)
 			}
 			a.Constant64(enc.Scratch0, int64(i*64))
@@ -418,7 +397,7 @@ func tailRAPreflightInto(s tailRAProofSite, exit, finalize uintptr, code []byte)
 	e.fence(enc.LTU, enc.SP, enc.X29)
 	tailRAMask(a, enc.X29, enc.SP, 15)
 	e.fail(enc.NE, enc.X29, enc.Zero)
-	tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
+	emitBaseOffsetAddress(a, enc.X14, enc.SP, s.frameBytes)
 	e.fence(enc.LTU, enc.X14, enc.SP)
 	a.Ld(enc.X29, enc.X25, -abi.RV64TrapReentrySPOffset)
 	if !s.invocationContext {
@@ -435,7 +414,7 @@ func tailRAPreflightInto(s tailRAProofSite, exit, finalize uintptr, code []byte)
 			return nil, err
 		}
 		// Selection uses X14/15; restore the original incoming stack cursor.
-		tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
+		emitBaseOffsetAddress(a, enc.X14, enc.SP, s.frameBytes)
 	}
 	a.Ld(enc.X9, enc.SP, 0)
 	a.Constant64(enc.X15, int64(exit))
@@ -478,10 +457,10 @@ func tailRAPreflightInto(s tailRAProofSite, exit, finalize uintptr, code []byte)
 	e.record(enc.X14, enc.X15, &s)
 	// The full record arenas lie above the caller homes. Confirm header transport
 	// is exactly those areas, not a partially overlapping caller scratch span.
-	tailRAAddress(a, enc.X29, enc.X14, tailRAArgsOffset)
+	emitBaseOffsetAddress(a, enc.X29, enc.X14, tailRAArgsOffset)
 	a.Ld(enc.Scratch0, enc.SP, 16)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
-	tailRAAddress(a, enc.X29, enc.X14, e.resultsOffset())
+	emitBaseOffsetAddress(a, enc.X29, enc.X14, e.resultsOffset())
 	a.Ld(enc.Scratch0, enc.SP, 8)
 	e.fail(enc.NE, enc.X29, enc.Scratch0)
 	e.patch(done)
@@ -520,7 +499,7 @@ func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, e
 	a.Ld(enc.X10, enc.SP, 16)
 	a.Ld(enc.X12, enc.SP, 24)
 	a.Ld(enc.X13, enc.SP, 8)
-	tailRAAddress(a, enc.X14, enc.SP, s.frameBytes)
+	emitBaseOffsetAddress(a, enc.X14, enc.SP, s.frameBytes)
 	a.Constant64(enc.Scratch0, int64(exit))
 	reuse := a.BranchLong(enc.EQ, enc.X9, enc.Scratch0)
 	a.Ld(enc.X28, enc.X25, -40)
@@ -555,7 +534,7 @@ func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, e
 		if offset := e.maskOffset() + i*8; offset <= 2047 {
 			a.Sd(enc.Scratch0, enc.SP, int32(offset))
 		} else {
-			tailRAAddress(a, enc.X29, enc.SP, offset)
+			emitBaseOffsetAddress(a, enc.X29, enc.SP, offset)
 			a.Sd(enc.Scratch0, enc.X29, 0)
 		}
 	}
@@ -564,7 +543,7 @@ func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, e
 	args := swarSignatureSlots(s.params)
 	if args != 0 {
 		a.Addi(enc.X6, enc.X10, 0)
-		tailRAAddress(a, enc.X7, enc.SP, tailRAArgsOffset)
+		emitBaseOffsetAddress(a, enc.X7, enc.SP, tailRAArgsOffset)
 		a.Constant64(enc.X5, int64(args))
 		loop := a.Len()
 		a.Ld(enc.X29, enc.X6, 0)
@@ -583,7 +562,7 @@ func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, e
 	e.patch(bind)
 	// Every active native hop initializes this nonparked record control. Its
 	// prefix/control never aliases instance-global or producer-prototype state.
-	tailRAAddress(a, enc.X6, enc.SP, tailRACtrlOffset)
+	emitBaseOffsetAddress(a, enc.X6, enc.SP, tailRACtrlOffset)
 	a.Constant64(enc.X5, HostFixedFrameBytes/8)
 	loop := a.Len()
 	a.Sd(enc.Zero, enc.X6, 0)
@@ -636,11 +615,11 @@ func tailRAFinalizeInto(s tailRAProofSite, exit uintptr, code []byte) ([]byte, e
 		a.Sd(enc.Scratch0, enc.X11, -off)
 	}
 	a.Sd(enc.Scratch1, enc.X11, -abi.RV64NativeContextOffset)
-	tailRAAddress(a, enc.Scratch0, enc.SP, tailRACtrlOffset)
+	emitBaseOffsetAddress(a, enc.Scratch0, enc.SP, tailRACtrlOffset)
 	a.Sd(enc.Scratch0, enc.X11, -40)
 	a.Addi(enc.X25, enc.X11, 0)
-	tailRAAddress(a, enc.X10, enc.SP, tailRAArgsOffset)
-	tailRAAddress(a, enc.X13, enc.SP, e.resultsOffset())
+	emitBaseOffsetAddress(a, enc.X10, enc.SP, tailRAArgsOffset)
+	emitBaseOffsetAddress(a, enc.X13, enc.SP, e.resultsOffset())
 	a.Constant64(enc.RA, int64(exit))
 	if s.dynamic != nil {
 		a.Addi(enc.X28, enc.X16, 0)
@@ -668,9 +647,9 @@ func tailRAExitCodeInvocation(invocation bool) ([]byte, error) {
 	a.Addi(enc.X14, enc.SP, 0)
 	e.record(enc.X14, enc.X9, nil)
 	a.Ld(enc.X5, enc.SP, 88)
-	tailRAAddress(a, enc.X6, enc.SP, e.resultsOffset())
+	emitBaseOffsetAddress(a, enc.X6, enc.SP, e.resultsOffset())
 	a.Ld(enc.X7, enc.SP, 40)
-	tailRAAddress(a, enc.X9, enc.SP, e.maskOffset())
+	emitBaseOffsetAddress(a, enc.X9, enc.SP, e.maskOffset())
 	a.Ld(enc.X14, enc.X9, 0)
 	a.Addi(enc.X15, enc.Zero, 64)
 	finished := a.BranchLong(enc.EQ, enc.X5, enc.Zero)
@@ -746,7 +725,7 @@ func (f *integerEmitter) tailRAProofCall(site uint32, sig *wasm.CompType, base i
 	}
 	if err := tailRASignatureMode(sig, f.mode.invocationContext); err != nil {
 		primitive := f.mode.primitiveTailTypes
-		if primitive == nil || !primitiveReferenceTargetWithTypes(sig, internalReferenceTypes{sourceDirectory: *primitive, publicReferences: true, decodedSWAR: true}, true) || swarSignatureSlots(sig.Params) > MaxNativeCallSlots || swarSignatureSlots(sig.Results) > MaxNativeCallSlots {
+		if !buildfeatures.ReferenceSignatures || primitive == nil || !primitiveReferenceTargetWithTypes(sig, internalReferenceTypes{sourceDirectory: *primitive, publicReferences: true, decodedSWAR: true}, true) || swarSignatureSlots(sig.Params) > MaxNativeCallSlots || swarSignatureSlots(sig.Results) > MaxNativeCallSlots {
 			f.err = err
 			return
 		}
@@ -768,7 +747,7 @@ func (f *integerEmitter) tailRAProofCall(site uint32, sig *wasm.CompType, base i
 	a.Lwu(enc.Scratch0, enc.X29, 12)
 	a.Constant64(enc.Scratch1, int64(site))
 	f.trap(trapImportContext, a.BranchLong(enc.GEU, enc.Scratch1, enc.Scratch0))
-	tailRAAddress(a, enc.Scratch1, enc.X29, tailRACapHeader+int(site)*tailRASiteRow)
+	emitBaseOffsetAddress(a, enc.Scratch1, enc.X29, tailRACapHeader+int(site)*tailRASiteRow)
 	a.Ld(enc.X28, enc.Scratch1, 0)
 	f.trap(trapImportMissing, a.BranchLong(enc.EQ, enc.X28, enc.Zero))
 	a.Jalr(enc.RA, enc.X28, 0)

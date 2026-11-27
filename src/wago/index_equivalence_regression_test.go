@@ -1,45 +1,6 @@
 package wago
 
-import (
-	"math/rand"
-	"testing"
-
-	"github.com/wago-org/wago/src/core/runtime/gc/native"
-)
-
-func TestGCFrameCodeRangeIndexMatchesLinear(t *testing.T) {
-	collector := new(gc.Collector)
-	c := &Compiled{code: make([]byte, 7000), validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}}
-	store := &referenceStore{instances: make(map[*Instance]*referenceStoreInstance)}
-	instances := make([]*Instance, 64)
-	for i := range instances {
-		in := &Instance{c: c, gc: collector, base: uintptr(0x10000 + i*8192 + 137)}
-		instances[i] = in
-		store.instances[in] = &referenceStoreInstance{}
-		store.registerGCFrameCodeRangeLocked(in)
-	}
-	rng := rand.New(rand.NewSource(715))
-	for _, removed := range rng.Perm(len(instances)) {
-		for k := 0; k < 128; k++ {
-			pc := uintptr(0x10000 + rng.Intn(65*8192))
-			var want *Instance
-			for in := range store.instances {
-				if pc >= in.base && pc-in.base < uintptr(len(c.code)) {
-					want = in
-					break
-				}
-			}
-			if got := store.gcFrameOwner(pc, collector); got != want {
-				t.Fatalf("PC %x: index=%p linear=%p", pc, got, want)
-			}
-		}
-		store.unregisterGCFrameCodeRangeLocked(instances[removed])
-		delete(store.instances, instances[removed])
-	}
-	if store.gcDomains.codeRanges != nil {
-		t.Fatal("empty index retained")
-	}
-}
+import "testing"
 
 func FuzzDefinedTypeFingerprintEquivalence(f *testing.F) {
 	f.Add([]byte{0, 1, 2, 3, 4, 5})
@@ -93,41 +54,4 @@ func FuzzDefinedTypeFingerprintEquivalence(f *testing.F) {
 			}
 		}
 	})
-}
-
-func TestGCFrameCodeRangeSingletonPromotesAndRetires(t *testing.T) {
-	collector := new(gc.Collector)
-	c := &Compiled{code: make([]byte, 64), validateMemo: &validateMemo{gcFrameRoots: &compiledGCFrameRoots{}}}
-	first := &Instance{c: c, gc: collector, base: 0x10000}
-	second := &Instance{c: c, gc: collector, base: 0x20000}
-	store := &referenceStore{instances: map[*Instance]*referenceStoreInstance{first: {}}}
-	store.registerGCFrameCodeRangeLocked(first)
-	if store.gcDomains.singleCodeOwner != first || store.gcDomains.codeRanges != nil {
-		t.Fatal("one code owner allocated a directory")
-	}
-	if store.gcFrameOwner(first.base+1, collector) != first || store.gcFrameOwner(first.base+64, collector) != nil {
-		t.Fatal("singleton range boundaries differ from the indexed path")
-	}
-	store.instances[second] = &referenceStoreInstance{}
-	store.registerGCFrameCodeRangeLocked(second)
-	if store.gcDomains.singleCodeOwner != nil || store.gcDomains.codeRanges == nil {
-		t.Fatal("second owner failed to promote the directory")
-	}
-	for _, in := range []*Instance{first, second} {
-		if store.gcFrameOwner(in.base+1, collector) != in {
-			t.Fatal("promotion omitted a live owner")
-		}
-		store.unregisterGCFrameCodeRangeLocked(in)
-		delete(store.instances, in)
-	}
-	if store.gcDomains.codeRanges != nil || store.gcDomains.singleCodeOwner != nil {
-		t.Fatal("empty directory retained owners")
-	}
-	store.instances[first] = &referenceStoreInstance{}
-	store.registerGCFrameCodeRangeLocked(first)
-	store.unregisterGCFrameCodeRangeLocked(first)
-	delete(store.instances, first)
-	if store.gcDomains.singleCodeOwner != nil {
-		t.Fatal("retired singleton retained")
-	}
 }

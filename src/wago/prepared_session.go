@@ -60,7 +60,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	}
 	state := &preparedSessionState{fn: fn}
 	s := &PreparedSession{state: state}
-	if (fn.isolatedFast || fn.directIsolated && (fn.directIntFast || preparedDirectFloatSupported && (fn.directFloatFast || fn.directMixedInfo != 0))) && !(codeProfileEnabled && in.boundaryProfile() != nil) && in.tryPreparedDirect() {
+	if (fn.isolatedFast || fn.directIsolated && (fn.directIntFast || (directFloatForImage && fn.directFloatFast || directMixedForImage && fn.directMixedInfo != 0))) && !(codeProfileEnabled && in.boundaryProfile() != nil) && in.tryPreparedDirect() {
 		state.fast = true
 		return s, nil
 	}
@@ -81,8 +81,7 @@ func (fn *WasmFunc) OpenSession() (*PreparedSession, error) {
 	// arbitrary Go runs. Reserving it across outer calls only removes repeated
 	// context binding; callback re-entry and host-side access retain the normal
 	// unlock/reacquire protocol.
-	flags := in.executionFlags.Load()
-	noGCDomains := in.gc == nil && flags&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+	noGCDomains := !in.hostCallNeedsGCSuspension()
 	if fn.scalarFast && !fn.boundedNumericHost && in.syncMode && noGCDomains && in.usesIndependentExecution() && in.hasSingleDirectTypedScalarHost() {
 		pluginState := in.ensurePluginState()
 		pluginState.nativeShareMu.Lock()
@@ -240,7 +239,7 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	}
 	state := s.state
 	fn := state.fn
-	if fn.guardedMemoryGrow {
+	if guardedGrowthForImage && fn.guardedMemoryGrow {
 		defer state.commitGuardedGrowth()
 	}
 	if count != fn.paramSlots {
@@ -248,19 +247,19 @@ func (s *PreparedSession) invokeFixed(count int, a0, a1, a2, a3 uint64) (result 
 	}
 
 	if state.fast {
-		if preparedDirectWideSupported && fn.directIntFast && fn.resultSlots > 2 {
+		if directWideArityForImage && fn.directIntFast && fn.resultSlots > 2 {
 			args := [4]uint64{a0, a1, a2, a3}
 			return fn.invokeDirectIntWideSession(args[:count])
 		}
-		if preparedDirectFloatSupported && fn.directFloatFast {
+		if directFloatForImage && fn.directFloatFast {
 			args := [4]uint64{a0, a1, a2, a3}
 			return fn.invokeDirectFloatSession(args[:count])
 		}
-		if preparedDirectFloatSupported && fn.directMixedInfo != 0 {
+		if directMixedForImage && fn.directMixedInfo != 0 {
 			args := [4]uint64{a0, a1, a2, a3}
 			return fn.invokeDirectMixedSession(args[:count])
 		}
-		if !fn.directIntFast {
+		if !directFixedOrPairForImage || !fn.directIntFast {
 			args := [4]uint64{a0, a1, a2, a3}
 			return fn.invokeScalarAdmitted(args[:count])
 		}
@@ -329,16 +328,16 @@ func (s *PreparedSession) invokeArgs(args []uint64) (result []uint64, resultErr 
 	}
 	state := s.state
 	fn := state.fn
-	if fn.guardedMemoryGrow {
+	if guardedGrowthForImage && fn.guardedMemoryGrow {
 		defer state.commitGuardedGrowth()
 	}
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
-	if preparedDirectWideSupported && state.fast && fn.directIntFast && (len(args) > 4 || fn.resultSlots > 2) {
+	if directWideArityForImage && state.fast && fn.directIntFast && (len(args) > 4 || fn.resultSlots > 2) {
 		return fn.invokeDirectIntWideSession(args)
 	}
-	if preparedDirectFloatSupported && state.fast && fn.directFloatFast {
+	if directFloatForImage && state.fast && fn.directFloatFast {
 		return fn.invokeDirectFloatSession(args)
 	}
 	if state.fast {
@@ -417,7 +416,7 @@ func (state *preparedSessionState) beginCallOwned(gcLease *gcInvocationLease, ow
 	}
 	// Avoid materializing a domain lease for instances with no reachable GC.
 	// These flags are revocable and must be checked on every call.
-	if in.refStore == nil || in.gc == nil && in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain) == 0 {
+	if !in.mayNeedGCInvocationLease() {
 		return nil
 	}
 	*gcLease = in.lockGCInvocation(state.lease.state.invocationID)
@@ -431,8 +430,8 @@ func (state *preparedSessionState) endCall(gcLease *gcInvocationLease) {
 	if state.host && !state.hostLeaseValid() {
 		cleanup.run(func() { state.dropHostLease(state.hostGate.migrated.Load()) })
 	}
-	if gcLease.acquired {
-		cleanup.run(gcLease.unlock)
+	if gcLease.isAcquired() {
+		gcLease.release(&cleanup)
 	}
 	if in := state.fn.in; in.table != nil || in.mayImportFuncrefStorage() && in.importsFuncrefStorage() {
 		cleanup.run(in.reconcileFuncrefRoots)
@@ -457,7 +456,7 @@ func (state *preparedSessionState) invokeScalarHostReserved(args []uint64) ([]ui
 func (state *preparedSessionState) hostLeaseValid() bool {
 	in := state.fn.in
 	flags := in.executionFlags.Load()
-	return in.gc == nil && flags&executionFlagIndependent != 0 && flags&preparedFastBlocked == 0
+	return !in.hasNativeCollector() && flags&executionFlagIndependent != 0 && flags&preparedFastBlocked == 0
 }
 
 func (state *preparedSessionState) dropHostLease(migrated bool) {

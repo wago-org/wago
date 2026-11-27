@@ -416,8 +416,8 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 		return
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(referenceStore{}); got != 120 {
-		t.Fatalf("referenceStore size = %d, want 120 bytes with shared GC domain", got)
+	if got, want := unsafe.Sizeof(referenceStore{}), 104+unsafe.Sizeof(gcObjectTokenIndex{})+unsafe.Sizeof(gcDomainStoreState{}); got != want {
+		t.Fatalf("referenceStore size = %d, want %d bytes with shared GC domain", got, want)
 	}
 	if got := unsafe.Sizeof(Table{}); got != 64 {
 		t.Fatalf("Table size = %d, want 64 bytes", got)

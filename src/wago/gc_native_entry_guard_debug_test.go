@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo && !wago_guardpage && wagodebug
+//go:build linux && amd64 && !tinygo && !wago_guardpage && !wago_no_gc && wagodebug
 
 package wago
 
@@ -27,7 +27,7 @@ func TestDebugNativeGCEntryGuardRejectsMutatedImmutableView(t *testing.T) {
 	if _, err := in.Invoke("default"); err != nil {
 		t.Fatalf("debug entry guard rejected rebindable stale basedata: %v", err)
 	}
-	in.gcNativeView.Version = gc.NativeABIVersion + 1
+	in.gcNativeView().Version = gc.NativeABIVersion + 1
 	if _, err := in.Invoke("default"); err == nil || !strings.Contains(err.Error(), "native GC entry") {
 		t.Fatalf("debug entry guard error = %v", err)
 	}

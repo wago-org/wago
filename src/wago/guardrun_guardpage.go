@@ -27,7 +27,7 @@ func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refre
 	if c.boundsMode != BoundsChecksSignalsBased && preparedCallEnabled {
 		return eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
 	}
-	if c.boundsMode == BoundsChecksSignalsBased {
+	if guardedMemoryForImage && c.boundsMode == BoundsChecksSignalsBased {
 		return eng.CallGuarded(entry, serArgs, jm.LinMemBase(), trap, results, jm)
 	}
 	return eng.Call(entry, serArgs, jm.LinearMemory(), trap, results)

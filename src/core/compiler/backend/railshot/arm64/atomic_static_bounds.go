@@ -9,12 +9,15 @@
 
 package arm64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+import (
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+)
 
 var atomicStaticBoundsEnabled = true
 
 func (f *fn) staticAtomicAddr(memoryIndex uint32, offset uint64, size int) (Reg, bool) {
-	if memoryIndex != 0 || !f.opt(optAtomicStaticBounds) {
+	if memoryIndex != 0 || !(buildfeatures.Threads != 0 && f.opt(optAtomicStaticBounds)) {
 		return regNone, false
 	}
 	e := f.s.back()

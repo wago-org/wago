@@ -14,18 +14,6 @@ var rv64GCTypeSubtypingRecursiveFunctionWires = [][]byte{
 	mustDecodeGCTypeSubtypingRecursiveFunctionWire("0061736d0100000001c880808000054e0250006000027f640150006000027d64004e045001006000027f64055001016000027d64045001006000027f64035001016000027d6402600164000060016402006001640400038480808000030607080aaa8080800003868080800000200010000b8a808080000020001000200010010b8a808080000020001000200010020b"),
 }
 
-var rv64GCTypeSubtypingRecursiveFunctionModules = func() []*wasm.Module {
-	modules := make([]*wasm.Module, len(rv64GCTypeSubtypingRecursiveFunctionWires))
-	for i, wire := range rv64GCTypeSubtypingRecursiveFunctionWires {
-		m, err := wasm.DecodeModule(wire)
-		if err != nil {
-			panic(err)
-		}
-		modules[i] = m
-	}
-	return modules
-}()
-
 func mustDecodeGCTypeSubtypingRecursiveFunctionWire(source string) []byte {
 	wire, err := hex.DecodeString(source)
 	if err != nil {

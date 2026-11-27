@@ -9,6 +9,8 @@
 
 package amd64
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 // wOp is the operation a deferred-action node performs — the backend's internal
 // opcode, lowered from a wasm opcode by the driver. Ported from the operation
 // taxonomy WARP threads through emitDeferredAction (warp x86_64_backend.cpp);
@@ -117,8 +119,10 @@ func isUnary(o wOp) bool {
 
 func isConvert(o wOp) bool {
 	switch o {
-	case opWrap, opSExt32, opZExt32, opSExt8, opSExt16:
+	case opWrap, opSExt32, opZExt32:
 		return true
+	case opSExt8, opSExt16:
+		return buildfeatures.SignExtensionOps != 0
 	}
 	return false
 }

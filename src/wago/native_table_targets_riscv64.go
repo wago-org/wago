@@ -25,19 +25,15 @@ import (
 // Refresh merges new targets without dropping suspended activations' old roots.
 // Container-held Go pointers alone are not a physical activation lifetime.
 type rv64NativeTableTargets struct {
-	owners          []*Instance
-	smallOwners     [8]*Instance
-	ownerIndex      map[*Instance]struct{} // only large scopes need an index
-	writers         []rv64TableWriter
-	storage         []*Table
-	smallWriters    [8]rv64TableWriter
-	smallStorage    [8]*Table
-	count           int
-	tailBudget      rv64NativeTailGenerationBudget
-	tailGenerations []*rv64NativeTailGeneration // all versions, including suspended code
-	tailActive      []*rv64NativeTailGeneration
-	tailOwnerCount  int
-	tailRetiring    bool
+	owners       []*Instance
+	smallOwners  [8]*Instance
+	ownerIndex   map[*Instance]struct{} // only large scopes need an index
+	writers      []rv64TableWriter
+	storage      []*Table
+	smallWriters [8]rv64TableWriter
+	smallStorage [8]*Table
+	tail         rv64NativeTailTableStorage
+	count        int
 }
 
 type rv64TableWriter struct {
@@ -46,39 +42,52 @@ type rv64TableWriter struct {
 }
 
 const rv64MaxTableLeaseEdges = 4096
+const rv64CrossInstanceReferences = !standaloneBareImage || moduleImportsBuilt
 
 func (s *rv64NativeTableTargets) add(owner *Instance) error {
 	if owner == nil {
 		return fmt.Errorf("RV64 table target owner is nil")
 	}
-	if s.ownerIndex != nil {
-		if _, found := s.ownerIndex[owner]; found {
-			return nil
-		}
-	} else {
-		for _, existing := range s.owners[:s.count] {
-			if existing == owner {
+	if rv64CrossInstanceReferences {
+		if s.ownerIndex != nil {
+			if _, found := s.ownerIndex[owner]; found {
 				return nil
 			}
+		} else {
+			for _, existing := range s.owners[:s.count] {
+				if existing == owner {
+					return nil
+				}
+			}
 		}
-	}
-	if s.count == rv64MaxTableLeaseEdges+1 {
-		return fmt.Errorf("RV64 table target owner bound")
-	}
-	if s.owners == nil {
-		s.owners = s.smallOwners[:]
-	}
-	if s.count == len(s.owners) {
-		capacity := min(2*len(s.owners), rv64MaxTableLeaseEdges+1)
-		owners := make([]*Instance, capacity)
-		copy(owners, s.owners)
-		s.owners = owners
-	}
-	if s.count == 32 && s.ownerIndex == nil {
-		s.ownerIndex = make(map[*Instance]struct{}, s.count+1)
-		for _, existing := range s.owners[:s.count] {
-			s.ownerIndex[existing] = struct{}{}
+		if s.count == rv64MaxTableLeaseEdges+1 {
+			return fmt.Errorf("RV64 table target owner bound")
 		}
+		if s.owners == nil {
+			s.owners = s.smallOwners[:]
+		}
+		if s.count == len(s.owners) {
+			capacity := min(2*len(s.owners), rv64MaxTableLeaseEdges+1)
+			owners := make([]*Instance, capacity)
+			copy(owners, s.owners)
+			s.owners = owners
+		}
+		if s.count == 32 && s.ownerIndex == nil {
+			s.ownerIndex = make(map[*Instance]struct{}, s.count+1)
+			for _, existing := range s.owners[:s.count] {
+				s.ownerIndex[existing] = struct{}{}
+			}
+		}
+	} else {
+		// An import-free launcher runs one instance and exposes no reference
+		// API through which a different instance can supply a target.
+		if s.count != 0 {
+			if s.owners[0] != owner {
+				return fmt.Errorf("RV64 foreign table target exceeds the standalone runtime profile")
+			}
+			return nil
+		}
+		s.owners = s.smallOwners[:1]
 	}
 	// Existing table/direct attachments authorize use after logical Close. The
 	// container lock or a retained predecessor still owns physical storage here.
@@ -87,18 +96,37 @@ func (s *rv64NativeTableTargets) add(owner *Instance) error {
 	}
 	s.owners[s.count] = owner
 	s.count++
-	if s.ownerIndex != nil {
+	if rv64CrossInstanceReferences && s.ownerIndex != nil {
 		s.ownerIndex[owner] = struct{}{}
 	}
 	return nil
 }
 
 func (s *rv64NativeTableTargets) release() {
-	if s.tailBudget != (rv64NativeTailGenerationBudget{}) {
+	if dynamicNativeTailForImage && s.tail.get().budget != (rv64NativeTailGenerationBudget{}) {
 		panic("RV64 tail generations must retire before scope roots")
 	}
 	var cleanup resourceCleanup
-	cleanup.run(s.publishCrossCopyReferenceRows)
+	if rv64CallableTableRowsForImage && rv64CrossInstanceReferences {
+		cleanup.run(s.publishCrossCopyReferenceRows)
+	}
+	if rv64CallableTableRowsForImage && tableImportsForImage {
+		s.releaseImportedTables(&cleanup)
+	}
+	// Releasing the last retired root can reenter finalization/native locking.
+	for s.count != 0 {
+		s.count--
+		owner := s.owners[s.count]
+		s.owners[s.count] = nil
+		if rv64CrossInstanceReferences {
+			delete(s.ownerIndex, owner)
+		}
+		cleanup.run(owner.releaseResourceRoot)
+	}
+	cleanup.finish()
+}
+
+func (s *rv64NativeTableTargets) releaseImportedTables(cleanup *resourceCleanup) {
 	publishWriters, publishForeignWriters := s.writerPublicationMode()
 	// Remove every transient promise before persistent publication. A reachable
 	// producer can share a source table with the public foreign writer; pruning
@@ -150,15 +178,6 @@ func (s *rv64NativeTableTargets) release() {
 		cleanup.run(func() { railshotFinishCompactExternHostTableDetach(table) })
 	}
 	s.storage = s.storage[:0]
-	// Releasing the last retired root can reenter finalization/native locking.
-	for s.count != 0 {
-		s.count--
-		owner := s.owners[s.count]
-		s.owners[s.count] = nil
-		delete(s.ownerIndex, owner)
-		cleanup.run(owner.releaseResourceRoot)
-	}
-	cleanup.finish()
 }
 
 func (s *rv64NativeTableTargets) owner(identity uintptr) *Instance {
@@ -186,7 +205,7 @@ func (s *rv64NativeTableTargets) tableRoots(table *Table, edges *int) error {
 	// NewTable64 and the import declaration is independently qualified before
 	// this retained-target walk. Instance-owned providers still require their
 	// exact compiled table64 witness.
-	qualifiedTable64 := table.owner.addr64 && (table.owner.instance == nil || rv64QualifiedTable64(table.owner.instance.c))
+	qualifiedTable64 := table64ForImage && table.owner.addr64 && (table.owner.instance == nil || rv64QualifiedTable64(table.owner.instance.c))
 	if table.owner.closed || table.closed || table.owner.addr64 && !qualifiedTable64 || table.owner.elementType != ValFuncRef || len(table.desc) < 8 {
 		return fmt.Errorf("RV64 retained table storage/type is invalid (closed=%t/%t addr64=%t qualified=%t element=%v bytes=%d)", table.owner.closed, table.closed, table.owner.addr64, qualifiedTable64, table.owner.elementType, len(table.desc))
 	}
@@ -239,7 +258,7 @@ func (s *rv64NativeTableTargets) refreshWithArguments(root *Instance, arguments 
 // independent root is installed. The old owner then remains physical until the
 // activation resumes and unwinds, even when it was already logically closed.
 func (s *rv64NativeTableTargets) addMutableLocalCallTarget(root *Instance) error {
-	if root == nil {
+	if !rv64MutableFuncrefGlobalsForImage || root == nil {
 		return nil
 	}
 	if rv64PrimitiveReferenceContract(root.c) {
@@ -377,7 +396,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 			return fmt.Errorf("RV64 table target requires a retained native framed owner")
 		}
 		if !stateOnly {
-			if _, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true); err != nil {
+			if _, err := rv64PublishedCodeView(owner, true); err != nil {
 				return err
 			}
 		}
@@ -387,8 +406,10 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 		if rv64StorageFreeCallable(owner.c) {
 			continue // construction-only storage attachments may already be transferred
 		}
-		if err := s.addMutableLocalCallTarget(owner); err != nil {
-			return err
+		if globalsForImage && referenceSignaturesBuilt {
+			if err := s.addMutableLocalCallTarget(owner); err != nil {
+				return err
+			}
 		}
 		// The immutable owner snapshot has already authenticated every table's
 		// type and layout. Keep the reachability walk bounded without repeating
@@ -397,7 +418,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 			return fmt.Errorf("RV64 table target table directory bound")
 		}
 
-		for index := range owner.c.Imports {
+		for index := 0; hostFunctionImportsBuilt && index < len(owner.c.Imports); index++ {
 			edges++
 			if edges > 4096 {
 				return fmt.Errorf("RV64 table attachment edge bound")
@@ -408,25 +429,12 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 				}
 			}
 		}
-		for _, entry := range owner.importGlobalReferences() {
-			edges++
-			if edges > 4096 {
-				return fmt.Errorf("RV64 reference attachment edge bound")
-			}
-			descriptor, _, err := rv64ReferenceGlobalSnapshot(entry.global, owner.refStore, true)
-			if err != nil || descriptor != entry.descriptor {
-				return fmt.Errorf("RV64 immutable reference attachment changed")
-			}
-			if descriptor != 0 {
-				if err := s.add(entry.owner); err != nil {
-					return err
-				}
-				if _, valid := rv64PublishedDescriptor(entry.owner, descriptor); !valid {
-					return fmt.Errorf("RV64 reference attachment descriptor changed")
-				}
+		if globalImportsForImage && referenceSignaturesBuilt {
+			if err := s.validateFrozenGlobalTargets(owner, &edges); err != nil {
+				return err
 			}
 		}
-		for index := 0; index < owner.c.tableImportCount(); index++ {
+		for index := 0; tableImportsForImage && index < owner.c.tableImportCount(); index++ {
 			table, ok := rv64NativeTableAttachment(owner, index)
 			if !ok {
 				return fmt.Errorf("RV64 retained imported table is missing")
@@ -441,7 +449,7 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 			if rv64ClosedImportedTableAttachment(owner, index) {
 				continue
 			}
-			if table.owner.elementType != ValFuncRef {
+			if !rv64CallableTableRowsForImage || table.owner.elementType != ValFuncRef {
 				continue
 			}
 			if err := s.tableRoots(table, &edges); err != nil {
@@ -451,35 +459,39 @@ func (s *rv64NativeTableTargets) validateReachable() error {
 				return err
 			}
 		}
-		owner.lifeMu.Lock()
-		table := owner.table
-		owner.lifeMu.Unlock()
-		for table != nil {
-			if table.owner != nil && table.owner.elementType == ValFuncRef {
-				edges++
-				if edges > 4096 {
-					return fmt.Errorf("RV64 table attachment edge bound")
-				}
-				if err := s.tableRoots(table, &edges); err != nil {
-					return err
-				}
-			}
+		if rv64CallableTableRowsForImage {
 			owner.lifeMu.Lock()
-			table = table.next
+			table := owner.table
 			owner.lifeMu.Unlock()
+			for table != nil {
+				if table.owner != nil && table.owner.elementType == ValFuncRef {
+					edges++
+					if edges > 4096 {
+						return fmt.Errorf("RV64 table attachment edge bound")
+					}
+					if err := s.tableRoots(table, &edges); err != nil {
+						return err
+					}
+				}
+				owner.lifeMu.Lock()
+				table = table.next
+				owner.lifeMu.Unlock()
+			}
 		}
 	}
 	// Only after acquiring every reachable physical root do we examine rows.
 	// Raw refSlot/context fields never authorize dereferencing unknown storage.
 	for _, owner := range s.owners[:s.count] {
-		if err := rv64ValidateTailTargets(owner); err != nil {
-			return err
+		if nativeTailForImage {
+			if err := rv64ValidateTailTargets(owner); err != nil {
+				return err
+			}
 		}
 		if rv64StorageFreeCallable(owner.c) {
 			continue
 		}
 		for tableIndex := 0; tableIndex < owner.c.tableCount(); tableIndex++ {
-			if rv64ClosedImportedTableAttachment(owner, tableIndex) {
+			if tableImportsForImage && rv64ClosedImportedTableAttachment(owner, tableIndex) {
 				continue
 			}
 			if err := s.validateTable(rv64RetainedTableDescriptor(owner, tableIndex), owner.c.tableEntryBytes(tableIndex)); err != nil {
@@ -516,15 +528,20 @@ func rv64RetainedTableDescriptor(owner *Instance, index int) []byte {
 	if index < 0 || index >= owner.c.tableCount() {
 		return nil
 	}
-	if _, imported := owner.c.tableImportAt(index); imported {
-		table, ok := rv64NativeTableAttachment(owner, index)
-		if !ok || table == nil || len(table.desc) < 8 {
-			return nil
+	if tableImportsForImage {
+		if _, imported := owner.c.tableImportAt(index); imported {
+			table, ok := rv64NativeTableAttachment(owner, index)
+			if !ok || table == nil || len(table.desc) < 8 {
+				return nil
+			}
+			return table.desc
 		}
-		return table.desc
 	}
 	address, size := owner.tableDescPtr, owner.tableDescLen
 	if index != 0 {
+		if !multiTableForImage {
+			return nil
+		}
 		directory := owner.ar.AllocatedRange(owner.jm.TableDirPtr(), 8*owner.c.tableCount())
 		if len(directory) == 0 {
 			return owner.tableDescriptor(index)
@@ -542,18 +559,16 @@ func (s *rv64NativeTableTargets) validateTable(table []byte, entryBytes int) err
 	if len(table) < 8 {
 		return fmt.Errorf("RV64 table descriptor extent")
 	}
-	if entryBytes != 8 && entryBytes != coreruntime.TableEntryBytes {
+	if entryBytes != 8 && (!rv64CallableTableRowsForImage || entryBytes != coreruntime.TableEntryBytes) {
 		return fmt.Errorf("RV64 table row width")
 	}
 	size, capacity := binary.LittleEndian.Uint32(table), binary.LittleEndian.Uint32(table[4:])
 	if size > capacity || uint64(8)+uint64(capacity)*uint64(entryBytes) > uint64(len(table)) {
 		return fmt.Errorf("RV64 table descriptor capacity/extent")
 	}
-	// Compact reference rows are opaque store-owned tokens, never executable
-	// descriptors. Public argument and result boundaries validate their store
-	// identity; this retained-target walk must not interpret token bits as code,
-	// signature, context, or owner pointers.
-	if entryBytes == 8 {
+	// Compact rows contain reference values, including immediate i31 values.
+	// Only callable rows have descriptor pointers to authenticate.
+	if !rv64CallableTableRowsForImage || entryBytes == 8 {
 		return nil
 	}
 	for index := uint32(0); index < size; index++ {
@@ -635,6 +650,9 @@ func rv64PublishedDescriptor(owner *Instance, descriptor uint64) ([]byte, bool) 
 // pruning prior writers: their final-root release can reacquire that lease.
 // The caller releases the returned redundant root and prunes after unlocking.
 func railshotPublishConstructedTableProducer(table *Table, in *Instance) *Instance {
+	if !rv64CallableTableRowsForImage {
+		return nil
+	}
 	// Active elements can copy descriptors from imported immutable globals
 	// before the first native invocation. Frozen global attachments already
 	// pin and quiesce these actual owners; publish their exact rows even when

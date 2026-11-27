@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -569,7 +570,9 @@ func (t *inlineTarget) localDeclByteCount() uint32 {
 
 var tailLoopInlineEnabled = true
 
-func (t *inlineTarget) tailLoop() bool      { return t.params&inlineTailLoopFlag != 0 }
+func (t *inlineTarget) tailLoop() bool {
+	return buildfeatures.TailCall != 0 && t.params&inlineTailLoopFlag != 0
+}
 func (t *inlineTarget) tailZeroMask() uint8 { return uint8(t.params >> inlineTailZeroShift) }
 
 func (t *inlineTarget) isI32AddConst() bool    { return t.params&inlineI32AddConstFlag != 0 }
@@ -635,7 +638,7 @@ func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) b
 // proofs. Retain the decisions in the directory slots so sizing and
 // construction share one admission analysis.
 func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPolicy, tailLoops ...bool) inlineTargetTable {
-	allowTail := len(tailLoops) > 0 && tailLoops[0]
+	allowTail := buildfeatures.TailCall != 0 && len(tailLoops) > 0 && tailLoops[0]
 	if !policy.EnabledOption(optInline) {
 		return inlineTargetTable{}
 	}
@@ -743,7 +746,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			paramCount <= 4 && integerTupleSelectTarget(m, m.Code[i], ft) {
 			params |= inlineTupleSelectFlag
 		}
-		if flags&tailLoop != 0 {
+		if buildfeatures.TailCall != 0 && flags&tailLoop != 0 {
 			params |= inlineTailLoopFlag
 			params |= uint32(tailInlineZeroMask(m.Code[i].BodyBytes, paramCount, int(h.localCount), targets.classifier)) << inlineTailZeroShift
 		}
@@ -898,7 +901,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		facts.calleeCount = 1
 	}
 	facts.boundedTupleLoop = boundedIntegerTupleLoopBody(m.Code[i], facts, classifier)
-	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || allowTail && tailLoopInlineCandidate(m, allHints, i, policy)
+	return ft, facts, inlineOK(facts, policy) || recursiveInlineCandidate(m, allHints, i, facts, policy) || buildfeatures.TailCall != 0 && allowTail && tailLoopInlineCandidate(m, allHints, i, policy)
 }
 
 func recursiveInlineCandidate(m *wasm.Module, allHints []funcHints, i int, facts inlineFacts, policy CodegenPolicy) bool {
@@ -1249,13 +1252,19 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	// fast path above only needs the walk when its argument can trap.
 	f.materializeTrapsBefore(f.s.head)
 	base := f.inlineBase[t.globalIdx]
-	constants := f.captureInlineTailConstants(t, base)
+	var constants *inlineTailConstants
+	if buildfeatures.TailCall != 0 {
+		constants = f.captureInlineTailConstants(t, base)
+	}
 	previousForward, previousForwardN := f.inlineForward, f.inlineForwardN
 	if !f.forwardInlineParams(t) {
 		f.bindInlineParams(t, base)
 	}
 	var prefix [8]storage
-	prefixCount := f.detachInlineTailPrefix(t, base, &prefix)
+	prefixCount := 0
+	if buildfeatures.TailCall != 0 {
+		prefixCount = f.detachInlineTailPrefix(t, base, &prefix)
+	}
 
 	old := f.localBase
 	oldTraceFunc, oldTraceBase, oldPC := f.traceFuncIdx, f.tracePCBase, f.wasmPC
@@ -1298,7 +1307,7 @@ func (f *fn) inlineCall(t *inlineTarget, caller *wasm.Reader) error {
 	// flow path already merged results into canonical slots, so this is a no-op there.)
 	nLocals := int(t.localTypeEnd - t.typeStart)
 	f.realizeInlineRange(base, base+nLocals)
-	if prefixCount != 0 {
+	if buildfeatures.TailCall != 0 && prefixCount != 0 {
 		f.restoreInlineTailPrefix(t, prefix[:prefixCount])
 	}
 	if storesConsumed {

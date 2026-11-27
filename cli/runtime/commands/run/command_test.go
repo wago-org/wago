@@ -16,6 +16,7 @@ import (
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 type testEnvironment struct{}
@@ -145,11 +146,14 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
 		!strings.Contains(text, "--native-stack <size>") ||
-		!strings.Contains(text, "--gc-heap <size>") ||
-		!strings.Contains(text, "--gc-nursery <size>") ||
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") ||
 		!strings.Contains(text, "use -- before colliding guest flags") {
 		t.Fatalf("run help did not document function parallelism:\n%s", text)
+	}
+	for _, name := range []string{"--gc-heap <size>", "--gc-nursery <size>"} {
+		if strings.Contains(text, name) != buildfeatures.NativeCollectorFrameRoots {
+			t.Errorf("run help visibility for %s disagrees with the collector profile", name)
+		}
 	}
 	output.Reset()
 	cmd.PrintOptimizationHelp(&output, "wago run")
@@ -225,6 +229,17 @@ func TestRunNativeStackFlag(t *testing.T) {
 
 func TestRunGCHeapFlags(t *testing.T) {
 	cmd := Command(testEnvironment{})
+	if !buildfeatures.NativeCollectorFrameRoots {
+		for _, flag := range cmd.Flags {
+			if flag.Name == "gc-heap" || flag.Name == "gc-nursery" {
+				t.Fatalf("--%s is visible in a build without a collector", flag.Name)
+			}
+		}
+		if strings.Contains(cmd.Long, "--gc-heap") || strings.Contains(cmd.Long, "--gc-nursery") {
+			t.Fatal("GC flags appear in run help without a collector")
+		}
+		return
+	}
 	normalized, err := cmd.Normalize([]string{"module.wasm", "--gc-heap", "2GiB", "--gc-nursery=64MiB"})
 	if err != nil {
 		t.Fatal(err)

@@ -24,15 +24,15 @@ func TestNativeGCHotPathDoesNotRecheckImmutableABI(t *testing.T) {
 	}
 	defer in.Close()
 	collector := in.gc.NativeView()
-	in.gcNativeView.Version = gc.NativeABIVersion + 1
-	in.gcNativeView.LocalTypeCount = 0
+	in.gcNativeView().Version = gc.NativeABIVersion + 1
+	in.gcNativeView().LocalTypeCount = 0
 	collector.Version = gc.NativeABIVersion + 1
 	collector.HandleStride = gc.NativeHandleStride + 4
 	if got, err := in.Invoke("get", 1, 0); err != nil || len(got) != 1 || got[0] != 0 {
 		t.Fatalf("trusted immutable ABI hot path = %v, %v", got, err)
 	}
-	in.gcNativeView.Version = gc.NativeABIVersion
-	in.gcNativeView.LocalTypeCount = uint32(len(in.c.Types))
+	in.gcNativeView().Version = gc.NativeABIVersion
+	in.gcNativeView().LocalTypeCount = uint32(len(in.c.Types))
 	collector.Version = gc.NativeABIVersion
 	collector.HandleStride = gc.NativeHandleStride
 }

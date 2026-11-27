@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -27,17 +27,10 @@ func ownedExceptionPacketForTest(in *Instance) []byte {
 
 func ownedExceptionTestInstance(t testing.TB, profile gc.Profile, params []ValueTypeDescriptor) (*Instance, []byte) {
 	t.Helper()
-	leaf, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
-	if err != nil {
-		t.Fatal(err)
-	}
-	collector, err := gc.NewCollector(gc.Config{Profile: profile, NurseryBytes: 4096, TinyHeapBytes: 64 << 10, VerifyAfterCollect: true}, []gc.TypeDesc{leaf})
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := &Compiled{Types: []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Params: params}}, memoryDir: &compiledMemoryDirectory{ehTags: []compiledTagDef{{TypeIndex: 0}}}}
+	in := managedCollectorTestInstance(t, profile)
+	c := &Compiled{Types: []DefinedTypeDescriptor{{Kind: CompositeTypeFunction, Params: params}}, memoryDir: &compiledMemoryDirectory{compiledExceptionTagMetadata: compiledExceptionTagMetadata{tags: []compiledTagDef{{TypeIndex: 0}}}}}
 	c.setOwnedExceptionReferences(true)
-	in := &Instance{c: c, gc: collector, refStore: newReferenceStore(true)}
+	in.c = c
 	nativePacket, err := coreruntime.NewArena(ownedExceptionPayloadBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +40,7 @@ func ownedExceptionTestInstance(t testing.TB, profile gc.Profile, params []Value
 
 	directory := make([]byte, 8)
 	binary.LittleEndian.PutUint64(directory, newNativeExceptionTag(c, 0, 0))
-	t.Cleanup(func() { releaseNativeExceptionTags(c, directory); collector.Close() })
+	t.Cleanup(func() { releaseNativeExceptionTags(c, directory) })
 	return in, directory
 }
 

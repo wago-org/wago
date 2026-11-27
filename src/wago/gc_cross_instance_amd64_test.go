@@ -115,10 +115,10 @@ func gcUnresolvedImportDistinctDomainModule() []byte {
 func gcStoreDomainCount(store *referenceStore) int {
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	if store.gcDomains == nil {
+	if store.gcTopologyLocked() == nil {
 		return 0
 	}
-	return store.gcDomains.n
+	return store.gcTopologyLocked().n
 }
 
 func TestGCCrossInstanceSharedCollectorOwnership(t *testing.T) {

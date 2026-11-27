@@ -8,6 +8,9 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Changed
 
+- Shrink standalone Wasm executables by linking only the runtime paths used
+  by each compiled image.
+
 - Speed up eligible ARM64 search loops with guard-page bounds checks by
   unrolling conditional backedges.
 
@@ -34,6 +37,7 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 ### Fixed
 
+- Build release binaries with Go 1.27.4 to pick up upstream security fixes.
 - Generate standalone modules with their own compiled-code finalizer.
 - Run `ref.cast` and `br_on_cast` against the abstract `func`, `extern`, and
   `exn` hierarchies (including `noextern`, `nofunc`, and `noexn`) instead of

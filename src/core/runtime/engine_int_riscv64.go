@@ -12,10 +12,15 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/wago-org/wago/src/core/runtime/abi"
 	goruntime "runtime"
 	"unsafe"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
+
+// Bounded-only images use the same entry frame without any scheduler transition.
+const preparedIntSchedulerForImage = buildfeatures.StandaloneDirectIntUnboundedFull || buildfeatures.StandaloneDirectIntUnboundedLight
 
 //go:noescape
 func enterNativeIntRV64Raw(code, linMem, trap, results, foreignStackTop, a0, a1, a2, a3 uintptr)
@@ -36,11 +41,11 @@ func (e *Engine) enterPreparedIntRV64(code, home uintptr, bounded bool, a0, a1, 
 	if trap == 0 {
 		return 0, fmt.Errorf("jit: missing RV64 prepared trap cell")
 	}
-	if !bounded {
+	if preparedIntSchedulerForImage && !bounded {
 		nativeEnterSyscall()
 	}
 	enterNativeIntRV64Raw(code, home, trap, slicePtr(results), e.stackTop, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3))
-	if !bounded {
+	if preparedIntSchedulerForImage && !bounded {
 		nativeExitSyscall()
 	}
 	value := binary.LittleEndian.Uint64(results)

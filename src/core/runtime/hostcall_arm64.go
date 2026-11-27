@@ -47,7 +47,7 @@ const (
 	hcSavedV14    = 152
 	hcSavedV15    = 160
 
-	hcTrampoline  = 176
+	hcTrampoline  = abi.ARM64SyncHostCallSavedBytes
 	hcImportIdx   = 184
 	hcNArgs       = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
 	hcArgs        = 192

@@ -28,7 +28,6 @@ var errMemoryWaitClosed = errors.New("wago: shared memory closed while waiting")
 type memoryWaiterState struct {
 	byOffset map[uint64]*memoryWaitQueue
 	active   uint32
-	backing  *coreruntime.JobMemory
 }
 
 // memoryWaiters contains entries only for memories with active parked calls.
@@ -61,6 +60,14 @@ func (m *Memory) wait64(ctx context.Context, offset uint64, expected uint64, tim
 }
 
 func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int64, size uint64) (uint32, error) {
+	if standaloneBareImage {
+		switch {
+		case atomicWait32RuntimeBuilt && !atomicWait64RuntimeBuilt:
+			size = 4
+		case atomicWait64RuntimeBuilt && !atomicWait32RuntimeBuilt:
+			size = 8
+		}
+	}
 	if m == nil {
 		return 0, errMemoryWaitClosed
 	}
@@ -93,10 +100,14 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	// concurrent native store+notify must acquire this mutex once comparison
 	// starts, or it could miss a waiter that already observed the old value.
 	// The native empty-notify check supplies the matching StoreLoad barrier.
-	m.jm.SetSharedNotifyPending(true)
+	if atomicNotifyPendingForImage {
+		m.jm.SetSharedNotifyPending(true)
+	}
 	clearPending := func() {
-		ws := s.waiterStateLocked(false)
-		m.jm.SetSharedNotifyPending(ws != nil && ws.active != 0)
+		if atomicNotifyPendingForImage {
+			ws := s.waiterStateLocked(false)
+			m.jm.SetSharedNotifyPending(ws != nil && ws.active != 0)
+		}
 	}
 	p := unsafe.Pointer(&b[offset])
 	var actual uint64
@@ -115,7 +126,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 		s.mu.Unlock()
 		return memoryWaitTimedOut, nil
 	}
-	w := s.addWaiterLocked(offset, m.jm)
+	w := s.addWaiterLocked(offset)
 	s.mu.Unlock()
 
 	if timeout < 0 {
@@ -138,7 +149,7 @@ func (m *Memory) wait(ctx context.Context, offset, expected uint64, timeout int6
 	}
 }
 
-func (s *memoryState) addWaiterLocked(offset uint64, backing *coreruntime.JobMemory) *memoryWaiter {
+func (s *memoryState) addWaiterLocked(offset uint64) *memoryWaiter {
 	ws := s.waiterStateLocked(true)
 	q := ws.byOffset[offset]
 	if q == nil {
@@ -152,15 +163,13 @@ func (s *memoryState) addWaiterLocked(offset uint64, backing *coreruntime.JobMem
 		q.tail.next = w
 	}
 	q.tail = w
-	ws.backing = backing
 	ws.active++
-	backing.SetSharedNotifyPending(true)
 	return w
 }
 
 func (m *Memory) cancelWait(s *memoryState, w *memoryWaiter, cancelErr error) (uint32, error) {
 	s.mu.Lock()
-	removed := s.removeWaiterLocked(w)
+	removed := s.removeWaiterLocked(w, m.jm)
 	s.mu.Unlock()
 	if removed {
 		if cancelErr != nil {
@@ -171,7 +180,7 @@ func (m *Memory) cancelWait(s *memoryState, w *memoryWaiter, cancelErr error) (u
 	return memoryWaitNotified, <-w.result
 }
 
-func (s *memoryState) removeWaiterLocked(w *memoryWaiter) bool {
+func (s *memoryState) removeWaiterLocked(w *memoryWaiter, backing *coreruntime.JobMemory) bool {
 	ws := s.waiterStateLocked(false)
 	if w.queue == nil || ws == nil {
 		return false
@@ -188,10 +197,12 @@ func (s *memoryState) removeWaiterLocked(w *memoryWaiter) bool {
 		w.next.prev = w.prev
 	}
 	w.queue, w.prev, w.next = nil, nil, nil
-	ws.active--
-	ws.backing.SetSharedNotifyPending(ws.active != 0 || s.has(memoryStateClosed))
 	if q.head == nil {
 		delete(ws.byOffset, w.offset)
+	}
+	ws.active--
+	if atomicNotifyPendingForImage {
+		backing.SetSharedNotifyPending(ws.active != 0 || s.has(memoryStateClosed))
 	}
 	if ws.active == 0 {
 		memoryWaiters.Lock()
@@ -246,7 +257,7 @@ func (m *Memory) notify(offset uint64, count uint32) (uint32, error) {
 	if offset > uint64(len(b)) || 4 > uint64(len(b))-offset {
 		return 0, &TrapError{Code: TrapLinMemOutOfBounds}
 	}
-	if !s.has(memoryStateWasmShared) {
+	if !memoryWaitQueuesForImage || !s.has(memoryStateWasmShared) {
 		return 0, nil
 	}
 	ws := s.waiterStateLocked(false)
@@ -264,14 +275,14 @@ func (m *Memory) notify(offset uint64, count uint32) (uint32, error) {
 			break
 		}
 		w := q.head
-		s.removeWaiterLocked(w)
+		s.removeWaiterLocked(w, m.jm)
 		w.result <- nil
 		notified++
 	}
 	return notified, nil
 }
 
-func (s *memoryState) closeWaitersLocked() {
+func (s *memoryState) closeWaitersLocked(backing *coreruntime.JobMemory) {
 	for {
 		ws := s.waiterStateLocked(false)
 		if ws == nil {
@@ -288,7 +299,7 @@ func (s *memoryState) closeWaitersLocked() {
 			memoryWaiters.Unlock()
 			return
 		}
-		s.removeWaiterLocked(w)
+		s.removeWaiterLocked(w, backing)
 		w.result <- errMemoryWaitClosed
 	}
 }

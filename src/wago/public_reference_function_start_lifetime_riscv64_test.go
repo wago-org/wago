@@ -219,7 +219,7 @@ func TestRV64PublicReferenceFunctionDefinedStartParkedConstruction(t *testing.T)
 							t.Fatal("failed start effects/continuation")
 						}
 					}
-					if active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || active.pluginState.Load().railshotInvocation.tailDispatcher != nil || active.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || !native.resourcesClosed {
+					if active.constructionIsActive() || !active.resourcesClosed || active.invocationState.Load()&instanceInvocationCount != 0 || active.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil || active.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || !native.resourcesClosed {
 						t.Fatal("constructor physical/static/code roots survived join")
 					}
 					if action == "runtime-close" {
@@ -351,7 +351,7 @@ func TestRV64PublicReferenceFunctionDefinedStartFailures(t *testing.T) {
 								t.Fatal("failed start external effects rolled back or continued")
 							}
 						}
-						if captured != nil && (!captured.resourcesClosed || captured.constructionIsActive() || captured.pluginState.Load().railshotInvocation.tailDispatcher != nil) {
+						if captured != nil && (!captured.resourcesClosed || captured.constructionIsActive() || captured.pluginState.Load().railshotInvocation.tailForTest().dispatcher != nil) {
 							t.Fatal("failed host start retained construction")
 						}
 						if cache.refs != refs || provider.referenceLifetime().snapshot().ResourceRoots != roots {

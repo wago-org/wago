@@ -1,3 +1,5 @@
+//go:build !wago_standalone_no_collector && (!wago_no_gc || (linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling))
+
 package wago
 
 import (
@@ -111,7 +113,7 @@ func TestGCNativeFrameRootsParkedActivationUsesPhysicalStack(t *testing.T) {
 		}
 	})
 	frame.owner.eng = newStack // Reentry can replace the owner's active engine.
-	state := &gcPublicState{
+	state := &gcPublicState{gcHostActivationState: gcHostActivationState{
 		hostActivationCount: 1,
 		hostRootPlan: &compiledGCFrameRoots{
 			adapterReturnOffsets: frame.adapterReturnOffsets,
@@ -119,7 +121,7 @@ func TestGCNativeFrameRootsParkedActivationUsesPhysicalStack(t *testing.T) {
 		},
 		hostCodeBase:  frame.codeBase,
 		hostCodeBytes: frame.codeBytes,
-	}
+	}}
 	activation := &state.hostActivations[0]
 	*activation = gcHostActivation{
 		base: frame.base, stack: oldStack,

@@ -117,7 +117,7 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		counts.MaskSlots += actual.MaskSlots
 		counts.NonCallable += actual.NonCallable
 		counts.TargetNonCallable += actual.TargetNonCallable
-		view, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true)
+		view, err := rv64PublishedCodeView(owner, true)
 		if err != nil {
 			return nil, err
 		}
@@ -132,14 +132,19 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		if owner == caller {
 			callerCode = view
 		}
-		static, _, err := railshot.NativeTailInstanceBudget(rv64StaticTailPlanCount(rv64NativeTailModule(owner.c)), len(view))
-		if err != nil {
-			return nil, err
+		if staticNativeTailForImage {
+			static, _, err := railshot.NativeTailInstanceBudget(rv64StaticTailPlanCount(rv64NativeTailModule(owner.c)), len(view))
+			if err != nil {
+				return nil, err
+			}
+			if static > railshot.MaxCodeBytes-guestCode {
+				return nil, rv64TailGenerationError("retained static factory code bound")
+			}
+			guestCode += static
 		}
-		if static > railshot.MaxCodeBytes-guestCode {
-			return nil, rv64TailGenerationError("retained static factory code bound")
+		if !hostFunctionImportsBuilt {
+			continue
 		}
-		guestCode += static
 		if state := owner.pluginState.Load(); state != nil && state.railshotInvocation.nativeImports != nil {
 			view, err := (rv64TailThunkCodeOwner{owner}).NativeTailCodeView()
 			if err != nil {
@@ -205,11 +210,11 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 	// only the newest graph's guests would undercharge their retained union.
 	code += guestCode
 	state := &caller.ensurePluginState().railshotInvocation
-	pool := &state.tailGenerationBudget
+	pool := &state.tail.get().generationBudget
 	budgets := [2]struct {
 		budget *rv64NativeTailGenerationBudget
 		limits rv64NativeTailGenerationLimits
-	}{{&scope.tailBudget, scopeLimits}, {pool, callerLimits}}
+	}{{&scope.tail.get().budget, scopeLimits}, {pool, callerLimits}}
 	for i, reservation := range budgets {
 		budget, limits := reservation.budget, reservation.limits
 		if budget.count != 0 && budget.limits != limits {
@@ -283,7 +288,10 @@ func rv64NewDefinedTailGenerationWithBudgets(caller *Instance, scope *rv64Native
 		}
 		context := rv64NativeInvocationContext(caller)
 		site := railshot.NativeTailSite{CallerHome: caller.jm.LinMemBase(), CallerContext: context, TargetContext: context, Target: railshot.NativeImportTarget{Entry: caller.base + uintptr(caller.c.Entry[int(p.FunctionIndex)-caller.c.NumImports]), Home: caller.jm.LinMemBase(), Context: caller.nativeContext, HostTrampoline: trampoline, StackOwnedActivation: true, InvocationContext: true}, FrameBytes: p.FrameBytes, SourceBase: p.SourceBase, SourceStride: p.SourceStride, FunctionIndex: p.FunctionIndex, SourcePC: p.SourcePC, Parameters: pt, Results: rt, Continuations: ranges}
-		if p.Kind == encoder.NativeTailDirectImport {
+		if directNativeTailPlansForImage && p.Kind == encoder.NativeTailDirectImport {
+			if !hostFunctionImportsBuilt {
+				return g, rv64TailGenerationError("direct import exceeds the standalone runtime profile")
+			}
 			target, native := rv64NativeFunctionAttachment(caller, int(p.ImportIndex))
 			if !native {
 				// The indexed snapshot already certifies this exact host binding.
@@ -345,7 +353,7 @@ func (g *rv64NativeTailGeneration) validate() error {
 					if err := snapshot.Validate(); err != nil {
 						return err
 					}
-				} else if _, err := (rv64TailCodeOwner{owner}).nativeOwnerCodeView(true); err != nil {
+				} else if _, err := rv64PublishedCodeView(owner, true); err != nil {
 					return err
 				}
 				if state := owner.pluginState.Load(); state != nil && state.railshotInvocation.nativeImports != nil {
@@ -381,7 +389,7 @@ func rv64ActivateNativeTailGenerations(generations []*rv64NativeTailGeneration) 
 				return rv64TailGenerationError("duplicate binding context")
 			}
 		}
-		if current := g.state.activeTailGeneration; current != nil {
+		if current := g.state.tail.get().activeGeneration; current != nil {
 			if err := current.factory.CheckDetach(); err != nil {
 				return err
 			}
@@ -390,11 +398,12 @@ func rv64ActivateNativeTailGenerations(generations []*rv64NativeTailGeneration) 
 		}
 	}
 	for _, g := range generations {
-		if current := g.state.activeTailGeneration; current != nil {
+		tail := g.state.tail.get()
+		if current := tail.activeGeneration; current != nil {
 			if err := current.factory.Detach(); err != nil {
 				return err
 			}
-			g.state.activeTailGeneration = nil
+			tail.activeGeneration = nil
 		}
 	}
 	for i, g := range generations {
@@ -407,46 +416,32 @@ func rv64ActivateNativeTailGenerations(generations []*rv64NativeTailGeneration) 
 			}
 			return err
 		}
-		g.state.activeTailGeneration = g
+		g.state.tail.get().activeGeneration = g
 	}
 	return nil
 }
 
 func (g *rv64NativeTailGeneration) deactivate() error {
-	if g == nil || g.state.activeTailGeneration != g {
+	if g == nil {
+		return nil
+	}
+	tail := g.state.tail.get()
+	if tail.activeGeneration != g {
 		return nil
 	}
 	if err := g.factory.Detach(); err != nil {
 		return err
 	}
-	g.state.activeTailGeneration = nil
-	return nil
-}
-
-// Close runs after the scope's native/suspended/cold uses have ended. It never
-// detaches another scope's generation. Failed cleanup retains all budget charges
-// and its cleanup owner; no replacement allocation may silently forget them.
-func (g *rv64NativeTailGeneration) Close() error {
-	if g == nil || !g.reserved {
-		return nil
-	}
-	g.ready = false
-	if err := g.deactivate(); err != nil {
-		return err
-	}
-	if err := g.factory.Close(); err != nil {
-		return err
-	}
-	g.releaseReservation()
+	tail.activeGeneration = nil
 	return nil
 }
 
 func (g *rv64NativeTailGeneration) releaseReservation() {
 	var budgets [2]*rv64NativeTailGenerationBudget
 	if g.scope != nil {
-		budgets[0] = &g.scope.tailBudget
+		budgets[0] = &g.scope.tail.get().budget
 	}
-	budgets[1] = &g.state.tailGenerationBudget
+	budgets[1] = &g.state.tail.get().generationBudget
 	for _, budget := range budgets {
 		if budget == nil {
 			continue

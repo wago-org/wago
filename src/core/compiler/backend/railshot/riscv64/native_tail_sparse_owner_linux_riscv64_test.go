@@ -80,7 +80,7 @@ func sparseNativeImportedOwner(t *testing.T, local *NativeTailOwner, remote tail
 	}
 	proxy, _ = tailPublishedFunctionForTest(t, o.functions[0])
 	remote, _ = tailPublishedFunctionForTest(t, remote)
-	genuine, err := NewNativeTailFunction(remote.published, remote.job, remote.context, remote.directory, remote.info.Entry, remote.info.Entry+remote.info.CodeBytes, remote.info.mode.functionIndex, *remote.signature)
+	genuine, err := NewNativeTailFunction(remote.published, remote.job, remote.context, remote.directory, remote.info.Entry, remote.info.Entry+remote.info.CodeBytes, remote.info.functionIndex, *remote.signature)
 	if err != nil {
 		t.Fatal(err)
 	}

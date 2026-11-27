@@ -3,11 +3,13 @@
 package arm64
 
 import (
+	"errors"
 	"os"
 	"reflect"
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -160,12 +162,18 @@ func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
 	if dynamic.hasUnsupportedDynamicCall() {
 		t.Fatal("call_indirect was classified as an unsupported dynamic call")
 	}
-	callRef, err := scanBodyBytes([]byte{0x14, 0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !callRef.flags.has(hintHasNonDirectCall) || !callRef.hasUnsupportedDynamicCall() {
-		t.Fatalf("call_ref flags/dynamic marker = %#x/%v", callRef.flags, callRef.hasUnsupportedDynamicCall())
+	for _, opcode := range []byte{0x14, 0x15} {
+		hints, err := scanBodyBytes([]byte{opcode, 0x00, 0x0b}, 0, 0, 0)
+		if buildfeatures.TypedFunctionReferences == 0 || buildfeatures.TailCall == 0 && opcode == 0x15 {
+			var decode *wasm.DecodeError
+			if !errors.As(err, &decode) || decode.Code != wasm.ErrDisabledInstruction || decode.Offset != 0 {
+				t.Fatalf("opcode %#x: got %v, want disabled instruction at byte 0", opcode, err)
+			}
+			continue
+		}
+		if err != nil || !hints.flags.has(hintHasNonDirectCall) || !hints.hasUnsupportedDynamicCall() {
+			t.Fatalf("opcode %#x: expected dynamic call hints, got %v", opcode, err)
+		}
 	}
 	imported := newFuncHints(0, 0)
 	elig := newGlobalEligibilityTracker(0)

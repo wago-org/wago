@@ -14,6 +14,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
@@ -1392,6 +1393,9 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.invalidateGCResolvedObject()
 	f.stats.call(callKindHostSync)
+	if buildfeatures.Threads != 0 && uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 {
+		f.atomicHelperUses |= shared.AtomicHelperBridgeUses(uint32(importIdx)&^shared.AtomicWaitDispatchBit, ft.Params)
+	}
 	// Blocking waits use the complete host frame and GC callsite maps. Other
 	// atomic helpers retain the compact internal transition.
 	atomicWait := uint32(importIdx)&shared.AtomicWaitDispatchBit != 0 &&
@@ -1408,7 +1412,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.nativeArrayAlloc = gcArrayAllocStubSite{}
 	p, rN := len(ft.Params), len(ft.Results)
 	notifyIndex := uint32(0)
-	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
+	notifyFast := uint32(importIdx) == shared.AtomicWaitDispatchBit|shared.AtomicHelperNotify && buildfeatures.Threads != 0 && f.opt(optAtomicNotifyEmpty) && (p == 3 || p == 4)
 	if notifyFast && p == 4 {
 		top := f.s.back()
 		if top.st.kind != stConst {
@@ -1419,7 +1423,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	var rootOffsets []uint32
 	recordRoots := false
-	if !internalGC {
+	if buildfeatures.GC != 0 && !internalGC {
 		rootOffsets, recordRoots = f.prepareGCFrameCallsite(p)
 	}
 	paramSlots := funcTypeSlots(ft.Params)
@@ -1493,7 +1497,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	belowGCRoots := f.gcFramePrefixRoots(roots, d-p)
 
 	f.flush() // operands to canonical slot-width slots
-	if nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual {
+	if buildfeatures.GC != 0 && nativeStructType != 0 && nativeGCStructDirectSlotsEnabled && !nativeStructVirtual {
 		if localStates, ok := f.snapshotLocalStates(); ok {
 			f.nativeStructDirectUsed = true
 			return f.callNativeStructDirectSlots(importIdx, ft, nativeStructType-1, nativeStructDead, paramSlots, resultSlots, slotOf, d, p, belowTypes, belowGCRoots, localStates)
@@ -1508,7 +1512,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 
 	atomicDone := -1
-	if atomicFast || growFast {
+	if buildfeatures.Threads != 0 && (atomicFast || growFast) {
 		f.materializeGCFrameRootLocalsForCall(importIdx)
 		f.spillLocalsForCall()
 		if regallocCheckEnabled {
@@ -1564,7 +1568,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		f.spillLocalsForCall()
 	}
 	nativeAllocDone := -1
-	if nativeStructType != 0 {
+	if buildfeatures.GC != 0 && nativeStructType != 0 {
 		typeIndex := nativeStructType - 1
 		if regallocCheckEnabled {
 			f.checkCallClobber()
@@ -1577,7 +1581,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		}
 		f.stats.call("gcnative")
 		nativeAllocDone = f.a.JccPlaceholder(condNE) // stub returns ZF=0 on success
-	} else if nativeArray.mode != gcArrayNativeNone {
+	} else if buildfeatures.GC != 0 && nativeArray.mode != gcArrayNativeNone {
 		if regallocCheckEnabled {
 			f.checkCallClobber()
 		}
@@ -1587,7 +1591,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		f.stats.call("gcnativearray")
 		nativeAllocDone = f.a.JccPlaceholder(condNE)
 	}
-	if gcSharedStubsEnabled && uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
+	if buildfeatures.GC != 0 && gcSharedStubsEnabled && uint32(importIdx) == gcStructDispatchBit|gcArrayLen {
 		nativeAllocDone = f.arrayLenShortcut()
 	}
 	if wide {
@@ -2130,7 +2134,11 @@ func (f *fn) emitDynamicHostOrCrossInstance(b ImportBinding, ft *wasm.CompType) 
 // callee entry, home memory, and target/caller contexts from the import dispatch
 // cell; the immediate form remains only for focused backend callers.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	kind := callKindCrossInstance
 	if b.Dynamic {
 		kind = callKindImportDispatch
@@ -2429,7 +2437,11 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 // callInternal lowers a direct call to another local function. Admitted numeric
 // and reference signatures use registers; other signatures use wrapper buffers.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	relocBase := len(f.relocs)
 	finishRoots := func() {
 		if !recordRoots {
@@ -2478,6 +2490,9 @@ func (f *fn) consumeGCFrameCallsite() {
 }
 
 func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
+	if buildfeatures.GC == 0 {
+		return nil, false
+	}
 	plan := f.gcFrameRoots
 	if plan == nil || !plan.Candidate {
 		return nil, false
@@ -3092,7 +3107,11 @@ func (f *fn) callRef(r *wasm.Reader) error {
 
 	f.materializePendingTraps()
 	ref := f.materialize(f.popValue())
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	f.pinned = f.pinned.add(ref)
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapIndirectOOB)
@@ -3740,7 +3759,11 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	f.materializePendingTraps()
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
-	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
+	var rootOffsets []uint32
+	var recordRoots bool
+	if buildfeatures.GC != 0 {
+		rootOffsets, recordRoots = f.prepareGCFrameCallsite(len(ft.Params))
+	}
 	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)

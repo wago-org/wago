@@ -10,36 +10,14 @@
 package riscv64
 
 import (
+	"slices"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/nativeabi"
-	"slices"
 )
-
-// Source plans include dead sites. Once every source site has been accounted
-// for, retain only masks for emitted sites. The independently validated source
-// plan is conservative: every mask contains every tracked local, so removing
-// a dead site cannot change the local roots of a later live site.
-func finalizeGCFrameRootMasks(plan *shared.GCFrameRootPlan, deadAllocations, deadCalls uint32) bool {
-	if plan == nil || deadAllocations == 0 && deadCalls == 0 {
-		return true
-	}
-	if !plan.Exact || !plan.Conservative || plan.SafepointCount()+int(deadAllocations) != plan.AllocationMaskCount() || plan.CallsiteCount()+int(deadCalls) != plan.CallMaskCount() {
-		return false
-	}
-	wordsPerSite := (len(plan.Locals) + 63) / 64
-	if wordsPerSite == 0 {
-		wordsPerSite = 1
-	}
-	words := make([]uint64, wordsPerSite*(plan.SafepointCount()+plan.CallsiteCount()))
-	for site := 0; site < plan.SafepointCount()+plan.CallsiteCount(); site++ {
-		for local := range plan.Locals {
-			words[site*wordsPerSite+local/64] |= uint64(1) << (local % 64)
-		}
-	}
-	return plan.SetLiveMasks(words, plan.SafepointCount(), plan.CallsiteCount())
-}
 
 // validateGCFrameRootPlans independently authenticates the initial RV64
 // frontend/backend handshake. This stage deliberately requires every collector
@@ -108,17 +86,17 @@ func validateGCFrameRootPlansOwned(m *wasm.Module, plans *shared.GCModuleFrameRo
 				}
 				calls++
 			case wasm.InstrReturnCallRef:
-				if !rootedScalarNumericReferenceTail(m, imm) {
+				if buildfeatures.TailCall == 0 || !rootedScalarNumericReferenceTail(m, imm) {
 					return false
 				}
 				tailBridge = true
 			case wasm.InstrReturnCallIndirect:
-				if !rootedScalarNumericIndirectTail(m, imm) {
+				if buildfeatures.TailCall == 0 || !rootedScalarNumericIndirectTail(m, imm) {
 					return false
 				}
 				tailBridge = true
 			case wasm.InstrReturnCall:
-				if uint64(imm.Index) >= uint64(m.FuncCount()) {
+				if buildfeatures.TailCall == 0 || uint64(imm.Index) >= uint64(m.FuncCount()) {
 					return false
 				}
 				if uint64(imm.Index) < uint64(m.ImportedFuncCount()) {
@@ -253,7 +231,7 @@ func rv64GCFrameLocalsLayoutOwned(m *wasm.Module, function int, usesSWAR, ownedE
 }
 
 func rv64CollectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
+	if !buildfeatures.RISCV64CollectorFrameRoots || t.Kind() != wasm.ValRef {
 		return false
 	}
 	heap := t.Ref().Heap()

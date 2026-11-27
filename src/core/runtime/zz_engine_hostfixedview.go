@@ -89,13 +89,13 @@ func (e *Engine) callWithHostLoopFixedView(code uintptr, serArgs []byte, linMemB
 			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])
 			n, nres := int(raw&0xffff), int(raw>>16)
 			if n > maxHostArity || nres > maxHostArity {
-				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
+				if !wideHostControlForImage {
+					return hostCtrlFixedArityError(n, nres)
+				}
+				args, wideResults, err := prepareWideHostCall(ctrl, n, nres)
 				if err != nil {
 					return err
 				}
-				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)[:n]
-				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)[:nres]
-				clear(wideResults)
 				host(ctrlPtr, imp, args, wideResults)
 				continue
 			}

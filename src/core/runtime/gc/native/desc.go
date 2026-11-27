@@ -136,7 +136,9 @@ func (b *StructDescBuilder) Finish() (TypeDesc, error) {
 	if err != nil {
 		return TypeDesc{}, err
 	}
-	b.desc.PrepareScanPlan()
+	if nativeCollectorFastPaths {
+		b.desc.PrepareScanPlan()
+	}
 	return b.desc, nil
 }
 

@@ -37,14 +37,24 @@ func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
 	}
-	defer managedFunctionAfterClose(in)
+	if managedFunctionLifetimeBuilt {
+		defer managedFunctionAfterClose(in)
+	}
 	state, owner := in.beginClose()
 	if !owner {
 		if state.completed.Load() {
-			err = joinPrimary(state.result, railshotRetryClosedDependencyComponent(in))
-			err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
-			err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
-			return joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
+			err = state.result
+			if terminalDependencyCollectionBuilt {
+				err = joinPrimary(err, railshotRetryClosedDependencyComponent(in))
+			}
+			if compiledArchitecture == 4 && dynamicNativeTailForImage {
+				err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
+			}
+			if terminalDependencyCollectionBuilt {
+				err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
+				err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
+			}
+			return err
 		}
 		// A callback may reenter Close while the lifecycle owner is still
 		// active. Returning promptly avoids self-deadlock; external callers
@@ -55,30 +65,14 @@ func (in *Instance) Close() (err error) {
 		if recover() != nil {
 			err = joinPrimary(err, fmt.Errorf("wago: instance close: %w", ErrCallbackPanic))
 		}
-		err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
-		err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
-		err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
-		collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
-		var collect bool
-		err, collect = state.finishLogicalCloseCollectionHandoff(err, collectionEnabled, func() error {
-			return railshotClosedContainerAdoptionResult(in, state)
-		})
-		if collect {
-			err = joinPrimary(err, callShutdownSafely("collect closed dependency component", func() {
-				railshotCollectClosingDependencyComponent(in, state)
-			}))
-			// The terminal-first handoff leaves ordinary finalization to this
-			// result owner. Keep its scoped permit and error journal through the
-			// scan, then retry after the transient finalizing claim is clear.
-			err = joinPrimary(err, callShutdownSafely("finalize closing dependency owner", func() {
-				in.referenceLifetime().finalize()
-			}))
-			err = joinPrimary(err, callShutdownSafely("retry closing dependency component", func() {
-				railshotCollectClosingDependencyComponent(in, state)
-			}))
-			state.completeLogicalCloseCollection(err)
+		if compiledArchitecture == 4 && dynamicNativeTailForImage {
+			err = joinPrimary(err, railshotRetryClosedNativeTableRetirement(in))
 		}
-		railshotCompleteClosingDependencyCollection(in, state)
+		if terminalDependencyCollectionBuilt {
+			err = joinPrimary(err, railshotRetryClosedTableDescriptorRetirement(in))
+			err = joinPrimary(err, railshotRetryClosedGlobalDescriptorRetirement(in))
+		}
+		err = in.finishLogicalClose(state, err)
 		// Managed terminal work must not detach ownership before the logical
 		// result is available to drain and WaitClosed. Retry after publication.
 		if in.hasManagedOwner() {
@@ -148,35 +142,20 @@ func (in *Instance) closeOnce() error {
 	// finish, but hooks and concurrent callers observe a logically closed instance.
 	// Physical finalization remains disabled until all BeforeClose hooks finish.
 	previousInvocations := in.closeInvocationEntry()
-	cancelAtomicWaitContext(in)
+	if atomicBlockingWaitRuntimeBuilt {
+		cancelAtomicWaitContext(in)
+	}
 	activeInvocations := previousInvocations & instanceInvocationCount
 	in.lifeMu.Lock()
-	if activeInvocations != 0 && len(in.trap) >= 4 {
+	if functionCodeForImage && activeInvocations != 0 && len(in.trap) >= 4 {
 		// Host re-entry swaps the trap slice under lifeMu, so Close observes one
 		// complete active slice header before requesting interruption.
 		in.closeState.Load().interruptStop = runtime.RequestInterruptAsync(in.trap)
 	}
 	in.lifeMu.Unlock()
 
-	var hooks *hookRegistry
-	if in.rt != nil {
-		hooks = in.rt.loadHooks()
-		for i := len(hooks.internalBeforeClose) - 1; i >= 0; i-- {
-			fn := hooks.internalBeforeClose[i]
-			appendStep("internal BeforeClose", func() { fn(in) })
-		}
-	}
-
-	var closeEvent *InstanceCloseEvent
-	if hooks != nil && (len(hooks.beforeClose) != 0 || len(hooks.afterClose) != 0) {
-		event := InstanceCloseEvent{Module: ModuleView{compiled: in.c, identity: in.moduleIdentity}, Instance: InstanceIdentity{value: in}, Origin: in.instantiateOrigin()}
-		closeEvent = &event
-		closeState := in.closeState.Load()
-		closeState.hooks, closeState.event = hooks, closeEvent
-		for i := len(hooks.beforeClose) - 1; i >= 0; i-- {
-			fn := hooks.beforeClose[i]
-			appendStep("BeforeClose", func() { fn(*closeEvent) })
-		}
+	if pluginRuntimeBuilt {
+		in.prepareInstanceCloseHooks(appendStep)
 	}
 
 	// An activation parked in host code may have resumed and mutated an imported
@@ -185,10 +164,15 @@ func (in *Instance) closeOnce() error {
 	// and the construction lifecycle have quiesced.
 	in.lifeMu.Lock()
 	in.closed = true
-	store := in.refStore
+	var store *referenceStore
+	if referenceStoreForImage {
+		store = in.refStore
+	}
 	in.lifeMu.Unlock()
 
-	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
+	if referenceStoreForImage {
+		appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
+	}
 	in.closeState.Load().prepared.Store(true)
 	appendStep("finalize instance resources", in.tryFinalize)
 	return errors.Join(errs...)
@@ -387,7 +371,7 @@ func (in *Instance) tryFinalize() {
 		}
 		closeState.signalQuiesced()
 		if closeState.terminalStarted.CompareAndSwap(false, true) {
-			asyncManagedTerminal := managed && (closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 || railshotTerminalClosedDependencyCollectionEnabled(in, closeState))
+			asyncManagedTerminal := managed && (closeState.hasPluginAfterClose() || railshotTerminalClosedDependencyCollectionEnabled(in, closeState))
 			if asyncManagedTerminal {
 				// Managed Close must return without waiting for terminal hooks.
 				// One short-lived worker owns hooks, component callbacks, detachment,
@@ -410,6 +394,9 @@ func (in *Instance) tryFinalize() {
 }
 
 func (in *Instance) hasManagedOwner() bool {
+	if standaloneBareImage {
+		return false
+	}
 	in.lifeMu.Lock()
 	managed := in.finalizers != nil && in.finalizers.managed != nil
 	in.lifeMu.Unlock()
@@ -417,54 +404,22 @@ func (in *Instance) hasManagedOwner() bool {
 }
 
 func (in *Instance) finishTerminalClose(state *instanceCloseState) {
-	defer managedFunctionAfterClose(in)
-	var errs []error
-	if state.hooks != nil && state.event != nil {
-		for i := len(state.hooks.afterClose) - 1; i >= 0; i-- {
-			fn := state.hooks.afterClose[i]
-			if err := callShutdownSafely("AfterClose", func() { fn(*state.event) }); err != nil {
-				errs = append(errs, err)
-			}
-		}
+	if managedFunctionLifetimeBuilt {
+		defer managedFunctionAfterClose(in)
 	}
-	adoptionErr := callShutdownSafely("adopt closed container dependencies", func() {
-		railshotTerminalClosedContainerDependencyAdoption(in, state)
-	})
-	railshotPublishClosedContainerAdoptionResult(in, state, adoptionErr)
-	in.lifeMu.Lock()
-	if in.finalizers != nil && in.finalizers.managed != nil {
-		managed := in.finalizers.managed
-		in.finalizers.managed = nil
-		detached := managed.detachTerminalClose()
-		in.lifeMu.Unlock()
-		collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
-		terminalOwnsCollection := collectionEnabled && state.publishTerminalCollectionReady()
-		if terminalOwnsCollection {
-			if err := callShutdownSafely("collect managed terminal dependency component", func() {
-				railshotCollectTerminalClosedDependencyComponent(in, state)
-			}); err != nil {
-				errs = append(errs, err)
-			}
-			if err := callShutdownSafely("finalize managed terminal dependency owner", func() {
-				in.referenceLifetime().finalize()
-			}); err != nil {
-				errs = append(errs, err)
-			}
-			if err := callShutdownSafely("retry managed terminal dependency component", func() {
-				railshotCollectTerminalClosedDependencyComponent(in, state)
-			}); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		state.terminalResult = errors.Join(errs...)
-		managed.completeTerminalClose(detached, state)
-		if terminalOwnsCollection {
-			return
-		}
-		in.referenceLifetime().finalize()
+	var errs []error
+	if pluginRuntimeBuilt {
+		errs = state.deliverPluginAfterClose(errs)
+	}
+	if terminalDependencyCollectionBuilt {
+		adoptionErr := callShutdownSafely("adopt closed container dependencies", func() {
+			railshotTerminalClosedContainerDependencyAdoption(in, state)
+		})
+		railshotPublishClosedContainerAdoptionResult(in, state, adoptionErr)
+	}
+	if !standaloneBareImage && in.finishManagedTerminalClose(state, errs) {
 		return
 	}
-	in.lifeMu.Unlock()
 
 	// If logical Close already published while an invocation was active, this
 	// terminal owner is the final production trigger for an ordinary closed
@@ -472,7 +427,7 @@ func (in *Instance) finishTerminalClose(state *instanceCloseState) {
 	// terminal waiter blocked until callback failures have joined its result.
 	// Synchronous Close still uses its narrower pre-publication permit later in
 	// the Close owner defer. Managed terminal ownership remains a separate phase.
-	collectionEnabled := railshotTerminalClosedDependencyCollectionEnabled(in, state)
+	collectionEnabled := terminalDependencyCollectionBuilt && railshotTerminalClosedDependencyCollectionEnabled(in, state)
 	terminalOwnsCollection := collectionEnabled && state.publishTerminalCollectionReady()
 	if terminalOwnsCollection {
 		if err := callShutdownSafely("collect terminal closed dependency component", func() {
@@ -514,50 +469,41 @@ func (in *Instance) finishTerminalClose(state *instanceCloseState) {
 	in.referenceLifetime().finalize()
 }
 
-// finishLogicalCloseCollectionHandoff atomically chooses which side of the
-// logical-result/terminal-readiness crossing owns the one collection attempt.
-// If terminal work is not ready, publishing completed under the same lock
-// guarantees that the terminal owner will observe it. If terminal work is
-// ready, this Close owner claims collection and delays result publication until
-// its callbacks have been accounted for.
-func (state *instanceCloseState) finishLogicalCloseCollectionHandoff(result error, enabled bool, terminalResult func() error) (error, bool) {
-	state.terminalCollectionMu.Lock()
-	defer state.terminalCollectionMu.Unlock()
-	ready := state.terminalComplete.Load()
-	if ready && terminalResult != nil {
-		result = joinPrimary(result, terminalResult())
-	}
-	required := enabled || state.terminalCollectionDeferred
-	if required && ready && !state.terminalCollectionClaimed {
-		state.terminalCollectionClaimed = true
-		state.terminalCollectionDeferred = false
-		return result, true
-	}
-	state.complete(result)
-	return result, false
-}
-
-func (state *instanceCloseState) completeLogicalCloseCollection(result error) {
-	state.terminalCollectionMu.Lock()
-	state.complete(result)
-	state.terminalCollectionMu.Unlock()
-}
-
-// publishTerminalCollectionReady is the other half of the handoff. Publishing
-// readiness and observing completed share one mutex with the Close owner, so
-// the crossing cannot leave both sides believing the other will collect.
-func (state *instanceCloseState) publishTerminalCollectionReady() bool {
-	state.terminalCollectionMu.Lock()
-	defer state.terminalCollectionMu.Unlock()
-	state.terminalComplete.Store(true)
-	if !state.completed.Load() || state.terminalCollectionClaimed {
-		if !state.completed.Load() {
-			state.terminalCollectionDeferred = true
+func (in *Instance) finishManagedTerminalClose(state *instanceCloseState, errs []error) bool {
+	in.lifeMu.Lock()
+	if in.finalizers != nil && in.finalizers.managed != nil {
+		managed := in.finalizers.managed
+		in.finalizers.managed = nil
+		detached := managed.detachTerminalClose()
+		in.lifeMu.Unlock()
+		collectionEnabled := terminalDependencyCollectionBuilt && railshotTerminalClosedDependencyCollectionEnabled(in, state)
+		terminalOwnsCollection := collectionEnabled && state.publishTerminalCollectionReady()
+		if terminalOwnsCollection {
+			if err := callShutdownSafely("collect managed terminal dependency component", func() {
+				railshotCollectTerminalClosedDependencyComponent(in, state)
+			}); err != nil {
+				errs = append(errs, err)
+			}
+			if err := callShutdownSafely("finalize managed terminal dependency owner", func() {
+				in.referenceLifetime().finalize()
+			}); err != nil {
+				errs = append(errs, err)
+			}
+			if err := callShutdownSafely("retry managed terminal dependency component", func() {
+				railshotCollectTerminalClosedDependencyComponent(in, state)
+			}); err != nil {
+				errs = append(errs, err)
+			}
 		}
-		return false
+		state.terminalResult = errors.Join(errs...)
+		managed.completeTerminalClose(detached, state)
+		if !terminalOwnsCollection {
+			in.referenceLifetime().finalize()
+		}
+		return true
 	}
-	state.terminalCollectionClaimed = true
-	return true
+	in.lifeMu.Unlock()
+	return false
 }
 
 func (state *instanceCloseState) signalQuiesced() {
@@ -609,7 +555,7 @@ func (in *Instance) constructionIsActive() bool {
 	return active
 }
 
-func (in *Instance) beginConstruction(reservation *pluginOperationReservation) {
+func (in *Instance) beginConstruction(reservation pluginReservation) {
 	if in == nil {
 		return
 	}
@@ -633,14 +579,14 @@ func (in *Instance) endConstruction() {
 		panic("wago: instance construction lifetime is not active")
 	}
 	in.constructionActive = false
-	in.constructionReservation = nil
+	in.constructionReservation = noPluginReservation()
 	in.lifeMu.Unlock()
 	in.tryFinalize()
 }
 
-func (in *Instance) constructionReservationSnapshot() *pluginOperationReservation {
+func (in *Instance) constructionReservationSnapshot() pluginReservation {
 	if in == nil {
-		return nil
+		return noPluginReservation()
 	}
 	in.lifeMu.Lock()
 	reservation := in.constructionReservation
@@ -662,22 +608,35 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	// Every imported raw-pointer dependency remains attached until physical
 	// release. A table/global/token or downstream function importer may keep this
 	// instance's native code and context callable after logical Close.
-	cleanup.run(func() { railshotReleaseNativeTail(in) })
-	cleanup.run(func() { detachImportedFunctions(in) })
-	cleanup.run(func() { detachImportedHostFuncRefs(in) })
-	cleanup.run(func() { detachImportedGlobals(in) })
-	cleanup.run(func() { railshotReleaseInstanceGlobalReferences(in) })
-	cleanup.run(func() { detachImportedTables(in) })
-	cleanup.run(func() { detachImportedTags(in) })
-	cleanup.run(func() { releaseInstanceExceptionTags(in) })
-	cleanup.run(func() { releaseInstanceCompactExtern(in) })
-	if in.gc != nil {
+	if compiledArchitecture == 4 && nativeTailForImage {
+		cleanup.run(func() { railshotReleaseNativeTail(in) })
+	}
+	if moduleImportsBuilt {
+		cleanup.run(func() { detachImportedFunctions(in) })
+		if referenceStoreForImage {
+			cleanup.run(func() { detachImportedHostFuncRefs(in) })
+		}
+		if globalImportsForImage {
+			cleanup.run(func() { detachImportedGlobals(in) })
+			cleanup.run(func() { railshotReleaseInstanceGlobalReferences(in) })
+		}
+		if tableImportsForImage {
+			cleanup.run(func() { detachImportedTables(in) })
+		}
+		if tagImportsForImage {
+			cleanup.run(func() { detachImportedTags(in) })
+		}
+	}
+	if exceptionTagsForImage {
+		cleanup.run(func() { releaseInstanceExceptionTags(in) })
+	}
+	if compiledArchitecture == 4 && nativeCollectorFrameRootsBuilt {
+		cleanup.run(func() { releaseInstanceCompactExtern(in) })
+	}
+	if nativeCollectorFrameRootsBuilt && in.gc != nil {
 		closeCollector := func() {
-			if table := in.existingGCRefTestTableState(); table != nil {
-				table.drop(in.gc)
-			}
-			if elements := in.takeGCArrayElementState(); elements != nil {
-				elements.drop(in.gc)
+			if wasmGCBuilt {
+				in.dropStagedGCObjectRoots()
 			}
 			if in.executionFlags.Load()&executionFlagStoreOwnedGCCollector == 0 {
 				in.gc.Close()
@@ -693,45 +652,39 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	}
 	// These containers consume their root units before producer callbacks run.
 	// A nested physical callback must not interrupt our remaining native teardown.
-	for table := in.table; table != nil; table = table.next {
-		cleanup.run(table.releaseRetainedInstances)
+	if tablesForImage {
+		for table := in.table; table != nil; table = table.next {
+			cleanup.run(table.releaseRetainedInstances)
+		}
+		// Retry retired rows once the native descriptor teardown has finished.
+		cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(in) })
 	}
-	// The architecture holder survives native descriptor teardown. Its sweep
-	// retries retired/Publishing rows no longer present in a live retained map.
-	cleanup.run(func() { railshotReleaseOwnedTableDescriptorDependencies(in) })
-	for _, global := range in.globalCells {
-		cleanup.run(func() { global.instanceOwnerClosed(in) })
+	if globalsForImage {
+		for _, global := range in.globalCells {
+			cleanup.run(func() { global.instanceOwnerClosed(in) })
+		}
+		// The architecture holder survives globalCells being cleared below.
+		cleanup.run(func() { railshotReleaseOwnedGlobalDescriptorDependencies(in) })
 	}
-	// The architecture holder survives globalCells being cleared below. Its
-	// sweep retries retired/Publishing rows that are no longer in a live map.
-	cleanup.run(func() { railshotReleaseOwnedGlobalDescriptorDependencies(in) })
-	unregisterHostControl(in)
-	if in.thunkMem != nil {
+	if foreignHostControlForImage && syncHostControlForImage {
+		unregisterHostControl(in)
+	}
+	if hostFunctionImportsBuilt && in.thunkMem != nil {
 		_ = in.c.releaseOwnedCodeMapping(in.thunkMem)
 		in.thunkMem = nil
 	}
 	in.c.releaseCode()
-	runtime.ReleaseArena(in.ar)
-	managedMemories := railshotHasInstanceMemoryDependencies(in)
-	var detachedMemories importDedup[*Memory]
-	if in.memoryDir != nil {
-		for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
-			memory := in.memoryDir.memories[i]
-			if memory == nil {
-				continue
-			}
-			if i < len(in.memoryDir.owns) && in.memoryDir.owns[i] {
-				cleanup.run(func() {
-					memoryJM := memory.jobMemory()
-					memory.ownerClosed()
-					runtime.ReleaseJobMemory(memoryJM)
-				})
-			} else if !managedMemories && detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
-				cleanup.run(memory.detachImporter)
-			}
-		}
+	if arenaForImage {
+		runtime.ReleaseArena(in.ar)
 	}
-	if in.c.threadedMemory0() {
+	managedMemories := memoryImportsForImage && crossInstanceDependenciesForImage && railshotHasInstanceMemoryDependencies(in)
+	var detachedMemories importDedup[*Memory]
+	if multiMemoryRuntimeBuilt && in.memoryDir != nil {
+		in.releaseSecondaryMemories(managedMemories, &detachedMemories, cleanup)
+	}
+	if jobMemoryForImage && !memoriesForImage {
+		cleanup.run(func() { _ = in.jm.Close() })
+	} else if sharedMemoryRuntimeBuilt && in.c.threadedMemory0() {
 		cleanup.run(func() { runtime.ReleaseJobMemory(in.jm) })
 		if in.ownsMem {
 			cleanup.run(func() {
@@ -739,10 +692,10 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 				in.memory.ownerClosed()
 				runtime.ReleaseJobMemory(backing)
 			})
-		} else if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+		} else if memoryImportsForImage && !managedMemories && in.memory != nil && (!multiMemoryRuntimeBuilt || detachedMemories.add(in.memory)) && !in.ownsTransferredMemoryAttachment(in.memory) {
 			cleanup.run(in.memory.detachImporter)
 		}
-	} else if in.ownsMem {
+	} else if jobMemoryForImage && in.ownsMem {
 		cleanup.run(func() {
 			if in.memory != nil {
 				in.memory.ownerClosed()
@@ -754,16 +707,20 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 			}
 			_ = runtime.ReleaseJobMemory(in.jm)
 		})
-	} else if !managedMemories && in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
+	} else if memoryImportsForImage && !managedMemories && in.memory != nil && (!multiMemoryRuntimeBuilt || detachedMemories.add(in.memory)) && !in.ownsTransferredMemoryAttachment(in.memory) {
 		cleanup.run(in.memory.detachImporter)
 	}
-	if managedMemories {
+	if memoryImportsForImage && crossInstanceDependenciesForImage && managedMemories {
 		cleanup.run(func() { railshotDrainInstanceMemoryDependencies(in) })
 	}
-	transferredImportAttachments.Delete(in)
-	runtime.ReleaseEngine(in.eng)
+	if moduleImportsBuilt && crossInstanceDependenciesForImage {
+		transferredImportAttachments.Delete(in)
+	}
+	if functionCodeForImage {
+		runtime.ReleaseEngine(in.eng)
+	}
 	if in.rt != nil {
-		in.rt.unregisterInstance(in)
+		in.rt.detachInstance(in)
 	}
 
 	// Reusable arenas and job-memory objects may immediately back a later
@@ -788,6 +745,24 @@ func (in *Instance) releaseResources(cleanup *resourceCleanup) {
 	in.results = nil
 	in.trap = nil
 	in.resultVals = nil
+}
+
+func (in *Instance) releaseSecondaryMemories(managedMemories bool, detachedMemories *importDedup[*Memory], cleanup *resourceCleanup) {
+	for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
+		memory := in.memoryDir.memories[i]
+		if memory == nil {
+			continue
+		}
+		if i < len(in.memoryDir.owns) && in.memoryDir.owns[i] {
+			cleanup.run(func() {
+				memoryJM := memory.jobMemory()
+				memory.ownerClosed()
+				runtime.ReleaseJobMemory(memoryJM)
+			})
+		} else if memoryImportsForImage && !managedMemories && detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
+			cleanup.run(memory.detachImporter)
+		}
+	}
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

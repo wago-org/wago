@@ -44,7 +44,7 @@ func TestGenericGCArrayInitElemExecutesWithoutFixtureHash(t *testing.T) {
 	}
 	defer c.Close()
 	if got := c.stagedGCArrayProduct(); got != stagedGCArrayProductGeneric {
-		t.Fatalf("array product = %s, want generic", got)
+		t.Fatalf("array product = %v, want generic", got)
 	}
 	if len(c.GCTypeDescs) < 2 || c.GCTypeDescs[1].Kind != corergc.KindArray || c.GCTypeDescs[1].Elem != corergc.StorageFuncRefNull || len(c.passiveElems) != 2 {
 		t.Fatalf("generic type/segment metadata = %+v/%d", c.GCTypeDescs, len(c.passiveElems))
@@ -73,7 +73,7 @@ func TestStagedGCArrayInitDataTinyLifecycle(t *testing.T) {
 	}
 	defer in.Close()
 	state := in.pluginState.Load()
-	if state == nil || state.gcGlobalRootCount != 3 {
+	if state == nil || len(state.stagedGlobalRoots()) != 3 {
 		t.Fatalf("root state=%#v, want three global roots", state)
 	}
 	for i := 0; i < 100; i++ {

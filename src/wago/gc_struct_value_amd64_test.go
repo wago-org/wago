@@ -50,7 +50,7 @@ func issueStagedGCStructToken(t testing.TB, in *Instance) (GCRef, gcRefTokenEntr
 	if !ok || owner != in || exact.Kind != ValueTypeReference || !exact.Ref.Exact || !exact.Ref.Heap.Defined || exact.Ref.Heap.TypeIndex != 0 {
 		t.Fatalf("issued exact GC token = %#v owner=%p slot=%d ok=%v", exact, owner, slot, ok)
 	}
-	entry, entryOK := store.gcByToken[token]
+	entry, entryOK := store.objectTokensLocked()[token]
 	if !entryOK || entry.ref != ref || entry.slot != slot || token>>32 == 0 || token == uint64(ref) {
 		t.Fatalf("issued GC token entry = %#v token=%#x compact=%#x", entry, token, ref)
 	}

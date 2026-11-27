@@ -59,8 +59,8 @@ func rv64GCBrOnCastAbstractMetadata(c *Compiled, wantProduct stagedGCStructProdu
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 ||
-		d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || len(d.gcArrayGlobals()) != 0 ||
+		d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	wantExports := map[string]int{"init": 1, "br_on_null": 2, "br_on_i31": 3, "br_on_struct": 4, "br_on_array": 5, "null-diff": 6}

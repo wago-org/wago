@@ -91,8 +91,10 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 
 	caller := in.beginHostCallScopeReservedWithID(newInvocationID(), nil)
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	var resultTemps gcHostTempTokens
-	caller.ephemeralGCResults = &resultTemps
+	caller.referenceCall = &hostReferenceCallState{}
+	if caller.referenceCall.gcResultTokens() != nil {
+		t.Fatal("callback allocated GC result storage before publishing a result")
+	}
 	caller.exact = &DefinedTypeDescriptor{Results: []ValueTypeDescriptor{{
 		Kind: ValueTypeReference,
 		Ref: ReferenceTypeDescriptor{
@@ -121,6 +123,10 @@ func TestHostGuestStorageExactImmutableGCArrayResult(t *testing.T) {
 	}
 	if token == 0 {
 		t.Fatal("host GC result allocation returned a null token")
+	}
+	resultTemps := caller.referenceCall.gcResultTokens()
+	if resultTemps == nil {
+		t.Fatal("callback did not allocate its GC result storage")
 	}
 	if resultTemps.count != 1 || resultTemps.tokens[0] != token {
 		t.Fatalf("tracked host GC result = count %d token %#x, want 1/%#x", resultTemps.count, resultTemps.tokens[0], token)

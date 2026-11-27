@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"slices"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -22,7 +23,7 @@ import (
 var rv64MutableFuncrefLocalPublishCodeDigest [sha256.Size]byte
 
 func rv64MutableFuncrefGlobalLocalPublishExecutionCode(c *Compiled) bool {
-	return false // Replaced by the first finalized public-image fingerprint.
+	return rv64MutableFuncrefGlobalsForImage && buildfeatures.MutableGlobal != 0 && false // Replaced by the first finalized public-image fingerprint.
 }
 
 // rv64MutableFuncrefGlobalLocalPublish authenticates a bounded mixed-state
@@ -30,7 +31,7 @@ func rv64MutableFuncrefGlobalLocalPublishExecutionCode(c *Compiled) bool {
 // instance's function zero, and can only escape into imported mutable target
 // zero through the parked ownership transaction.
 func rv64MutableFuncrefGlobalLocalPublish(c *Compiled) bool {
-	if c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
+	if !rv64MutableFuncrefGlobalsForImage || buildfeatures.MutableGlobal == 0 || c == nil || c.hasNoFunctionCode() || !c.nativeContextTrapABI || !c.nativeTableContextABI || !c.nativeTableReferenceABI || !c.registerABIDisabled || c.nativeTable64ABI != nativeTable64NoABI || !c.needsFuncRefContextHeader || !c.hasTableExportMetadata || !c.NeedsFuncRefDescs || c.dynamicFuncrefEscape || c.nativeReferenceFunctionABI || c.nativeReferenceCallABI || c.nativeReferenceControlABI || rv64HasReferenceTail(c) {
 		return false
 	}
 	if c.NumImports != 0 || c.dynamicImports || len(c.Imports) != 0 || len(c.importFuncSigs) != 0 || len(c.Funcs) != 6 || len(c.FuncTypeID) != 6 || len(c.Exports) != 6 || len(c.Types) != 1 || len(c.GCTypeDescs) != 1 {
@@ -47,7 +48,7 @@ func rv64MutableFuncrefGlobalLocalPublish(c *Compiled) bool {
 	if c.activeDataCount() != 0 || len(c.PassiveData) != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.customInstructions) != 0 || c.Names != nil || c.HasTable || c.HasMemory || c.tableImport != "" || c.memoryImport != "" || c.compactData != nil || len(c.Data) != 0 {
 		return false
 	}
-	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d := c.memoryDir; d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || d.hasGCInitializers() || d.hasExceptionTagMetadata() {
 		return false
 	}
 	funcType := &wasm.CompType{Kind: wasm.CompFunc}

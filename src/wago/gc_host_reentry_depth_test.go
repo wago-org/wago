@@ -119,12 +119,13 @@ func TestGCHostReentryFullDepth(t *testing.T) {
 					if calls != maxHostReentryDepth+1 || active != 0 {
 						t.Fatalf("callbacks = %d, active = %d; want %d, 0", calls, active, maxHostReentryDepth+1)
 					}
-					state := in.publicGCState()
-					state.mu.Lock()
-					pending := state.hostActivationCount
-					state.mu.Unlock()
-					if pending != 0 {
-						t.Fatalf("retained %d host activations", pending)
+					if state := in.existingPublicGCState(); state != nil {
+						state.mu.Lock()
+						pending := state.hasGCHostActivations()
+						state.mu.Unlock()
+						if pending {
+							t.Fatal("retained parked host activations")
+						}
 					}
 					assertHostReentryDepthsEmpty(t)
 				}

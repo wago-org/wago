@@ -16,11 +16,14 @@ import (
 	goruntime "runtime"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/internal/runtimebridge"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
+
+var errStandaloneModuleImports = errors.New("wago: standalone image does not support module imports")
 
 // InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
@@ -47,13 +50,25 @@ type InstantiateOptions struct {
 	afterCreate              func(*Instance) error
 	beforeStoreRegister      func(*Instance)
 	moduleIdentity           ModuleIdentity
-	operationReservation     *pluginOperationReservation
+	operationReservation     pluginReservation
 	runtimeReservation       *runtimeInstanceReservation
 	independentInstances     bool
 	hasExecutionPolicy       bool
 	nativeStackBytes         uint64
 	memoryLimitPages         uint32
 	maxInstanceMetadataBytes uint64
+}
+
+func (config *RuntimeConfig) instanceExecutionOptions(independentInstances bool) InstantiateOptions {
+	return InstantiateOptions{
+		railshotTailPolicy:       railshotInstanceTailPolicy(config),
+		MaxCompiledMetadataBytes: config.maxCompiledMetadataBytes,
+		independentInstances:     independentInstances,
+		hasExecutionPolicy:       true,
+		nativeStackBytes:         config.nativeStackBytes,
+		memoryLimitPages:         config.maxMemoryPages,
+		maxInstanceMetadataBytes: config.maxInstanceMetadataBytes,
+	}
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -120,32 +135,43 @@ type instanceBuilder struct {
 	opts    InstantiateOptions
 	imports resolvedImports
 
-	collector                  *gc.Collector
-	constructionGCDomainLocked bool
-	collectorShared            bool
-	gcDomain                   *gcStoreDomain
-	gcDomainID                 uint64
-	gcTypeMap                  *gcTypeMapping
-	success                    bool
-	registeredInstance         *Instance
-	functionAttachments        functionImportAttachments
-	hostAttachments            hostFuncRefAttachments
-	tableAttachments           tableImportAttachments
-	globalAttachments          globalImportAttachments
-	tagAttachments             tagImportAttachments
-	moduleUse                  *Module
+	instanceBuilderGCState
+	success             bool
+	registeredInstance  *Instance
+	functionAttachments functionImportAttachments
+	hostAttachments     hostFuncRefAttachments
+	tableAttachments    tableImportAttachments
+	globalAttachments   globalImportAttachments
+	tagAttachments      tagImportAttachments
+	moduleUse           moduleUseLease
+}
+
+type instanceCollectorState struct {
+	collector          *gc.Collector
+	domain             *gcStoreDomain
+	typeMap            *gcTypeMapping
+	domainID           uint64
+	shared             bool
+	constructionLocked bool
+}
+
+// A managed caller supplies its lease release operation with the logical owner.
+type moduleUseLease struct {
+	owner   *Module
+	release func(*Module)
 }
 
 // instantiateCore maps code and applies explicit instance options.
 func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
-	return instantiateCoreWithModuleLease(c, opts, nil)
+	return instantiateCoreWithModuleLease(c, c, opts, moduleUseLease{})
 }
 
-func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (result *Instance, resultErr error) {
-	defer goruntime.KeepAlive(c)
+func instantiateCoreWithModuleLease(c, mappingOwner *Compiled, opts InstantiateOptions, moduleUse moduleUseLease) (result *Instance, resultErr error) {
+	// Keep the deferred argument typed to avoid retaining its reflection metadata.
+	defer func(compiled *Compiled) { goruntime.KeepAlive(compiled) }(c)
 	// Keep validation, native linking, public lookup, and teardown on one binding set.
 	imports := opts.resolvedImports
-	if !opts.ownedImports && opts.Imports != nil {
+	if moduleImportsBuilt && !standaloneStopsBeforeInstance && !opts.ownedImports && opts.Imports != nil {
 		var err error
 		imports, err = opts.Imports.snapshot()
 		if err != nil {
@@ -175,20 +201,27 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if !moduleImportsBuilt && c.executionView().declaredImportCount() != 0 {
+		return nil, errStandaloneModuleImports
+	}
+	if !hostFunctionImportsBuilt && c.NumImports != 0 {
+		return nil, errors.New("wago: standalone image does not support function imports")
+	}
 	if err := railshotValidateReferenceFunctionInstance(c, opts); err != nil {
 		return nil, err
 	}
-	if err := railshotValidateResolvedImports(c, imports, opts.store); err != nil {
-		return nil, err
+	if moduleImportsBuilt {
+		if err := railshotValidateResolvedImports(c, imports, opts.store); err != nil {
+			return nil, err
+		}
 	}
 	if opts.forceSyncHost {
+		if !syncHostControlForImage {
+			return nil, errors.New("synchronous host control exceeds the standalone runtime profile")
+		}
 		if _, err := runtime.HostCtrlFrameBytesForSlots(runtime.MaxHostArity); err != nil {
 			return nil, wrapContextError("instantiate: synchronous host protocol", err)
 		}
-	}
-	mappingOwner := c
-	if moduleUse != nil && moduleUse.compiledView != nil {
-		mappingOwner = moduleUse.compiledView
 	}
 	if err := mappingOwner.prepareCodeMapping(); err != nil {
 		return nil, wrapContextError("wago: instantiate: map code", err)
@@ -199,23 +232,31 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 		return nil, err
 	}
 	b.c = c
-	if err := c.preflightImportBindings(imports); err != nil {
-		return nil, err
+	// Bare launchers supply no storage bindings. Keep platform admission and
+	// code mapping ahead of the existing missing-binding diagnostic.
+	if buildfeatures.StandaloneUnboundStorageDiagnostic != "" {
+		return nil, errors.New(buildfeatures.StandaloneUnboundStorageDiagnostic)
+	}
+	if moduleImportsBuilt && buildfeatures.StandaloneUnboundTagImport == "" {
+		if err := c.preflightImportBindings(imports); err != nil {
+			return nil, err
+		}
 	}
 	return b.instantiate(mappingOwner)
 }
 
 func (b *instanceBuilder) releaseModuleUse() {
-	if b.moduleUse == nil {
-		return
+	if lease := b.moduleUse; lease.release != nil {
+		b.moduleUse = moduleUseLease{}
+		lease.release(lease.owner)
 	}
-	b.moduleUse.endUse()
-	b.moduleUse = nil
 }
 
 func (b *instanceBuilder) validateCompiled() error {
-	if err := b.c.validateImportBindingsWithPluginGC(b.imports, b.opts.store, b.opts.pluginGCImports); err != nil {
-		return err
+	if hostFunctionImportsBuilt || nativeCollectorFrameRootsBuilt && atomicWaitRuntimeBuilt {
+		if err := b.c.validateImportBindingsWithPluginGC(b.imports, b.opts.store, b.opts.pluginGCImports); err != nil {
+			return err
+		}
 	}
 	return b.c.validateCached()
 }
@@ -224,12 +265,14 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, e
 	if !enabled {
 		return false
 	}
-	if c.memoryImportCount() != 0 || c.tableImportCount() != 0 || len(c.GlobalImports) != 0 {
-		return false
-	}
-	for i := range c.Imports {
-		if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
+	if moduleImportsBuilt {
+		if memoryImportsForImage && c.memoryImportCount() != 0 || tableImportsForImage && c.tableImportCount() != 0 || len(c.GlobalImports) != 0 {
 			return false
+		}
+		for i := range c.Imports {
+			if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
+				return false
+			}
 		}
 	}
 
@@ -238,10 +281,13 @@ func (c *Compiled) allowsIndependentInstanceExecution(imports resolvedImports, e
 
 func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) int {
 	need := c.instantiateArenaNeed
+	if !syncHostControlForImage {
+		return need + railshotNativeTailArenaBytes(c)
+	}
 	baselineHostBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.needsOwnedExceptionReferences() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() || c.usesGuestGlobalStoreHelper() {
 		baselineHostBytes = c.hostCtrlFrameBytes()
-	} else if len(c.Imports) > 0 {
+	} else if hostFunctionImportsBuilt && len(c.Imports) > 0 {
 		baselineHostBytes = runtime.HostCallLogBytes
 	}
 	actualHostBytes := 0
@@ -250,7 +296,7 @@ func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) i
 		// including for modules without function imports: public funcref calls and
 		// nested runtime entry share the same parked-host context.
 		actualHostBytes = c.hostCtrlFrameBytes()
-	} else {
+	} else if hostFunctionImportsBuilt {
 		for i := range c.Imports {
 			if _, cross := imports[c.functionImportBindingKey(i)].(*InstanceExport); !cross {
 				actualHostBytes = runtime.HostCallLogBytes
@@ -258,7 +304,10 @@ func (c *Compiled) arenaNeedForImports(imports resolvedImports, syncMode bool) i
 			}
 		}
 	}
-	return need - baselineHostBytes + actualHostBytes + railshotNativeImportArenaBytes(c, imports) + railshotNativeTailArenaBytes(c)
+	if hostFunctionImportsBuilt {
+		need += railshotNativeImportArenaBytes(c, imports)
+	}
+	return need - baselineHostBytes + actualHostBytes + railshotNativeTailArenaBytes(c)
 }
 
 func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) error {
@@ -268,7 +317,7 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 	for i := 0; i < c.memoryCount(); i++ {
 		def := c.memoryDef(i)
 		pages := def.Min
-		if def.ImportKey != "" {
+		if memoryImportsForImage && def.ImportKey != "" {
 			memory, ok := imports.memory(c.memoryImportBindingKey(i))
 			if !ok {
 				continue // the normal linker reports the missing import.
@@ -291,93 +340,7 @@ func enforceMemoryPageQuota(c *Compiled, imports resolvedImports, limit uint32) 
 	return nil
 }
 
-func (b *instanceBuilder) prepareCollector() error {
-	needsExternConversion := b.c.stagedGCStructProduct().requiresExternConversion()
-	needsHelpers := b.c.usesGCStructHelpers() || b.c.usesGCArrayHelpers()
-	needsRuntimeDomain := b.c.needsRuntimeGCCollectorDomain()
-	if b.c.hasOpaqueExternFrames() && !needsRuntimeDomain {
-		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
-		if err != nil {
-			return err
-		}
-		needsRuntimeDomain = preferred != nil
-	}
-	if !needsRuntimeDomain && !needsHelpers && ((!gc.HasHeapObjectTypes(b.c.GCTypeDescs) && !needsExternConversion) || (!needsExternConversion && (b.c.collectorFreeStructuralMetadata() || b.c.stagedGCTypeSubtypingProduct() != 0 || b.c.stagedGCI31Product() != 0 || b.c.collectorFreeGCArrayMetadata()))) {
-		return nil
-	}
-	gcConfig := b.opts.GC
-	if b.c.usesGenericGCExecution() && b.c.genericGCFrameRoots() == nil && !rv64OfficialGCRefEq(b.c) && !rv64GCRefTestTable(b.c) && !rv64GCRefTestConcrete(b.c) && !rv64GCRefCastConcrete(b.c) && !rv64GCBrOnCastConcrete(b.c) && !rv64GCBrOnCastFailConcrete(b.c) && !rv64GCBrOnCastNullability(b.c) && !rv64GCBrOnCastFailNullability(b.c) && !rv64GCRefTestAbstract(b.c) && !rv64GCExtern(b.c) && !rv64GCRefCastAbstract(b.c) && !rv64GCBrOnCastAbstract(b.c) && !rv64GCBrOnCastFailAbstract(b.c) && !rv64GCStructGet(b.c) && !rv64GCStructMutation(b.c) && !rv64GCStructNull(b.c) && !rv64GCStructPacked(b.c) && !rv64GCStructBasic(b.c) && !rv64GCArrayLocal(b.c) && !rv64GCArrayUniform(b.c) && !rv64GCArrayFixedLocal(b.c) && !rv64GCArrayFixedOfficial(b.c) && !rv64GCArrayDefaultOfficial(b.c) && !rv64GCArrayPackedData(b.c) && !rv64GCArrayReference(b.c) && !rv64GCArrayInitElem(b.c) && !rv64GCArrayInitData(b.c) && !rv64GCArrayFill(b.c) && !rv64GCArrayCopy(b.c) {
-		// Generic products outside the validated native root-map slice still do
-		// not publish every native reference at allocating helper safepoints. Keep
-		// them stable and bounded rather than scanning an incomplete frame. The
-		// exact RV64 allocating products have no live native reference across an
-		// allocating helper safepoint; ref.eq publishes table roots separately,
-		// while the local struct/array products allocate before producing a ref.
-		gcConfig.Profile = gc.ProfileThroughput
-		gcConfig.DisableCollection = true
-	}
-	// Atomic waits park while holding an instance-local native execution lease.
-	// Until their compiler callsites publish exact GC frame roots, keep GC+Threads
-	// modules in private collector domains so a same-memory notifier never waits
-	// behind the parked invocation's Runtime-wide collector lease.
-	if b.opts.store != nil && !b.opts.store.private && needsRuntimeDomain && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
-		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
-		if err != nil {
-			return err
-		}
-		collector, mapping, err := b.opts.store.acquireGCCollector(b.opts.startContext, gcConfig, b.c, preferred)
-		if err != nil {
-			return err
-		}
-		b.collector = collector
-		b.collectorShared = true
-		b.gcDomain = b.opts.store.gcDomainForCollector(collector)
-		if b.gcDomain != nil {
-			b.gcDomainID = b.gcDomain.id
-		}
-		if b.gcDomainID == 0 {
-			b.opts.store.releaseUnclaimedGCCollector(collector)
-			b.collector = nil
-			b.collectorShared = false
-			return errors.New("wago: Runtime GC domain has no native identity")
-		}
-		b.gcTypeMap = mapping
-		return nil
-	}
-	descs := b.c.GCTypeDescs
-	var mapping *gcTypeMapping
-	if len(b.c.Types) == len(descs) && hasEquivalentLocalGCHeapTypes(b.c) {
-		var err error
-		mapping, descs, _, err = gcCanonicalTypePlan(b.c, nil, nil, true)
-		if err != nil {
-			return err
-		}
-	}
-	if b.opts.store != nil && (!b.opts.store.private || compiledManagedFunctionReachability(b.c)) {
-		if err := b.opts.store.bindFuncrefGCStore(); err != nil {
-			return err
-		}
-	}
-	collector, err := gc.NewCollector(gcConfig, descs)
-	if err != nil {
-		return err
-	}
-	collector.UseOwnedThroughputBacking()
-	b.collector = collector
-	b.gcTypeMap = mapping
-	b.gcDomainID = newGCDomainIdentity()
-	return nil
-}
-
-func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc.NativeInstanceView, error) {
-	if b.gcDomain != nil && !b.constructionGCDomainLocked {
-		b.gcDomain.invocationMu.Lock()
-		defer b.gcDomain.invocationMu.Unlock()
-	}
-	return gc.BuildNativeInstanceView(b.collector, localTypes)
-}
-
-func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGlobalImport, error) {
+func (b *instanceBuilder) attachImports(cleanup *resourceCleanup, collector *gc.Collector, gcDomainID uint64) ([]*resolvedGlobalImport, error) {
 	for i, displayKey := range b.c.Imports {
 		key := b.c.functionImportBindingKey(i)
 		switch value := b.imports[key].(type) {
@@ -386,14 +349,38 @@ func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGl
 				return nil, fmt.Errorf("imported function %q: %w", displayKey, err)
 			}
 		case *HostFuncRef:
+			if !referenceStoreForImage {
+				return nil, fmt.Errorf("imported host funcref %q requires a reference store", displayKey)
+			}
 			if i >= len(b.c.importFuncSigs) {
 				return nil, fmt.Errorf("imported host funcref %q has no signature", displayKey)
 			}
-			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], b.collector, b.gcDomainID, b.c, i); err != nil {
+			if err := b.hostAttachments.attach(value, b.opts.store, b.c.importFuncSigs[i], collector, gcDomainID, b.c, i); err != nil {
 				return nil, fmt.Errorf("imported host funcref %q: %w", displayKey, err)
 			}
 		}
 	}
+	var importGlobals []*resolvedGlobalImport
+	if globalImportsForImage {
+		var err error
+		importGlobals, err = b.attachGlobalImports(cleanup, collector, gcDomainID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if tagImportsForImage {
+		if err := b.attachTagImports(); err != nil {
+			return nil, err
+		}
+	}
+	return importGlobals, nil
+}
+
+func missingTagImportError(key string) error {
+	return fmt.Errorf("imported tag %q must be an instance-exported *wago.Tag", key)
+}
+
+func (b *instanceBuilder) attachGlobalImports(cleanup *resourceCleanup, collector *gc.Collector, gcDomainID uint64) ([]*resolvedGlobalImport, error) {
 	importGlobals, err := b.c.importedGlobals(b.imports)
 	if err != nil {
 		return nil, err
@@ -404,26 +391,12 @@ func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGl
 			continue
 		}
 		if b.c.compactExternFrameRoots() {
-			if err := railshotAttachCompactExternHostGlobal(global, b.opts.store, b.collector); err != nil {
+			if err := railshotAttachCompactExternHostGlobal(global, b.opts.store, collector); err != nil {
 				return nil, err
 			}
 		}
-		if err := b.globalAttachments.attach(global, b.opts.store, b.collector, cleanup); err != nil {
+		if err := b.globalAttachments.attach(global, b.opts.store, collector, cleanup); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
-		}
-	}
-	if b.c.memoryDir != nil {
-		for i, def := range b.c.memoryDir.ehTags {
-			if def.ImportKey == "" {
-				continue
-			}
-			tag, ok := b.imports.tag(b.c.tagImportBindingKey(i))
-			if !ok {
-				return nil, fmt.Errorf("imported tag %q must be an instance-exported *wago.Tag", def.ImportKey)
-			}
-			if err := b.tagAttachments.attach(tag, def.TypeIndex, b.c.Types); err != nil {
-				return nil, fmt.Errorf("imported tag %q: %w", def.ImportKey, err)
-			}
 		}
 	}
 	return importGlobals, nil
@@ -431,24 +404,28 @@ func (b *instanceBuilder) attachImports(cleanup *resourceCleanup) ([]*resolvedGl
 
 func (b *instanceBuilder) rollbackPreparedState() {
 	var cleanup resourceCleanup
-	cleanup.run(b.functionAttachments.detachAll)
-	cleanup.run(b.hostAttachments.detachAll)
-	cleanup.run(b.globalAttachments.detachAll)
-	cleanup.run(b.tableAttachments.detachAll)
-	cleanup.run(b.tagAttachments.detachAll)
+	if moduleImportsBuilt {
+		cleanup.run(b.functionAttachments.detachAll)
+		if referenceStoreForImage {
+			cleanup.run(b.hostAttachments.detachAll)
+		}
+		if globalImportsForImage {
+			cleanup.run(b.globalAttachments.detachAll)
+		}
+		if tableImportsForImage {
+			cleanup.run(b.tableAttachments.detachAll)
+		}
+		if tagImportsForImage {
+			b.rollbackTagImports(&cleanup)
+		}
+	}
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
 		cleanup.run(func() {
 			b.registeredInstance.referenceLifetime().notifyStore(b.registeredInstance.refStore, referenceLifetimeClosed)
 		})
 	}
-	if b.collector != nil {
-		cleanup.run(func() {
-			if b.collectorShared && b.opts.store != nil && (b.registeredInstance == nil || b.registeredInstance.refStore == nil) {
-				b.opts.store.releaseUnclaimedGCCollector(b.collector)
-			} else if !b.collectorShared {
-				b.collector.Close()
-			}
-		})
+	if collectorRuntimeForImage {
+		b.rollbackCollector(&cleanup)
 	}
 	cleanup.finish()
 }
@@ -486,7 +463,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			opts.maxInstanceMetadataBytes = c.validateMemo.maxInstanceMetadataBytes
 		}
 	}
-	syncMode := c.importsRequireSync(imports, opts.forceSyncHost)
+	syncMode := syncHostControlForImage && c.importsRequireSync(imports, opts.forceSyncHost)
 	if syncMode {
 		// A forced host mode can request a protocol the target cannot implement,
 		// even for an import-free module. Reject before footprint helpers whose
@@ -502,9 +479,12 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		arenaNeed += abi.MemoryDirEntryBytes
 	}
-	metadataNeed := arenaNeed + railshotNativeImportMetadataBytes(c, imports)
-	if metadataNeed < arenaNeed {
-		return nil, errors.New("instance metadata footprint overflows native import certificates")
+	metadataNeed := arenaNeed
+	if hostFunctionImportsBuilt {
+		metadataNeed += railshotNativeImportMetadataBytes(c, imports)
+		if metadataNeed < arenaNeed {
+			return nil, errors.New("instance metadata footprint overflows native import certificates")
+		}
 	}
 	if opts.maxInstanceMetadataBytes != 0 && uint64(metadataNeed) > opts.maxInstanceMetadataBytes {
 		return nil, &runtime.ResourceLimitError{
@@ -514,16 +494,33 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			Limit:     opts.maxInstanceMetadataBytes,
 		}
 	}
-	if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
-		return nil, err
+	if memoriesForImage {
+		if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
+			return nil, err
+		}
 	}
-	if err := b.prepareCollector(); err != nil {
-		return nil, err
+	if collectorRuntimeForImage {
+		if err := b.prepareCollector(); err != nil {
+			return nil, err
+		}
 	}
-	needsExternConversion := c.stagedGCStructProduct().requiresExternConversion()
+	collectorState := b.collectorBuildState()
+	var collector *gc.Collector
+	var gcDomain *gcStoreDomain
+	var gcTypeMap *gcTypeMapping
+	var gcDomainID uint64
+	var collectorShared bool
+	if collectorState != nil {
+		collector = collectorState.collector
+		gcDomain = collectorState.domain
+		gcTypeMap = collectorState.typeMap
+		gcDomainID = collectorState.domainID
+		collectorShared = collectorState.shared
+	}
+	needsExternConversion := gcExternConversionForImage && c.stagedGCStructProduct().requiresExternConversion()
 	var conversionStore *referenceStore
 	var gcExternConversion *gcExternConversionState
-	if opts.store == nil && (c.usesGuestGlobalStoreHelper() || compiledManagedFunctionReachability(c) || compactExternConstructionNeeded(c)) {
+	if referenceStoreForImage && opts.store == nil && (c.usesGuestGlobalStoreHelper() || compiledManagedFunctionReachability(c) || compactExternConstructionForImage && compactExternConstructionNeeded(c)) {
 		conversionStore = newReferenceStore(true)
 	}
 	if needsExternConversion {
@@ -533,52 +530,65 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if conversionStore == nil {
 			conversionStore = newReferenceStore(true)
 		}
-		gcExternConversion, err = newGCExternConversionState(conversionStore, b.collector)
+		gcExternConversion, err = newGCExternConversionState(conversionStore, collector)
 		if err != nil {
 			return nil, err
 		}
+		defer func() {
+			// TinyGo can retain the deferred body after pruning its registration.
+			if gcExternConversionForImage && !b.success {
+				cleanup.run(func() { _ = gcExternConversion.close() })
+			}
+		}()
 	}
-	defer func() {
-		if !b.success && gcExternConversion != nil {
-			cleanup.run(func() { _ = gcExternConversion.close() })
-		}
-	}()
 	defer func() {
 		if !b.success {
 			cleanup.run(b.rollbackPreparedState)
 		}
 	}()
-	importGlobals, err := b.attachImports(&cleanup.resourceCleanup)
-	if err != nil {
-		return nil, err
+	// Keep admission, quotas and collector preparation ahead of the tag
+	// diagnostic, at the point where tag attachment would otherwise begin.
+	if buildfeatures.StandaloneUnboundTagImport != "" {
+		return nil, missingTagImportError(buildfeatures.StandaloneUnboundTagImport)
 	}
-	if err := railshotPrepareTableDependencies(b, &cleanup.resourceCleanup); err != nil {
-		return nil, err
+	var importGlobals []*resolvedGlobalImport
+	if moduleImportsBuilt {
+		importGlobals, err = b.attachImports(&cleanup.resourceCleanup, collector, gcDomainID)
+		if err != nil {
+			return nil, err
+		}
+		if tableImportsForImage {
+			if err := railshotPrepareTableDependencies(b, &cleanup.resourceCleanup); err != nil {
+				return nil, err
+			}
+		}
 	}
 	var globalRefs []importGlobalReference
-	defer func() {
-		if !b.success {
-			cleanup.run(func() { railshotReleaseGlobalReferences(globalRefs) })
+	if globalImportsForImage {
+		defer func() {
+			if !b.success {
+				cleanup.run(func() { railshotReleaseGlobalReferences(globalRefs) })
+			}
+		}()
+		globalRefs, err = railshotFreezeGlobalReferences(c, importGlobals, opts.store, &cleanup.resourceCleanup)
+		if err != nil {
+			return nil, err
 		}
-	}()
-	globalRefs, err = railshotFreezeGlobalReferences(c, importGlobals, opts.store, &cleanup.resourceCleanup)
-	if err != nil {
-		return nil, err
 	}
 	// A shared Runtime collector cannot discover this instance's table, passive
 	// element, or global roots until store registration publishes the instance.
 	// Serialize every collector-backed construction mutation through that
 	// publication point so another instance cannot collect an unregistered ref.
 	var finishGCDomainConstruction func()
-	if b.gcDomain != nil {
-		if err := b.gcDomain.invocationMu.lockContext(opts.startContext); err != nil {
+	if gcDomain != nil {
+		if err := gcDomain.invocationMu.lockContext(opts.startContext); err != nil {
 			return nil, err
 		}
-		b.constructionGCDomainLocked = true
+		collectorState.constructionLocked = true
 		finishGCDomainConstruction = func() {
-			if b.constructionGCDomainLocked {
-				b.constructionGCDomainLocked = false
-				b.gcDomain.invocationMu.Unlock()
+			if collectorState.constructionLocked {
+				collectorState.constructionLocked = false
+				gcDomain.invocationMu.Unlock()
 			}
 		}
 		defer func() {
@@ -587,22 +597,25 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 		}()
 	}
-	stackBytes := opts.nativeStackBytes
-	if stackBytes == 0 {
-		stackBytes = c.nativeStackBytes()
-	}
-	if stackBytes == 0 {
-		stackBytes = runtime.DefaultNativeStackBytes
-	}
-	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if !b.success {
-			cleanup.run(func() { runtime.ReleaseEngine(eng) })
+	var eng *runtime.Engine
+	if functionCodeForImage {
+		stackBytes := opts.nativeStackBytes
+		if stackBytes == 0 {
+			stackBytes = c.nativeStackBytes()
 		}
-	}()
+		if stackBytes == 0 {
+			stackBytes = runtime.DefaultNativeStackBytes
+		}
+		eng, err = runtime.AcquireEngineWithStackBytes(stackBytes)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if !b.success {
+				cleanup.run(func() { runtime.ReleaseEngine(eng) })
+			}
+		}()
+	}
 	// Memory: a host-imported *Memory if the module imports one, otherwise an
 	// instance-owned mapping (guard-page-backed for signals-based modules, so the
 	// fault handler catches OOB accesses through the normal Invoke path).
@@ -616,36 +629,49 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		memoryOwns      []bool
 	)
 	var memoryAttachments memoryImportAttachments
-	defer func() {
-		if !b.success {
-			cleanup.run(memoryAttachments.detachAll)
-		}
-	}()
-	attachMemory := func(memory *Memory) error { return memoryAttachments.attach(memory, &cleanup.resourceCleanup) }
-	// Threaded instances own a control mapping separate from memory 0, even
-	// when that memory is locally defined. Zero-memory modules still own their
-	// primary control mapping. Consume every owned bit before release.
-	defer func() {
-		if b.success {
-			return
-		}
-		for i := len(memoryObjs) - 1; i >= 1; i-- {
-			if memoryObjs[i] != nil && memoryOwns[i] {
-				memory := memoryObjs[i]
-				memoryOwns[i] = false
-				cleanup.run(func() { runtime.ReleaseJobMemory(memory.jobMemory()) })
+	var attachMemory func(*Memory) error
+	if memoryImportsForImage {
+		defer func() {
+			// TinyGo can keep callbacks from unreachable defer registrations.
+			if memoryImportsForImage && !b.success {
+				cleanup.run(memoryAttachments.detachAll)
 			}
-		}
-		if ownsControl {
-			ownsControl = false
-			cleanup.run(func() { runtime.ReleaseJobMemory(jm) })
-		}
-		if ownsMem {
-			ownsMem = false
-			cleanup.run(func() { runtime.ReleaseJobMemory(memObj.jobMemory()) })
-		}
-	}()
-	if c.memoryImport != "" {
+		}()
+		attachMemory = func(memory *Memory) error { return memoryAttachments.attach(memory, &cleanup.resourceCleanup) }
+	}
+	// Threaded instances own a control mapping separate from memory 0.
+	// Code without linear memory still owns basedata for native entry.
+	if jobMemoryForImage {
+		defer func() {
+			if b.success {
+				return
+			}
+			if multiMemoryRuntimeBuilt {
+				for i := len(memoryObjs) - 1; i >= 1; i-- {
+					if memoryObjs[i] != nil && memoryOwns[i] {
+						memory := memoryObjs[i]
+						memoryOwns[i] = false
+						cleanup.run(func() { runtime.ReleaseJobMemory(memory.jobMemory()) })
+					}
+				}
+			}
+			if ownsControl {
+				ownsControl = false
+				cleanup.run(func() {
+					if memoriesForImage {
+						_ = runtime.ReleaseJobMemory(jm)
+					} else {
+						_ = jm.Close()
+					}
+				})
+			}
+			if memoriesForImage && ownsMem {
+				ownsMem = false
+				cleanup.run(func() { runtime.ReleaseJobMemory(memObj.jobMemory()) })
+			}
+		}()
+	}
+	if memoryImportsForImage && c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImportBindingKey(0))
 		if !ok {
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
@@ -669,7 +695,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
 		memObj = m
-		if c.threadedMemory0() {
+		if sharedMemoryRuntimeBuilt && c.threadedMemory0() {
 			jm, err = runtime.AcquireJobMemoryGrowable(0, 0)
 			if err != nil {
 				return nil, wrapContextError("allocate threaded instance control", err)
@@ -678,7 +704,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		} else {
 			jm = m.jobMemory()
 		}
-	} else if c.threadedMemory0() {
+	} else if sharedMemoryRuntimeBuilt && c.threadedMemory0() {
 		// Shared pages belong to the Memory object; basedata and invocation
 		// control belong to each instance. Exporting the backing must never
 		// expose the producer's trap cell or host-call context to its importers.
@@ -696,9 +722,15 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, wrapContextError("allocate threaded instance control", err)
 		}
 		threadedControl, ownsControl = true, true
-	} else {
+	} else if jobMemoryForImage && !memoriesForImage {
+		jm, err = runtime.NewInstanceControlMemory()
+		if err != nil {
+			return nil, wrapContextError("allocate instance control", err)
+		}
+		ownsControl = true
+	} else if jobMemoryForImage {
 		initialBytes, maxBytes := c.memorySizeBytes()
-		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
+		if guardedMemoryForImage && (c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory()) {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
 			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
@@ -709,65 +741,33 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		memObj, ownsMem = &Memory{jm: jm}, true
 	}
 	memoryCount := c.memoryCount()
-	needsMemoryDir := memoryCount > 1 || threadedControl || memoryCount != 0 && opts.memoryLimitPages != 0
+	needsMultipleMemories := multiMemoryRuntimeBuilt && memoryCount > 1
+	needsMemoryDir := memoriesForImage && (needsMultipleMemories || threadedControl || memoryCount != 0 && opts.memoryLimitPages != 0)
 	if needsMemoryDir {
 		memoryObjs = make([]*Memory, memoryCount)
 		memoryOwns = make([]bool, memoryCount)
 		memoryObjs[0], memoryOwns[0] = memObj, ownsMem
 	}
-	for i := 1; i < memoryCount; i++ {
-		def := c.memoryDef(i)
-		if def.ImportKey != "" {
-			memory, ok := imports.memory(c.memoryImportBindingKey(i))
-			if !ok {
-				return nil, fmt.Errorf("missing imported memory %q", def.ImportKey)
-			}
-			if err := memory.validateLimits(def.Min, def.Max, def.HasMax, def.Addr64, def.Shared); err != nil {
-				return nil, fmt.Errorf("imported memory %q limits: %w", def.ImportKey, err)
-			}
-			if err := attachMemory(memory); err != nil {
-				return nil, fmt.Errorf("imported memory %q: %w", def.ImportKey, err)
-			}
-			memoryObjs[i] = memory
-			continue
-		}
-		maxPages, reservationErr := ownedMemoryReservationPages(def)
-		if reservationErr != nil {
-			return nil, fmt.Errorf("memory %d: %w", i, reservationErr)
-		}
-		initialPages := def.Min
-		var secondaryJM *runtime.JobMemory
-		var allocErr error
-		if c.boundsMode == BoundsChecksSignalsBased || c.prefersGuardMemory() {
-			// Every owned memory requested by a signals-based configuration uses the guarded
-			// representation, even though indexed-memory accesses retain explicit
-			// checks. An exported nonzero memory may become memory 0 of another
-			// signals-based instance, where guard-backed ownership is mandatory.
-			secondaryJM, allocErr = newGuardedJobMemory(int(initialPages)*65536, int(maxPages)*65536)
-		} else {
-			secondaryJM, allocErr = runtime.AcquireJobMemoryGrowable(int(initialPages)*65536, int(maxPages)*65536)
-		}
-		if allocErr != nil {
-			return nil, fmt.Errorf("memory %d: %w", i, allocErr)
-		}
-		memoryObjs[i] = &Memory{jm: secondaryJM}
-		memoryOwns[i] = true
-		if def.Shared {
-			if err := memoryObjs[i].share(nil, def); err != nil {
-				return nil, fmt.Errorf("shared memory %d: %w", i, err)
-			}
+	if needsMultipleMemories {
+		if err := b.instantiateSecondaryMemories(memoryObjs, memoryOwns, attachMemory); err != nil {
+			return nil, err
 		}
 	}
 	var nativeMemoryDir []byte
 	sharedMemoryDirStable := false
 	var nativeTagIDs []byte
-	ar, err := runtime.AcquireArena(arenaNeed)
-	if err != nil {
-		return nil, err
+	var ar *runtime.Arena
+	if arenaForImage && arenaNeed != 0 {
+		ar, err = runtime.AcquireArena(arenaNeed)
+		if err != nil {
+			return nil, err
+		}
 	}
 	base, err := mappingOwner.acquireCode()
 	if err != nil {
-		cleanup.run(func() { runtime.ReleaseArena(ar) })
+		if arenaForImage {
+			cleanup.run(func() { runtime.ReleaseArena(ar) })
+		}
 		return nil, err
 	}
 	var tailInstance *Instance
@@ -776,22 +776,27 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if b.success {
 			return
 		}
-		if tailInstance != nil {
+		if nativeTailForImage && tailInstance != nil {
 			cleanup.run(func() { railshotReleaseNativeTail(tailInstance) })
 		}
-		if thunkMem != nil {
+		if hostFunctionImportsBuilt && thunkMem != nil {
 			cleanup.run(func() { _ = c.releaseOwnedCodeMapping(thunkMem) })
 		}
 		cleanup.run(c.releaseCode)
-		cleanup.run(func() { releaseNativeExceptionTags(c, nativeTagIDs) })
-		cleanup.run(func() { runtime.ReleaseArena(ar) })
+		if exceptionTagsForImage {
+			cleanup.run(func() { releaseNativeExceptionTags(c, nativeTagIDs) })
+		}
+		if arenaForImage {
+			cleanup.run(func() { runtime.ReleaseArena(ar) })
+		}
 	}()
 	// An ordinary imported memory shares its basedata with the provider and
 	// other importers. Construction must own the same lease as native entries,
 	// including active data writes. Start from an empty instance context so
 	// absent metadata cannot inherit another tenant's arena pointers.
 	var finishMemoryContext func(bool)
-	if (c.memoryImport != "" || c.nativeTableContextABI && c.tableImportCount() != 0) && !threadedControl {
+	nativeImportedTableContext := tableImportsForImage && c.nativeTableContextABI && c.tableImportCount() != 0
+	if (memoryImportsForImage && c.memoryImport != "" || nativeImportedTableContext) && !threadedControl {
 		// Shared collector activations acquire domain then native execution.
 		// Construction already owns the domain through store registration.
 		nativeExecutionMu.Lock()
@@ -802,7 +807,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		previousOrigin := railshotNativeContextIdentity(jm)
 		previousFence := jm.StackFence()
 		jm.CaptureInstanceContextBytes(previous[:])
-		binary.LittleEndian.PutUint64(previous[runtime.InstanceContextGCNativeViewOffset:], uint64(jm.GCNativeViewPtr()))
+		if nativeCollectorFrameRootsBuilt {
+			binary.LittleEndian.PutUint64(previous[runtime.InstanceContextGCNativeViewOffset:], uint64(jm.GCNativeViewPtr()))
+		}
 		finishMemoryContext = func(initialized bool) {
 			if !initialized {
 				jm.BindInstanceContextBytes(previous[:])
@@ -818,16 +825,22 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				finishMemoryContext(false)
 			}
 		}()
-		// The backing may have grown while this constructor waited for a lease.
-		if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
-			return nil, err
+		if memoriesForImage {
+			// The backing may have grown while this constructor waited for a lease.
+			if err := enforceMemoryPageQuota(c, imports, opts.memoryLimitPages); err != nil {
+				return nil, err
+			}
 		}
 		jm.BindInstanceContextBytes(empty[:])
 		railshotSetNativeContextIdentity(jm, 0)
 	}
-	nativeContext := ar.AllocNoZero(railshotNativeInvocationContextBytes)
-	clear(nativeContext[runtime.InstanceContextBytes:])
-	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
+	var nativeContext []byte
+	var nativeContextPtr uintptr
+	if retainedNativeContextForImage {
+		nativeContext = ar.AllocNoZero(railshotNativeInvocationContextBytes)
+		clear(nativeContext[runtime.InstanceContextBytes:])
+		nativeContextPtr = uintptr(unsafe.Pointer(&nativeContext[0]))
+	}
 	if needsMemoryDir {
 		sharedMemoryDirStable = memoryCount != 0
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
@@ -851,11 +864,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
 	}
-	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
-		for i, def := range c.memoryDir.ehTags {
+	if exceptionTagsForImage && c.memoryDir != nil && len(c.memoryDir.exceptionTags()) != 0 {
+		nativeTagIDs = ar.Alloc(len(c.memoryDir.exceptionTags()) * 8)
+		for i, def := range c.memoryDir.exceptionTags() {
 			identity := newNativeExceptionTag(c, i, uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8]))))
-			if def.ImportKey != "" {
+			if tagImportsForImage && def.ImportKey != "" {
 				tag, ok := imports.tag(c.tagImportBindingKey(i))
 				if !ok {
 					return nil, fmt.Errorf("imported tag %q is unavailable during native identity setup", def.ImportKey)
@@ -883,13 +896,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, wrapContextError("instantiate: initialize host control frame", err)
 		}
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
-		if len(c.Imports) > 0 {
+		if hostFunctionImportsBuilt && len(c.Imports) > 0 {
 			syncHosts, err = c.buildSyncHosts(imports)
 			if err != nil {
 				return nil, wrapContextError("instantiate", err)
 			}
 		}
-	} else if len(c.Imports) > 0 {
+	} else if hostFunctionImportsBuilt && len(c.Imports) > 0 {
 		hasHostImport := false
 		for i, displayKey := range c.Imports {
 			key := c.functionImportBindingKey(i)
@@ -924,15 +937,23 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 		}
 	}
-	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
+	if functionCodeForImage {
+		jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
+	} else if jobMemoryForImage {
+		jm.SetStackFence(0)
+	}
 
 	var nativeImportConstruction railshotNativeImportConstruction
-	sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, generatedThunks, err := buildHostFuncThunks(c, imports, syncMode, ar, jm.LinMemBase(), nativeContextPtr, &nativeImportConstruction)
-	if err != nil {
-		return nil, err
+	var sharedThunkBase uintptr
+	var sharedThunkOffsets []int
+	var ownedThunkAddr map[uint32]uint64
+	if hostFunctionImportsBuilt {
+		sharedThunkBase, sharedThunkOffsets, ownedThunkAddr, thunkMem, err = buildHostFuncThunks(c, imports, syncMode, ar, jm.LinMemBase(), nativeContextPtr, &nativeImportConstruction)
+		if err != nil {
+			return nil, err
+		}
 	}
-	thunkMem = generatedThunks
-	if c.dynamicImports && c.NumImports > 0 {
+	if hostFunctionImportsBuilt && c.dynamicImports && c.NumImports > 0 {
 		dispatch := ar.Alloc(c.NumImports * runtime.ImportDispatchEntryBytes)
 		selfLinMem := uint64(jm.LinMemBase())
 		for i, displayKey := range c.Imports {
@@ -986,7 +1007,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	var funcRefDescs []byte
 	var importRefEntries []importReferenceEntry
 	var writeTableEntry func([]byte, uint32)
-	if c.needsFuncRefDescs() {
+	if structuralCallKeysForImage && c.needsFuncRefDescs() {
 		if railshotNativeContextTrapABI() {
 			importRefEntries = make([]importReferenceEntry, c.NumImports)
 		}
@@ -1027,8 +1048,8 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			localFuncrefsMayEscape = len(c.tableExports) != 0
 		}
 		if goruntime.GOARCH == "arm64" && !localFuncrefsMayEscape {
-			for i := range c.memoryDir.ehTags {
-				typeIdx := c.memoryDir.ehTags[i].TypeIndex
+			for i := range c.memoryDir.exceptionTags() {
+				typeIdx := c.memoryDir.exceptionTags()[i].TypeIndex
 				if uint64(typeIdx) >= uint64(len(c.Types)) || c.Types[typeIdx].Kind != CompositeTypeFunction {
 					continue
 				}
@@ -1136,7 +1157,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					code = uint64(base) + uint64(internal)
 					kind = abi.FuncRefEntryInternal
 				}
-			} else if fidx < c.NumImports {
+			} else if hostFunctionImportsBuilt && fidx < c.NumImports {
 				if railshotNativeContextTrapABI() {
 					// RV64's retained table bridge enters an importer-owned framed
 					// wrapper. Its existing thunk performs the host/native transition;
@@ -1171,7 +1192,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], taggedHome)
 			}
 			typeKey := c.funcTypeKey(fidx)
-			if fidx < c.NumImports {
+			if hostFunctionImportsBuilt && fidx < c.NumImports {
 				// The imported declaration can be a supertype of the actual native
 				// function. ref.func preserves the producer's dynamic type.
 				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil {
@@ -1181,7 +1202,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntrySigKeyOffset:], typeKey)
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
 			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.FuncRefContextOffset:], targetContext)
-			if fidx < c.NumImports && (!railshotNativeContextTrapABI() || rv64GCTypeSubtypingLink(c) || rv64GCTypeSubtypingFinalityLink(c) || rv64GCTypeSubtypingStructLink(c) || rv64GCTypeSubtypingStructProjectionLink(c) || rv64GCTypeSubtypingStructMismatchLink(c) || rv64GCTypeSubtypingIndependentStructLink(c) || rv64GCTypeSubtypingExtendedProjectionLink(c) || rv64GCTypeSubtypingDuplicateRecursiveLink(c) || rv64GCTypeSubtypingExtendedRecursiveLink(c) || rv64GCTypeSubtypingCrossGroupMismatchLink(c) || rv64GCTypeSubtypingTransitiveMismatchLink(c)) {
+			if hostFunctionImportsBuilt && fidx < c.NumImports && (!railshotNativeContextTrapABI() || wasmGCBuilt && railshotLegacyGCImportIdentity(c)) {
 				// Cross-instance imports reuse the producer's canonical identity when
 				// that producer already owns a descriptor arena.
 				if ex, ok := imports[c.functionImportBindingKey(fidx)].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
@@ -1194,20 +1215,22 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 		}
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
-		writeTableEntry = func(entry []byte, fidx uint32) {
-			if fidx == nullFuncRefIndex {
-				clear(entry)
-				return
+		if tableInitializersForImage || activeElementsForImage || passiveElementsForImage {
+			writeTableEntry = func(entry []byte, fidx uint32) {
+				if fidx == nullFuncRefIndex {
+					clear(entry)
+					return
+				}
+				payload := int(fidx) + 1
+				if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
+					clear(entry)
+					return
+				}
+				off := payload * runtime.FuncRefDescBytes
+				copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 			}
-			payload := int(fidx) + 1
-			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
-				clear(entry)
-				return
-			}
-			off := payload * runtime.FuncRefDescBytes
-			copy(entry, funcRefDescs[off:off+runtime.TableEntryBytes])
 		}
-	} else if c.needsFuncRefContextHeader {
+	} else if funcRefContextHeaderForImage && c.needsFuncRefContextHeader {
 		funcRefDescs = ar.Alloc(runtime.FuncRefDescBytes)
 		// Descriptor zero is the stable home/context anchor saved by EH records.
 		binary.LittleEndian.PutUint64(funcRefDescs[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
@@ -1216,26 +1239,38 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	var globalCells []*Global
 	var instantiationRoots gc.Slots
-	functionConstruction := newManagedFunctionConstruction(c, b.collector, &instantiationRoots)
-	defer functionConstruction.close()
+	var functionConstruction *managedFunctionConstruction
+	if managedFunctionConstructionForImage {
+		functionConstruction = newManagedFunctionConstruction(c, collector, &instantiationRoots)
+		defer functionConstruction.close()
+	}
 	constructionStore := opts.store
 	if constructionStore == nil {
 		constructionStore = conversionStore
 	}
-	externConstruction := newCompactExternConstruction(c, b.collector, constructionStore, b.gcDomain, &instantiationRoots)
-	defer externConstruction.close()
+	var externConstruction *compactExternConstruction
+	if compactExternConstructionForImage {
+		externConstruction = newCompactExternConstruction(c, collector, constructionStore, gcDomain, &instantiationRoots)
+		defer externConstruction.close()
+	}
 	// prev is the segment's previous entry (nil for its first value).
 	writeElemEntry := func(entry, prev []byte, refType ValType, value RefInit, physicalOwner *Instance) (err error) {
-		rootCompactEntry := normalizedElemRefType(refType) == ValAnyRef || normalizedElemRefType(refType) == ValI31Ref
-		defer func() {
-			if err == nil && normalizedElemRefType(refType) == ValExternRef {
-				err = externConstruction.record(entry, physicalOwner)
-			}
-			if err == nil && rootCompactEntry && len(entry) >= 4 {
-				instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
-			}
-		}()
+		elementType := normalizedElemRefType(refType)
+		if compactExternConstructionForImage && elementExternRefForImage || wasmGCBuilt && (elementAnyRefForImage || elementI31RefForImage) {
+			rootCompactEntry := wasmGCBuilt && (elementAnyRefForImage && elementType == ValAnyRef || elementI31RefForImage && elementType == ValI31Ref)
+			defer func() {
+				if compactExternConstructionForImage && elementExternRefForImage && err == nil && elementType == ValExternRef {
+					err = externConstruction.record(entry, physicalOwner)
+				}
+				if err == nil && rootCompactEntry && len(entry) >= 4 {
+					instantiationRoots = append(instantiationRoots, compactRefRootSlot(entry[:4]))
+				}
+			}()
+		}
 		if value.RepeatPrevious {
+			if !elementRepeatsForImage {
+				return errors.New("repeated element value exceeds the standalone runtime profile")
+			}
 			if len(prev) != len(entry) {
 				return errors.New("repeated element value has no previous entry")
 			}
@@ -1243,13 +1278,16 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil
 		}
 		if len(value.Expr) != 0 {
-			if normalizedElemRefType(refType) != ValAnyRef && normalizedElemRefType(refType) != ValI31Ref && !(normalizedElemRefType(refType) == ValExternRef && (needsExternConversion || externConstruction != nil)) {
+			if !(wasmGCBuilt || i31ExecutionForImage) || !elementExpressionsForImage {
+				return errors.New("GC element expressions are disabled in this build")
+			}
+			if elementType != ValAnyRef && elementType != ValI31Ref && !(elementType == ValExternRef && (needsExternConversion || externConstruction != nil)) {
 				return fmt.Errorf("GC element expression has incompatible destination %s", refType)
 			}
 			if len(entry) < 8 {
 				return errors.New("GC element expression entry is truncated")
 			}
-			bits, err := evalCompiledGCConstExpr(value.Expr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
+			bits, err := evalCompiledGCConstExpr(value.Expr, collector, gcTypeMap, gcExternConversion, c, globalCells, len(globalCells), funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
 			if err != nil {
 				return err
 			}
@@ -1257,20 +1295,26 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil
 		}
 		if value.HasGlobal {
+			if !elementGlobalsForImage {
+				return errors.New("element global value exceeds the standalone runtime profile")
+			}
 			if int(value.GlobalIndex) >= len(globalCells) || globalCells[value.GlobalIndex] == nil {
 				return fmt.Errorf("element global %d is unavailable", value.GlobalIndex)
 			}
 			if value.I31Wrap {
-				if normalizedElemRefType(refType) != ValI31Ref || len(entry) < 8 {
+				if !i31ExecutionForImage && !wasmGCBuilt {
+					return checkCompiledFeatures(CoreFeatureGC)
+				}
+				if !elementI31RefForImage || elementType != ValI31Ref || len(entry) < 8 {
 					return fmt.Errorf("element global %d i31 wrapper has incompatible destination %s", value.GlobalIndex, refType)
 				}
 				bits := uint32(readGlobalObject(globalCells[value.GlobalIndex], ValI32))
 				binary.LittleEndian.PutUint64(entry, uint64(bits<<1|1))
 				return nil
 			}
-			bits := readGlobalObject(globalCells[value.GlobalIndex], normalizedElemRefType(refType))
-			switch normalizedElemRefType(refType) {
-			case ValFuncRef:
+			bits := readGlobalObject(globalCells[value.GlobalIndex], elementType)
+			switch {
+			case elementFuncRefForImage && elementType == ValFuncRef:
 				if bits == 0 {
 					clear(entry)
 					return nil
@@ -1306,13 +1350,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					}
 				}
 				return nil
-			case ValExternRef, ValAnyRef, ValI31Ref:
+			case elementExternRefForImage && elementType == ValExternRef || elementAnyRefForImage && elementType == ValAnyRef || elementI31RefForImage && elementType == ValI31Ref:
 				if len(entry) < 8 {
 					return errors.New("reference element global entry is truncated")
 				}
 				binary.LittleEndian.PutUint64(entry, bits)
 				return nil
-			case ValExnRef:
+			case elementExnRefForImage && elementType == ValExnRef:
 				if bits != 0 {
 					return errors.New("non-null exception element globals require active handler ownership")
 				}
@@ -1322,14 +1366,17 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				return fmt.Errorf("unsupported element global reference type %s", refType)
 			}
 		}
-		switch normalizedElemRefType(refType) {
-		case ValExternRef, ValExnRef, ValAnyRef:
+		switch {
+		case elementExternRefForImage && elementType == ValExternRef || elementExnRefForImage && elementType == ValExnRef || elementAnyRefForImage && elementType == ValAnyRef:
 			if !value.Null {
 				return errors.New("externref element contains a non-null initializer")
 			}
 			clear(entry)
 			return nil
-		case ValI31Ref:
+		case elementI31RefForImage && elementType == ValI31Ref:
+			if !i31ExecutionForImage && !wasmGCBuilt {
+				return checkCompiledFeatures(CoreFeatureGC)
+			}
 			if value.Null {
 				clear(entry)
 				return nil
@@ -1339,7 +1386,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 			binary.LittleEndian.PutUint64(entry, uint64(value.FuncIndex))
 			return nil
-		case ValFuncRef:
+		case elementFuncRefForImage && elementType == ValFuncRef:
 			if value.Null {
 				clear(entry)
 				return nil
@@ -1356,11 +1403,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 
 	var globals []byte
 	var gcGlobalRoots []gcGlobalRootMapping
-	var gcGlobalRootCount uint32
 	var genericGCGlobalRoots []gcGlobalRootMapping
-	runtimeGCExecution := c.needsRuntimeGCCollectorDomain()
-	globalCells = make([]*Global, len(c.Globals))
-	if len(c.Globals) > 0 {
+	runtimeGCExecution := nativeCollectorBuilt && c.needsRuntimeGCCollectorDomain()
+	if globalsForImage && len(c.Globals) > 0 {
+		globalCells = make([]*Global, len(c.Globals))
 		globals = ar.Alloc(8 * len(c.Globals))
 		// One heap allocation backs every module-local global cell (a *Global into
 		// this slab) instead of one allocation per global; imported globals keep
@@ -1371,7 +1417,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// literal bits, earlier immutable globals, or extended const expressions.
 		for i, g := range c.Globals {
 			var cell *Global
-			if i < len(importGlobals) {
+			if globalImportsForImage && i < len(importGlobals) {
 				imp := importGlobals[i]
 				if imp.global == nil {
 					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.initialV128, imp.mutable, ar.Alloc(globalCellSize(imp.initialType)), nil)
@@ -1379,34 +1425,34 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				cell = imp.global
 			} else {
 				bits, vec := g.Bits, g.V128
-				if gcInit, ok := c.gcStructGlobalInit(i); ok {
-					ref, slot, err := instantiateGCStructGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit)
-					if err != nil {
-						return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
-					}
-					bits = uint64(ref)
-					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if runtimeGCExecution {
-						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
-					} else {
-						gcGlobalRoots = append(gcGlobalRoots, mapping)
-						gcGlobalRootCount++
-					}
-				} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
-					ref, slot, err := instantiateGCArrayGlobal(b.collector, b.gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
-					if err == nil {
-						recordManagedFunctionConstruction(b.collector, c, ref, gcInit.TypeID)
-					}
-					if err != nil {
-						return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
-					}
-					bits = uint64(ref)
-					mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
-					if runtimeGCExecution {
-						genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
-					} else {
-						gcGlobalRoots = append(gcGlobalRoots, mapping)
-						gcGlobalRootCount++
+				if wasmGCBuilt {
+					if gcInit, ok := c.gcStructGlobalInit(i); ok {
+						ref, slot, err := instantiateGCStructGlobal(collector, gcTypeMap, c.GCTypeDescs, gcInit)
+						if err != nil {
+							return nil, fmt.Errorf("global %d GC struct initializer: %w", i, err)
+						}
+						bits = uint64(ref)
+						mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+						if runtimeGCExecution {
+							genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+						} else {
+							gcGlobalRoots = append(gcGlobalRoots, mapping)
+						}
+					} else if gcInit, ok := c.gcArrayGlobalInit(i); ok {
+						ref, slot, err := instantiateGCArrayGlobal(collector, gcTypeMap, c.GCTypeDescs, gcInit, funcRefDescs)
+						if err == nil {
+							recordManagedFunctionConstruction(collector, c, ref, gcInit.TypeID)
+						}
+						if err != nil {
+							return nil, fmt.Errorf("global %d GC array initializer: %w", i, err)
+						}
+						bits = uint64(ref)
+						mapping := gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot}
+						if runtimeGCExecution {
+							genericGCGlobalRoots = append(genericGCGlobalRoots, mapping)
+						} else {
+							gcGlobalRoots = append(gcGlobalRoots, mapping)
+						}
 					}
 				}
 				if g.HasInitFunc {
@@ -1421,13 +1467,16 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
-					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
+					if buildfeatures.SIMD != 0 && g.Type == ValV128 {
+						vec = readGlobalObjectV128(globalCells[g.InitGlobal])
+					}
 				}
-				if len(g.InitExpr) != 0 {
+				if globalInitExpressionsForImage && len(g.InitExpr) != 0 {
 					var value uint64
 					var err error
-					if g.Type == ValAnyRef || g.Type == ValI31Ref || (g.Type == ValExternRef && (needsExternConversion || externConstruction != nil)) {
-						value, err = evalCompiledGCConstExpr(g.InitExpr, b.collector, b.gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
+					if (wasmGCBuilt || i31ExecutionForImage) && (g.Type == ValAnyRef || g.Type == ValI31Ref) ||
+						wasmGCBuilt && g.Type == ValExternRef && (needsExternConversion || externConstruction != nil) {
+						value, err = evalCompiledGCConstExpr(g.InitExpr, collector, gcTypeMap, gcExternConversion, c, globalCells, i, funcRefDescs, functionConstruction.roots(instantiationRoots), externConstruction)
 					} else {
 						value, err = evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, constExprGlobalScope{context: constExprGlobalInitializer, limit: i})
 					}
@@ -1439,12 +1488,12 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				cell = &localCells[i]
 				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
 				writeGlobalObject(cell, g.Type, bits)
-				if g.Type == ValV128 {
+				if buildfeatures.SIMD != 0 && g.Type == ValV128 {
 					writeGlobalObjectV128(cell, vec)
 				}
 			}
 			globalCells[i] = cell
-			if g.Type == ValExternRef {
+			if compactExternConstructionForImage && g.Type == ValExternRef {
 				var physicalOwner *Instance
 				if cell.owner != nil {
 					physicalOwner = cell.owner.instance
@@ -1454,13 +1503,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				}
 			}
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
-			if b.collector != nil && isGCRefValType(g.Type) && len(cell.cell) >= 4 {
+			if collectorObjectTokensBuilt && collector != nil && isGCRefValType(g.Type) && len(cell.cell) >= 4 {
 				// Keep the actual native cell mutable during the remainder of
 				// instantiation, before the completed Instance publishes its permanent
 				// global/table root views.
 				instantiationRoots = append(instantiationRoots, compactRefRootSlot(cell.cell[:4]))
 			}
-			if b.collector != nil && runtimeGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
+			if collectorObjectTokensBuilt && collector != nil && runtimeGCExecution && i >= len(importGlobals) && isGCRefValType(g.Type) {
 				mapped := false
 				for _, mapping := range genericGCGlobalRoots {
 					if mapping.GlobalIndex == uint32(i) {
@@ -1470,7 +1519,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				}
 				if !mapped {
 					ref := gc.Ref(uint32(readGlobalObject(cell, g.Type)))
-					slot, err := b.collector.NewCheckedGlobalSlot(ref)
+					slot, err := collector.NewCheckedGlobalSlot(ref)
 					if err != nil {
 						return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
 					}
@@ -1483,14 +1532,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 	}
 
-	if c.core1SegmentPreflight {
+	if core1DataPreflightForImage && c.core1SegmentPreflight {
 		if err := preflightCore1DataSegments(c, globalCells, jm, memoryObjs); err != nil {
 			return nil, err
 		}
 	}
 	var gcRefTestTable *gcRefTestTableState
 	var gcRefTestDescriptors [][]byte
-	if c.stagedGCStructProduct().requiresRefTableState() {
+	if wasmGCBuilt && c.stagedGCStructProduct().requiresRefTableState() {
 		gcRefTestDescriptors = make([][]byte, c.tableCount())
 	}
 	// A failure before Instance cleanup is installed cannot transfer the producer
@@ -1504,25 +1553,27 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		value [runtime.TableEntryBytes]byte
 	}
 	var importedFuncrefWrites []importedFuncrefWrite
-	defer func() {
-		if b.success {
-			return
-		}
-		for i := len(importedFuncrefWrites) - 1; i >= 0; i-- {
-			write := &importedFuncrefWrites[i]
-			write.table.mu.Lock()
-			if !write.table.closed && write.off+runtime.TableEntryBytes <= len(write.table.desc) {
-				entry := write.table.desc[write.off : write.off+runtime.TableEntryBytes]
-				// Avoid clearing a later write observed through this handle. Native
-				// guest table mutation does not take this lock, so concurrent guest
-				// copying remains outside the construction rollback guarantee.
-				if bytes.Equal(entry, write.value[:]) {
-					clear(entry)
-				}
+	if tableImportsForImage && (activeElementsForImage || tableInitializersForImage) {
+		defer func() {
+			if b.success {
+				return
 			}
-			write.table.mu.Unlock()
-		}
-	}()
+			for i := len(importedFuncrefWrites) - 1; i >= 0; i-- {
+				write := &importedFuncrefWrites[i]
+				write.table.mu.Lock()
+				if !write.table.closed && write.off+runtime.TableEntryBytes <= len(write.table.desc) {
+					entry := write.table.desc[write.off : write.off+runtime.TableEntryBytes]
+					// Avoid clearing a later write observed through this handle. Native
+					// guest table mutation does not take this lock, so concurrent guest
+					// copying remains outside the construction rollback guarantee.
+					if bytes.Equal(entry, write.value[:]) {
+						clear(entry)
+					}
+				}
+				write.table.mu.Unlock()
+			}
+		}()
+	}
 	recordImportedFuncrefWrite := func(table *Table, off int, before [runtime.TableEntryBytes]byte, entry []byte) {
 		if table == nil || len(entry) != runtime.TableEntryBytes || bytes.Equal(before[:], entry) {
 			return
@@ -1536,10 +1587,10 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
 	// also get a compact descriptor-pointer directory; native table-0 code never
 	// reads it.
-	if c.HasTable {
+	if tablesForImage && c.HasTable {
 		tableCount := c.tableCount()
 		var tableDir []byte
-		if tableCount > 1 {
+		if multiTableForImage && tableCount > 1 {
 			tableDir = ar.Alloc(8 * tableCount)
 		}
 		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
@@ -1548,7 +1599,11 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			var importedTable *Table
 			def := c.tableDef(tableIndex)
 			entryBytes := c.tableEntryBytes(tableIndex)
-			if importDef, imported := c.tableImportAt(tableIndex); imported {
+			var importDef tableImportDef
+			if tableImportsForImage {
+				importDef, _ = c.tableImportAt(tableIndex)
+			}
+			if tableImportsForImage && importDef.Key != "" {
 				// Shared cross-instance table: run on the exporting instance's descriptor
 				// only after proving exact type and externref-store compatibility. Aliased
 				// declarations attach one importer root while each declaration validates.
@@ -1560,7 +1615,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				if err != nil {
 					return nil, fmt.Errorf("imported table %q exact type: %w", importDef.Key, err)
 				}
-				if err := railshotBindTableImport(&b.tableAttachments, t, c.tableElementType(tableIndex), exact, c.Types, opts.store, b.collector, def.Addr64); err != nil {
+				if err := railshotBindTableImport(&b.tableAttachments, t, c.tableElementType(tableIndex), exact, c.Types, opts.store, collector, def.Addr64); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
@@ -1596,7 +1651,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				binary.LittleEndian.PutUint32(desc, uint32(size))
 				binary.LittleEndian.PutUint32(desc[4:], uint32(capacity))
 			}
-			if def.HasInitFunc {
+			if tableInitializersForImage && def.HasInitFunc {
 				if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
 					return nil, fmt.Errorf("table %d has a funcref initializer with compact-reference storage", tableIndex)
 				}
@@ -1607,41 +1662,39 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 						copy(before[:], desc[off:off+entryBytes])
 					}
 					writeTableEntry(desc[off:off+entryBytes], def.InitFunc)
-					recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
-				}
-			}
-			if init := c.memoryDir.gcI31TableInit; init != nil && int(init.TableIndex) == tableIndex {
-				if entryBytes != 8 || int(init.GlobalIndex) >= len(globalCells) || int(init.GlobalIndex) >= len(c.Globals) || globalCells[init.GlobalIndex] == nil || c.Globals[init.GlobalIndex].Type != ValI32 {
-					return nil, fmt.Errorf("table %d has an invalid staged i31 initializer", tableIndex)
-				}
-				bits := uint64(uint32(readGlobalObject(globalCells[init.GlobalIndex], ValI32))<<1 | 1)
-				for slot := 0; slot < size; slot++ {
-					off := 8 + slot*entryBytes
-					binary.LittleEndian.PutUint64(desc[off:off+entryBytes], bits)
+					if tableImportsForImage {
+						recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
+					}
 				}
 			}
 			if tableIndex == 0 {
 				tableDesc = desc
 			}
-			if product := c.stagedGCStructProduct(); product.requiresRefTableState() && tableIndex < len(gcRefTestDescriptors) {
+			if wasmGCBuilt && c.stagedGCStructProduct().requiresRefTableState() && tableIndex < len(gcRefTestDescriptors) {
 				gcRefTestDescriptors[tableIndex] = desc
 			}
-			if tableCount > 1 {
+			if multiTableForImage && tableCount > 1 {
 				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
 			}
 		}
-		if c.core1SegmentPreflight {
+		if core1ElementPreflightForImage && c.core1SegmentPreflight {
 			if err := preflightCore1ElementSegments(c, globalCells, tableDesc, tableDir); err != nil {
 				return nil, err
 			}
 		}
-		for seg, el := range c.Elems {
+		for seg := 0; activeElementsForImage && seg < len(c.Elems); seg++ {
+			el := c.Elems[seg]
 			desc := tableDesc
 			var importedTable *Table
-			if _, imported := c.tableImportAt(int(el.TableIndex)); imported {
-				importedTable, _ = imports.table(c.tableImportBindingKey(int(el.TableIndex)))
+			if tableImportsForImage {
+				if _, imported := c.tableImportAt(int(el.TableIndex)); imported {
+					importedTable, _ = imports.table(c.tableImportBindingKey(int(el.TableIndex)))
+				}
 			}
 			if el.TableIndex != 0 {
+				if !multiTableForImage {
+					return nil, fmt.Errorf("active element segment %d targets a table outside the standalone runtime profile", seg)
+				}
 				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
 				header := unsafe.Slice((*byte)(offHeapPtr(ptr)), 8)
 				size := int(binary.LittleEndian.Uint32(header))
@@ -1649,35 +1702,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				desc = unsafe.Slice((*byte)(offHeapPtr(ptr)), 8+size*entryBytes)
 			}
 			size := int(binary.LittleEndian.Uint32(desc))
-			table64 := c.tableDef(int(el.TableIndex)).Addr64
 			elemBase := uint64(el.Offset.Base)
-			if el.Offset.HasGlobal {
-				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
-					initErr = fmt.Errorf("element offset global %d out of range", el.Offset.Global)
-					break
-				}
-				value := readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type)
-				if table64 {
-					elemBase = value
-				} else {
-					elemBase = uint64(uint32(value))
-				}
-			}
-			if len(el.Offset.Expr) != 0 {
-				offsetType := ValI32
-				if table64 {
-					offsetType = ValI64
-				}
-				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, constExprGlobalScope{context: constExprElementOffset, limit: len(c.Globals)})
+			if el.Offset.needsRuntimeOffset() {
+				value, err := activeSegmentOffset(c, globalCells, el.Offset, constExprElementOffset, c.tableDef(int(el.TableIndex)).Addr64)
 				if err != nil {
-					initErr = wrapContextError("element offset extended expression", err)
+					initErr = wrapContextError("element offset", err)
 					break
 				}
-				if table64 {
-					elemBase = value
-				} else {
-					elemBase = uint64(uint32(value))
-				}
+				elemBase = value
 			}
 			end := elemBase + uint64(len(el.Values))
 			if end < elemBase || end > uint64(size) {
@@ -1689,7 +1721,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				slot := int(elemBase) + k
 				off := 8 + slot*entryBytes
 				var prev []byte
-				if k > 0 {
+				if elementRepeatsForImage && k > 0 {
 					prev = desc[off-entryBytes : off]
 				}
 				var before [runtime.TableEntryBytes]byte
@@ -1701,7 +1733,9 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 					physicalOwner = importedTable.owner.instance
 				}
 				writeErr := writeElemEntry(desc[off:off+entryBytes], prev, el.RefType, value, physicalOwner)
-				recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
+				if tableImportsForImage {
+					recordImportedFuncrefWrite(importedTable, off, before, desc[off:off+entryBytes])
+				}
 				if writeErr != nil {
 					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, writeErr)
 					break
@@ -1711,27 +1745,27 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				break
 			}
 		}
-		if product := c.stagedGCStructProduct(); initErr == nil && product.requiresRefTableState() && c.tableCount() != 0 {
+		if product := c.stagedGCStructProduct(); wasmGCBuilt && initErr == nil && product.requiresRefTableState() && c.tableCount() != 0 {
 			specs, err := gcRefTestTableSpecs(c, gcRefTestDescriptors)
 			if err != nil {
 				initErr = err
 			} else {
-				canonicalTypes, err := b.gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
+				canonicalTypes, err := gcTypeMap.canonicalTypes(product.refTestCanonicalTypes())
 				if err != nil {
 					initErr = err
 				} else {
-					gcRefTestTable, initErr = newGCRefTestTableStateFor(b.collector, specs, canonicalTypes)
+					gcRefTestTable, initErr = newGCRefTestTableStateFor(collector, specs, canonicalTypes)
 				}
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
-		if len(tableDir) != 0 {
+		if multiTableForImage && len(tableDir) != 0 {
 			jm.SetTableDirPtr(uintptr(unsafe.Pointer(&tableDir[0])))
 		}
 	}
 
 	var gcArrayElements *gcArrayElementState
-	if initErr == nil && len(c.passiveElems) > 0 {
+	if passiveElementsForImage && initErr == nil && len(c.passiveElems) > 0 {
 		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
 		for i, el := range c.passiveElems {
 			if len(el.Values) == 0 {
@@ -1741,7 +1775,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			entries := ar.Alloc(entryBytes * len(el.Values))
 			for k, value := range el.Values {
 				var prev []byte
-				if k > 0 {
+				if elementRepeatsForImage && k > 0 {
 					prev = entries[(k-1)*entryBytes : k*entryBytes]
 				}
 				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], prev, el.RefType, value, nil); err != nil {
@@ -1756,20 +1790,20 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
 			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
 		}
-		if initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement != nil {
-			seg := int(c.memoryDir.gcArrayElement.SegmentIndex)
+		if wasmGCBuilt && initErr == nil && c.memoryDir != nil && c.memoryDir.gcArrayElement() != nil {
+			seg := int(c.memoryDir.gcArrayElement().SegmentIndex)
 			if seg < 0 || seg >= len(c.passiveElems) {
 				initErr = fmt.Errorf("GC array element segment %d has no descriptor", seg)
 			} else {
 				desc := edesc[seg*runtime.PassiveElemDescBytes : (seg+1)*runtime.PassiveElemDescBytes]
-				gcArrayElements, initErr = instantiateGCArrayElementSegment(b.collector, b.gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement, desc)
+				gcArrayElements, initErr = instantiateGCArrayElementSegment(collector, gcTypeMap, c.GCTypeDescs, c.memoryDir.gcArrayElement(), desc)
 			}
 		}
 		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 	}
 
 	var passiveDataDesc []byte
-	if len(c.PassiveData) > 0 {
+	if passiveDataForImage && len(c.PassiveData) > 0 {
 		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
 		// Descriptors are per-instance because data.drop mutates len. Passive bytes
 		// are retained by c; active slots have nil bytes and start at length zero.
@@ -1785,21 +1819,21 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		passiveDataDesc = desc
 	}
 
-	if initErr == nil && c.activeDataCount() > 0 && ownsMem && !threadedControl && c.memoryCount() == 1 {
+	if activeDataForImage && initErr == nil && c.activeDataCount() > 0 && ownsMem && !threadedControl && c.memoryCount() == 1 {
 		initErr = c.initializeOwnedActiveData(jm, globalCells)
-	} else if initErr == nil && c.activeDataCount() > 0 {
+	} else if activeDataForImage && initErr == nil && c.activeDataCount() > 0 {
 		for seg := 0; seg < c.activeDataCount(); seg++ {
 			d := c.activeDataAt(seg)
 			initErr = func() error {
 				memory := memObj
 				if d.MemoryIndex != 0 {
-					if int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
+					if !multiMemoryRuntimeBuilt || int(d.MemoryIndex) >= len(memoryObjs) || memoryObjs[d.MemoryIndex] == nil {
 						return fmt.Errorf("active data segment %d memory index %d is unavailable", seg, d.MemoryIndex)
 					}
 					memory = memoryObjs[d.MemoryIndex]
 				}
 				var dataJM *runtime.JobMemory
-				if c.memoryDef(int(d.MemoryIndex)).Shared {
+				if sharedMemoryRuntimeBuilt && c.memoryDef(int(d.MemoryIndex)).Shared {
 					// Lock only this segment's backing. Two memory declarations may
 					// alias one Memory; nested jobMemory locks would deadlock.
 					state := memory.state.Load()
@@ -1823,103 +1857,113 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 	}
 
-	argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
-	if err != nil {
-		return nil, wrapContextError("compiled metadata invalid", err)
-	}
-	resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
-	if err != nil {
-		return nil, wrapContextError("compiled metadata invalid", err)
-	}
-	serArgs := ar.Alloc(argsBytes)
-	results := ar.Alloc(resultsBytes)
-	trap := ar.Alloc(runtime.TrapBufferBytes)
-	if err := jm.BindTrapCell(trap); err != nil {
-		return nil, wrapContextError("bind trap cell", err)
+	var serArgs, results, trap []byte
+	if functionCodeForImage {
+		argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
+		if err != nil {
+			return nil, wrapContextError("compiled metadata invalid", err)
+		}
+		resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
+		if err != nil {
+			return nil, wrapContextError("compiled metadata invalid", err)
+		}
+		serArgs = ar.Alloc(argsBytes)
+		results = ar.Alloc(resultsBytes)
+		trap = ar.Alloc(runtime.TrapBufferBytes)
+		if err := jm.BindTrapCell(trap); err != nil {
+			return nil, wrapContextError("bind trap cell", err)
+		}
 	}
 
 	var tableDescPtr uintptr
 	if len(tableDesc) != 0 {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
-	var gcNativeTypes []gc.TypeID
 	var gcNativeView *gc.NativeInstanceView
-	if b.collector != nil && c.needsNativeGCABI() {
-		gcNativeTypes = make([]gc.TypeID, len(c.Types))
-		for local := range gcNativeTypes {
-			domain, ok := b.gcTypeMap.domain(uint32(local))
-			if !ok {
-				return nil, fmt.Errorf("instantiate: native GC type %d has no canonical domain mapping", local)
-			}
-			gcNativeTypes[local] = domain
-		}
-		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
+	if nativeCollectorFrameRootsBuilt && collector != nil && c.needsNativeGCABI() {
+		gcNativeView, err = b.prepareNativeGCView()
 		if err != nil {
-			return nil, wrapContextError("instantiate: native GC metadata view", err)
+			return nil, err
 		}
 		jm.SetGCNativeViewPtr(uintptr(unsafe.Pointer(gcNativeView)))
 	}
-	jm.CaptureInstanceContextBytes(nativeContext)
-	binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], b.gcDomainID)
-	if gcNativeView != nil {
-		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
+	if retainedNativeContextForImage {
+		if controlOnlyNativeContextForImage {
+			clear(nativeContext[:runtime.InstanceContextBytes])
+			binary.LittleEndian.PutUint64(nativeContext, uint64(jm.CustomCtx()))
+		} else {
+			jm.CaptureInstanceContextBytes(nativeContext)
+			binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCDomainOffset:], gcDomainID)
+			if gcNativeView != nil {
+				binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
+			}
+		}
 	}
-	if finishMemoryContext != nil && !(c.nativeTableContextABI && c.tableImportCount() != 0) {
+	if finishMemoryContext != nil && !nativeImportedTableContext {
 		finishMemoryContext(initErr == nil)
 		finishMemoryContext = nil
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
-		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		instanceCollectorMetadata: newInstanceCollectorMetadata(gcTypeMap, gcNativeView),
+		serArgs:                   serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:      nativeContextPtr,
 		threadedMemoryZero: c.threadedMemory0(),
 		moduleIdentity:     opts.moduleIdentity,
 	}
-	if goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64" && c.boundsMode == BoundsChecksSignalsBased && c.HasMemory && !c.threadedMemory0() && c.MemMaxPages > c.MemMinPages {
+	if guardedGrowthForImage && goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64" && c.boundsMode == BoundsChecksSignalsBased && c.HasMemory && !c.threadedMemory0() && c.MemMaxPages > c.MemMinPages {
 		in.guardCommitPages = c.MemMinPages + 1
 	}
-	if threadedControl && ownsMem {
+	if sharedMemoryRuntimeBuilt && threadedControl && ownsMem {
 		if err := memObj.observeOwner(in); err != nil {
 			return nil, err
 		}
 	}
-	tailInstance = in
 	railshotInstallNativeImportConstruction(in, &nativeImportConstruction)
-	railshotCaptureNativeTailPolicy(in, opts, metadataNeed)
-	if err := railshotPrepareNativeTail(in, imports, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); err != nil {
-		return nil, err
+	if nativeTailForImage {
+		tailInstance = in
+		if dynamicNativeTailForImage {
+			railshotCaptureNativeTailPolicy(in, opts, metadataNeed)
+		}
+		if err := railshotPrepareNativeTail(in, imports, sharedThunkBase, sharedThunkOffsets, ownedThunkAddr); err != nil {
+			return nil, err
+		}
 	}
 	if len(importRefEntries) != 0 {
 		in.ensureImportState().importRefEntries = importRefEntries
 	}
-	if len(globalRefs) != 0 {
+	if globalImportsForImage && len(globalRefs) != 0 {
 		in.ensureImportState().globalRefEntries = globalRefs
 	}
 	if codeProfileEnabled {
 		b.bindProfileInstance(in)
 	}
-	if c.boundedHostSegments() && len(syncHosts) > 1 {
+	if hostFunctionImportsBuilt && c.boundedHostSegments() && len(syncHosts) > 1 {
 		if shapes := boundedMultiHostShapes(syncHosts); shapes != nil {
 			in.ensurePluginState().multiHost = &boundedMultiHostLayout{shapes: shapes}
 		}
 	}
-	if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != 4 {
-		state := in.ensurePluginState()
-		state.invokeCacheSlots = uint8(opts.InvokeCacheSlots)
-	}
-	if opts.InvokeCacheSlots > 4 {
-		extra := opts.InvokeCacheSlots - 4
-		in.pluginState.Load().invokeCacheExtra = &invokeCacheOverflow{
-			entries: make([]invokeCache, extra),
+	if functionCodeForImage {
+		if !standaloneOneShot {
+			if opts.InvokeCacheSlots != 0 && opts.InvokeCacheSlots != len(in.ic) {
+				state := in.ensurePluginState()
+				state.invokeCacheSlots = uint8(opts.InvokeCacheSlots)
+			}
+			if opts.InvokeCacheSlots > len(in.ic) {
+				extra := opts.InvokeCacheSlots - len(in.ic)
+				in.pluginState.Load().invokeCacheExtra = &invokeCacheOverflow{
+					entries: make([]invokeCache, extra),
+				}
+			}
+		}
+		if c.maxResultSlots <= len(in.resultInline) {
+			in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
+		} else {
+			in.resultVals = make([]uint64, c.maxResultSlots)
 		}
 	}
-	if opts.pluginGCImports != nil {
-		in.ensureImportState().pluginGCImports = opts.pluginGCImports
-	}
-	if c.maxResultSlots <= len(in.resultInline) {
-		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
-	} else {
-		in.resultVals = make([]uint64, c.maxResultSlots)
+	if pluginRuntimeBuilt && wasmGCBuilt && opts.pluginGCImports != nil {
+		in.ensureImportState().setGCImports(opts.pluginGCImports)
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {
@@ -1930,45 +1974,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	// calls take the domain lock, but native allocation fast paths also mutate the
 	// collector and cannot safely overlap another tenant. Private collectors may
 	// retain instance-local execution.
-	if !b.collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
+	if !collectorShared && c.allowsIndependentInstanceExecution(imports, independentInstances) {
 		in.executionFlags.Store(executionFlagIndependent)
 	}
-	sharedMemory := threadedControl
-	for i := 1; !sharedMemory && i < memoryCount; i++ {
-		sharedMemory = c.memoryDef(i).Shared
-	}
-	if sharedMemory {
-		in.executionFlags.Store(in.executionFlags.Load() | executionFlagThreadedMemory)
-		foreign := b.collectorShared || c.needsFuncRefContext() || c.tableImportCount() != 0
-		for i := range c.GlobalImports {
-			if c.GlobalImports[i].Mutable {
-				// Native global cells and their host accessors use the shared lease.
-				// A private memory backing does not make an imported cell private.
-				foreign = true
-				break
-			}
-		}
-		for i := 0; i < c.memoryCount(); i++ {
-			def := c.memoryDef(i)
-			if def.ImportKey != "" && !def.Shared {
-				// Ordinary imported backing can alias another instance or host accessor.
-				// Its non-atomic accesses must keep the common execution lease.
-				foreign = true
-				break
-			}
-		}
-		for i := range c.Imports {
-			if _, ok := imports[c.functionImportBindingKey(i)].(*InstanceExport); ok {
-				foreign = true
-				break
-			}
-		}
-		if foreign {
-			in.executionFlags.Store(in.executionFlags.Load()&^executionFlagIndependent | executionFlagForeignNativeCalls)
-		}
+	if sharedMemoryRuntimeBuilt {
+		in.prepareThreadedExecution(threadedControl, collectorShared)
 	}
 	b.registeredInstance = in
-	if in.syncMode {
+	if foreignHostControlForImage && syncHostControlForImage && in.syncMode {
 		if err := registerHostControl(in); err != nil {
 			return nil, wrapContextError("instantiate: register host control frame", err)
 		}
@@ -1978,7 +1991,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			}
 		}()
 	}
-	if !codeProfileEnabled && in.syncMode && c.boundedHostSegments() && len(syncHosts) == 1 &&
+	if hostFunctionImportsBuilt && !codeProfileEnabled && in.syncMode && c.boundedHostSegments() && len(syncHosts) == 1 &&
 		(syncHosts[0].scalarKind == syncHostScalar || syncHosts[0].privateBoundedTypedHost()) &&
 		in.executionFlags.Load()&executionFlagNativeScalarLeaf == 0 {
 		binding := &syncHosts[0]
@@ -1992,7 +2005,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		if err != nil {
 			return nil, wrapContextError("instantiate: prepare scalar host bridge", err)
 		}
-		if prepared := eng.PreparedScalarHost(); prepared != nil && detachedNumericHostEnabled && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armDetachedNumericEnabled) && c.supportsGoHostDispatchTag() && detachedNumericGoDispatch(jm) && c.NumImports == 1 && memoryCount <= 1 && !threadedControl && len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil && !c.needsFuncRefContext() && len(in.hostLog) == 0 && syncHosts[0].gate == nil {
+		if prepared := eng.PreparedScalarHost(); prepared != nil && detachedNumericHostEnabled && (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64" && armDetachedNumericEnabled) && c.supportsGoHostDispatchTag() && detachedNumericGoDispatch(jm) && c.NumImports == 1 && memoryCount <= 1 && !threadedControl && len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil && !c.needsFuncRefContext() && len(in.hostLog) == 0 && syncHosts[0].callbackGate() == nil {
 			if err := prepared.DetachNumericContext(runtimebridge.GrantHostScalarCall(), jm); err != nil {
 				return nil, err
 			}
@@ -2004,65 +2017,43 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		}
 
 	}
-	if memoryCount > 1 || threadedControl {
+	if needsMultipleMemories || threadedControl {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir, sharedEntriesStable: sharedMemoryDirStable}
-		for i, memory := range memoryObjs {
-			if c.memoryDef(i).Shared {
-				if in.memoryDir.sharedBackings == nil {
-					in.memoryDir.sharedBackings = make([]*runtime.JobMemory, len(memoryObjs))
+		if sharedMemoryRuntimeBuilt {
+			for i, memory := range memoryObjs {
+				if c.memoryDef(i).Shared {
+					if in.memoryDir.sharedBackings == nil {
+						in.memoryDir.sharedBackings = make([]*runtime.JobMemory, len(memoryObjs))
+					}
+					in.memoryDir.sharedBackings[i] = memory.jobMemory()
 				}
-				in.memoryDir.sharedBackings[i] = memory.jobMemory()
 			}
 		}
 	}
-	if gcGlobalRootCount != 0 {
-		state := in.ensurePluginState()
-		state.gcGlobalRoots = gcGlobalRoots
-		state.gcGlobalRootCount = gcGlobalRootCount
+	if wasmGCBuilt && len(gcGlobalRoots) != 0 {
+		in.ensurePluginState().setStagedGlobalRoots(gcGlobalRoots)
 	}
-	if b.collector != nil && runtimeGCExecution {
+	if collector != nil && runtimeGCExecution {
 		public := in.publicGCState()
-		public.globalRoots = genericGCGlobalRoots
-		for i, g := range c.Globals {
-			if !isGCRefValType(g.Type) || i >= len(globalCells) || globalCells[i] == nil {
-				continue
+		if collectorObjectTokensBuilt {
+			if err := in.installGlobalRootMappings(public, genericGCGlobalRoots); err != nil {
+				return nil, err
 			}
-			mapped := false
-			for _, mapping := range public.globalRoots {
-				if mapping.GlobalIndex == uint32(i) {
-					mapped = true
-					break
-				}
-			}
-			if mapped {
-				continue
-			}
-			bits := readGlobalObject(globalCells[i], g.Type)
-			ref := gc.Ref(uint32(bits))
-			if bits != uint64(ref) {
-				return nil, fmt.Errorf("global %d contains non-compact generic GC reference %#x", i, bits)
-			}
-			slot, err := b.collector.NewCheckedGlobalSlot(ref)
-			if err != nil {
-				return nil, fmt.Errorf("global %d generic GC root: %w", i, err)
-			}
-			public.globalRoots = append(public.globalRoots, gcGlobalRootMapping{GlobalIndex: uint32(i), SlotIndex: slot})
 		}
 	}
-	if gcArrayElements != nil {
-		in.ensurePluginState().gcArrayElements.Store(gcArrayElements)
+	if wasmGCBuilt {
+		if gcRefTestTable == nil && needsExternConversion {
+			// Conversion-only modules keep their identity owner at zero tables.
+			gcRefTestTable = &gcRefTestTableState{}
+		}
+		if gcArrayElements != nil || gcRefTestTable != nil {
+			roots := in.ensurePluginState().stagedGCObjects()
+			roots.arrayElements.Store(gcArrayElements)
+			roots.refTestTable.Store(gcRefTestTable)
+		}
 	}
-	if gcRefTestTable == nil && needsExternConversion {
-		// Conversion-only modules need the same bounded identity owner without
-		// manufacturing a guest table. Table-bearing products populate descriptors
-		// above; the zero-table state owns only the conversion bridge.
-		gcRefTestTable = &gcRefTestTableState{}
-	}
-	if gcRefTestTable != nil {
-		in.ensurePluginState().gcRefTestTable.Store(gcRefTestTable)
-	}
-	if len(nativeTagIDs) != 0 {
-		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))
+	if exceptionTagsForImage && len(nativeTagIDs) != 0 {
+		in.installNativeTagDirectory(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
 	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()
@@ -2105,14 +2096,22 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 		// or joining the logical Close result a second time.
 		cleanup.run(func() { err = joinPrimary(err, in.publishedTerminalCloseResult()) })
 	}
-	dependencyConstruction := railshotHasBuilderFunctionDependencies(&b.functionAttachments) || railshotHasBuilderMemoryDependencies(&memoryAttachments) || railshotHasBuilderGlobalDependencies(&b.globalAttachments) || railshotHasBuilderTableDependencies(&b.tableAttachments) || railshotHasFrozenGlobalDependencies(globalRefs)
-	if opts.runtime == nil && (c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
+	dependencyConstruction := crossInstanceDependenciesForImage && moduleImportsBuilt && (railshotHasBuilderFunctionDependencies(&b.functionAttachments) ||
+		memoryImportsForImage && railshotHasBuilderMemoryDependencies(&memoryAttachments) ||
+		globalImportsForImage && railshotHasBuilderGlobalDependencies(&b.globalAttachments) ||
+		tableImportsForImage && railshotHasBuilderTableDependencies(&b.tableAttachments) ||
+		globalImportsForImage && railshotHasFrozenGlobalDependencies(globalRefs))
+	// A linked image can own the store directly. Hold construction through
+	// registration so rollback uses the same terminal release as Runtime.
+	directStoreConstruction := standaloneBareImage && referenceStoreForImage && !moduleImportsBuilt && opts.store != nil
+	directConstruction := opts.runtime == nil && (nativeImportedTableContext || dependencyConstruction || directStoreConstruction)
+	if directConstruction {
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
 	}
 	if opts.runtime != nil {
 		in.beginConstruction(opts.operationReservation)
-		if err := opts.runtime.registerInstance(in, opts.runtimeReservation); err != nil {
+		if err := opts.runtime.attachInstance(in, opts.runtimeReservation); err != nil {
 			in.endConstruction()
 			return nil, err
 		}
@@ -2121,38 +2120,54 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	}
 	// Transfer concrete acquisition records only after normal Close owns terminal
 	// rollback. Graph adoption waits until the construction native lease is gone.
-	railshotInstallFunctionDependencies(in, &b.functionAttachments)
-	railshotInstallMemoryDependencies(in, &memoryAttachments)
-	railshotInstallGlobalDependencies(in, &b.globalAttachments)
-	railshotInstallTableDependencies(in, &b.tableAttachments)
-	railshotInstallFrozenGlobalDependencies(in, globalRefs)
+	if crossInstanceDependenciesForImage && moduleImportsBuilt {
+		railshotInstallFunctionDependencies(in, &b.functionAttachments)
+		if memoryImportsForImage {
+			railshotInstallMemoryDependencies(in, &memoryAttachments)
+		}
+		if globalImportsForImage {
+			railshotInstallGlobalDependencies(in, &b.globalAttachments)
+		}
+		if tableImportsForImage {
+			railshotInstallTableDependencies(in, &b.tableAttachments)
+		}
+		if globalImportsForImage {
+			railshotInstallFrozenGlobalDependencies(in, globalRefs)
+		}
+	}
 	if opts.beforeStoreRegister != nil {
 		opts.beforeStoreRegister(in)
 	}
-	if opts.store != nil {
-		if err := opts.store.registerInstance(in); err != nil {
+	if referenceStoreForImage {
+		if opts.store != nil {
+			if err := opts.store.registerInstance(in); err != nil {
+				return nil, err
+			}
+			in.refStore = opts.store
+		} else if conversionStore != nil {
+			if err := conversionStore.registerInstance(in); err != nil {
+				return nil, err
+			}
+			in.refStore = conversionStore
+		}
+	}
+	if managedFunctionConstructionForImage {
+		if err := functionConstruction.bind(in, gcDomain); err != nil {
 			return nil, err
 		}
-		in.refStore = opts.store
-	} else if conversionStore != nil {
-		if err := conversionStore.registerInstance(in); err != nil {
+		functionConstruction.close()
+	}
+	if compactExternConstructionForImage {
+		if err := externConstruction.bind(in); err != nil {
 			return nil, err
 		}
-		in.refStore = conversionStore
+		externConstruction.close()
 	}
-	if err := functionConstruction.bind(in, b.gcDomain); err != nil {
-		return nil, err
-	}
-	functionConstruction.close()
-	if err := externConstruction.bind(in); err != nil {
-		return nil, err
-	}
-	externConstruction.close()
 	if finishGCDomainConstruction != nil {
 		finishGCDomainConstruction()
 		finishGCDomainConstruction = nil
 	}
-	if opts.runtime == nil {
+	if funcrefStorageImportsBuilt && opts.runtime == nil {
 		// Active segments and start calls may leave local funcrefs in imported
 		// containers even when instantiation fails. Every failure after this point
 		// must transfer their producer lifetime before rollback detaches imports.
@@ -2171,14 +2186,14 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, err
 		}
 	}
-	if opts.runtime == nil && c.HasStart && !(c.nativeTableContextABI && c.tableImportCount() != 0 || dependencyConstruction) {
+	if startFunctionForImage && opts.runtime == nil && c.HasStart && !directConstruction {
 		// Only transfer direct-start cleanup after reference-store and conversion
 		// ownership is established. Callbacks can close this instance, so keep its
 		// resources alive until start execution and construction have unwound.
 		in.beginConstruction(opts.operationReservation)
 		defer finishConstruction()
 	}
-	if c.nativeTableContextABI && c.tableImportCount() != 0 {
+	if tableImportsForImage && nativeImportedTableContext {
 		// Publish producer membership before releasing construction: a host table
 		// has no instance owner from which another importer can discover these
 		// local canonical descriptors. Keep the ordinary attachment until Close.
@@ -2213,20 +2228,30 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 	if initErr != nil {
 		return nil, initErr
 	}
-	if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
-		return nil, err
+	if hostFunctionImportsBuilt {
+		if err := railshotAdoptFunctionDependencies(in, finishMemoryContext == nil); err != nil {
+			return nil, err
+		}
 	}
-	if err := railshotAdoptMemoryDependencies(in, finishMemoryContext == nil); err != nil {
-		return nil, err
+	if memoryImportsForImage && crossInstanceDependenciesForImage {
+		if err := railshotAdoptMemoryDependencies(in, finishMemoryContext == nil); err != nil {
+			return nil, err
+		}
 	}
-	if err := railshotAdoptGlobalDependencies(in, finishMemoryContext == nil); err != nil {
-		return nil, err
+	if globalImportsForImage {
+		if err := railshotAdoptGlobalDependencies(in, finishMemoryContext == nil); err != nil {
+			return nil, err
+		}
 	}
-	if err := railshotAdoptTableDependencies(in, finishMemoryContext == nil); err != nil {
-		return nil, err
+	if tableImportsForImage {
+		if err := railshotAdoptTableDependencies(in, finishMemoryContext == nil); err != nil {
+			return nil, err
+		}
 	}
-	if err := railshotAdoptFrozenGlobalDependencies(in, finishMemoryContext == nil); err != nil {
-		return nil, err
+	if globalImportsForImage {
+		if err := railshotAdoptFrozenGlobalDependencies(in, finishMemoryContext == nil); err != nil {
+			return nil, err
+		}
 	}
 	if opts.afterCreate != nil {
 		// Concrete import receipts are adopted before callbacks can expose in.
@@ -2242,13 +2267,13 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			return nil, err
 		}
 	}
-	if c.HasStart {
+	if startFunctionForImage && c.HasStart {
 		if codeProfileEnabled && in.lifecycleProfile() != nil {
 			var span profileSpanToken
 			span, opts.startContext = b.beginProfileInitialization(in, opts.startContext)
 			defer finishProfileBoundary(span, &err, &nativeStartReturned)
 		}
-		if c.StartIsImport {
+		if importedStartForImage && c.StartIsImport {
 			// Validation guarantees the imported start is () -> (). RV64 native
 			// bindings use their retained owned bridge; ordinary hosts use normalized
 			// callbacks. Other targets retain their cross-instance start policy.
@@ -2292,7 +2317,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 			if startErr != nil {
 				return nil, fmt.Errorf("start function %q: %w", displayKey, startErr)
 			}
-		} else {
+		} else if localStartForImage {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 			}
@@ -2321,7 +2346,7 @@ func (b *instanceBuilder) instantiateWithCleanup(mappingOwner *Compiled, cleanup
 				// descriptor capacity rather than by failed-instantiation count.
 				return nil, wrapContextError("start function trapped", startErr)
 			}
-			if guardedMemoryGrowEntry(c.InternalEntry[c.StartLocalFunc]) {
+			if guardedGrowthForImage && guardedMemoryGrowEntry(c.InternalEntry[c.StartLocalFunc]) {
 				in.commitGuardedGrowth()
 			}
 		}
@@ -2363,20 +2388,10 @@ func (c *Compiled) initializeOwnedActiveData(jm *runtime.JobMemory, globals []*G
 
 func (c *Compiled) applyActiveData(lin []byte, d DataInit, seg int, memory64 bool, globalCells []*Global) error {
 	off := uint64(d.Offset.Base)
-	if d.Offset.HasGlobal {
-		if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
-			return fmt.Errorf("data offset global %d out of range", d.Offset.Global)
-		}
-		off = uint64(uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type)))
-	}
-	if len(d.Offset.Expr) != 0 {
-		want := ValI32
-		if memory64 {
-			want = ValI64
-		}
-		value, err := evalCompiledScalarConstExpr(d.Offset.Expr, want, globalCells, c.Globals, constExprGlobalScope{context: constExprDataOffset, limit: len(c.Globals)})
+	if d.Offset.needsRuntimeOffset() {
+		value, err := activeSegmentOffset(c, globalCells, d.Offset, constExprDataOffset, memory64)
 		if err != nil {
-			return wrapContextError("data offset extended expression", err)
+			return wrapContextError("data offset", err)
 		}
 		off = value
 	}
@@ -2431,7 +2446,7 @@ func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error
 }
 
 func (c *Compiled) needsPublicFuncrefHostReentry() bool {
-	if c == nil || !c.hasFuncrefTable() {
+	if !tablesForImage || c == nil || !c.hasFuncrefTable() {
 		return false
 	}
 	for _, sig := range c.Funcs {
@@ -2563,7 +2578,7 @@ func buildHostFuncThunks(c *Compiled, imports resolvedImports, syncMode bool, ar
 			}
 			continue // cross-instance funcref, not a host function
 		}
-		if syncMode {
+		if referenceStoreForImage && syncMode {
 			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
 				if _, direct := owner.directNumericBinding(); direct && !railshotRequiresPrivateOwnedHostThunk(c) {
 					needsShared = true

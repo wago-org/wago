@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -204,8 +205,12 @@ func TestSupportPassRejectsV128ArrayStorageWhenSIMDDisabled(t *testing.T) {
 		Comp: wasm.CompType{Kind: wasm.CompArray, Array: wasm.NewFieldType(wasm.StorageVal(wasm.V128), wasm.Const)},
 	}}}}}
 	err := RejectUnsupportedWithFeatures(m, Features{TypedFunctionReferences: true, GCArrayProducts: true})
-	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
-		t.Fatalf("v128 array SIMD-disabled error = %v", err)
+	want := "simd disabled"
+	if buildfeatures.GC == 0 {
+		want = "gc disabled"
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("v128 array error = %v, want %q", err, want)
 	}
 }
 

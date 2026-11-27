@@ -3,10 +3,12 @@
 package amd64
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -595,6 +597,13 @@ func TestGCReferenceHintRequiresHelperAdmission(t *testing.T) {
 func TestByteHintsMarkReferenceCallsAsDynamic(t *testing.T) {
 	for _, opcode := range []byte{0x14, 0x15} {
 		hints, err := scanBodyBytes([]byte{opcode, 0x00, 0x0b}, 0, 0, 0)
+		if buildfeatures.TypedFunctionReferences == 0 || buildfeatures.TailCall == 0 && opcode == 0x15 {
+			var decode *wasm.DecodeError
+			if !errors.As(err, &decode) || decode.Code != wasm.ErrDisabledInstruction || decode.Offset != 0 {
+				t.Fatalf("opcode %#x: got %v, want disabled instruction at byte 0", opcode, err)
+			}
+			continue
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

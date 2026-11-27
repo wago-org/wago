@@ -16,7 +16,7 @@ func TestTrapCarriesWasmSourceFrame(t *testing.T) {
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("boom", 0, 0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("boom", 0, 0), wasmtest.ExportEntry("alias", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))),
 	)
 	instance, err := Instantiate(MustCompile(module), InstantiateOptions{})
@@ -34,10 +34,10 @@ func TestTrapCarriesWasmSourceFrame(t *testing.T) {
 		t.Fatalf("trap frames = %#v, want one frame", trap.Frames)
 	}
 	frame := trap.Frames[0]
-	if frame.FunctionIndex != 0 || frame.FunctionName != "boom" || frame.ProgramCounter != 1 || !frame.HasProgramCounter {
-		t.Fatalf("trap frame = %#v, want boom func[0] at wasm pc 1", frame)
+	if frame.FunctionIndex != 0 || frame.FunctionName != "alias" || frame.ProgramCounter != 1 || !frame.HasProgramCounter {
+		t.Fatalf("trap frame = %#v, want alias func[0] at wasm pc 1", frame)
 	}
-	if !strings.Contains(err.Error(), "at boom (func[0], wasm pc 0x1)") {
+	if !strings.Contains(err.Error(), "at alias (func[0], wasm pc 0x1)") {
 		t.Fatalf("trap error omitted formatted frame: %v", err)
 	}
 }

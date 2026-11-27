@@ -3,7 +3,7 @@ package wasm
 import "testing"
 
 func TestValidateRejectsUnknownInstructionWithoutPanic(t *testing.T) {
-	for _, kind := range []InstrKind{InstrKind(len(opEffects)), ^InstrKind(0)} {
+	for _, kind := range []InstrKind{numInstrKinds, ^InstrKind(0)} {
 		t.Run(kind.String(), func(t *testing.T) {
 			defer func() {
 				if got := recover(); got != nil {

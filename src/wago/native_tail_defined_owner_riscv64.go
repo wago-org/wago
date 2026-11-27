@@ -24,13 +24,13 @@ func rv64NativeDefinedTailOwner(in *Instance) (*railshot.NativeTailDefinedOwner,
 	if err != nil {
 		return nil, err
 	}
-	state := in.ensurePluginState()
-	if owner := state.railshotInvocation.definedTailOwner; owner != nil {
+	tail := in.ensurePluginState().railshotInvocation.tail.get()
+	if owner := tail.definedOwner; owner != nil {
 		return owner, owner.Validate()
 	}
 	owner, err := rv64NewNativeDefinedTailOwner(in, n, values)
 	if err == nil {
-		state.railshotInvocation.definedTailOwner = owner
+		tail.definedOwner = owner
 	}
 	return owner, err
 }

@@ -23,6 +23,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
@@ -77,31 +78,31 @@ const maxWideLocalPinsLocals = 256
 // arrays retain a nonallocating preflight helper so size, segment, and initializer
 // traps remain ordered. WAGO_AMD64_NO_DEAD_GC_NEW=1 keeps every allocation helper
 // for differential A/B testing.
-var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
+var deadGCNewEnabled bool
 
 // nativeGCStructAllocEnabled consumes collector-reserved handle runs and nursery
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the
 // collection/refill path. Keep one differential kill switch for qualification.
-var nativeGCStructAllocEnabled = os.Getenv("WAGO_AMD64_NO_GC_NATIVE_ALLOC") != "1"
+var nativeGCStructAllocEnabled bool
 
 // Keep array-register comparisons in one executable so Go code placement is
 // identical on both sides. This switch changes compilation, not generated checks.
-var nativeGCArrayScratchEnabled = os.Getenv("WAGO_AMD64_NO_GC_ARRAY_SCRATCH") != "1"
+var nativeGCArrayScratchEnabled bool
 
 // Struct allocation is hot enough to spend code bytes on a site-local fast
 // path. The switch keeps shared-stub and inline measurements in one executable.
-var nativeGCStructInlineEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_INLINE") != "1"
+var nativeGCStructInlineEnabled bool
 
 // Native struct allocation consumes canonical operand slots directly. Only a
 // failed reservation prepares the synchronous Go-helper frame. The switch keeps
 // the former eager marshaling path available for differential qualification.
-var nativeGCStructDirectSlotsEnabled = os.Getenv("WAGO_AMD64_NO_GC_STRUCT_DIRECT_SLOTS") != "1"
+var nativeGCStructDirectSlotsEnabled bool
 
 // gcSharedStubsEnabled moves the common noncollecting compact-handle resolver
 // into one module-owned leaf stub. The local call edge retains exact trap/source
 // attribution. WAGO_AMD64_NO_GC_SHARED_STUBS=1 restores fully inline resolution
 // for differential qualification and low-site-count crossover measurement.
-var gcSharedStubsEnabled = os.Getenv("WAGO_AMD64_NO_GC_SHARED_STUBS") != "1"
+var gcSharedStubsEnabled bool
 
 // sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with compact function-local target thunks plus one cold
@@ -117,7 +118,7 @@ var stackDeltaAdapterThunkEnabled = os.Getenv("WAGO_AMD64_NO_STACK_DELTA_ADAPTER
 // gcResolveReuseEnabled retains one resolved object address only across a
 // compiler-proven straight-line, safepoint-free region. The compact local remains
 // the root and stable identity. WAGO_AMD64_NO_GC_RESOLVE_REUSE=1 disables reuse.
-var gcResolveReuseEnabled = os.Getenv("WAGO_AMD64_NO_GC_RESOLVE_REUSE") != "1"
+var gcResolveReuseEnabled bool
 
 // immutableLocalTableEnabled specializes call_indirect when the one-pass module
 // scan proves table 0 is a private, never-mutated table of same-module functions
@@ -176,7 +177,7 @@ var multiBoundsCertEnabled = os.Getenv("WAGO_AMD64_SINGLE_BOUNDS_CERT") != "1"
 // amd64 analog of arm64's v128 local pins. Confined to call-free functions: every
 // XMM is caller-saved on System V, so a wasm->wasm call would clobber the pin.
 // Default ON; WAGO_AMD64_NO_V128_PINS=1 restores the spill-per-op path for A/B.
-var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
+var v128LocalPinsEnabled bool
 
 // v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
 // value in a call-free function and materializes it once at entry, so a loop over
@@ -317,6 +318,8 @@ const (
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
+	gcHelperUses      uint64
+	atomicHelperUses  uint8
 	byteReduceLoop    *byteReduceState
 	filledCopyEnd     uint32
 	filledCopyByte    byte
@@ -1273,6 +1276,8 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
+	gcHelperUses       uint64
+	atomicHelperUses   uint8
 	gcDeadBatchLayouts map[int]uint64
 	gcI31Inductions    map[int]bool
 	scratch            *scratch
@@ -1892,8 +1897,12 @@ func taskDirectCallModule(m *wasm.Module, opts CompileOptions, hints []funcHints
 }
 
 func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
-	if err := validateGCBodyViews(m, opts.Codegen.Module.GCBodyViews); err != nil {
-		return nil, err
+	if buildfeatures.GC != 0 {
+		if err := validateGCBodyViews(m, opts.Codegen.Module.GCBodyViews); err != nil {
+			return nil, err
+		}
+	} else if len(opts.Codegen.Module.GCBodyViews) != 0 {
+		return nil, fmt.Errorf("amd64: GC body views require GC support")
 	}
 	if !opts.AMD64FeaturesSet {
 		opts.AMD64Features = shared.AMD64ModernBaseline | shared.AMD64BMI2
@@ -1979,8 +1988,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// real resolution. Single-function reuse starts inline and switches to the
 	// shared resolver only if lowering reaches a second real site; this keeps the
 	// low-site crossover without compiling the function twice.
-	deferSingleFuncGCResolver := gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
-	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolver
+	deferSingleFuncGCResolver := buildfeatures.GC != 0 && gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
+	useSharedGCResolver := buildfeatures.GC != 0 && gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolver
 	for i := range allHints {
 		allHints[i].flags.assign(hintGCSharedResolver, useSharedGCResolver)
 	}
@@ -2049,7 +2058,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. Empty when inlining is disabled.
-	inlineTargets := buildInlineTargets(m, allHints, policy, policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
+	inlineTargets := buildInlineTargets(m, allHints, policy, buildfeatures.TailCall != 0 && policy.EnabledOption(optTailLoopInline) && !profileEnabled && !opts.Interruptible && opts.GCFrameRoots == nil && len(opts.CustomInstructions) == 0 && !opts.SourceMaps && !opts.UnwindMaps)
 	if opts.GCFrameRoots != nil {
 		restrictGCNumericInlineTargets(m, &inlineTargets)
 	}
@@ -2112,6 +2121,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+		gcHelperUses := shared.GCHelperUsesKnown
+		var atomicHelperUses uint8
 		var gcDeadBatchLayouts []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
@@ -2184,6 +2195,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
 
+			gcHelperUses |= sc.fnState.gcHelperUses
+			atomicHelperUses |= sc.fnState.atomicHelperUses
 			if gcInductionReductionsEnabled && sc.fnState.gcDeadBatchLayout != 0 {
 				if gcDeadBatchLayouts == nil {
 					gcDeadBatchLayouts = make([]uint64, n)
@@ -2248,7 +2261,11 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}
 		// Append one module-owned cold leaf island after every function, then patch
 		// ordinary calls and shared-stub calls in one deterministic pass.
-		stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+		var stubCode []byte
+		var stubOffsets [gcSharedStubMax]int
+		if buildfeatures.GC != 0 {
+			stubCode, stubOffsets = buildModuleGCSharedStubs(relocs)
+		}
 		stubBase := -1
 		if len(stubCode) != 0 {
 			if pad := (16 - len(codeBuffer.Bytes())%16) % 16; pad != 0 {
@@ -2291,7 +2308,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if diagnosticsEnabled && explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
-		compiled := &amd64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}
+		compiled := &amd64.CompiledModule{GCHelperUses: gcHelperUses, AtomicHelperUses: atomicHelperUses, GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}
 		if !opts.DeferCodeMapping {
 			keepCodeBuffer = true
 			compiled.CodeImage = codeBuffer
@@ -2475,6 +2492,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 			}
 			results[i] = result
+			ws.gcHelperUses |= ws.scratch.fnState.gcHelperUses
+			ws.atomicHelperUses |= ws.scratch.fnState.atomicHelperUses
 			if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
 				pressureOnce.Do(opts.MemoryPressure)
 			}
@@ -2508,6 +2527,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	code := make([]byte, 0, codeCap)
 	var literalWords []uint64
 	var directPrepared, directPreparedBounded, gcReducedBounded, gcI31Inductions []uint64
+	gcHelperUses := shared.GCHelperUsesKnown
+	var atomicHelperUses uint8
+	for i := range states {
+		gcHelperUses |= states[i].gcHelperUses
+		atomicHelperUses |= states[i].atomicHelperUses
+	}
 	var gcDeadBatchLayouts []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
@@ -2599,7 +2624,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		literalBase = len(code)
 		code = append(code, literalCode...)
 	}
-	stubCode, stubOffsets := buildModuleGCSharedStubs(relocs)
+	var stubCode []byte
+	var stubOffsets [gcSharedStubMax]int
+	if buildfeatures.GC != 0 {
+		stubCode, stubOffsets = buildModuleGCSharedStubs(relocs)
+	}
 	stubBase := -1
 	if len(stubCode) != 0 {
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -2645,7 +2674,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		requiresBitCount |= states[i].usesBitCount
 		usedAMD64Features |= states[i].usedAMD64Features
 	}
-	return &amd64.CompiledModule{GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
+	return &amd64.CompiledModule{GCHelperUses: gcHelperUses, AtomicHelperUses: atomicHelperUses, GCDeadInductionLayouts: gcDeadBatchLayouts, GCI31Inductions: gcI31Inductions, Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiredAMD64Features: combinedAMD64Requirements(usedAMD64Features, requiresBMI2, requiresBitCount), RequiresBMI2: requiresBMI2, RequiresBitCount: requiresBitCount, RequiresAVX2: usedAMD64Features.Has(shared.AMD64AVX2), RequiresAVX512: usedAMD64Features.Has(shared.AMD64AVX512)}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {
@@ -2738,7 +2767,7 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 				if target < 0 || target > len(code) {
 					return fmt.Errorf("amd64: invalid call relocation target entry %#x for function %d", target, i)
 				}
-				if rl.internal && rl.tailEdge != 0 {
+				if buildfeatures.TailCall != 0 && rl.internal && rl.tailEdge != 0 {
 					end := len(code)
 					if targetIndex+1 < len(entry) {
 						end = entry[targetIndex+1]
@@ -3051,7 +3080,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 	for i := range allHints {
 		// Preserve only source tails that could otherwise gain the reference ABI.
 		// Numeric and unsupported signatures retain their existing adapter policy.
-		if !moduleEH && policy.EnabledOption(optRegABI) && policy.EnabledOption(optDirectReferenceABI) && allHints[i].flags.has(hintHasTailCall) {
+		if !moduleEH && policy.EnabledOption(optRegABI) && (buildfeatures.ReferenceTypes != 0 && policy.EnabledOption(optDirectReferenceABI)) && allHints[i].flags.has(hintHasTailCall) {
 			if ft, ok := m.LocalFuncType(i); ok && sigFitsDirectReferenceRegABI(ft) {
 				allHints[i].inlineCallSites |= 0x80
 			}
@@ -3059,7 +3088,7 @@ func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, impo
 		allHints[i].flags.assign(hintHasTailCall, moduleHasTailCall)
 		allHints[i].flags.assign(hintModuleEH, moduleEH)
 	}
-	if moduleEH && !storageModuleEH {
+	if buildfeatures.ExceptionHandling != 0 && moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
 		localEventMeta = nil
@@ -3827,7 +3856,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
-	if moduleEH {
+	if buildfeatures.ExceptionHandling != 0 && moduleEH {
 		shape, err := ehFrameShape(sc, c.BodyBytes)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("function %d: %w", funcIdx, err)
@@ -3859,7 +3888,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	f.gcStructHelpers = gcStructHelpers
 	f.gcArrayHelpers = gcArrayHelpers
-	if f.threadedMemory0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
+	if f.threadedMemory0 && buildfeatures.Threads != 0 && f.opt(optSharedMemoryBase) || !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
 	if cap(f.localType) < nLocals {
@@ -3953,7 +3982,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f.nLocalSlots = (localBytes + 7) / 8
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
-	if hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlyLocalTailTransfers(c.BodyBytes) {
+	if buildfeatures.TailCall != 0 && hasCall && !touchesMemory && hints.globalCount == 0 && nLocals <= 8 && len(c.BodyBytes) <= 256 && f.onlyLocalTailTransfers(c.BodyBytes) {
 		f.localTailLeaf, hasCall = true, false
 		if f.onlySelfTailTransfers(c.BodyBytes) {
 			f.selfTailLoop, f.hasLoop = true, true
@@ -4189,7 +4218,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if intervalRegion && !intervalControl {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
-	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, fpPinLimit, hasCall, pinLocals && f.opt(optV128Pins) && !hasCall)
+	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, fpPinLimit, hasCall, pinLocals && buildfeatures.SIMD != 0 && f.opt(optV128Pins) && !hasCall)
 	if diagnosticsEnabled && guardCallPinEnabled && guardMode && hasCall && touchesMemory && f.memSizeReg == regNone {
 		for _, x := range f.pinnedLocals {
 			if !f.locals[x].isFloat && f.locals[x].reg == R11 {
@@ -4322,7 +4351,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if hints.flags.has(hintHasSIMD) {
+	if buildfeatures.SIMD != 0 && (hints.flags.has(hintHasSIMD)) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	f.preloadLoopIntConsts(hints)
@@ -4330,7 +4359,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return nil, nil, 0, err
 	}
 	f.epilogue()
-	f.emitNativeGCStubs()
+	if buildfeatures.GC != 0 {
+		f.emitNativeGCStubs()
+	}
 	if profileEnabled {
 		f.collectProfileSources(0)
 	}
@@ -4987,7 +5018,9 @@ func (f *fn) prologue(localScores []uint32) {
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals(localScores []uint32) {
-	f.zeroEHGCRootLanes()
+	if buildfeatures.ExceptionHandling != 0 {
+		f.zeroEHGCRootLanes()
+	}
 	if f.scalarSummary.Eligible {
 		// Shared locals start as zero constants. Its control agreements store
 		// every dirty local before borrowing a frame home. Admission excludes
@@ -5249,7 +5282,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	if hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if hasSIMD {
+	if buildfeatures.SIMD != 0 && (hasSIMD) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	f.derivePinnedGlobals()
@@ -5319,7 +5352,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	if regallocCheckEnabled {
 		f.checkRestoreWrites(returnGPWrites)
 	}
-	f.emitNativeGCStubs()
+	if buildfeatures.GC != 0 {
+		f.emitNativeGCStubs()
+	}
 	if profileEnabled {
 		f.collectProfileSources(internalOff)
 	}
@@ -5395,7 +5430,9 @@ func (f *fn) patchFrameSize() error {
 	for _, site := range f.sc.tailFrameSites {
 		f.a.PatchU32(site, size)
 	}
-	f.finishLocalTailArgumentFlags(size)
+	if buildfeatures.TailCall != 0 {
+		f.finishLocalTailArgumentFlags(size)
+	}
 	return nil
 }
 

@@ -7,6 +7,8 @@
 
 package wasm
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 // skipExprOp skips exactly one already-prefixed instruction from r and returns
 // its structural kind. It is allocation-free for vector immediates such as
 // br_table labels and try_table catches.
@@ -44,6 +46,9 @@ func classifyExprOpAfterOpcodeWithModuleFeatures(r *reader, op byte, imm *Instru
 }
 
 func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImmediate, widths memargWidths, multiMemory bool) (directOpKind, error) {
+	if feature := disabledCallFeature(op); feature != "" {
+		return directInstr, disabledInstruction(feature, r.off()-1)
+	}
 	widths.multiMemory = multiMemory
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
@@ -67,7 +72,7 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 		}
 	case 0x05:
 		return directElse, nil
-	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2:
 		idx, err := r.u32()
 		imm.Kind, imm.Index = oneIndexImmediateKind(op), idx
 		return directInstr, err
@@ -113,15 +118,7 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
 		return directInstr, classifyMemArgBytes(r, imm, widths)
 	case 0x3f, 0x40:
-		var (
-			idx uint32
-			err error
-		)
-		if multiMemory {
-			idx, err = r.u32()
-		} else {
-			err = readReservedZeroByte(r)
-		}
+		idx, err := readMemoryIndex(r, multiMemory)
 		if err != nil {
 			return directInstr, err
 		}
@@ -150,18 +147,40 @@ func classifyExprOpAfterOpcodeWithWidths(r *reader, op byte, imm *InstructionImm
 		imm.Kind = InstrRefNull
 		return directInstr, skipRefHeapTypeBytes(r)
 	case 0xd3:
+		if buildfeatures.GC == 0 {
+			return directInstr, disabledInstruction("gc", r.off()-1)
+		}
 		imm.Kind = InstrRefEq
 		return directInstr, nil
 	case 0xd4:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return directInstr, disabledInstruction("typed-function-references", r.off()-1)
+		}
 		imm.Kind = InstrRefAsNonNull
 		return directInstr, nil
+	case 0xd5, 0xd6:
+		if buildfeatures.TypedFunctionReferences == 0 {
+			return directInstr, disabledInstruction("typed-function-references", r.off()-1)
+		}
+		idx, err := r.u32()
+		imm.Kind, imm.Index = oneIndexImmediateKind(op), idx
+		return directInstr, err
 	case 0xfb:
+		if buildfeatures.GC == 0 {
+			return directInstr, disabledInstruction("gc", r.off()-1)
+		}
 		return directInstr, classifyFBBytes(r, imm)
 	case 0xfc:
 		return directInstr, classifyFCBytes(r, imm, multiMemory)
 	case 0xfd:
+		if buildfeatures.SIMD == 0 {
+			return directInstr, disabledInstruction("simd", r.off()-1)
+		}
 		return directInstr, classifyFDBytes(r, imm, widths)
 	case 0xfe:
+		if buildfeatures.Threads == 0 {
+			return directInstr, disabledInstruction("threads", r.off()-1)
+		}
 		return directInstr, classifyFEBytes(r, imm, widths)
 	default:
 		return directInstr, invalidInstructionError(op, r.off()-1)
@@ -242,7 +261,7 @@ func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidt
 	case n < 64:
 		imm.MemAlign = n
 	case n < 128:
-		if !widths.multiMemory {
+		if buildfeatures.MultiMemory == 0 || !widths.multiMemory {
 			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 		}
 		imm.MemAlign = n - 64
@@ -294,17 +313,20 @@ func skipCatchVecBytes(r *reader) error {
 }
 
 func classifyFCBytes(r *reader, imm *InstructionImmediate, multiMemory bool) error {
-	sub, err := r.u32()
+	sub, err := readFCSubopcode(r)
 	imm.Prefix, imm.Subopcode = 0xfc, sub
 	if err != nil {
 		return err
 	}
-	if k, ok := lookupPrefixKind(fcNoImm[:], sub); ok {
+	if k, ok := lookupFCNoImmediate(sub); ok {
 		imm.Kind = k
 		return nil
 	}
 	switch sub {
 	case 8, 10, 12, 14:
+		if buildfeatures.BulkMemoryOperations == 0 {
+			break
+		}
 		imm.Kind = fcIndexedKind(sub)
 		if sub == 10 {
 			imm.Index, err = readMemoryIndex(r, multiMemory)
@@ -323,18 +345,23 @@ func classifyFCBytes(r *reader, imm *InstructionImmediate, multiMemory bool) err
 		imm.UsesBulkMemory = sub == 10
 		return err
 	case 9, 13, 15, 16, 17:
+		if buildfeatures.BulkMemoryOperations|buildfeatures.ReferenceTypes == 0 {
+			break
+		}
 		imm.Kind = fcIndexedKind(sub)
 		imm.Index, err = r.u32()
 		return err
 	case 11:
+		if buildfeatures.BulkMemoryOperations == 0 {
+			break
+		}
 		imm.Kind = InstrMemoryFill
 		imm.Index, err = readMemoryIndex(r, multiMemory)
 		imm.TouchesMemory = true
 		imm.UsesBulkMemory = true
 		return err
-	default:
-		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
+	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
 func fcIndexedKind(sub uint32) InstrKind {
@@ -518,6 +545,9 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 	if err != nil {
 		return err
 	}
+	if buildfeatures.RelaxedSIMD == 0 && sub >= firstRelaxedSIMDSubopcode && sub-firstRelaxedSIMDSubopcode < uint32(len(fdRelaxedNoImm)) {
+		return disabledInstruction("relaxed-simd", r.off())
+	}
 	if sub == 12 || sub == 13 {
 		_, err := r.bytes(16)
 		if err != nil {
@@ -525,7 +555,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate, widths memargWidths) 
 		}
 		return nil
 	}
-	if k, ok := lookupPrefixKind(fdNoImm[:], sub); ok {
+	if k, ok := lookupSIMDNoImmediate(sub); ok {
 		imm.Kind = k
 		return nil
 	}

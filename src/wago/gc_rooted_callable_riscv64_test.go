@@ -128,7 +128,7 @@ func TestRV64RootedCollectorCallableSnapshotQuota(t *testing.T) {
 	withoutCache.nativeReferenceCallABI = false
 	memo := *withoutCache.validateMemo
 	withoutCache.validateMemo = &memo
-	withoutCache.validateMemo.gcFrameRoots = nil
+	withoutCache.validateMemo.compiledGCFrameRootState = compiledGCFrameRootState{}
 	base, err := snapshotMetadataBytes(withoutCache, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestRV64RootedCollectorOrdinaryLocalCallable(t *testing.T) {
 		if name == "abi" {
 			candidate.codeCache.setNativeGCABIVersion(0)
 		} else {
-			candidate.validateMemo.gcFrameRoots = nil
+			candidate.validateMemo.compiledGCFrameRootState = compiledGCFrameRootState{}
 		}
 		if rv64RootedClosedCallableFunction(candidate, 0) {
 			t.Fatalf("missing %s retained callable row", name)

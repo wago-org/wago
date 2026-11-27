@@ -1,4 +1,4 @@
-//go:build linux && !tinygo
+//go:build linux && !tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package riscv64
 
@@ -25,9 +25,8 @@ func TestRV64RecordGCFrameSafepoint(t *testing.T) {
 		t.Fatal("set live masks")
 	}
 	emit := integerEmitter{
-		target:       target{header: callFrameHeader, nlocals: 2},
-		frameBytes:   128,
-		gcFrameRoots: plan,
+		target:     target{header: callFrameHeader, nlocals: 2, mode: emissionMode{gcFrameEmissionMode: gcFrameEmissionMode{plan: plan}}},
+		frameBytes: 128,
 	}
 	if id := emit.recordGCFrameSafepoint([]bool{false, true}); id != 8 {
 		t.Fatalf("safepoint ID = %d, want 8", id)
@@ -59,9 +58,8 @@ func TestRV64RecordGCFrameSafepointRejectsDuplicateHomes(t *testing.T) {
 		t.Fatal("set live masks")
 	}
 	emit := integerEmitter{
-		target:       target{header: callFrameHeader, nlocals: 2},
-		frameBytes:   128,
-		gcFrameRoots: plan,
+		target:     target{header: callFrameHeader, nlocals: 2, mode: emissionMode{gcFrameEmissionMode: gcFrameEmissionMode{plan: plan}}},
+		frameBytes: 128,
 	}
 	if id := emit.recordGCFrameSafepoint([]bool{false, true}); id != 1 {
 		t.Fatalf("safepoint ID = %d, want 1", id)
@@ -81,9 +79,8 @@ func TestRV64RecordGCFrameCallsiteBridgeAdjustment(t *testing.T) {
 		t.Fatal("set live masks")
 	}
 	emit := integerEmitter{
-		target:       target{header: callFrameHeader, nlocals: 2},
-		frameBytes:   128,
-		gcFrameRoots: plan,
+		target:     target{header: callFrameHeader, nlocals: 2, mode: emissionMode{gcFrameEmissionMode: gcFrameEmissionMode{plan: plan}}},
+		frameBytes: 128,
 	}
 	emit.recordGCFrameCallsiteAdjusted(96, 5440, []bool{false, true})
 	site, ok := plan.Callsite(0)
@@ -229,40 +226,5 @@ func TestRV64GCFramePlanAuthenticatesCompleteConservativeLocals(t *testing.T) {
 	}
 	if !validateGCFrameRootPlans(m, makePlan(wantLocal, 1)) {
 		t.Fatal("complete conservative collector-local plan rejected")
-	}
-}
-
-func TestRV64SafepointHelperBridgeArities(t *testing.T) {
-	for _, tc := range []struct {
-		helper, admitted uint32
-		want             int
-	}{
-		{gcStructAllocDefault, 0, 1},
-		{gcStructAllocOne, 1, 1},
-		{gcStructAllocOne, 2, 2},
-		{gcStructAllocOne, 3, 3},
-		{gcStructAllocOne, 4, 4},
-		{gcStructAllocOne, 256, 256},
-		{gcArrayAllocDefault, 0, 2},
-		{gcArrayAllocUniform, 0, 3},
-		{gcArrayAllocFixed, 2, 2},
-		{gcArrayAllocFixed, 4, 4},
-		{gcArrayAllocFixed, 5, 5},
-		{gcArrayAllocFixed, 6, 6},
-		{gcArrayAllocFixed, 256, 256},
-		{gcArrayAllocData, 0, 4},
-		{gcArrayAllocElem, 0, 4},
-	} {
-		got, ok := gcAllocHelperSlots(tc.helper, int(tc.admitted))
-		if !ok || got != tc.want {
-			t.Fatalf("helper %d/%d slots = %d, %t; want %d", tc.helper, tc.admitted, got, ok, tc.want)
-		}
-	}
-	for _, tc := range []struct {
-		helper, admitted uint32
-	}{{gcStructGet, 0}, {gcStructAllocOne, 0}, {gcStructAllocOne, 257}, {gcArrayAllocFixed, 1}, {gcArrayAllocFixed, 257}} {
-		if got, ok := gcAllocHelperSlots(tc.helper, int(tc.admitted)); ok {
-			t.Fatalf("helper %d/%d unexpectedly admitted with %d slots", tc.helper, tc.admitted, got)
-		}
 	}
 }

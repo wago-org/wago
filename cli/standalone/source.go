@@ -30,5 +30,5 @@ func execute(source []byte, plugins wago.PluginSet, options Options, args []stri
 	if err != nil {
 		return err
 	}
-	return executeModule(runtime, module, options, args)
+	return executeModule(runtime, module, options.Invoke, args)
 }

@@ -10,6 +10,7 @@
 package amd64
 
 import (
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -17,7 +18,7 @@ import (
 var simdLoadExtractEnabled = true
 
 func (f *fn) trySIMDLoadExtract(r *wasm.Reader, memoryIndex uint32, off uint64) (bool, error) {
-	if !f.opt(optSIMDLoadExtract) {
+	if !(buildfeatures.SIMD != 0 && f.opt(optSIMDLoadExtract)) {
 		return false, nil
 	}
 	p, ok := shared.InspectSIMDLoadExtract(r)

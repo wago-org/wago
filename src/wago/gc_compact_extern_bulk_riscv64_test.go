@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -92,6 +92,62 @@ func rv64CompactExternBulkModuleWith(vector, imported, passive bool, limits ...b
 	}
 	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(code...)))
 	return wasmtest.Module(sections...)
+}
+
+func TestRV64CompactExternTableWriteWithoutBulkMemory(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 1, 0x7f, 0},
+			wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.ExternRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{1}, []byte{2})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 1, 1, 2})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("write", 0, 0), wasmtest.ExportEntry("read", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{
+				0x41, 0, 0x41, 0, 0xfb, 0, 0, 0xfb, 27, 0x41, 1, 0xfc, 17, 0, // fill with a converted struct
+				0x20, 0, 0x41, 1, 0xfc, 15, 0, 0x0b, // grow with the caller's externref
+			}),
+			wasmtest.Code([]byte{0x20, 0, 0x25, 0, 0x0b}),
+		)),
+	)
+	rt := NewRuntime()
+	defer rt.Close()
+	c, err := NewRuntimeConfig().WithFeature(CoreFeatureBulkMemoryOperations, false).Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if !c.compactExternFrameRoots() {
+		t.Fatal("expected compact externref collector table")
+	}
+	mod, err := rt.Module(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod, WithGC(GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	foreign, err := rt.NewExternRef("grow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Invoke("write", foreign.token); err != nil || !slices.Equal(got, []uint64{1}) {
+		t.Fatalf("write = %v, %v", got, err)
+	}
+	if err := in.CollectGC(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Invoke("read", 0); err != nil || len(got) != 1 || got[0] == 0 {
+		t.Fatalf("read filled slot = %v, %v", got, err)
+	}
+	if got, err := in.Invoke("read", 1); err != nil || !slices.Equal(got, []uint64{foreign.token}) {
+		t.Fatalf("read grown slot = %v, %v", got, err)
+	}
 }
 
 func TestRV64CompactExternBulkPrivate(t *testing.T) {
@@ -263,7 +319,7 @@ func TestRV64CompactExternBulkPrivate(t *testing.T) {
 					if !rt.ReleaseExternRef(warm) {
 						t.Fatal("warm fill retained foreign pins after clear")
 					}
-					t.Logf("collector sidecar=%d Go bytes; persistent cell=%d bytes; owner ledger=%d bytes; scratch capacity=%d", unsafe.Sizeof(compactExternCollector{}), unsafe.Sizeof(compactExternPersistentCell{}), unsafe.Sizeof(compactExternPersistentOwner{}), cap(state.bulk))
+					t.Logf("collector sidecar=%d Go bytes; persistent cell=%d bytes; owner ledger=%d bytes", unsafe.Sizeof(compactExternCollector{}), unsafe.Sizeof(compactExternPersistentCell{}), unsafe.Sizeof(compactExternPersistentOwner{}))
 				})
 			}
 		}
@@ -472,81 +528,6 @@ func TestRV64CompactExternPassiveBulkPrivate(t *testing.T) {
 					if !rt.ReleaseExternRef(foreign) {
 						t.Fatal("closed passive/import/table cells retained foreign pins")
 					}
-				})
-			}
-		}
-	}
-}
-
-func TestRV64CompactExternBulkScratchPrivate(t *testing.T) {
-	for _, vector := range []bool{false, true} {
-		c, err := NewRuntimeConfig().Compile(rv64CompactExternBulkModuleWith(vector, false, false, 12, 16))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer c.Close()
-
-		for artifact, candidate := range []*Compiled{c} {
-			for _, profile := range []gc.Profile{gc.ProfileThroughput, gc.ProfileTiny} {
-				t.Run(fmt.Sprintf("vector%t/artifact%t/profile%d", vector, artifact != 0, profile), func(t *testing.T) {
-					rt := NewRuntime()
-					defer rt.Close()
-					mod, err := rt.Module(candidate)
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer mod.Close()
-					in, err := rt.Instantiate(context.Background(), mod, WithGC(GCConfig{Profile: profile, CollectEveryAlloc: true, VerifyAfterCollect: true}))
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer in.Close()
-					foreign, err := rt.NewExternRef("bulk scratch")
-					if err != nil {
-						t.Fatal(err)
-					}
-					if _, err = in.Invoke("fill", 0, foreign.token, 12); err != nil {
-						t.Fatal(err)
-					}
-					if _, err = in.Invoke("copy", 0, 0, 12); err != nil {
-						t.Fatal(err)
-					}
-					fn, err := in.WasmFunc("copy")
-					if err != nil {
-						t.Fatal(err)
-					}
-					session, err := fn.OpenSession()
-					if err != nil {
-						t.Fatal(err)
-					}
-					allocs := testing.AllocsPerRun(1000, func() {
-						if _, err := session.Invoke3(0, 0, 12); err != nil {
-							panic(err)
-						}
-					})
-					session.Close()
-					if allocs != 0 {
-						t.Fatal("warm copy Go allocations", allocs)
-					}
-					state, _ := compactExternCollectors.Load(in.gc)
-					if cap(state.bulk) != 12 {
-						t.Fatal("copy scratch capacity", cap(state.bulk))
-					}
-					for _, v := range state.bulk[:cap(state.bulk)] {
-						if v != (compactExternPreparedWord{}) {
-							t.Fatal("copy scratch retained a prepared root/pin")
-						}
-					}
-					if _, err := in.Invoke("fill", 0, 0, 12); err != nil {
-						t.Fatal(err)
-					}
-					if err := in.CollectGC(); err != nil {
-						t.Fatal(err)
-					}
-					if !rt.ReleaseExternRef(foreign) {
-						t.Fatal("bulk scratch retained a foreign pin")
-					}
-					t.Logf("copy scratch=%d Go bytes, reused for 1000 calls", cap(state.bulk)*int(unsafe.Sizeof(compactExternPreparedWord{})))
 				})
 			}
 		}

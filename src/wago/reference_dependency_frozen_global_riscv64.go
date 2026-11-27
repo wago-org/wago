@@ -65,6 +65,9 @@ func rv64AcquireFrozenGlobalDependency(producer *Instance, graph *dependencyGrap
 }
 
 func railshotHasFrozenGlobalDependencies(entries []importGlobalReference) bool {
+	if !referenceSignaturesBuilt {
+		return false
+	}
 	for _, entry := range entries {
 		if entry.dependency != nil {
 			return true
@@ -74,6 +77,9 @@ func railshotHasFrozenGlobalDependencies(entries []importGlobalReference) bool {
 }
 
 func railshotInstallFrozenGlobalDependencies(in *Instance, entries []importGlobalReference) {
+	if !referenceSignaturesBuilt {
+		return
+	}
 	for _, entry := range entries {
 		if entry.dependency != nil {
 			rv64FunctionDependencyOwnershipFor(in).frozenGlobals.Store(entry.dependency.holder)
@@ -90,6 +96,9 @@ func rv64ExistingFrozenGlobalDependencyRows(in *Instance) *rv64FrozenGlobalDepen
 }
 
 func railshotReleaseInstanceGlobalReferences(in *Instance) {
+	if !referenceSignaturesBuilt {
+		return
+	}
 	if rows := rv64ExistingFrozenGlobalDependencyRows(in); rows != nil {
 		// The stable holder remains authoritative if terminal teardown has
 		// cleared the native directory after a denied receipt claim.
@@ -109,6 +118,9 @@ func railshotReleaseInstanceGlobalReferences(in *Instance) {
 }
 
 func railshotAdoptFrozenGlobalDependencies(in *Instance, nativeLeaseReleased bool) error {
+	if !referenceSignaturesBuilt {
+		return nil
+	}
 	rows := rv64ExistingFrozenGlobalDependencyRows(in)
 	if rows == nil {
 		return nil

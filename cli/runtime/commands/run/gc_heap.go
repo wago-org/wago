@@ -17,9 +17,13 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/command"
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func gcFlags() []command.Flag {
+	if !buildfeatures.NativeCollectorFrameRoots {
+		return nil
+	}
 	return []command.Flag{
 		{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
@@ -27,11 +31,14 @@ func gcFlags() []command.Flag {
 }
 
 func gcLongHelp() string {
+	if !buildfeatures.NativeCollectorFrameRoots {
+		return ""
+	}
 	return "Large WasmGC workloads can set --gc-heap and --gc-nursery with binary sizes such as 2GiB and 64MiB. "
 }
 
 func instantiate(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configured bool) (*wago.Instance, error) {
-	if configured {
+	if buildfeatures.NativeCollectorFrameRoots && configured {
 		return runtime.Instantiate(context.Background(), module, wago.WithGC(gc))
 	}
 	return runtime.Instantiate(context.Background(), module)
@@ -39,6 +46,9 @@ func instantiate(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, c
 
 func gcConfiguration(ctx *command.Ctx) (wago.GCConfig, bool, error) {
 	var cfg wago.GCConfig
+	if !buildfeatures.NativeCollectorFrameRoots {
+		return cfg, false, nil
+	}
 	heap := ctx.Str("gc-heap")
 	if heap != "" {
 		value, err := parseGCBytes(heap)

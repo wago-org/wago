@@ -1,6 +1,30 @@
 package wasm
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
+
+func TestStructuralPlainFuncGroupMatchesGraphEncoding(t *testing.T) {
+	m := &Module{Types: []RecType{
+		{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompFunc}}}},
+		{SubTypes: []SubType{
+			{Final: true, Comp: CompType{Kind: CompFunc, Params: []ValType{I32, F64}, Results: []ValType{V128}}},
+			{Comp: CompType{Kind: CompFunc, Params: []ValType{ExternRef}, Results: []ValType{FuncRef}}},
+		}},
+	}}
+	for _, compact := range []bool{false, true} {
+		var plainCache, graphCache map[int][32]byte
+		for _, index := range []uint32{1, 2, 1, 0} {
+			var plain, graph []byte
+			plainOK := m.writeStructuralPlainFuncGroup(index, func(b byte) { plain = append(plain, b) }, &plainCache, compact)
+			graphOK := m.writeStructuralFuncTypeGraph(index, func(b byte) { graph = append(graph, b) }, &graphCache, compact)
+			if !plainOK || !graphOK || !bytes.Equal(plain, graph) {
+				t.Fatalf("type %d compact=%t: plain %x, graph %x", index, compact, plain, graph)
+			}
+		}
+	}
+}
 
 func TestStructuralFuncTypeKeyBoundedAllocations(t *testing.T) {
 	for name, typ := range map[string]ValType{"numeric": I64, "vector": V128, "function": FuncRef, "external": ExternRef} {

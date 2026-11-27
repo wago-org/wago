@@ -22,11 +22,11 @@ func (r *Registrar) authorize(authority Authority) (AuthorityGrant, error) {
 	}
 	r.used[authority] = struct{}{}
 	if _, declared := r.requests[authority]; !declared {
-		return AuthorityGrant{}, &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseAuthorize, Authority: authority, Err: fmt.Errorf("authority was not declared: %w", ErrPermissionDenied)}
+		return AuthorityGrant{}, newPluginDiagnostic(PluginError{Plugin: r.definition.ID, Phase: PluginPhaseAuthorize, Authority: authority, Err: fmt.Errorf("authority was not declared: %w", ErrPermissionDenied)})
 	}
 	grant, granted := r.grants[authority]
 	if !granted {
-		return AuthorityGrant{}, &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseAuthorize, Authority: authority, Err: fmt.Errorf("authority was not granted: %w", ErrPermissionDenied)}
+		return AuthorityGrant{}, newPluginDiagnostic(PluginError{Plugin: r.definition.ID, Phase: PluginPhaseAuthorize, Authority: authority, Err: fmt.Errorf("authority was not granted: %w", ErrPermissionDenied)})
 	}
 	return grant, nil
 }
@@ -60,7 +60,7 @@ func (a *HostImportRegistrar) HostFunc(module, name string, fn any) *ImportFuncB
 		return &ImportFuncBuilder{}
 	}
 	if _, ok := a.modules[module]; !ok {
-		a.reg.recordImportError(module, name, &PluginError{Plugin: a.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityHostImportDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", module, ErrPermissionDenied)})
+		a.reg.recordImportError(module, name, newPluginDiagnostic(PluginError{Plugin: a.reg.definition.ID, Phase: PluginPhaseAuthorize, Authority: AuthorityHostImportDefine, Path: "scope.modules", Err: fmt.Errorf("module %q is outside the grant: %w", module, ErrPermissionDenied)}))
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: module, name: name, fn: fn}
@@ -108,7 +108,7 @@ func (r *Registrar) GuestArguments() (*GuestArgumentsAccess, error) {
 	a := &GuestArgumentsAccess{}
 	r.activate = append(r.activate, func(rt *Runtime) {
 		a.mu.Lock()
-		a.args = append([]string(nil), rt.guestArguments...)
+		a.args = rt.copyGuestArguments()
 		a.active = true
 		a.mu.Unlock()
 	})

@@ -29,6 +29,13 @@ func TestNativeFrameBytesCanonicalProductionPackets(t *testing.T) {
 		if err != nil || got != frame {
 			t.Fatal("canonical frame read", frame, got, err)
 		}
+		upper := int64(int32(binary.LittleEndian.Uint32(b[8:]) & 0xfffff000))
+		lower := int64(int32(binary.LittleEndian.Uint32(b[12:])) >> 20)
+		wantEnd := 16 + 8 + int(upper+lower)
+		size, end, err := NativeFrameLayout(image, 16)
+		if err != nil || size != frame || end != wantEnd {
+			t.Fatalf("frame layout = %d, %d, %v; want %d, %d", size, end, err, frame, wantEnd)
+		}
 		if a := testing.AllocsPerRun(4, func() {
 			if got, err := NativeFrameBytes(image, 16); err != nil || got != frame {
 				panic("frame read")

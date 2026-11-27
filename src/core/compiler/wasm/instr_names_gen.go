@@ -9,37 +9,99 @@
 
 package wasm
 
+import "github.com/wago-org/wago/internal/buildfeatures"
+
 const instrKindNameCount = 538
 
-const instrKindNameBlob = "" +
+const instrNameBlob0 = "" +
 	"Invalid" +
 	"Unreachable" +
 	"Nop" +
 	"Block" +
 	"Loop" +
-	"If" +
+	"If"
+
+var instrNameOffsets0 = [...]uint16{
+	0, 7, 18, 21, 26, 30, 32,
+}
+
+const instrNameBlob1 = "" +
 	"Throw" +
-	"ThrowRef" +
+	"ThrowRef"
+
+var instrNameOffsets1 = [...]uint16{
+	0, 5, 13,
+}
+
+const instrNameBlob2 = "" +
 	"Br" +
 	"BrIf" +
 	"BrTable" +
 	"Return" +
 	"Call" +
-	"CallIndirect" +
+	"CallIndirect"
+
+var instrNameOffsets2 = [...]uint16{
+	0, 2, 6, 13, 19, 23, 35,
+}
+
+const instrNameBlob3 = "" +
 	"ReturnCall" +
-	"ReturnCallIndirect" +
-	"CallRef" +
-	"ReturnCallRef" +
+	"ReturnCallIndirect"
+
+var instrNameOffsets3 = [...]uint16{
+	0, 10, 28,
+}
+
+const instrNameBlob4 = "" +
+	"CallRef"
+
+var instrNameOffsets4 = [...]uint16{
+	0, 7,
+}
+
+const instrNameBlob5 = "" +
+	"ReturnCallRef"
+
+var instrNameOffsets5 = [...]uint16{
+	0, 13,
+}
+
+const instrNameBlob6 = "" +
 	"Drop" +
-	"Select" +
-	"TryTable" +
+	"Select"
+
+var instrNameOffsets6 = [...]uint16{
+	0, 4, 10,
+}
+
+const instrNameBlob7 = "" +
+	"TryTable"
+
+var instrNameOffsets7 = [...]uint16{
+	0, 8,
+}
+
+const instrNameBlob8 = "" +
 	"LocalGet" +
 	"LocalSet" +
 	"LocalTee" +
 	"GlobalGet" +
-	"GlobalSet" +
+	"GlobalSet"
+
+var instrNameOffsets8 = [...]uint16{
+	0, 8, 16, 24, 33, 42,
+}
+
+const instrNameBlob9 = "" +
 	"TableGet" +
-	"TableSet" +
+	"TableSet"
+
+var instrNameOffsets9 = [...]uint16{
+	0, 8, 16,
+}
+
+const instrNameBlob10 = "" +
 	"I32Load" +
 	"I64Load" +
 	"F32Load" +
@@ -64,7 +126,15 @@ const instrKindNameBlob = "" +
 	"I64Store16" +
 	"I64Store32" +
 	"MemorySize" +
-	"MemoryGrow" +
+	"MemoryGrow"
+
+var instrNameOffsets10 = [...]uint16{
+	0, 7, 14, 21, 28, 37, 46, 56, 66, 75, 84, 94,
+	104, 114, 124, 132, 140, 148, 156, 165, 175, 184, 194, 204,
+	214, 224,
+}
+
+const instrNameBlob11 = "" +
 	"MemoryAtomicNotify" +
 	"MemoryAtomicWait32" +
 	"MemoryAtomicWait64" +
@@ -84,7 +154,14 @@ const instrKindNameBlob = "" +
 	"I64AtomicStore16" +
 	"I64AtomicStore32" +
 	"AtomicRmw" +
-	"AtomicCmpxchg" +
+	"AtomicCmpxchg"
+
+var instrNameOffsets11 = [...]uint16{
+	0, 18, 36, 54, 65, 78, 91, 106, 122, 137, 153, 169,
+	183, 197, 212, 228, 243, 259, 275, 284, 297,
+}
+
+const instrNameBlob12 = "" +
 	"I32Const" +
 	"I64Const" +
 	"F32Const" +
@@ -211,20 +288,72 @@ const instrKindNameBlob = "" +
 	"I32ReinterpretF32" +
 	"I64ReinterpretF64" +
 	"F32ReinterpretI32" +
-	"F64ReinterpretI64" +
+	"F64ReinterpretI64"
+
+var instrNameOffsets12 = [...]uint16{
+	0, 8, 16, 24, 32, 38, 43, 48, 54, 60, 66, 72,
+	78, 84, 90, 96, 102, 107, 112, 118, 124, 130, 136, 142,
+	148, 154, 160, 165, 170, 175, 180, 185, 190, 195, 200, 205,
+	210, 215, 220, 226, 232, 241, 247, 253, 259, 266, 273, 280,
+	287, 293, 298, 304, 310, 317, 324, 331, 338, 344, 350, 359,
+	365, 371, 377, 384, 391, 398, 405, 411, 416, 422, 428, 435,
+	442, 449, 456, 462, 468, 475, 483, 491, 501, 508, 514, 520,
+	526, 532, 538, 544, 555, 561, 567, 574, 582, 590, 600, 607,
+	613, 619, 625, 631, 637, 643, 654, 664, 676, 688, 700, 712,
+	725, 738, 750, 762, 774, 786, 800, 814, 828, 842, 854, 868,
+	882, 896, 910, 923, 940, 957, 974, 991,
+}
+
+const instrNameBlob13 = "" +
 	"I32Extend8S" +
 	"I32Extend16S" +
 	"I64Extend8S" +
 	"I64Extend16S" +
-	"I64Extend32S" +
+	"I64Extend32S"
+
+var instrNameOffsets13 = [...]uint16{
+	0, 11, 23, 34, 46, 58,
+}
+
+const instrNameBlob14 = "" +
 	"RefNull" +
 	"RefIsNull" +
-	"RefFunc" +
-	"RefEq" +
-	"RefAsNonNull" +
-	"StringConst" +
+	"RefFunc"
+
+var instrNameOffsets14 = [...]uint16{
+	0, 7, 16, 23,
+}
+
+const instrNameBlob15 = "" +
+	"RefEq"
+
+var instrNameOffsets15 = [...]uint16{
+	0, 5,
+}
+
+const instrNameBlob16 = "" +
+	"RefAsNonNull"
+
+var instrNameOffsets16 = [...]uint16{
+	0, 12,
+}
+
+const instrNameBlob17 = "" +
+	"StringConst"
+
+var instrNameOffsets17 = [...]uint16{
+	0, 11,
+}
+
+const instrNameBlob18 = "" +
 	"BrOnNull" +
-	"BrOnNonNull" +
+	"BrOnNonNull"
+
+var instrNameOffsets18 = [...]uint16{
+	0, 8, 19,
+}
+
+const instrNameBlob19 = "" +
 	"StringNewUtf8Array" +
 	"StringNewWtf16Array" +
 	"StringEncodeUtf8Array" +
@@ -269,7 +398,16 @@ const instrKindNameBlob = "" +
 	"ExternConvertAny" +
 	"RefI31" +
 	"I31GetS" +
-	"I31GetU" +
+	"I31GetU"
+
+var instrNameOffsets19 = [...]uint16{
+	0, 18, 37, 58, 80, 103, 121, 147, 168, 177, 193, 206,
+	226, 235, 245, 255, 270, 286, 302, 311, 319, 334, 347, 359,
+	371, 379, 388, 397, 405, 413, 422, 431, 444, 457, 467, 474,
+	481, 492, 505, 513, 525, 541, 557, 563, 570, 577,
+}
+
+const instrNameBlob20 = "" +
 	"I32TruncSatF32S" +
 	"I32TruncSatF32U" +
 	"I32TruncSatF64S" +
@@ -277,17 +415,41 @@ const instrKindNameBlob = "" +
 	"I64TruncSatF32S" +
 	"I64TruncSatF32U" +
 	"I64TruncSatF64S" +
-	"I64TruncSatF64U" +
+	"I64TruncSatF64U"
+
+var instrNameOffsets20 = [...]uint16{
+	0, 15, 30, 45, 60, 75, 90, 105, 120,
+}
+
+const instrNameBlob21 = "" +
 	"MemoryInit" +
 	"DataDrop" +
 	"MemoryCopy" +
-	"MemoryFill" +
+	"MemoryFill"
+
+var instrNameOffsets21 = [...]uint16{
+	0, 10, 18, 28, 38,
+}
+
+const instrNameBlob22 = "" +
 	"TableInit" +
 	"ElemDrop" +
-	"TableCopy" +
+	"TableCopy"
+
+var instrNameOffsets22 = [...]uint16{
+	0, 9, 17, 26,
+}
+
+const instrNameBlob23 = "" +
 	"TableGrow" +
 	"TableSize" +
-	"TableFill" +
+	"TableFill"
+
+var instrNameOffsets23 = [...]uint16{
+	0, 9, 18, 27,
+}
+
+const instrNameBlob24 = "" +
 	"V128Load" +
 	"V128Load8x8S" +
 	"V128Load8x8U" +
@@ -525,7 +687,32 @@ const instrKindNameBlob = "" +
 	"I32x4TruncSatF64x2SZero" +
 	"I32x4TruncSatF64x2UZero" +
 	"F64x2ConvertLowI32x4S" +
-	"F64x2ConvertLowI32x4U" +
+	"F64x2ConvertLowI32x4U"
+
+var instrNameOffsets24 = [...]uint16{
+	0, 8, 20, 32, 45, 58, 71, 84, 98, 113, 128, 143,
+	152, 161, 165, 177, 184, 196, 206, 216, 226, 236, 246, 256,
+	273, 290, 306, 323, 340, 356, 372, 388, 404, 420, 436, 452,
+	468, 484, 491, 498, 506, 514, 522, 530, 538, 546, 554, 562,
+	569, 576, 584, 592, 600, 608, 616, 624, 632, 640, 647, 654,
+	662, 670, 678, 686, 694, 702, 710, 718, 725, 732, 739, 746,
+	753, 760, 767, 774, 781, 788, 795, 802, 809, 816, 826, 832,
+	839, 852, 863, 876, 890, 904, 918, 932, 947, 962, 977, 991,
+	1005, 1025, 1045, 1053, 1061, 1072, 1084, 1096, 1113, 1130, 1139, 1149,
+	1159, 1171, 1179, 1188, 1197, 1205, 1217, 1229, 1237, 1249, 1261, 1270,
+	1280, 1289, 1298, 1307, 1316, 1326, 1336, 1361, 1386, 1411, 1436, 1444,
+	1452, 1468, 1480, 1492, 1509, 1526, 1546, 1567, 1587, 1608, 1616, 1625,
+	1634, 1642, 1654, 1666, 1674, 1686, 1698, 1710, 1718, 1727, 1736, 1745,
+	1754, 1764, 1784, 1805, 1825, 1846, 1854, 1862, 1874, 1886, 1906, 1927,
+	1947, 1968, 1976, 1985, 1994, 2002, 2010, 2018, 2027, 2036, 2045, 2054,
+	2068, 2088, 2109, 2129, 2150, 2158, 2166, 2178, 2190, 2210, 2231, 2251,
+	2272, 2280, 2289, 2298, 2306, 2314, 2322, 2329, 2336, 2344, 2352, 2360,
+	2368, 2388, 2409, 2429, 2450, 2458, 2466, 2475, 2483, 2491, 2499, 2507,
+	2515, 2523, 2532, 2541, 2549, 2557, 2566, 2574, 2582, 2590, 2598, 2606,
+	2614, 2623, 2632, 2651, 2670, 2688, 2706, 2729, 2752, 2773, 2794,
+}
+
+const instrNameBlob25 = "" +
 	"I8x16RelaxedSwizzle" +
 	"I32x4RelaxedTruncF32x4S" +
 	"I32x4RelaxedTruncF32x4U" +
@@ -545,11 +732,50 @@ const instrKindNameBlob = "" +
 	"F64x2RelaxedMax" +
 	"I16x8RelaxedQ15mulrS" +
 	"I16x8RelaxedDotI8x16I7x16S" +
-	"I32x4RelaxedDotI8x16I7x16AddS" +
+	"I32x4RelaxedDotI8x16I7x16AddS"
+
+var instrNameOffsets25 = [...]uint16{
+	0, 19, 42, 65, 92, 119, 135, 152, 168, 185, 207, 229,
+	251, 273, 288, 303, 318, 333, 353, 379, 408,
+}
+
+const instrNameBlob26 = "" +
 	"I64Add128" +
 	"I64Sub128" +
 	"I64MulWideS" +
 	"I64MulWideU"
+
+var instrNameOffsets26 = [...]uint16{
+	0, 9, 18, 29, 40,
+}
+
+const instrKindNameBlob = instrNameBlob0 +
+	instrNameBlob1 +
+	instrNameBlob2 +
+	instrNameBlob3 +
+	instrNameBlob4 +
+	instrNameBlob5 +
+	instrNameBlob6 +
+	instrNameBlob7 +
+	instrNameBlob8 +
+	instrNameBlob9 +
+	instrNameBlob10 +
+	instrNameBlob11 +
+	instrNameBlob12 +
+	instrNameBlob13 +
+	instrNameBlob14 +
+	instrNameBlob15 +
+	instrNameBlob16 +
+	instrNameBlob17 +
+	instrNameBlob18 +
+	instrNameBlob19 +
+	instrNameBlob20 +
+	instrNameBlob21 +
+	instrNameBlob22 +
+	instrNameBlob23 +
+	instrNameBlob24 +
+	instrNameBlob25 +
+	instrNameBlob26
 
 var instrKindNameOffsets = [...]uint16{
 	0, 7, 18, 21, 26, 30, 32, 37, 45, 47, 51, 58,
@@ -601,3 +827,132 @@ var instrKindNameOffsets = [...]uint16{
 
 var _ [numInstrKinds - instrKindNameCount]struct{}
 var _ [instrKindNameCount - numInstrKinds]struct{}
+
+func profileInstructionName(kind InstrKind) string {
+	switch {
+	case kind <= InstrIf:
+		index := kind - InstrInvalid
+		return instrNameBlob0[instrNameOffsets0[index]:instrNameOffsets0[index+1]]
+	case kind <= InstrThrowRef:
+		if buildfeatures.ExceptionHandling != 0 {
+			index := kind - InstrThrow
+			return instrNameBlob1[instrNameOffsets1[index]:instrNameOffsets1[index+1]]
+		}
+	case kind <= InstrCallIndirect:
+		index := kind - InstrBr
+		return instrNameBlob2[instrNameOffsets2[index]:instrNameOffsets2[index+1]]
+	case kind <= InstrReturnCallIndirect:
+		if buildfeatures.TailCall != 0 {
+			index := kind - InstrReturnCall
+			return instrNameBlob3[instrNameOffsets3[index]:instrNameOffsets3[index+1]]
+		}
+	case kind <= InstrCallRef:
+		if buildfeatures.TypedFunctionReferences != 0 {
+			index := kind - InstrCallRef
+			return instrNameBlob4[instrNameOffsets4[index]:instrNameOffsets4[index+1]]
+		}
+	case kind <= InstrReturnCallRef:
+		if buildfeatures.TypedFunctionReferences != 0 && buildfeatures.TailCall != 0 {
+			index := kind - InstrReturnCallRef
+			return instrNameBlob5[instrNameOffsets5[index]:instrNameOffsets5[index+1]]
+		}
+	case kind <= InstrSelect:
+		index := kind - InstrDrop
+		return instrNameBlob6[instrNameOffsets6[index]:instrNameOffsets6[index+1]]
+	case kind <= InstrTryTable:
+		if buildfeatures.ExceptionHandling != 0 {
+			index := kind - InstrTryTable
+			return instrNameBlob7[instrNameOffsets7[index]:instrNameOffsets7[index+1]]
+		}
+	case kind <= InstrGlobalSet:
+		index := kind - InstrLocalGet
+		return instrNameBlob8[instrNameOffsets8[index]:instrNameOffsets8[index+1]]
+	case kind <= InstrTableSet:
+		if buildfeatures.ReferenceTypes != 0 {
+			index := kind - InstrTableGet
+			return instrNameBlob9[instrNameOffsets9[index]:instrNameOffsets9[index+1]]
+		}
+	case kind <= InstrMemoryGrow:
+		index := kind - InstrI32Load
+		return instrNameBlob10[instrNameOffsets10[index]:instrNameOffsets10[index+1]]
+	case kind <= InstrAtomicCmpxchg:
+		if buildfeatures.Threads != 0 {
+			index := kind - InstrMemoryAtomicNotify
+			return instrNameBlob11[instrNameOffsets11[index]:instrNameOffsets11[index+1]]
+		}
+	case kind <= InstrF64ReinterpretI64:
+		index := kind - InstrI32Const
+		return instrNameBlob12[instrNameOffsets12[index]:instrNameOffsets12[index+1]]
+	case kind <= InstrI64Extend32S:
+		if buildfeatures.SignExtensionOps != 0 {
+			index := kind - InstrI32Extend8S
+			return instrNameBlob13[instrNameOffsets13[index]:instrNameOffsets13[index+1]]
+		}
+	case kind <= InstrRefFunc:
+		if buildfeatures.ReferenceTypes != 0 {
+			index := kind - InstrRefNull
+			return instrNameBlob14[instrNameOffsets14[index]:instrNameOffsets14[index+1]]
+		}
+	case kind <= InstrRefEq:
+		if buildfeatures.GC != 0 {
+			index := kind - InstrRefEq
+			return instrNameBlob15[instrNameOffsets15[index]:instrNameOffsets15[index+1]]
+		}
+	case kind <= InstrRefAsNonNull:
+		if buildfeatures.TypedFunctionReferences != 0 {
+			index := kind - InstrRefAsNonNull
+			return instrNameBlob16[instrNameOffsets16[index]:instrNameOffsets16[index+1]]
+		}
+	case kind <= InstrStringConst:
+		if buildfeatures.GC != 0 {
+			index := kind - InstrStringConst
+			return instrNameBlob17[instrNameOffsets17[index]:instrNameOffsets17[index+1]]
+		}
+	case kind <= InstrBrOnNonNull:
+		if buildfeatures.TypedFunctionReferences != 0 {
+			index := kind - InstrBrOnNull
+			return instrNameBlob18[instrNameOffsets18[index]:instrNameOffsets18[index+1]]
+		}
+	case kind <= InstrI31GetU:
+		if buildfeatures.GC != 0 {
+			index := kind - InstrStringNewUtf8Array
+			return instrNameBlob19[instrNameOffsets19[index]:instrNameOffsets19[index+1]]
+		}
+	case kind <= InstrI64TruncSatF64U:
+		if buildfeatures.NonTrappingFloatToIntConversion != 0 {
+			index := kind - InstrI32TruncSatF32S
+			return instrNameBlob20[instrNameOffsets20[index]:instrNameOffsets20[index+1]]
+		}
+	case kind <= InstrMemoryFill:
+		if buildfeatures.BulkMemoryOperations != 0 {
+			index := kind - InstrMemoryInit
+			return instrNameBlob21[instrNameOffsets21[index]:instrNameOffsets21[index+1]]
+		}
+	case kind <= InstrTableCopy:
+		if buildfeatures.BulkMemoryOperations != 0 && buildfeatures.ReferenceTypes != 0 {
+			index := kind - InstrTableInit
+			return instrNameBlob22[instrNameOffsets22[index]:instrNameOffsets22[index+1]]
+		}
+	case kind <= InstrTableFill:
+		if buildfeatures.ReferenceTypes != 0 {
+			index := kind - InstrTableGrow
+			return instrNameBlob23[instrNameOffsets23[index]:instrNameOffsets23[index+1]]
+		}
+	case kind <= InstrF64x2ConvertLowI32x4U:
+		if buildfeatures.SIMD != 0 {
+			index := kind - InstrV128Load
+			return instrNameBlob24[instrNameOffsets24[index]:instrNameOffsets24[index+1]]
+		}
+	case kind <= InstrI32x4RelaxedDotI8x16I7x16AddS:
+		if buildfeatures.RelaxedSIMD != 0 {
+			index := kind - InstrI8x16RelaxedSwizzle
+			return instrNameBlob25[instrNameOffsets25[index]:instrNameOffsets25[index+1]]
+		}
+	case kind <= InstrI64MulWideU:
+		if buildfeatures.WideArithmetic != 0 {
+			index := kind - InstrI64Add128
+			return instrNameBlob26[instrNameOffsets26[index]:instrNameOffsets26[index+1]]
+		}
+	}
+	return "Invalid"
+}

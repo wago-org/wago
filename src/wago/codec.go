@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -79,57 +80,11 @@ func compiledUvarintLen(v uint64) int {
 	return binary.PutUvarint(buf[:], v)
 }
 
-func compiledMetadataUsesSIMD(c *Compiled) bool {
-	if c == nil {
-		return false
-	}
-	for _, sig := range c.importFuncSigs {
-		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
-			return true
-		}
-	}
-	for _, sig := range c.Funcs {
-		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
-			return true
-		}
-	}
-	for _, g := range c.GlobalImports {
-		if g.Type == ValV128 {
-			return true
-		}
-	}
-	for _, g := range c.Globals {
-		if g.Type == ValV128 {
-			return true
-		}
-	}
-	for _, typ := range c.Types {
-		switch typ.Kind {
-		case CompositeTypeStruct:
-			for _, field := range typ.Fields {
-				if !field.Storage.Packed && field.Storage.Value.Kind == ValueTypeV128 {
-					return true
-				}
-			}
-		case CompositeTypeArray:
-			if !typ.Array.Storage.Packed && typ.Array.Storage.Value.Kind == ValueTypeV128 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func valTypesUseSIMD(ts []ValType) bool {
-	for _, t := range ts {
-		if t == ValV128 {
-			return true
-		}
-	}
-	return false
-}
-
 func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
+	rootMap := c.genericGCFrameRoots()
+	if err := validateMetadataProfile(c); err != nil {
+		return nil, err
+	}
 	if err := c.validateCompactData(); err != nil {
 		return nil, err
 	}
@@ -144,17 +99,18 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 		return nil, fmt.Errorf("AMD64 CPU requirement aliases an RV64 execution marker")
 	}
 	w := compiledWriter{buf: make([]byte, 0, 256)}
-	w.intSlice(c.Entry)
-	w.internalEntrySlice(c.InternalEntry)
-	w.uvar(uint64(c.NumImports))
-	w.stringSlice(c.Imports)
-	funcModuleEnds, _, _, _, exactImportNames := c.importModuleEndSections()
-	for i := range c.Imports {
-		moduleEnd := uint64(0)
-		if exactImportNames {
-			moduleEnd = funcModuleEnds[i]
-		}
-		w.uvar(moduleEnd)
+	if functionCodeForImage {
+		w.intSlice(c.Entry)
+		w.internalEntrySlice(c.InternalEntry)
+	} else {
+		w.uvar(0) // public entries
+		w.uvar(0) // internal entries
+	}
+	if hostFunctionImportsBuilt {
+		w.functionImports(c)
+	} else {
+		w.uvar(0) // import count
+		w.uvar(0) // import names
 	}
 	if err := w.typeDescriptors(c.Types); err != nil {
 		return nil, err
@@ -163,39 +119,108 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 		return nil, err
 	}
 	w.valueTypes(c.ValueTypes)
-	if err := w.funcSigs(c.importFuncSigs, c.Types); err != nil {
-		return nil, err
+	if hostFunctionImportsBuilt {
+		if err := w.funcSigs(c.importFuncSigs, c.Types); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0) // imported signatures
 	}
-	if err := w.funcSigs(c.Funcs, c.Types); err != nil {
-		return nil, err
+	if functionCodeForImage {
+		if err := w.funcSigs(c.Funcs, c.Types); err != nil {
+			return nil, err
+		}
+		w.stringIntMap(c.Exports)
+	} else {
+		w.uvar(0) // local signatures
+		w.uvar(0) // function exports
 	}
-	w.stringIntMap(c.Exports)
-	w.nameSec(c.Names)
-	if err := w.globalImports(c.GlobalImports, c); err != nil {
-		return nil, err
+	// Skipped writers still emit the canonical empty section. The profile
+	// check rejects metadata that would otherwise disappear from the digest.
+	if nameSectionForImage {
+		w.nameSec(c.Names)
+	} else {
+		w.bool(false)
 	}
-	if err := w.globals(c.Globals, c); err != nil {
-		return nil, err
+	if globalImportsForImage {
+		if err := w.globalImports(c.GlobalImports, c); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0)
 	}
-	w.stringIntMap(c.GlobalExports)
-	if err := w.tables(c); err != nil {
-		return nil, err
+	if globalsForImage {
+		if err := w.globals(c.Globals, c); err != nil {
+			return nil, err
+		}
+		w.stringIntMap(c.GlobalExports)
+	} else {
+		w.uvar(0) // globals
+		w.uvar(0) // global exports
 	}
-	w.stringIntMap(c.tableExports)
-	w.u64Slice(c.FuncTypeID)
+	if tablesForImage {
+		if err := w.tables(c); err != nil {
+			return nil, err
+		}
+		w.stringIntMap(c.tableExports)
+	} else {
+		w.uvar(0) // tables
+		w.uvar(0) // table exports
+	}
+	if functionCodeForImage {
+		w.u64Slice(c.FuncTypeID)
+	} else {
+		w.uvar(0) // function type IDs
+	}
 	w.bool(c.NeedsFuncRefDescs)
-	if err := w.elems(c.Elems, c); err != nil {
-		return nil, err
+	if activeElementsForImage {
+		if err := w.elems(c.Elems, c); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0)
 	}
-	if err := w.elems(c.passiveElems, c); err != nil {
-		return nil, err
+	if passiveElementsForImage {
+		if err := w.elems(c.passiveElems, c); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0)
 	}
-	w.compiledData(c)
-	w.passiveData(c.PassiveData)
-	w.memories(c)
-	w.stringIntMap(c.memoryExportMap())
+	if activeDataForImage {
+		if err := w.compiledData(c); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0)
+	}
+	if passiveDataForImage {
+		w.passiveData(c.PassiveData)
+	} else {
+		w.uvar(0)
+	}
+	if memoriesForImage {
+		if err := w.memories(c); err != nil {
+			return nil, err
+		}
+	} else {
+		w.uvar(0)
+	}
+	w.bool(c.HasMemory)
+	w.u32(c.MemMinPages)
+	w.u32(c.MemMaxPages)
+	if memoriesForImage {
+		w.stringIntMap(c.memoryExportMap())
+	} else {
+		w.uvar(0) // memory exports
+	}
 	w.bool(c.dynamicImports)
-	w.tags(c)
+	if !standaloneBareImage || exceptionTagsForImage {
+		w.tags(c)
+	} else {
+		w.uvar(0)
+		w.uvar(0)
+	}
 	required := uint64(compiledStructuralRequiredFeatures(c))
 	if c.needsOwnedExceptionReferences() {
 		required |= compiledRV64OwnedExceptionReferences
@@ -221,92 +246,23 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	if c.nativeContextTrapABI {
 		required |= compiledRV64ContextTrapABI
 	}
-	if c.nativeTable64ABI == nativeTable64SizeABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table.size compiler witness on a foreign architecture")
+	if legacyTable32InstructionsForImage || legacyTable64ForImage {
+		bits, err := compiledLegacyTableWitness(c.nativeTable64ABI)
+		if err != nil {
+			return nil, err
 		}
-		required |= compiledRV64Table64SizeABI
+		required |= bits
 	}
-	if c.nativeTable64ABI == nativeTable64GrowABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64.grow compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64GrowABI
-	}
-	if c.nativeTable64ABI == nativeTable64GetSetABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64.get/set compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64GetSetABI
-	}
-	if c.nativeTable64ABI == nativeTable64IndirectABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64 indirect-call compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64IndirectABI
-	}
-	if c.nativeTable64ABI == nativeTable64FillABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64.fill compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64FillABI
-	}
-	if c.nativeTable64ABI == nativeTable64CopyABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64.copy compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64CopyABI
-	}
-	if c.nativeTable64ABI == nativeTable64InitDropABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 table64.init/drop compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64InitDropABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedSizeABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.size compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedSizeABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedGetSetABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.get/set compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedGetSetABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedGrowABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.grow compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedGrowABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedFillABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.fill compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedFillABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedCopyABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.copy compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedCopyABI
-	}
-	if c.nativeTable64ABI == nativeTable64ImportedInitDropABI {
-		if compiledArchitecture != 4 {
-			return nil, fmt.Errorf("RV64 imported table64.init/drop compiler witness on a foreign architecture")
-		}
-		required |= compiledRV64Table64ImportedInitDropABI
-	}
-	if c.stagedGCI31Product() != 0 {
+	if i31ExecutionForImage && c.stagedGCI31Product() != 0 {
 		required |= compiledGCExecutionI31Product
 	}
-	if c.stagedGCStructProduct() == stagedGCStructGeneric || rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCBrOnCastNullability(c) || rv64GCBrOnCastFailNullability(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCStructGet(c) || rv64GCStructMutation(c) || rv64GCStructNull(c) || rv64GCStructPacked(c) || rv64GCStructBasic(c) {
-		required |= compiledGCExecutionGenericStruct
-	}
-	if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64OfficialGCRefEq(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) || rv64GCArrayFixedLocal(c) || rv64GCArrayFixedOfficial(c) || rv64GCArrayDefaultOfficial(c) || rv64GCArrayPackedData(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) || rv64GCArrayFill(c) || rv64GCArrayCopy(c) {
-		required |= compiledGCExecutionGenericArray
+	if wasmGCBuilt {
+		if c.stagedGCStructProduct() == stagedGCStructGeneric || rv64LegacyGCProductsForImage && (rv64OfficialGCRefEq(c) || rv64GCRefTestTable(c) || rv64GCRefTestConcrete(c) || rv64GCRefCastConcrete(c) || rv64GCBrOnCastConcrete(c) || rv64GCBrOnCastFailConcrete(c) || rv64GCBrOnCastNullability(c) || rv64GCBrOnCastFailNullability(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCStructGet(c) || rv64GCStructMutation(c) || rv64GCStructNull(c) || rv64GCStructPacked(c) || rv64GCStructBasic(c)) {
+			required |= compiledGCExecutionGenericStruct
+		}
+		if c.stagedGCArrayProduct() == stagedGCArrayProductGeneric || rv64LegacyGCProductsForImage && (rv64OfficialGCRefEq(c) || rv64GCRefTestAbstract(c) || rv64GCExtern(c) || rv64GCRefCastAbstract(c) || rv64GCBrOnCastAbstract(c) || rv64GCBrOnCastFailAbstract(c) || rv64GCArrayLocal(c) || rv64GCArrayUniform(c) || rv64GCArrayFixedLocal(c) || rv64GCArrayFixedOfficial(c) || rv64GCArrayDefaultOfficial(c) || rv64GCArrayPackedData(c) || rv64GCArrayReference(c) || rv64GCArrayInitElem(c) || rv64GCArrayInitData(c) || rv64GCArrayFill(c) || rv64GCArrayCopy(c)) {
+			required |= compiledGCExecutionGenericArray
+		}
 	}
 	if c.usesDynamicFuncRefTest() {
 		required |= compiledGCExecutionDynamicFuncRefTest
@@ -352,19 +308,102 @@ func compiledMetadataBytes(c *Compiled, checkRoots bool) ([]byte, error) {
 	if err := railshotWriteNativeTail(&w, c); err != nil {
 		return nil, err
 	}
-	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() || c.needsOwnedExceptionReferences() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() {
+	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.needsOwnedExceptionReferences() || c.hasOpaqueExternFrames() || c.hasFunctionEnvironmentFrames() ||
+		nativeCollectorBuilt && (c.hasCollectorReferenceCallBoundary() || c.hasInternalCollectorReferenceFunctions()) {
 		w.u32(c.nativeGCABIRequirement())
 	}
-	w.gcTypeDescs(c.GCTypeDescs)
-	if checkRoots {
-		if err := validateCompiledGCFrameRoots(c, c.genericGCFrameRoots()); err != nil {
-			return nil, err
-		}
+	if detailedGCTypeDescsForImage {
+		w.gcTypeDescs(c.GCTypeDescs)
+	} else if err := w.gcFunctionTypeDescs(c.GCTypeDescs); err != nil {
+		return nil, err
 	}
-	if rootMap := c.genericGCFrameRoots(); rootMap != nil {
+	if nativeCollectorFrameRootsBuilt && rootMap != nil {
+		if checkRoots {
+			if err := validateCompiledGCFrameRoots(c, rootMap); err != nil {
+				return nil, err
+			}
+		}
 		w.gcFrameRoots(rootMap)
 	}
 	return w.buf, nil
+}
+
+// Operation-specific legacy table witnesses share the requirement word with
+// architecture flags. Both legacy indexed Table32 and Table64 use these bits.
+func compiledLegacyTableWitness(abi uint8) (uint64, error) {
+	var bits uint64
+	var operation string
+	switch abi {
+	case nativeTable64NoABI:
+		return 0, nil
+	case nativeTable64SizeABI:
+		bits, operation = compiledRV64Table64SizeABI, "table.size"
+	case nativeTable64GrowABI:
+		bits, operation = compiledRV64Table64GrowABI, "table64.grow"
+	case nativeTable64GetSetABI:
+		bits, operation = compiledRV64Table64GetSetABI, "table64.get/set"
+	case nativeTable64IndirectABI:
+		bits, operation = compiledRV64Table64IndirectABI, "table64 indirect-call"
+	case nativeTable64FillABI:
+		bits, operation = compiledRV64Table64FillABI, "table64.fill"
+	case nativeTable64CopyABI:
+		bits, operation = compiledRV64Table64CopyABI, "table64.copy"
+	case nativeTable64InitDropABI:
+		bits, operation = compiledRV64Table64InitDropABI, "table64.init/drop"
+	case nativeTable64ImportedSizeABI:
+		bits, operation = compiledRV64Table64ImportedSizeABI, "imported table64.size"
+	case nativeTable64ImportedGetSetABI:
+		bits, operation = compiledRV64Table64ImportedGetSetABI, "imported table64.get/set"
+	case nativeTable64ImportedGrowABI:
+		bits, operation = compiledRV64Table64ImportedGrowABI, "imported table64.grow"
+	case nativeTable64ImportedFillABI:
+		bits, operation = compiledRV64Table64ImportedFillABI, "imported table64.fill"
+	case nativeTable64ImportedCopyABI:
+		bits, operation = compiledRV64Table64ImportedCopyABI, "imported table64.copy"
+	case nativeTable64ImportedInitDropABI:
+		bits, operation = compiledRV64Table64ImportedInitDropABI, "imported table64.init/drop"
+	default:
+		return 0, fmt.Errorf("unknown RV64 table64 compiler witness")
+	}
+	if compiledArchitecture != 4 {
+		return 0, fmt.Errorf("RV64 %s compiler witness on a foreign architecture", operation)
+	}
+	return bits, nil
+}
+
+func validateMetadataProfile(c *Compiled) error {
+	var section string
+	switch {
+	case !functionCodeForImage && (!c.hasNoFunctionCode() || len(c.Exports) != 0 || len(c.FuncTypeID) != 0):
+		section = "function entries and declarations"
+	case !hostFunctionImportsBuilt && (c.NumImports != 0 || len(c.Imports) != 0 || len(c.importFuncSigs) != 0):
+		section = "function imports"
+	case !legacyTable32InstructionsForImage && !legacyTable64ForImage && c.nativeTable64ABI != nativeTable64NoABI:
+		section = "legacy table instruction witness"
+	case !nameSectionForImage && c.Names != nil:
+		section = "name section"
+	case !globalImportsForImage && len(c.GlobalImports) != 0:
+		section = "global imports"
+	case !globalsForImage && (len(c.Globals) != 0 || len(c.GlobalExports) != 0):
+		section = "global declarations"
+	case !tablesForImage && (c.tableCount() != 0 || len(c.tableExports) != 0):
+		section = "table declarations"
+	case !activeElementsForImage && len(c.Elems) != 0:
+		section = "active elements"
+	case !passiveElementsForImage && len(c.passiveElems) != 0:
+		section = "passive elements"
+	case !activeDataForImage && (len(c.Data) != 0 || c.activeDataCount() != 0):
+		section = "active data"
+	case !passiveDataForImage && len(c.PassiveData) != 0:
+		section = "passive data"
+	case !memoriesForImage && (c.memoryCount() != 0 || len(c.memoryExportMap()) != 0):
+		section = "memory declarations"
+	case standaloneBareImage && !exceptionTagsForImage && c.memoryDir != nil && c.memoryDir.hasExceptionTagMetadata():
+		section = "exception tags"
+	default:
+		return nil
+	}
+	return fmt.Errorf("compiled metadata %s exceed the standalone runtime profile", section)
 }
 
 type compiledWriter struct {
@@ -421,12 +460,22 @@ func (w *compiledWriter) str(s string) {
 	w.uvar(uint64(len(s)))
 	w.appendString(s)
 }
-func (w *compiledWriter) stringSlice(v []string) {
-	w.uvar(uint64(len(v)))
-	for _, s := range v {
-		w.str(s)
+func (w *compiledWriter) functionImports(c *Compiled) {
+	w.uvar(uint64(c.NumImports))
+	w.uvar(uint64(len(c.Imports)))
+	for _, name := range c.Imports {
+		w.str(name)
+	}
+	funcModuleEnds, _, _, _, exactImportNames := c.importModuleEndSections()
+	for i := range c.Imports {
+		moduleEnd := uint64(0)
+		if exactImportNames {
+			moduleEnd = funcModuleEnds[i]
+		}
+		w.uvar(moduleEnd)
 	}
 }
+
 func (w *compiledWriter) intSlice(v []int) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
@@ -445,46 +494,37 @@ func (w *compiledWriter) u64Slice(v []uint64) {
 		w.u64(x)
 	}
 }
-func (w *compiledWriter) tags(c *Compiled) {
-	if c.memoryDir == nil {
-		w.uvar(0)
-		w.stringIntMap(nil)
-		return
+func (w *compiledWriter) memories(c *Compiled) error {
+	var memoryModuleEnds []uint64
+	var exactImportNames bool
+	if memoryImportsForImage {
+		_, _, memoryModuleEnds, _, exactImportNames = c.importModuleEndSections()
 	}
-	_, _, _, tagModuleEnds, exactImportNames := c.importModuleEndSections()
-	w.uvar(uint64(len(c.memoryDir.ehTags)))
-	for i, tag := range c.memoryDir.ehTags {
-		w.str(tag.ImportKey)
-		moduleEnd := uint64(0)
-		if exactImportNames && tag.ImportKey != "" {
-			moduleEnd = tagModuleEnds[i]
-		}
-		w.uvar(moduleEnd)
-		w.u32(tag.TypeIndex)
-	}
-	w.stringIntMap(c.memoryDir.ehTagExports)
-}
-
-func (w *compiledWriter) memories(c *Compiled) {
-	_, _, memoryModuleEnds, _, exactImportNames := c.importModuleEndSections()
-	w.uvar(uint64(c.memoryCount()))
-	for i := 0; i < c.memoryCount(); i++ {
+	count := c.memoryCount()
+	w.uvar(uint64(count))
+	for i := 0; i < count; i++ {
 		def := c.memoryDef(i)
-		w.str(def.ImportKey)
-		moduleEnd := uint64(0)
-		if exactImportNames && def.ImportKey != "" {
-			moduleEnd = memoryModuleEnds[i]
+		if memoryImportsForImage {
+			w.str(def.ImportKey)
+			moduleEnd := uint64(0)
+			if exactImportNames && def.ImportKey != "" {
+				moduleEnd = memoryModuleEnds[i]
+			}
+			w.uvar(moduleEnd)
+		} else {
+			if def.ImportKey != "" {
+				return fmt.Errorf("compiled metadata uses a memory import outside the standalone runtime profile")
+			}
+			w.uvar(0)
+			w.uvar(0)
 		}
-		w.uvar(moduleEnd)
 		w.uvar(def.Min)
 		w.uvar(def.Max)
 		w.bool(def.HasMax)
 		w.bool(def.Addr64)
 		w.bool(def.Shared)
 	}
-	w.bool(c.HasMemory)
-	w.u32(c.MemMinPages)
-	w.u32(c.MemMaxPages)
+	return nil
 }
 
 func (w *compiledWriter) stringIntMap(m map[string]int) {
@@ -556,7 +596,7 @@ func (w *compiledWriter) valueTypeRef(legacy ValType, has bool, index uint32, po
 
 func (w *compiledWriter) valueType(t ValueTypeDescriptor) {
 	w.u8(byte(t.Kind))
-	if t.Kind != ValueTypeReference {
+	if !referenceTypeDescriptorsForImage || t.Kind != ValueTypeReference {
 		return
 	}
 	w.bool(t.Ref.Nullable)
@@ -576,16 +616,6 @@ func (w *compiledWriter) valueTypes(v []ValueTypeDescriptor) {
 	}
 }
 
-func (w *compiledWriter) fieldType(f FieldTypeDescriptor) {
-	w.bool(f.Storage.Packed)
-	if f.Storage.Packed {
-		w.u8(byte(f.Storage.PackedType))
-	} else {
-		w.valueType(f.Storage.Value)
-	}
-	w.bool(f.Mutable)
-}
-
 func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 	if err := validateDefinedTypeDescriptors(v); err != nil {
 		return err
@@ -594,30 +624,33 @@ func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 	for _, d := range v {
 		w.u32(d.RecGroup)
 		w.bool(d.Final)
-		w.uvar(uint64(len(d.Supers)))
-		for _, x := range d.Supers {
-			w.u32(x)
-		}
-		w.bool(d.HasDescribes)
-		if d.HasDescribes {
-			w.u32(d.Describes)
-		}
-		w.bool(d.HasDescriptor)
-		if d.HasDescriptor {
-			w.u32(d.Descriptor)
+		if typeLinksForImage {
+			w.uvar(uint64(len(d.Supers)))
+			for _, x := range d.Supers {
+				w.u32(x)
+			}
+			w.bool(d.HasDescribes)
+			if d.HasDescribes {
+				w.u32(d.Describes)
+			}
+			w.bool(d.HasDescriptor)
+			if d.HasDescriptor {
+				w.u32(d.Descriptor)
+			}
+		} else {
+			w.uvar(0)     // supertypes
+			w.bool(false) // describes
+			w.bool(false) // descriptor
 		}
 		w.u8(byte(d.Kind))
 		switch d.Kind {
 		case CompositeTypeFunction:
 			w.valueTypes(d.Params)
 			w.valueTypes(d.Results)
-		case CompositeTypeStruct:
-			w.uvar(uint64(len(d.Fields)))
-			for _, f := range d.Fields {
-				w.fieldType(f)
+		case CompositeTypeStruct, CompositeTypeArray:
+			if buildfeatures.GC != 0 && aggregateTypesForImage {
+				w.aggregateTypeFields(&d)
 			}
-		case CompositeTypeArray:
-			w.fieldType(d.Array)
 		}
 	}
 	return nil
@@ -644,11 +677,22 @@ func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) er
 	}
 	return nil
 }
-func (w *compiledWriter) offset(o OffsetInit) {
+func (w *compiledWriter) offset(o OffsetInit) error {
+	if !segmentGlobalOffsetsForImage && o.HasGlobal {
+		return fmt.Errorf("compiled metadata uses a global segment offset outside the standalone runtime profile")
+	}
+	if !segmentOffsetExpressionsForImage && len(o.Expr) != 0 {
+		return fmt.Errorf("compiled metadata uses a segment offset expression outside the standalone runtime profile")
+	}
 	w.u32(o.Base)
 	w.bool(o.HasGlobal)
 	w.ivar(o.Global)
-	w.bytes(o.Expr)
+	if segmentOffsetExpressionsForImage {
+		w.bytes(o.Expr)
+	} else {
+		w.uvar(0)
+	}
+	return nil
 }
 func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 	w.uvar(uint64(len(v)))
@@ -658,22 +702,34 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 			return err
 		}
 		w.u8(byte(e.Mode))
-		w.offset(e.Offset)
+		if err := w.offset(e.Offset); err != nil {
+			return err
+		}
 		w.uvar(uint64(len(e.Values)))
 		for _, value := range e.Values {
 			switch {
 			case value.Null:
 				w.u8(0)
 			case value.RepeatPrevious:
+				if !elementRepeatsForImage {
+					return fmt.Errorf("compiled metadata uses an element repeat outside the standalone runtime profile")
+				}
 				w.u8(5)
 			case len(value.Expr) != 0:
+				if !elementExpressionsForImage {
+					return fmt.Errorf("compiled metadata uses an element expression outside the standalone runtime profile")
+				}
 				w.u8(4)
 				w.bytes(value.Expr)
-			case value.HasGlobal && value.I31Wrap:
-				w.u8(3)
-				w.u32(value.GlobalIndex)
 			case value.HasGlobal:
-				w.u8(2)
+				if !elementGlobalsForImage {
+					return fmt.Errorf("compiled metadata uses an element global outside the standalone runtime profile")
+				}
+				if value.I31Wrap {
+					w.u8(3)
+				} else {
+					w.u8(2)
+				}
 				w.u32(value.GlobalIndex)
 			default:
 				w.u8(1)
@@ -683,27 +739,17 @@ func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 	}
 	return nil
 }
-func (w *compiledWriter) compiledData(c *Compiled) {
-	if c.compactData == nil {
-		w.data(c.Data)
-		return
-	}
+func (w *compiledWriter) compiledData(c *Compiled) error {
 	w.uvar(uint64(c.activeDataCount()))
 	for i := 0; i < c.activeDataCount(); i++ {
 		d := c.activeDataAt(i)
 		w.u32(d.MemoryIndex)
-		w.offset(d.Offset)
+		if err := w.offset(d.Offset); err != nil {
+			return err
+		}
 		w.bytes(d.Bytes)
 	}
-}
-
-func (w *compiledWriter) data(v []DataInit) {
-	w.uvar(uint64(len(v)))
-	for _, d := range v {
-		w.u32(d.MemoryIndex)
-		w.offset(d.Offset)
-		w.bytes(d.Bytes)
-	}
+	return nil
 }
 func (w *compiledWriter) passiveData(v []PassiveDataInit) {
 	w.uvar(uint64(len(v)))
@@ -726,6 +772,9 @@ func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 			w.u8(2)
 			w.u32(g.InitFunc)
 		case len(g.InitExpr) != 0:
+			if !globalInitExpressionsForImage {
+				return fmt.Errorf("compiled metadata uses a global initializer expression outside the standalone runtime profile")
+			}
 			w.u8(3)
 			w.bytes(g.InitExpr)
 		default:
@@ -741,7 +790,11 @@ func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 
 func (w *compiledWriter) tables(c *Compiled) error {
 	count := c.tableCount()
-	_, tableModuleEnds, _, _, exactImportNames := c.importModuleEndSections()
+	var tableModuleEnds []uint64
+	var exactImportNames bool
+	if tableImportsForImage {
+		_, tableModuleEnds, _, _, exactImportNames = c.importModuleEndSections()
+	}
 	w.uvar(uint64(count))
 	for i := 0; i < count; i++ {
 		def := c.tableDef(i)
@@ -749,18 +802,22 @@ func (w *compiledWriter) tables(c *Compiled) error {
 			return err
 		}
 		w.bool(def.Addr64)
-		if imp, ok := c.tableImportAt(i); ok {
-			w.u8(1)
-			w.str(imp.Key)
-			moduleEnd := uint64(0)
-			if exactImportNames {
-				moduleEnd = tableModuleEnds[i]
+		if tableImportsForImage {
+			if imp, ok := c.tableImportAt(i); ok {
+				w.u8(1)
+				w.str(imp.Key)
+				moduleEnd := uint64(0)
+				if exactImportNames {
+					moduleEnd = tableModuleEnds[i]
+				}
+				w.uvar(moduleEnd)
+				w.uvar(uint64(imp.Min))
+				w.uvar(uint64(imp.Max))
+				w.bool(imp.HasMax)
+				continue
 			}
-			w.uvar(moduleEnd)
-			w.uvar(uint64(imp.Min))
-			w.uvar(uint64(imp.Max))
-			w.bool(imp.HasMax)
-			continue
+		} else if i == 0 && c.tableImport != "" || def.ImportKey != "" {
+			return fmt.Errorf("compiled metadata uses a table import outside the standalone runtime profile")
 		}
 		w.u8(0)
 		w.uvar(uint64(def.Size))
@@ -768,6 +825,9 @@ func (w *compiledWriter) tables(c *Compiled) error {
 		w.bool(def.HasMax)
 		w.bool(def.HasInitFunc)
 		if def.HasInitFunc {
+			if !tableInitializersForImage {
+				return fmt.Errorf("compiled metadata uses a table function initializer outside the standalone runtime profile")
+			}
 			w.u32(def.InitFunc)
 		}
 	}
@@ -809,6 +869,35 @@ func (w *compiledWriter) gcFrameRoots(rootMap *compiledGCFrameRoots) {
 			w.u32(off)
 		}
 	}
+}
+
+func gcTypeDescNeedsDetails(d gc.TypeDesc) bool {
+	return d.Kind != gc.KindFunc || d.Fields != nil || d.Elem != 0 || d.Size != 0 ||
+		d.ElemSize != 0 || d.Align != 0 || d.HasRefs || d.Super != 0 || d.HasSuper
+}
+
+// gcFunctionTypeDescs writes the existing wire format for function sentinels.
+// The layout and supertype fields must all have their canonical empty values.
+func (w *compiledWriter) gcFunctionTypeDescs(descs []gc.TypeDesc) error {
+	// ID, kind, field presence/count, element kind, three u32 layout fields,
+	// HasRefs, Final, supertype ID and HasSuper. Zero fields remain zero.
+	const kindOffset = 4
+	const finalOffset = kindOffset + 1 + 2 + 1 + 3*4 + 1
+	var row [finalOffset + 1 + 4 + 1]byte
+	row[kindOffset] = byte(gc.KindFunc)
+	w.uvar(uint64(len(descs)))
+	for i, d := range descs {
+		if gcTypeDescNeedsDetails(d) {
+			return fmt.Errorf("compiled metadata GC type descriptor %d exceeds the standalone runtime profile", i)
+		}
+		binary.LittleEndian.PutUint32(row[:kindOffset], uint32(d.ID))
+		row[finalOffset] = 0
+		if d.Final {
+			row[finalOffset] = 1
+		}
+		w.appendBytes(row[:])
+	}
+	return nil
 }
 
 func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {

@@ -96,16 +96,26 @@ func TestSourceContextRetainedPluginCannotRetainFacts(t *testing.T) {
 				t.Fatal(err)
 			}
 			cg := codegen.SourceOptions(codegen.Options{}, m, &a, wasm.ValidationFeatures{})
-			retained := make(chan plugincodegen.ManagedContext, 8)
+			// Worker cleanup may detach the function view before the
+			// test inspects the scratch borrowed during lowering.
+			type retainedAttempt struct {
+				scalar   *shared.ScalarState
+				function int
+			}
+			retained := make(chan retainedAttempt, 8)
 			lowering := &plugincodegen.Lowering{Compatibility: plugincodegen.CompatibilityManaged,
 				Managed: func(ctx plugincodegen.ManagedContext) error {
 					native := (*pluginARM64Context)(ctx.(*managedPluginARM64Context))
-					token := shared.BeginSourceAttempt(&native.f.sc.scalar, m, int(native.f.traceFuncIdx)-m.ImportedFuncCount())
+					attempt := retainedAttempt{
+						scalar:   &native.f.sc.scalar,
+						function: int(native.f.traceFuncIdx) - m.ImportedFuncCount(),
+					}
+					token := shared.BeginSourceAttempt(attempt.scalar, m, attempt.function)
 					if token == nil {
 						return errors.New("worker source context missing")
 					}
 					shared.EndSourceAttempt(token)
-					retained <- ctx
+					retained <- attempt
 					if failure {
 						return errors.New("test lowering stopped")
 					}
@@ -125,13 +135,8 @@ func TestSourceContextRetainedPluginCannotRetainFacts(t *testing.T) {
 			if len(retained) == 0 {
 				t.Fatalf("lowering context was not retained: %v", err)
 			}
-			for ctx := range retained {
-				native := (*pluginARM64Context)(ctx.(*managedPluginARM64Context))
-				// A released scratch owner clears the function state in place.
-				if native.f.sc == nil {
-					continue
-				}
-				token := shared.BeginSourceAttempt(&native.f.sc.scalar, m, 0)
+			for attempt := range retained {
+				token := shared.BeginSourceAttempt(attempt.scalar, m, attempt.function)
 				if token != nil {
 					shared.EndSourceAttempt(token)
 					t.Fatal("retained scratch retained validation facts")

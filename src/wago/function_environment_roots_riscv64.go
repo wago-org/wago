@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_reference_types || !wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -19,7 +19,7 @@ import (
 )
 
 func managedFunctionOwnerRootsStrong(owner *Instance, collector *gc.Collector) bool {
-	if managedFunctionMemberCount.Load() == 0 {
+	if !managedFunctionGraphForImage || managedFunctionMemberCount.Load() == 0 {
 		return true
 	}
 	value, ok := managedFunctionMembers.Load(owner)
@@ -42,26 +42,30 @@ func managedFunctionOwnerRootsStrong(owner *Instance, collector *gc.Collector) b
 // argument/result roots, host slots and clone temporaries are deliberately absent.
 func (s *managedFunctionCollector) bindOwnerSlots(owner *Instance) error {
 	if public := owner.existingPublicGCState(); public != nil {
-		for _, mapping := range public.globalRoots {
+		for _, mapping := range public.globalRootMappings() {
 			if err := s.bindPersistentSlot(owner, gc.SlotGlobal, mapping.SlotIndex); err != nil {
 				return err
 			}
 		}
 	}
+	if !wasmGCBuilt {
+		return nil
+	}
 	if plugin := owner.pluginState.Load(); plugin != nil {
-		for i := uint32(0); i < plugin.gcGlobalRootCount; i++ {
-			if err := s.bindPersistentSlot(owner, gc.SlotGlobal, plugin.gcGlobalRoots[i].SlotIndex); err != nil {
+		for _, mapping := range plugin.stagedGlobalRoots() {
+			if err := s.bindPersistentSlot(owner, gc.SlotGlobal, mapping.SlotIndex); err != nil {
 				return err
 			}
 		}
-		if elements := plugin.gcArrayElements.Load(); elements != nil {
+		roots := plugin.stagedGCObjects()
+		if elements := roots.arrayElements.Load(); elements != nil {
 			for _, slot := range elements.Slots {
 				if err := s.bindPersistentSlot(owner, gc.SlotTable, slot); err != nil {
 					return err
 				}
 			}
 		}
-		if tables := plugin.gcRefTestTable.Load(); tables != nil {
+		if tables := roots.refTestTable.Load(); tables != nil {
 			for _, slots := range tables.slots {
 				for _, slot := range slots {
 					if err := s.bindPersistentSlot(owner, gc.SlotTable, slot); err != nil {
@@ -119,7 +123,7 @@ func (m *managedFunctionMark) traceNativeOwnerRoot(owner *Instance, cursor *mana
 				if len(cell.cell) != 8 {
 					return false, fmt.Errorf("native owner extern global is truncated")
 				}
-				_, ref := compactExternFrameRoot(owner, owner.gc, binary.LittleEndian.Uint64(cell.cell))
+				ref := compactExternOwnerFrameRoot(owner, binary.LittleEndian.Uint64(cell.cell))
 				return false, visit(uint64(ref))
 			}
 			return false, nil
@@ -141,7 +145,7 @@ func (m *managedFunctionMark) traceNativeOwnerRoot(owner *Instance, cursor *mana
 		}
 		// Exact abstract products use their checked collector slots above. Their
 		// descriptor can also contain foreign conversion identities, not compact refs.
-		if rv64GCRefTestAbstract(owner.c) || rv64GCExtern(owner.c) || rv64GCRefCastAbstract(owner.c) || rv64GCBrOnCastAbstract(owner.c) || rv64GCBrOnCastFailAbstract(owner.c) {
+		if owner.c.usesLegacyGCTableRoots() {
 			cursor.index++
 			cursor.element = 0
 			return false, nil
@@ -198,21 +202,11 @@ func (m *managedFunctionMark) traceNativeOwnerRoot(owner *Instance, cursor *mana
 		cursor.element++
 		return false, visit(bits)
 	case 3:
-		if compactExternCollectorCount.Load() == 0 {
-			cursor.phase, cursor.index, cursor.element = 4, 0, 0
-			return false, nil
-		}
-		value, ok := compactExternCollectors.Load(owner.gc)
+		ref, ok := compactExternOwnerPersistentRoot(owner, cursor.index)
 		if !ok {
 			cursor.phase, cursor.index, cursor.element = 4, 0, 0
 			return false, nil
 		}
-		rows := value.owners[owner]
-		if rows == nil || uint64(cursor.index) >= uint64(len(rows.cells)) {
-			cursor.phase, cursor.index, cursor.element = 4, 0, 0
-			return false, nil
-		}
-		ref := rows.cells[cursor.index].root.GetRef()
 		cursor.index++
 		return false, visit(uint64(ref))
 	case 4:
@@ -244,7 +238,7 @@ func (m *managedFunctionMark) traceNativeOwnerRoot(owner *Instance, cursor *mana
 		}
 		word := binary.LittleEndian.Uint64(desc[8+cursor.element*8:])
 		cursor.element++
-		_, ref := compactExternFrameRoot(owner, owner.gc, word)
+		ref := compactExternOwnerFrameRoot(owner, word)
 		return false, visit(uint64(ref))
 
 	default:

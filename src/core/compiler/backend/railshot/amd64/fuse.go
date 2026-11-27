@@ -14,6 +14,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -263,7 +264,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		default:
 			L, ownedL = f.materialize(a), true
 		}
-		if !f.reuseInlineTailArgumentFlags(L, w) {
+		if buildfeatures.TailCall == 0 || !f.reuseInlineTailArgumentFlags(L, w) {
 			f.a.TestSelf(L, w)
 		}
 		if ownedL {
@@ -328,7 +329,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	}
 	f.pinned = f.pinned.add(L)
 	compareStart := f.a.Len()
-	reused := f.tryReuseInlineTailCompare(L, right, w)
+	reused := buildfeatures.TailCall != 0 && f.tryReuseInlineTailCompare(L, right, w)
 	switch right.st.kind {
 	case stConst:
 		if fitsImm32(right.st.cval) {
@@ -367,7 +368,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		f.releaseMemRef(right.st)
 	}
-	if !reused && f.inlineTailCompare.active {
+	if buildfeatures.TailCall != 0 && !reused && f.inlineTailCompare.active {
 		f.inlineTailCompare.lastCompare = compareStart
 	}
 	f.pinned = f.pinned.remove(L)

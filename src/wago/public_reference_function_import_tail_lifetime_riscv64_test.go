@@ -112,7 +112,7 @@ func TestRV64PublicReferenceFunctionImportedTailsCancellationAndClose(t *testing
 						} else {
 							cancel()
 						}
-						if caller.resourcesClosed || selected.resourcesClosed || native.resourcesClosed || caller.pluginState.Load().railshotInvocation.tailGenerationBudget.count == 0 {
+						if caller.resourcesClosed || selected.resourcesClosed || native.resourcesClosed || caller.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count == 0 {
 							t.Fatal("parked imported-tail generation lost roots")
 						}
 						if owned.(*HostFuncRef).Close() == nil {
@@ -143,7 +143,7 @@ func TestRV64PublicReferenceFunctionImportedTailsCancellationAndClose(t *testing
 							t.Fatal("unwind continued private caller or lost static capability")
 						}
 						for _, owner := range []*Instance{caller, selected, native} {
-							if owner.pluginState.Load().railshotInvocation.tailGenerationBudget.count != 0 || owner.pluginState.Load().railshotInvocation.definedTailOwner != nil {
+							if owner.pluginState.Load().railshotInvocation.tailForTest().generationBudget.count != 0 || owner.pluginState.Load().railshotInvocation.tailForTest().definedOwner != nil {
 								t.Fatal("unwind retained proper-tail generation")
 							}
 						}

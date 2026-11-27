@@ -14,6 +14,9 @@ import "fmt"
 // Compiled admission repeats the local-cell source profile before executable
 // publication. No local mutable reference cell may reach a public global handle.
 func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
+	if !rv64MutableFuncrefGlobalsForImage {
+		return false, nil
+	}
 	if rv64PrimitiveReferenceContract(c) {
 		return true, nil
 	}
@@ -56,15 +59,11 @@ func rv64ValidateLocalMutableReferences(c *Compiled) (bool, error) {
 	if rv64MutableFuncrefGlobalLocalCall(c) {
 		return true, nil // Exact exported typed container has one owner-scoped call_ref consumer.
 	}
-	has := false
-	for _, g := range c.Globals {
-		has = has || g.Type == ValFuncRef && g.Mutable
-	}
-	if !has {
+	if !c.hasMutableFuncrefGlobals() {
 		return false, nil
 	}
 	if c.tableCount() != 0 {
-		if !c.nativeReferenceFunctionABI {
+		if !rv64ReferenceFunctionsForImage || !c.nativeReferenceFunctionABI {
 			return false, fmt.Errorf("local mutable reference cells require no tables")
 		}
 		// This full shape proof does not call the mutable-cell helper. Permission

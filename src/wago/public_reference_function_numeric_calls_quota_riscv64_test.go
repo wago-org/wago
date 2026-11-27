@@ -142,7 +142,7 @@ func rv64ReferenceFunctionNumericCallsQuota(t *testing.T, tableStage int) {
 						if _, err := in.Invoke("clear"); err != nil {
 							t.Fatal("fresh generation after start", err)
 						}
-						if state := &in.pluginState.Load().railshotInvocation; state.tailGenerationBudget.count != 0 || state.definedTailOwner != nil || rv64EntryCapability(in) != 0 {
+						if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().generationBudget.count != 0 || state.tailForTest().definedOwner != nil || rv64EntryCapability(in) != 0 {
 							t.Fatal("start quota generation refund")
 						}
 					}

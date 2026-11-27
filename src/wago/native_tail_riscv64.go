@@ -15,8 +15,17 @@ import (
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoder "github.com/wago-org/wago/src/core/encoder/riscv64"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
+
+type rv64NativeTailInvocation struct {
+	dispatcher       *railshot.NativeTailDispatcher
+	policy           rv64TailAllocationPolicy
+	generationBudget rv64NativeTailGenerationBudget
+	activeGeneration *rv64NativeTailGeneration
+	definedOwner     *railshot.NativeTailDefinedOwner
+}
 
 // Reject every unsupported target before caller code publication. Normal Go
 // callbacks use retained synchronous RV64 wrappers in the caller's context.
@@ -26,7 +35,7 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 	if m == nil {
 		return nil
 	}
-	if rv64HasDynamicTail(m) {
+	if hostFunctionImportsBuilt && dynamicNativeTailForImage && rv64HasDynamicTail(m) {
 		// Every canonical imported row can be selected by an indirect reference.
 		// Host rows require scalar wrappers; native rows require genuine frames.
 		for i := 0; i < c.NumImports; i++ {
@@ -66,6 +75,9 @@ func rv64ValidateTailImports(c *Compiled, imports resolvedImports) error {
 		}
 		if p.Kind != 0 {
 			continue // Exact dynamic owners are acquired at entry, before binding.
+		}
+		if !hostFunctionImportsBuilt || !directNativeTailPlansForImage {
+			return fmt.Errorf("%w: RV64 direct tail import exceeds the standalone runtime profile", railshot.ErrUnsupported)
 		}
 		target, ok := imports[c.functionImportBindingKey(int(p.ImportIndex))].(*InstanceExport)
 		if !ok {
@@ -112,8 +124,14 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 		case ValExternRef:
 			out[i] = wasm.ExternRef
 		case ValAnyRef:
+			if !wasmGCBuilt {
+				return nil, fmt.Errorf("RV64 staged tail transport type")
+			}
 			out[i] = wasm.AnyRef
 		case ValI31Ref:
+			if !wasmGCBuilt {
+				return nil, fmt.Errorf("RV64 staged tail transport type")
+			}
 			out[i] = wasm.I31Ref
 		case ValExnRef:
 			out[i] = wasm.RefVal(wasm.AbsRef(wasm.HeapExn))
@@ -125,7 +143,7 @@ func rv64TailTypes(values []ValType) ([]wasm.ValType, error) {
 }
 func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) error {
 	m := rv64NativeTailModule(in.c)
-	if m != nil {
+	if nativeTailPlansForImage && m != nil {
 		for _, p := range m.Plans {
 			if p.Kind > 2 {
 				return fmt.Errorf("%w: RV64 dynamic tail requires qualified native owners", railshot.ErrUnsupported)
@@ -135,9 +153,13 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 	if err := rv64PrepareTailTargets(in, imports, sharedBase, sharedOffsets, ownedAddr); err != nil {
 		return err
 	}
-	if m == nil || len(m.Plans) == 0 || rv64StaticTailPlanCount(m) == 0 {
+	if !staticNativeTailForImage || rv64StaticTailPlanCount(m) == 0 {
 		return nil
 	}
+	return rv64PrepareStaticNativeTail(in, m, imports, sharedBase, sharedOffsets, ownedAddr)
+}
+
+func rv64PrepareStaticNativeTail(in *Instance, m *encoder.NativeTailModule, imports resolvedImports, sharedBase uintptr, sharedOffsets []int, ownedAddr map[uint32]uint64) error {
 	// Pending failed cleanup blocks further factory allocations for this module.
 	cc := in.c.loadCodeCache()
 	cc.mu.Lock()
@@ -197,10 +219,13 @@ func railshotPrepareNativeTail(in *Instance, imports resolvedImports, sharedBase
 	}
 	owner, err := railshot.NewNativeTailDispatcherInArena(sites, len(in.c.code), in.ar)
 	// Install cleanup ownership even if publication failed partway through.
-	in.ensurePluginState().railshotInvocation.tailDispatcher = owner
+	in.ensurePluginState().railshotInvocation.tail.get().dispatcher = owner
 	return err
 }
 func railshotReleaseNativeTail(in *Instance) {
+	if !nativeTailForImage {
+		return
+	}
 	state := in.pluginState.Load()
 	if state == nil {
 		return
@@ -209,8 +234,15 @@ func railshotReleaseNativeTail(in *Instance) {
 	// including reference-only instances without a tail code dispatcher.
 	state.railshotInvocation.nativeImports = nil
 	state.railshotInvocation.tailTargets = nil
-	state.railshotInvocation.definedTailOwner = nil
-	owner := state.railshotInvocation.tailDispatcher
+	if !nativeTailPlansForImage {
+		return
+	}
+	tail := state.railshotInvocation.tail.get()
+	tail.definedOwner = nil
+	if !staticNativeTailForImage {
+		return
+	}
+	owner := tail.dispatcher
 	if owner == nil {
 		return
 	}
@@ -218,36 +250,45 @@ func railshotReleaseNativeTail(in *Instance) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	if err := owner.Close(); err != nil {
-		in.c.ensureCompileIndexes().railshotTail.retired = append(in.c.ensureCompileIndexes().railshotTail.retired, owner)
+		storage := in.c.ensureCompileIndexes().railshotTail.tailCode.get()
+		storage.retired = append(storage.retired, owner)
 	}
-	state.railshotInvocation.tailDispatcher = nil
+	tail.dispatcher = nil
 }
 
 // Caller holds codeCache.mu. Failed detached mappings remain owned by the
 // module, and are retried before its next instance/publication allocation.
 func railshotRetryNativeTail(c *Compiled) error {
+	if !nativeTailPlansForImage {
+		return nil
+	}
 	indexes := c.loadCompileIndexes()
 	if indexes == nil {
 		return nil
 	}
-	owners := indexes.railshotTail.retired
-	retained := owners[:0]
+	storage := indexes.railshotTail.tailCode.get()
 	var errs []error
-	for _, owner := range owners {
-		if err := owner.Close(); err != nil {
-			retained = append(retained, owner)
-			errs = append(errs, err)
+	if staticNativeTailForImage {
+		owners := storage.retired
+		retained := owners[:0]
+		for _, owner := range owners {
+			if err := owner.Close(); err != nil {
+				retained = append(retained, owner)
+				errs = append(errs, err)
+			}
 		}
+		clear(owners[len(retained):])
+		storage.retired = retained
 	}
-	clear(owners[len(retained):])
-	indexes.railshotTail.retired = retained
-	errs = append(errs, rv64RetryRetiredTailGenerations(&indexes.railshotTail, (*railshot.NativeTailDispatcher).Close))
+	if dynamicNativeTailForImage {
+		errs = append(errs, rv64RetryRetiredTailGenerations(storage, (*railshot.NativeTailDispatcher).Close))
+	}
 	return errors.Join(errs...)
 }
 
 // Caller holds codeCache.mu. The close operation is passed explicitly so tests
 // can keep failed owners charged across repeated cleanup attempts.
-func rv64RetryRetiredTailGenerations(state *railshotTailCompiledState, closeMapping func(*railshot.NativeTailDispatcher) error) error {
+func rv64RetryRetiredTailGenerations(state *rv64NativeTailCode, closeMapping func(*railshot.NativeTailDispatcher) error) error {
 	var errs []error
 	generations := state.retiredGenerations
 	pending := generations[:0]

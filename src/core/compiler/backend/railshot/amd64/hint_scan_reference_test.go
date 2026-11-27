@@ -146,6 +146,7 @@ func (s *byteBodyScanner) referenceScanExpr133(depth int, loopDepth int, curLoop
 				s.h.flags.set(hintHasTailCall)
 			}
 		case 0x14, 0x15: // call_ref, return_call_ref
+			s.h.noteBoundaryEvent(shared.LocalEventCall, depth)
 			if tape := s.h.inlineCaller; tape != nil {
 				tape.blocked = true
 			}

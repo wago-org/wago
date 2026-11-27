@@ -29,19 +29,37 @@ type tailRAFunction struct {
 	code               *coreruntime.CodeBuffer
 	published          *NativeTailCodeImage
 	snapshot           []byte
-	info               FunctionInfo
+	info               tailRAFunctionInfo
 	signature          *wasm.CompType
 	job                *coreruntime.JobMemory
 	context, directory []byte
 }
 
+// tailRAFunctionInfo holds the physical entry and invocation ABI validated
+// by a native-tail owner.
+type tailRAFunctionInfo struct {
+	Entry, CodeBytes, FrameBytes, FrameHeaderBytes int
+	Params, Results                                int
+	functionIndex                                  uint32
+	production, interruptible, invocationContext   bool
+}
+
+func (i *FunctionInfo) tailInfo() tailRAFunctionInfo {
+	return tailRAFunctionInfo{
+		Entry: i.Entry, CodeBytes: i.CodeBytes, FrameBytes: i.FrameBytes, FrameHeaderBytes: i.FrameHeaderBytes,
+		Params: i.Params, Results: i.Results,
+		functionIndex: i.mode.functionIndex, production: i.mode.production,
+		interruptible: i.mode.interruptible, invocationContext: i.mode.invocationContext,
+	}
+}
+
 func tailRAPointer(b []byte) uintptr { return uintptr(unsafe.Pointer(unsafe.SliceData(b))) }
 
-func (f tailRAFunction) validate(caller bool) error {
+func (f *tailRAFunction) validate(caller bool) error {
 	if err := f.validateFrame(caller); err != nil {
 		return err
 	}
-	if err := tailRASignatureMode(f.signature, f.info.mode.invocationContext); err != nil {
+	if err := tailRASignatureMode(f.signature, f.info.invocationContext); err != nil {
 		return err
 	}
 	if f.info.Params != swarSignatureSlots(f.signature.Params) || f.info.Results != swarSignatureSlots(f.signature.Results) {
@@ -52,7 +70,7 @@ func (f tailRAFunction) validate(caller bool) error {
 
 // Internal direct-only functions still retain real framed code and physical
 // owners. Their absent callable signature never relaxes this authentication.
-func (f tailRAFunction) validateFrame(caller bool) error {
+func (f *tailRAFunction) validateFrame(caller bool) error {
 	if err := f.validateCode(); err != nil {
 		return err
 	}
@@ -65,7 +83,7 @@ func (f tailRAFunction) validateFrame(caller bool) error {
 		return unsupported("private tail frozen code/context/owner")
 	}
 	i := f.info
-	if !i.mode.production || !i.mode.interruptible || i.Entry < 0 || i.Entry&15 != 0 || i.CodeBytes <= 0 || i.CodeBytes&3 != 0 || i.Entry > len(f.snapshot) || i.CodeBytes > len(f.snapshot)-i.Entry || i.FrameBytes < 16 || i.FrameBytes > MaxFrameBytes || i.FrameBytes&15 != 0 || i.FrameHeaderBytes != 16 && i.FrameHeaderBytes != callFrameHeader || caller && i.FrameHeaderBytes != callFrameHeader {
+	if !i.production || !i.interruptible || i.Entry < 0 || i.Entry&15 != 0 || i.CodeBytes <= 0 || i.CodeBytes&3 != 0 || i.Entry > len(f.snapshot) || i.CodeBytes > len(f.snapshot)-i.Entry || i.FrameBytes < 16 || i.FrameBytes > MaxFrameBytes || i.FrameBytes&15 != 0 || i.FrameHeaderBytes != 16 && i.FrameHeaderBytes != callFrameHeader || caller && i.FrameHeaderBytes != callFrameHeader {
 		return unsupported("private tail framed entry")
 	}
 	if f.published != nil {
@@ -85,7 +103,7 @@ func (f tailRAFunction) validateFrame(caller bool) error {
 		return unsupported("private tail canonical context anchor")
 	}
 	// Existing production framing begins with the authoritative fence load.
-	// The trusted compiler's immutable FunctionInfo/source snapshot is retained;
+	// The authenticated entry metadata and source snapshot are retained;
 	// a claimed arbitrary instruction address is not accepted as a framed entry.
 	expected := uint32(4096-72)<<20 | uint32(enc.X25)<<15 | 3<<12 | uint32(enc.X29)<<7 | 0x03
 	if i.CodeBytes < 4 || binary.LittleEndian.Uint32(f.snapshot[i.Entry:]) != expected {
@@ -167,7 +185,8 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 		code  tailRACodeKey
 		entry int
 	}]int)
-	for _, site := range s.sites {
+	for i := range s.sites {
+		site := &s.sites[i]
 		if err := site.caller.validate(true); err != nil {
 			return 0, 0, err
 		}
@@ -193,7 +212,7 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 		if perFunction[key] > maxFunctionCallSites || len(perFunction) > MaxFunctions {
 			return 0, 0, unsupported("private tail per-function site bound")
 		}
-		for _, f := range []tailRAFunction{site.caller, site.target} {
+		for _, f := range [2]*tailRAFunction{&site.caller, &site.target} {
 			if !seenCode[f.codeKey()] {
 				if len(f.snapshot) > MaxCodeBytes-codeBytes {
 					return 0, 0, unsupported("private tail combined code bound")
@@ -215,7 +234,7 @@ func tailRAOwnedBound(s tailRAOwnerSpec) (int, int, error) {
 			return 0, 0, unsupported("private tail combined dispatcher bound")
 		}
 		codeBytes += bound
-		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: site.target.signature.Params, results: site.target.signature.Results, sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: s.arguments, resultRanges: s.results, continuationRanges: s.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
+		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: site.target.signature.Params, results: site.target.signature.Results, sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: s.arguments, resultRanges: s.results, continuationRanges: s.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
 		if err := p.validate(); err != nil {
 			return 0, 0, err
 		}
@@ -246,8 +265,9 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 		return nil, err
 	}
 	seen := make(map[tailRACodeKey]bool)
-	for _, site := range s.sites {
-		for _, f := range []tailRAFunction{site.caller, site.target} {
+	for i := range s.sites {
+		site := &s.sites[i]
+		for _, f := range [2]*tailRAFunction{&site.caller, &site.target} {
 			if !seen[f.codeKey()] {
 				if err := f.publishCode(); err != nil {
 					return nil, err
@@ -265,8 +285,9 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 	o.spec.sites = append([]tailRAOwnerSite(nil), s.sites...)
 	helperCapacity := bound - len(s.exit.Bytes())
 	seen = make(map[tailRACodeKey]bool)
-	for _, site := range s.sites {
-		for _, f := range []tailRAFunction{site.caller, site.target} {
+	for i := range s.sites {
+		site := &s.sites[i]
+		for _, f := range [2]*tailRAFunction{&site.caller, &site.target} {
 			if !seen[f.codeKey()] {
 				helperCapacity -= len(f.snapshot)
 				seen[f.codeKey()] = true
@@ -297,8 +318,9 @@ func newTailRAOwnerPublishWith(s tailRAOwnerSpec, allocate func(int) (*corerunti
 	binary.LittleEndian.PutUint32(o.capability[8:], tailRAVersion)
 	binary.LittleEndian.PutUint32(o.capability[12:], uint32(len(s.sites)))
 	exit := s.exit.Base()
-	for i, site := range s.sites {
-		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.mode.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: append([]wasm.ValType(nil), site.target.signature.Params...), results: append([]wasm.ValType(nil), site.target.signature.Results...), sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: o.spec.arguments, resultRanges: o.spec.results, continuationRanges: o.spec.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
+	for i := range s.sites {
+		site := &s.sites[i]
+		p := tailRAProofSite{frameBytes: site.caller.info.FrameBytes, functionIndex: site.caller.info.functionIndex, sourcePC: site.sourcePC, callerHome: site.caller.job.LinMemBase(), callerContext: tailRAPointer(site.caller.context), target: nativeImportTarget{entry: site.target.codeBase() + uintptr(site.target.info.Entry), home: site.target.job.LinMemBase(), context: tailRAPointer(site.target.context), hostTrampoline: s.hostTrampoline}, params: append([]wasm.ValType(nil), site.target.signature.Params...), results: append([]wasm.ValType(nil), site.target.signature.Results...), sourceBase: site.sourceBase, sourceStride: site.sourceStride, argumentRanges: o.spec.arguments, resultRanges: o.spec.results, continuationRanges: o.spec.continuations, stackLimit: s.stackLimit, stackTop: s.stackTop}
 		finalize, err := tailRAFinalize(p, exit)
 		if err != nil {
 			return o, err

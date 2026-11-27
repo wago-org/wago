@@ -72,57 +72,6 @@ var stagedGCStructLeaderPins = []stagedGCStructLeaderPin{
 	{Filename: "struct.9.wasm", CommandLine: 144, SourceLine: 160, Size: 514, SHA256: "96a47580d9d86053fdc3306a59b2213fd581b9ba1987da0c240fccb7be1f6e58", Product: stagedGCStructPacked, Actions: []string{"return:get_packed_g0_0", "return:get_packed_g1_0", "return:get_packed_g0_1", "return:get_packed_g1_1", "return:get_packed_g0_2", "return:get_packed_g1_2", "return:get_packed_g0_3", "return:get_packed_g1_3", "return:set_get_packed_g0_1", "return:set_get_packed_g0_3"}},
 }
 
-func (p stagedGCStructProduct) String() string {
-	switch p {
-	case stagedGCStructGeneric:
-		return "generic"
-	case stagedGCStructDeclarations:
-		return "declarations"
-	case stagedGCStructBindings:
-		return "bindings"
-	case stagedGCStructNamedGets:
-		return "named-field-get"
-	case stagedGCStructBasic:
-		return "basic-new-get-set"
-	case stagedGCStructNullDereference:
-		return "null-dereference"
-	case stagedGCStructPacked:
-		return "packed-fields"
-	case stagedGCStructNumericLocal:
-		return "numeric-local-helper"
-	case stagedGCStructNumericGlobals:
-		return "numeric-global-roots"
-	case stagedGCStructRefTestTable:
-		return "struct-table-ref-test"
-	case stagedGCStructRefTestConcrete:
-		return "official-concrete-ref-test"
-	case stagedGCStructRefTestAbstract:
-		return "official-abstract-ref-test"
-	case stagedGCStructExtern:
-		return "official-extern-conversion"
-	case stagedGCStructRefEq:
-		return "official-reference-equality"
-	case stagedGCStructRefCastAbstract:
-		return "official-abstract-reference-cast"
-	case stagedGCStructRefCastConcrete:
-		return "official-concrete-reference-cast"
-	case stagedGCStructBrOnCastAbstract:
-		return "official-abstract-branch-on-cast"
-	case stagedGCStructBrOnCastConcrete:
-		return "official-concrete-branch-on-cast"
-	case stagedGCStructBrOnCastNullability:
-		return "official-nullability-branch-on-cast"
-	case stagedGCStructBrOnCastFailAbstract:
-		return "official-abstract-branch-on-cast-fail"
-	case stagedGCStructBrOnCastFailConcrete:
-		return "official-concrete-branch-on-cast-fail"
-	case stagedGCStructBrOnCastFailNullability:
-		return "official-nullability-branch-on-cast-fail"
-	default:
-		return "unknown"
-	}
-}
-
 func (p stagedGCStructProduct) gateReason() string {
 	switch p {
 	case stagedGCStructGeneric:

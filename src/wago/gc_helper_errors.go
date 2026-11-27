@@ -13,6 +13,23 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
+type gcStructHelperError struct{ err error }
+type gcStructHelperTrap struct{ code coreruntime.TrapCode }
+
+func (e gcStructHelperError) Error() string { return e.err.Error() }
+
+func setGCHelperPanicError(value any, err *error) bool {
+	switch helper := value.(type) {
+	case gcStructHelperTrap:
+		*err = &coreruntime.TrapError{Code: helper.code}
+	case gcStructHelperError:
+		*err = fmt.Errorf("wago: WasmGC struct helper: %w", helper.err)
+	default:
+		return false
+	}
+	return true
+}
+
 // Keep panic-value construction and formatting shared across GC validation
 // failures. Callers still panic with the original private values, so dispatcher
 // recovery and trap codes retain their existing semantics.

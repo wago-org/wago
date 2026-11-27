@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -80,9 +81,12 @@ func generate(root string) ([]byte, error) {
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		f, err := parser.ParseFile(fset, filepath.Join(root, implDir, name), nil, parser.SkipObjectResolution)
+		f, err := parser.ParseFile(fset, filepath.Join(root, implDir, name), nil, parser.SkipObjectResolution|parser.ParseComments)
 		if err != nil {
 			return nil, err
+		}
+		if standaloneOnly(f) {
+			continue
 		}
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
@@ -153,6 +157,35 @@ func generate(root string) ([]byte, error) {
 		return nil, fmt.Errorf("format generated source: %w\n----\n%s", err, buf.Bytes())
 	}
 	return src, nil
+}
+
+// standaloneOnly keeps generated-launcher entry points out of the public API.
+func standaloneOnly(file *ast.File) bool {
+	for _, group := range file.Comments {
+		if group.Pos() >= file.Package {
+			break
+		}
+		for _, comment := range group.List {
+			if constraint.IsGoBuild(comment.Text) {
+				expr, err := constraint.Parse(comment.Text)
+				return err == nil && requiresStandalone(expr)
+			}
+		}
+	}
+	return false
+}
+
+func requiresStandalone(expr constraint.Expr) bool {
+	switch expr := expr.(type) {
+	case *constraint.TagExpr:
+		return expr.Tag == "wago_standalone" || expr.Tag == "wago_standalone_generator"
+	case *constraint.AndExpr:
+		return requiresStandalone(expr.X) || requiresStandalone(expr.Y)
+	case *constraint.OrExpr:
+		return requiresStandalone(expr.X) && requiresStandalone(expr.Y)
+	default:
+		return false
+	}
 }
 
 func emitConstLikeBlock(buf *bytes.Buffer, keyword string, names []string) {

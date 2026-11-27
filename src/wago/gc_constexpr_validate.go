@@ -10,6 +10,7 @@ package wago
 import (
 	"fmt"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -85,8 +86,8 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 		if err != nil {
 			return err
 		}
-		switch op {
-		case 0x0b:
+		switch {
+		case op == 0x0b:
 			if r.BytesLeft() != 0 {
 				return fmt.Errorf("instructions follow end")
 			}
@@ -94,7 +95,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				return fmt.Errorf("result stack has %d values", len(stack))
 			}
 			return requireSubtype(stack[0], want, "result")
-		case 0x23: // global.get
+		case constExprLowOpcodesForImage&(1<<0x23) != 0 && op == 0x23: // global.get
 			idx, err := r.U32()
 			if err != nil {
 				return err
@@ -102,32 +103,38 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 			if int(idx) >= globalLimit || int(idx) >= len(c.Globals) || c.Globals[idx].Mutable {
 				return fmt.Errorf("global.get %d is unavailable or mutable", idx)
 			}
+			if buildfeatures.SIMD == 0 && c.Globals[idx].Type == ValV128 {
+				return checkCompiledFeatures(CoreFeatureSIMD)
+			}
 			t, err := c.globalExactType(int(idx))
 			if err != nil {
 				return err
 			}
 			stack = append(stack, t)
-		case 0x41:
+		case constExprNumericOpcodesForImage&(1<<(0x41-0x40)) != 0 && op == 0x41:
 			if _, err := r.I32(); err != nil {
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeI32))
-		case 0x42:
+		case constExprNumericOpcodesForImage&(1<<(0x42-0x40)) != 0 && op == 0x42:
 			if _, err := r.I64(); err != nil {
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeI64))
-		case 0x43:
+		case constExprNumericOpcodesForImage&(1<<(0x43-0x40)) != 0 && op == 0x43:
 			if _, err := r.Bytes(4); err != nil {
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeF32))
-		case 0x44:
+		case constExprNumericOpcodesForImage&(1<<(0x44-0x40)) != 0 && op == 0x44:
 			if _, err := r.Bytes(8); err != nil {
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeF64))
-		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e: // integer add/sub/mul
+		case constExprArithmeticOpcodesForImage != 0 && constExprArithmeticOpcodesForImage&(uint64(1)<<(op-0x40)) != 0: // integer add/sub/mul
+			if !buildfeatures.ExtendedConstArithmetic {
+				return checkCompiledFeatures(CoreFeatureExtendedConst)
+			}
 			required := gcConstNumericType(ValueTypeI32)
 			if op >= 0x7c {
 				required = gcConstNumericType(ValueTypeI64)
@@ -147,19 +154,15 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				return err
 			}
 			stack = append(stack, required)
-		case 0xfd:
-			sub, err := r.U32()
-			if err != nil {
-				return err
+		case constExprReferenceOpcodesForImage&(1<<(0xfd-0xc0)) != 0 && op == 0xfd:
+			if buildfeatures.SIMD == 0 {
+				return checkCompiledFeatures(CoreFeatureSIMD)
 			}
-			if sub != 12 {
-				return fmt.Errorf("unsupported SIMD opcode 0xfd %d", sub)
-			}
-			if _, err := r.Bytes(16); err != nil {
+			if _, err := readV128ConstExpr(r); err != nil {
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeV128))
-		case 0xd0: // ref.null
+		case constExprReferenceOpcodesForImage&(1<<(0xd0-0xc0)) != 0 && op == 0xd0: // ref.null
 			exact, heap, err := r.RefHeapType()
 			if err != nil {
 				return err
@@ -169,7 +172,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				return err
 			}
 			stack = append(stack, t)
-		case 0xd2: // ref.func
+		case constExprReferenceOpcodesForImage&(1<<(0xd2-0xc0)) != 0 && op == 0xd2: // ref.func
 			idx, err := r.U32()
 			if err != nil {
 				return err
@@ -180,13 +183,13 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 			}
 			t.Ref.Nullable = false
 			stack = append(stack, t)
-		case 0xfb:
+		case constExprReferenceOpcodesForImage&(1<<(0xfb-0xc0)) != 0 && op == 0xfb:
 			sub, err := r.U32()
 			if err != nil {
 				return err
 			}
-			switch sub {
-			case 0: // struct.new
+			switch {
+			case gcConstOpcodesForImage&(1<<0) != 0 && sub == 0: // struct.new
 				typeID, err := r.U32()
 				if err != nil {
 					return err
@@ -210,7 +213,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				}
 				stack = stack[:base]
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: typeID}}})
-			case 1: // struct.new_default
+			case gcConstOpcodesForImage&(1<<1) != 0 && sub == 1: // struct.new_default
 				typeID, err := r.U32()
 				if err != nil {
 					return err
@@ -224,7 +227,8 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 					}
 				}
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: typeID}}})
-			case 6, 7: // array.new / array.new_default
+			case gcConstOpcodesForImage&(1<<6) != 0 && sub == 6 ||
+				gcConstOpcodesForImage&(1<<7) != 0 && sub == 7: // array.new / array.new_default
 				typeID, err := r.U32()
 				if err != nil {
 					return err
@@ -239,7 +243,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				if err := requireSubtype(length, gcConstNumericType(ValueTypeI32), "array length"); err != nil {
 					return err
 				}
-				if sub == 6 {
+				if gcConstOpcodesForImage&(1<<6) != 0 && sub == 6 {
 					init, err := pop()
 					if err != nil {
 						return err
@@ -255,7 +259,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 					return fmt.Errorf("array.new_default type %d is not defaultable", typeID)
 				}
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: typeID}}})
-			case 8: // array.new_fixed
+			case gcConstOpcodesForImage&(1<<8) != 0 && sub == 8: // array.new_fixed
 				typeID, err := r.U32()
 				if err != nil {
 					return err
@@ -279,7 +283,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				}
 				stack = stack[:base]
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: typeID}}})
-			case 26: // any.convert_extern
+			case gcConstOpcodesForImage&(1<<26) != 0 && sub == 26: // any.convert_extern
 				v, err := pop()
 				if err != nil {
 					return err
@@ -289,7 +293,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 					return err
 				}
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: v.Ref.Nullable, Heap: HeapTypeDescriptor{Abstract: AbstractHeapAny}}})
-			case 27: // extern.convert_any
+			case gcConstOpcodesForImage&(1<<27) != 0 && sub == 27: // extern.convert_any
 				v, err := pop()
 				if err != nil {
 					return err
@@ -299,7 +303,7 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 					return err
 				}
 				stack = append(stack, ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: v.Ref.Nullable, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExtern}}})
-			case 28: // ref.i31
+			case gcConstOpcodesForImage&(1<<28) != 0 && sub == 28: // ref.i31
 				v, err := pop()
 				if err != nil {
 					return err

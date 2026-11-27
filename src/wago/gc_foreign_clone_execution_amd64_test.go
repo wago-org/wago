@@ -102,7 +102,7 @@ func checkForeignCloneExecutionToken(t *testing.T, target *Instance, token GCRef
 		t.Fatal(err)
 	}
 	target.refStore.mu.Lock()
-	entry, ok := target.refStore.gcByToken[token.token]
+	entry, ok := target.refStore.objectTokensLocked()[token.token]
 	target.refStore.mu.Unlock()
 	if !ok || entry.owner != target {
 		t.Fatal("clone token has the wrong owner")

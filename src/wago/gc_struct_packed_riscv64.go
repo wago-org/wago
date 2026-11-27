@@ -104,15 +104,15 @@ func rv64GCStructPackedMetadata(c *Compiled, requireInitializers bool) bool {
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcArrayGlobals) != 0 || d.gcArrayElement != nil ||
-		d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcArrayGlobals()) != 0 || d.gcArrayElement() != nil ||
+		d.hasExceptionTagMetadata() {
 		return false
 	}
 	if requireInitializers {
-		return len(d.gcStructGlobals) == 2 && d.gcStructGlobals[0].GlobalIndex == 0 && d.gcStructGlobals[0].TypeID == 0 && d.gcStructGlobals[0].FieldCount == 4 && !d.gcStructGlobals[0].Default &&
-			slices.Equal(d.gcStructGlobals[0].Bits, []uint64{0, 1, 2, 3}) && d.gcStructGlobals[1].GlobalIndex == 1 && d.gcStructGlobals[1].TypeID == 0 && d.gcStructGlobals[1].FieldCount == 4 && !d.gcStructGlobals[1].Default && slices.Equal(d.gcStructGlobals[1].Bits, []uint64{254, 255, 65534, 65535})
+		return len(d.gcStructGlobals()) == 2 && d.gcStructGlobals()[0].GlobalIndex == 0 && d.gcStructGlobals()[0].TypeID == 0 && d.gcStructGlobals()[0].FieldCount == 4 && !d.gcStructGlobals()[0].Default &&
+			slices.Equal(d.gcStructGlobals()[0].Bits, []uint64{0, 1, 2, 3}) && d.gcStructGlobals()[1].GlobalIndex == 1 && d.gcStructGlobals()[1].TypeID == 0 && d.gcStructGlobals()[1].FieldCount == 4 && !d.gcStructGlobals()[1].Default && slices.Equal(d.gcStructGlobals()[1].Bits, []uint64{254, 255, 65534, 65535})
 	}
-	return len(d.gcStructGlobals) == 0
+	return len(d.gcStructGlobals()) == 0
 }
 
 func rv64GCStructPacked(c *Compiled) bool { return rv64GCStructPackedMetadata(c, true) }

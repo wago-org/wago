@@ -12,6 +12,7 @@ package riscv64
 import (
 	"bytes"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/riscv64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -89,7 +90,7 @@ func elementInitializerExpression(expr wasm.Expr, m *wasm.Module, mode wasm.Elem
 // profile: Core table initializers may only read imported globals. Validate the
 // source even when the initial table size is zero.
 func admitTableInitializer(expr wasm.Expr, m *wasm.Module, expected ...wasm.RefType) (global bool, err error) {
-	if len(expected) == 1 && immediateCollectorType(wasm.RefVal(expected[0])) && admitRV64ImmediateReferenceModule(m) && immediateReferenceInitializer(expr, m) {
+	if buildfeatures.GC != 0 && len(expected) == 1 && immediateCollectorType(wasm.RefVal(expected[0])) && admitRV64ImmediateReferenceModule(m) && immediateReferenceInitializer(expr, m) {
 		return true, nil
 	}
 	want := wasm.FuncRef
@@ -121,7 +122,7 @@ func admitTableInitializer(expr wasm.Expr, m *wasm.Module, expected ...wasm.RefT
 
 // Bound decoded resource metadata before validation or payload copies.
 func ownedTableBounds(m *wasm.Module, public bool) error {
-	immediate := public && admitRV64ImmediateReferenceModule(m)
+	immediate := buildfeatures.GC != 0 && public && admitRV64ImmediateReferenceModule(m)
 	if len(m.Imports) > productionImportLimit(public) {
 		return unsupported("table import count bound")
 	}
@@ -151,7 +152,13 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 	syntheticAggregateInitializers := 0
 	for i := range m.Tables {
 		table := &m.Tables[i]
-		if table.Init == nil || !rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
+		if table.Init == nil {
+			continue
+		}
+		if !buildfeatures.ReferenceSignatures {
+			return unsupported("table initializer expression requires reference types")
+		}
+		if !rootedScalarTableReference(wasm.RefVal(table.Type.Ref), m) {
 			continue
 		}
 		if table.Type.Ref.Nullable() && wasm.ExternReferenceType(wasm.RefVal(table.Type.Ref)) && rootedScalarAggregateNullExpression(*table.Init, table.Type.Ref) {
@@ -177,7 +184,7 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		}
 		remaining -= int(table.Type.Limits.Min)
 	}
-	if public && len(m.Tables) == 1 && m.Tables[0].Init != nil && !rootedScalarTableReference(wasm.RefVal(m.Tables[0].Type.Ref), m) {
+	if buildfeatures.ReferenceSignatures && public && len(m.Tables) == 1 && m.Tables[0].Init != nil && !rootedScalarTableReference(wasm.RefVal(m.Tables[0].Type.Ref), m) {
 		global, err := admitTableInitializer(*m.Tables[0].Init, m, m.Tables[0].Type.Ref)
 		if err != nil {
 			return err
@@ -199,6 +206,12 @@ func ownedTableBounds(m *wasm.Module, public bool) error {
 		remaining -= len(e.Kind.Funcs) + len(e.Kind.Exprs)
 		if remaining < 0 {
 			return unsupported("element payload bound")
+		}
+		if !buildfeatures.ReferenceSignatures {
+			if e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Exprs) != 0 {
+				return unsupported("element expressions require reference types")
+			}
+			continue
 		}
 		aggregate := rootedScalar && e.Kind.Kind == wasm.ElemTypedExprs && rootedScalarTableReference(wasm.RefVal(e.Kind.Ref), m)
 		for _, expr := range e.Kind.Exprs {
@@ -1834,7 +1847,7 @@ func admitOwnedTable64IndirectCall(m *wasm.Module, production, public bool) bool
 }
 
 func admitOwnedTable64IndirectTail(m *wasm.Module, production, public bool) bool {
-	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 {
+	if buildfeatures.TailCall == 0 || !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 3 || len(m.Code) != 3 || len(m.Tables) != 1 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 3 {
 		return false
 	}
 	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
@@ -1959,7 +1972,7 @@ func admitOwnedTwoTable64IndirectCall(m *wasm.Module, production, public bool) b
 }
 
 func admitOwnedTwoTable64IndirectTail(m *wasm.Module, production, public bool) bool {
-	if !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 6 {
+	if buildfeatures.TailCall == 0 || !production || !public || len(m.Imports) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 5 || len(m.Code) != 5 || len(m.Tables) != 2 || len(m.Elements) != 1 || m.Start != nil || len(m.Exports) != 6 {
 		return false
 	}
 	if len(m.Memories) != 0 || len(m.Globals) != 0 || len(m.Tags) != 0 || len(m.StringRefs) != 0 || len(m.Data) != 0 || m.DataCount != nil || m.BranchHints != nil || m.UsesCompactImports {
@@ -2098,10 +2111,11 @@ func admitMixedTable64ActiveIndirectCall(m *wasm.Module, production, public bool
 }
 
 func admitMixedTable64ActiveIndirectTail(m *wasm.Module, production, public bool) bool {
-	return admitMixedTable64ActiveIndirectProduct(m, production, public, true)
+	return buildfeatures.TailCall != 0 && admitMixedTable64ActiveIndirectProduct(m, production, public, true)
 }
 
 func admitMixedTable64ActiveIndirectProduct(m *wasm.Module, production, public, tail bool) bool {
+	tail = buildfeatures.TailCall != 0 && tail
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || m.TableCount() != 2 || len(m.Tables) != 1 || len(m.Types) != 2 || len(m.FuncTypes) != 4 || len(m.Code) != 4 || len(m.Elements) != 2 || m.Start != nil || len(m.Exports) != 4 {
 		return false
 	}
@@ -2249,14 +2263,15 @@ func admitOwnedTwoTable32Indirect(m *wasm.Module, production, public bool) bool 
 // canonical table owner graph; the consumer has no local reference payload or
 // initializer that can manufacture a row.
 func admitImportedTable64Indirect(m *wasm.Module, production, public bool) bool {
-	return admitImportedTable64IndirectProduct(m, production, public, false) || admitImportedTable64IndirectProduct(m, production, public, true)
+	return admitImportedTable64IndirectProduct(m, production, public, false) || admitImportedTable64IndirectTail(m, production, public)
 }
 
 func admitImportedTable64IndirectTail(m *wasm.Module, production, public bool) bool {
-	return admitImportedTable64IndirectProduct(m, production, public, true)
+	return buildfeatures.TailCall != 0 && admitImportedTable64IndirectProduct(m, production, public, true)
 }
 
 func admitImportedTable64IndirectProduct(m *wasm.Module, production, public, tail bool) bool {
+	tail = buildfeatures.TailCall != 0 && tail
 	if !production || !public || len(m.Imports) != 1 || m.ImportedTableCount() != 1 || len(m.Tables) != 0 || len(m.Types) != 2 || len(m.FuncTypes) != 1 || len(m.Code) != 1 || len(m.Elements) != 0 || m.Start != nil {
 		return false
 	}
@@ -2578,23 +2593,23 @@ func admitOwnedTwoTable32InitDrop(m *wasm.Module, production, public bool) bool 
 // Imported storage uses the retained canonical target ABI, never the private
 // same-instance pilot. Count and capacity limits precede validation/copies.
 func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, error) {
-	immediate := production && importedTables && admitRV64ImmediateReferenceModule(m)
+	immediate := buildfeatures.GC != 0 && production && importedTables && admitRV64ImmediateReferenceModule(m)
 	rootedScalar := admitRV64GCRootedScalarModule(m)
 	// Exact i31-table products use compact immediate carriers rather than
 	// callable funcref descriptors. Their classifiers pin the sole table and
 	// either every table instruction/segment or the imported initializer.
-	if production && importedTables && (admitRV64I31TableProduct(m) || admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m)) {
+	if buildfeatures.GC != 0 && production && importedTables && (admitRV64I31TableProduct(m) || admitRV64GCRefEq(m) || admitRV64GCRefTestTable(m) || admitRV64GCRefTestConcrete(m) || admitRV64GCRefCastConcrete(m) || admitRV64GCBrOnCastConcrete(m) || admitRV64GCBrOnCastFailConcrete(m) || admitRV64GCRefTestAbstract(m) || admitRV64GCExtern(m) || admitRV64GCRefCastAbstract(m) || admitRV64GCBrOnCastAbstract(m) || admitRV64GCBrOnCastFailAbstract(m)) {
 		return true, nil
 	}
 	// The exact typed-table subtype product pins its indexed table and typed
 	// element payload in full; generic public-table admission is funcref-only.
-	if production && importedTables && admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) {
+	if buildfeatures.GC != 0 && production && importedTables && admitRV64GCTypeSubtypingRuntimeTypedTableCall(m) {
 		return true, nil
 	}
 	if err := ownedTableBounds(m, production && importedTables); err != nil {
 		return false, err
 	}
-	if admitRV64GCArrayReference(m) {
+	if buildfeatures.GC != 0 && admitRV64GCArrayReference(m) {
 		return false, nil
 	}
 	if production && importedTables && isCore3RefIsNullExecution(m) {
@@ -2615,8 +2630,11 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		if !ok {
 			return false, unsupported("public table index")
 		}
-		publicCarrier := importedTables && (internalReferenceTypes{publicReferences: true, decoded: m.Types, sourceDirectory: sourceFunctionTypeDirectory{module: m}}).publicFunctionReference(wasm.RefVal(t.Ref))
-		if !publicCarrier && !(immediate && immediateCollectorType(wasm.RefVal(t.Ref))) && !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) && !(rootedScalar && rootedScalarTableReference(wasm.RefVal(t.Ref), m)) || t.Limits.Addr64 && !importedTables && !admitStateOnlyTable64(m, production, importedTables) && !admitOwnedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64ActiveElement(m, production, importedTables) && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) && !admitOwnedTwoTable64Size(m, production, importedTables) && !admitMixedTable64Size(m, production, importedTables) && !admitMixedTable64GetSet(m, production, importedTables) && !admitMixedTable64Grow(m, production, importedTables) && !admitMixedTable64Fill(m, production, importedTables) && !admitMixedTable64Copy(m, production, importedTables) && !admitMixedTable64CrossCopy(m, production, importedTables) && !admitMixedTable64InitDrop(m, production, importedTables) && !admitMixedTable64Indirect(m, production, importedTables) && !admitOwnedTwoTable64GetSet(m, production, importedTables) && !admitOwnedTwoTable64Grow(m, production, importedTables) && !admitOwnedTwoTable64Fill(m, production, importedTables) && !admitOwnedTwoTable64Copy(m, production, importedTables) && !admitOwnedTwoTable64CrossCopy(m, production, importedTables) && !admitOwnedTwoTable64InitDrop(m, production, importedTables) && !admitOwnedTwoTable64Indirect(m, production, importedTables) && !admitOwnedTable64Size(m, production, importedTables) && !admitOwnedTable64Grow(m, production, importedTables) && !admitOwnedTable64GetSet(m, production, importedTables) && !admitOwnedTable64Indirect(m, production, importedTables) && !admitImportedTable64Indirect(m, production, importedTables) && !admitOwnedTable64Fill(m, production, importedTables) && !admitOwnedTable64Copy(m, production, importedTables) && !admitOwnedTable64InitDrop(m, production, importedTables) && !admitImportedTable64Size(m, production, importedTables) && !admitImportedTable64GetSet(m, production, importedTables) && !admitImportedTable64Grow(m, production, importedTables) && !admitImportedTable64Fill(m, production, importedTables) && !admitImportedTable64Copy(m, production, importedTables) && !admitImportedTable64InitDrop(m, production, importedTables) {
+		if t.Limits.Addr64 && (buildfeatures.Table64 == 0 || !importedTables && !admitLegacyTable64(m, production, importedTables)) {
+			return false, unsupported("private nullable funcref table32 only")
+		}
+		publicCarrier := buildfeatures.ReferenceSignatures && importedTables && (internalReferenceTypes{publicReferences: true, decoded: m.Types, sourceDirectory: sourceFunctionTypeDirectory{module: m}}).publicFunctionReference(wasm.RefVal(t.Ref))
+		if !publicCarrier && !(immediate && immediateCollectorType(wasm.RefVal(t.Ref))) && !wasm.EqualValType(wasm.RefVal(t.Ref), wasm.FuncRef) && !(rootedScalar && rootedScalarTableReference(wasm.RefVal(t.Ref), m)) {
 			return false, unsupported("private nullable funcref table32 only")
 		}
 	}
@@ -2641,7 +2659,7 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 		if !hasTable && e.Mode.Kind != wasm.ElemDeclarative && e.Mode.Kind != wasm.ElemPassive {
 			return false, unsupported("table-free elements must be passive or declarative")
 		}
-		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !importedTables && !rootedScalar && !admitMixedTable64DualActiveElements(m, production, importedTables) && !admitMixedTable64DualActiveVectors(m, production, importedTables) && !admitMixedTable64ActiveIndirect(m, production, importedTables) {
+		if (e.Mode.Kind != wasm.ElemActive && e.Mode.Kind != wasm.ElemPassive && e.Mode.Kind != wasm.ElemDeclarative) || e.Mode.Table != 0 && !importedTables && !rootedScalar && !(buildfeatures.Table64 != 0 && admitLegacyIndexedElements(m, production, importedTables)) {
 			return false, unsupported("element mode/table")
 		}
 		switch e.Kind.Kind {
@@ -2650,6 +2668,9 @@ func admitTableProfile(m *wasm.Module, production, importedTables bool) (bool, e
 				return false, unsupported("legacy element expression payload")
 			}
 		case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+			if !buildfeatures.ReferenceSignatures {
+				return false, unsupported("element expressions require reference types")
+			}
 			immediateElements := immediate && e.Kind.Kind == wasm.ElemTypedExprs && immediateCollectorType(wasm.RefVal(e.Kind.Ref))
 			nulls := importedTables && e.Kind.Kind == wasm.ElemTypedExprs && e.Mode.Kind != wasm.ElemActive && e.Kind.Ref.Nullable() && !e.Kind.Ref.Exact() && e.Kind.Ref.Heap().Kind() == wasm.HeapAbs && (rootedAbstractObjectHeap(e.Kind.Ref.Heap().Abs()) || e.Kind.Ref.Heap().Abs() == wasm.HeapI31)
 			for _, expr := range e.Kind.Exprs {
@@ -2710,7 +2731,7 @@ func (f *integerEmitter) indirectCall(sig functionSpec, base, indexSlot int, ind
 }
 
 func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base, indexSlot int, indexWide bool, tableIndex uint32, hiddenRefs []bool, typeIndexes ...uint32) {
-	if f.functionSubtypeHelper(typeIndexes) {
+	if buildfeatures.ReferenceSignatures && f.functionSubtypeHelper(typeIndexes) {
 		f.tableReferenceForSubtype(indexSlot, indexWide, tableIndex, f.SpillOffset)
 		f.referenceCall(sig.signature, keys[0], base, indexSlot, f.SpillOffset, 8, hiddenRefs, typeIndexes...)
 		return
@@ -2734,7 +2755,9 @@ func (f *integerEmitter) indirectCallKeys(sig functionSpec, keys []uint64, base,
 		f.a.Jalr(enc.RA, enc.X28, 0)
 	}
 	if f.mode.gcRootedScalar && returnOffset != 0 {
-		f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		if buildfeatures.RISCV64CollectorFrameRoots {
+			f.recordGCFrameCallsiteAdjusted(returnOffset, stackAdjust, hiddenRefs)
+		}
 	} else {
 		f.recordGCFrameCallsite(f.a.Len(), hiddenRefs)
 	}

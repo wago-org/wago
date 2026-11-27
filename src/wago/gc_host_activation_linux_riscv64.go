@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build !wago_standalone_no_collector && linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -21,17 +21,15 @@ import (
 
 type gcHostSavedControl [abi.RV64SyncHostCallSavedBytes / 8]uint64
 
-type gcHostActivationToken struct {
-	state *gcPublicState
-	index uint8
-}
-
 // pushGCHostActivation publishes the exact rooted Wasm caller while an RV64
 // synchronous host thunk has parked native execution. The park prefix records
 // the thunk SP; every qualified RV64 wrapper saves its incoming RA in word zero
 // of a fixed call-frame header, so the Wasm caller begins immediately after the
 // matching record.
 func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *coreruntime.Engine) gcHostActivationToken {
+	if !nativeCollectorBuilt {
+		return gcHostActivationToken{}
+	}
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
@@ -141,20 +139,26 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, stack *c
 	state.hostRootPlan = plan
 	state.hostCodeBase = in.base
 	state.hostCodeBytes = uintptr(len(in.c.code))
-	return gcHostActivationToken{state: state, index: index}
+	return newGCHostActivationToken(state, index)
 }
 
-func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
-	state := token.state
+func popGCHostActivation(token gcHostActivationToken) {
+	if nativeCollectorBuilt {
+		restoreGCHostActivation(token)
+	}
+}
+
+func restoreGCHostActivation(token gcHostActivationToken) {
+	state, index := gcHostActivationRootState(token)
 	if state == nil {
 		return
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if state.hostActivationCount == 0 || token.index != state.hostActivationCount-1 {
+	if state.hostActivationCount == 0 || index != state.hostActivationCount-1 {
 		panic(gcHelperFailuref("generic GC host activation stack is not LIFO"))
 	}
-	activation := &state.hostActivations[token.index]
+	activation := &state.hostActivations[index]
 	control := unsafe.Slice((*byte)(offHeapPtr(activation.ctrl)), abi.RV64SyncHostCallSavedBytes)
 	for i, value := range activation.savedControl {
 		binary.LittleEndian.PutUint64(control[i*8:], value)

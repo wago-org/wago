@@ -29,7 +29,12 @@ func (s *rv64NativeTableTargets) publishCrossCopyReferenceRows() {
 	var cleanup resourceCleanup
 	for _, storageOwner := range s.owners[:s.count] {
 		for index := 0; index < storageOwner.c.tableCount(); index++ {
-			if _, imported := storageOwner.c.tableImportAt(index); imported || storageOwner.c.tableElementType(index) != ValFuncRef {
+			if tableImportsForImage {
+				if _, imported := storageOwner.c.tableImportAt(index); imported {
+					continue
+				}
+			}
+			if storageOwner.c.tableElementType(index) != ValFuncRef {
 				continue
 			}
 			destination := s.ownedTablePublicationDestination(storageOwner, index)

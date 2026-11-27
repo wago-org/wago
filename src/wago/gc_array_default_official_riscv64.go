@@ -47,19 +47,19 @@ func rv64GCArrayDefaultOfficialMetadata(c *Compiled, requireInitializer bool) bo
 		return false
 	}
 	d := c.memoryDir
-	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals) != 0 || d.gcArrayElement != nil || d.gcI31TableInit != nil || len(d.ehTags) != 0 || len(d.ehTagExports) != 0 {
+	if d == nil || len(d.defs) != 0 || len(d.exports) != 0 || !d.exactExports || d.staged || d.stagedMemory64 || len(d.gcStructGlobals()) != 0 || d.gcArrayElement() != nil || d.hasExceptionTagMetadata() {
 		return false
 	}
 	if requireInitializer {
-		if len(d.gcArrayGlobals) != 2 {
+		if len(d.gcArrayGlobals()) != 2 {
 			return false
 		}
-		uniform, zero := d.gcArrayGlobals[0], d.gcArrayGlobals[1]
+		uniform, zero := d.gcArrayGlobals()[0], d.gcArrayGlobals()[1]
 		if uniform.GlobalIndex != 0 || uniform.TypeID != 0 || uniform.Length != 3 || uniform.Mode != gcArrayGlobalInitUniform || !slices.Equal(uniform.Bits, []uint64{0x3f800000}) ||
 			zero.GlobalIndex != 1 || zero.TypeID != 0 || zero.Length != 3 || zero.Mode != gcArrayGlobalInitDefault || len(zero.Bits) != 0 {
 			return false
 		}
-	} else if len(d.gcArrayGlobals) != 0 {
+	} else if len(d.gcArrayGlobals()) != 0 {
 		return false
 	}
 	wantExports := map[string]int{"new": 0, "get": 2, "set_get": 4, "len": 6}

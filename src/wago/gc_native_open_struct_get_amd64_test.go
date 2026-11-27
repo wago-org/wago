@@ -98,7 +98,7 @@ func TestGCNativeOpenStructScalarReads(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView.LocalTypes)), in.gcNativeView.LocalTypeCount)
+					localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView().LocalTypes)), in.gcNativeView().LocalTypeCount)
 					if localTypes[staticType] == staticType {
 						t.Fatalf("test did not remap local type %d", staticType)
 					}
@@ -197,7 +197,7 @@ func TestGCNativeOpenStructReadPreflight(t *testing.T) {
 	check("short header", false, func() { binary.LittleEndian.PutUint32(header[4:], corergc.HeaderSize) }, func() { copy(header, savedHeader) })
 	check("short handle", false, func() { binary.LittleEndian.PutUint32(handle[corergc.NativeHandleSizeOffset:], corergc.HeaderSize) }, func() { copy(handle, savedHandle) })
 	check("unknown type", false, func() { binary.LittleEndian.PutUint32(header, ^uint32(0)) }, func() { copy(header, savedHeader) })
-	localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView.LocalTypes)), in.gcNativeView.LocalTypeCount)
+	localTypes := unsafe.Slice((*uint32)(offHeapPtr(in.gcNativeView().LocalTypes)), in.gcNativeView().LocalTypeCount)
 	for _, localType := range []int{1, 7} {
 		check(fmt.Sprintf("incompatible type%d", localType), false, func() { binary.LittleEndian.PutUint32(header, localTypes[localType]) }, func() { copy(header, savedHeader) })
 	}

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !linux || !riscv64 || tinygo || wago_target_tinygo
+//go:build !linux || !riscv64 || tinygo || wago_target_tinygo || (wago_no_reference_types && wago_no_gc && wago_no_exception_handling)
 
 package wago
 
@@ -17,8 +17,6 @@ import (
 )
 
 func compactExternWordReserved(*referenceStore, uint64) bool { return false }
-
-func railshotClosedCompactExternHostObjectsLocked(*referenceStore, uint32) bool { return false }
 
 func railshotCompactExternUnpinnedAfterClose(*referenceStore) {}
 
@@ -42,6 +40,8 @@ func (*Instance) stageCompactExternAnyArgument(uint64, ValueTypeDescriptor) (gc.
 	return gc.Null(), fmt.Errorf("compact extern arguments are unavailable")
 }
 
+func drainCompactExternReclaims(*gc.Collector) {}
+
 func releaseInstanceCompactExtern(*Instance) {}
 func rangeLocalCompactExternRoots(*Instance, func(gc.RootSlot) bool, gc.RootRefSink) bool {
 	return true
@@ -55,25 +55,15 @@ func (*Instance) storeCompactExternTable(uint64, uint64, uint64, *gcStoreDomain,
 	return false
 }
 
+func (*Instance) dispatchCompactExternTableWrite(uint32, []uint64, []uint64, *gcStoreDomain, gc.RootSet) bool {
+	return false
+}
+
 func (*Instance) dispatchCompactExternTableBulk(uint32, []uint64, []uint64, *gcStoreDomain, gc.RootSet) bool {
 	return false
 }
 
 func gcRetainedTableDescriptor(in *Instance, index int) []byte { return in.tableDescriptor(index) }
-
-type compactExternConstruction struct{}
-
-func compactExternConstructionNeeded(*Compiled) bool { return false }
-func newCompactExternConstruction(*Compiled, *gc.Collector, *referenceStore, *gcStoreDomain, *gc.Slots) *compactExternConstruction {
-	return nil
-}
-func (j *compactExternConstruction) roots(roots gc.RootSet) gc.RootSet { return roots }
-func (j *compactExternConstruction) convert(uint32, gcConstStackValue, gc.RootSet) (uint64, error) {
-	return 0, fmt.Errorf("compact extern constants unavailable")
-}
-func (j *compactExternConstruction) record([]byte, *Instance) error { return nil }
-func (j *compactExternConstruction) bind(*Instance) error           { return nil }
-func (j *compactExternConstruction) close()                         {}
 
 func (*Instance) compactExternPersistentMayAllocate(uint32, []uint64) bool { return false }
 

@@ -8,7 +8,11 @@ import (
 func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	seen := map[string]bool{}
 	for _, definition := range All() {
-		if definition.Name == "" || definition.Label == "" || definition.Description == "" {
+		hasImplementation := false
+		for _, arch := range definition.Architectures {
+			hasImplementation = hasImplementation || definition.availableInBuild(arch)
+		}
+		if definition.Name == "" || definition.Label == "" || hasImplementation != (definition.Description != "") {
 			t.Fatalf("incomplete optimization registration: %#v", definition)
 		}
 		if seen[definition.Name] {
@@ -111,7 +115,7 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 
 func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 	value := true
-	definitions := ForArch("amd64")
+	definitions := builtTestDefinitions("amd64")
 	specs := make([]BindingSpec, 0, len(definitions))
 	for _, definition := range definitions {
 		specs = append(specs, Bind(definition.Name, &value))
@@ -125,7 +129,7 @@ func TestBindingsRequireEveryArchitectureDefinition(t *testing.T) {
 }
 
 func TestBindingsApplyAndRestoreSelection(t *testing.T) {
-	definitions := ForArch("amd64")
+	definitions := builtTestDefinitions("amd64")
 	values := make([]bool, len(definitions))
 	specs := make([]BindingSpec, len(definitions))
 	for index, definition := range definitions {
@@ -312,7 +316,7 @@ func TestSelectionAcrossWordBoundary(t *testing.T) {
 
 func testBindings(t *testing.T, arch string, initial bool) (*Bindings, []bool, []Definition) {
 	t.Helper()
-	definitions := ForArch(arch)
+	definitions := builtTestDefinitions(arch)
 	values := make([]bool, len(definitions))
 	specs := make([]BindingSpec, len(definitions))
 	for index, definition := range definitions {
@@ -320,6 +324,12 @@ func testBindings(t *testing.T, arch string, initial bool) (*Bindings, []bool, [
 		specs[index] = Bind(definition.Name, &values[index])
 	}
 	return NewBindings(arch, specs...), values, definitions
+}
+
+func builtTestDefinitions(arch string) []Definition {
+	return slices.DeleteFunc(ForArch(arch), func(definition Definition) bool {
+		return !definition.availableInBuild(arch)
+	})
 }
 
 func infoValues(infos []Info) map[string]bool {

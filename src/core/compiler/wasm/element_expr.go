@@ -37,7 +37,7 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 					return ElementExpr{RefType: ExternRef.Ref(), Null: true}, nil
 				}
 			}
-			return ElementExpr{}, fmt.Errorf("ref.null type %s is not funcref or externref", RefVal(ref))
+			return ElementExpr{}, fmt.Errorf("ref.null type %s is not funcref or externref", RefVal(ref).String())
 		case InstrRefFunc:
 			return ElementExpr{RefType: FuncRef.Ref(), FuncIndex: in.Index}, nil
 		case InstrGlobalGet:
@@ -114,7 +114,7 @@ func ParseFuncrefElementExpr(e Expr) (FuncrefElementExpr, error) {
 		return FuncrefElementExpr{}, err
 	}
 	if !EqualValType(RefVal(out.RefType), FuncRef) {
-		return FuncrefElementExpr{}, fmt.Errorf("element type %s is not funcref", RefVal(out.RefType))
+		return FuncrefElementExpr{}, fmt.Errorf("element type %s is not funcref", RefVal(out.RefType).String())
 	}
 	return FuncrefElementExpr{Null: out.Null, FuncIndex: out.FuncIndex}, nil
 }

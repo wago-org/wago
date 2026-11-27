@@ -43,7 +43,6 @@ type emissionMode struct {
 	threadedMemory           bool
 	elideBounds              bool
 	exceptionModule          *wasm.Module
-	exceptionOperands        *[]*wasm.CollectorOperandRoots
 	ownedExceptionReferences bool
 	gcFunctionEnvironments   bool
 	interruptible            bool
@@ -72,9 +71,7 @@ type emissionMode struct {
 	parkedMutableReferenceGlobals bool
 	functionIndex                 uint32
 	entryPC                       uint32
-	gcFrameRoots                  *shared.GCFrameRootPlan
-	// Compile-only immutable lookup for mixed SWAR/rooted-reference functions.
-	gcRootedDirectory *internalReferenceTypeDirectory
+	gcFrameEmissionMode
 	// Whole-module primitive-reference admission, shared by all emitted tails.
 	primitiveTailTypes *sourceFunctionTypeDirectory
 }

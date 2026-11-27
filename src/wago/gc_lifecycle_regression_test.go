@@ -229,12 +229,12 @@ func TestPreparedGCResultAndTrapMaintenance(t *testing.T) {
 					if _, err := call(token); err == nil {
 						t.Fatal("unreachable did not trap")
 					}
-					public := in.existingPublicGCState()
-					if public.argumentRootCount != 0 {
+					roots := in.existingPublicGCState().argumentRoots()
+					if roots.count != 0 {
 						t.Fatal("trap retained temporary argument roots")
 					}
-					for i := uint32(0); i < public.argumentRootsMade; i++ {
-						if !in.gc.GlobalSlot(public.argumentRootSlots[i]).IsNull() {
+					for i := uint32(0); i < roots.made; i++ {
+						if !in.gc.GlobalSlot(roots.slot(i)).IsNull() {
 							t.Fatal("trap left an argument slot rooted")
 						}
 					}

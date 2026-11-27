@@ -11,8 +11,9 @@ package wago
 
 import (
 	"fmt"
-	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
+	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot/riscv64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -456,7 +457,7 @@ func newGCFrameRootPlanOwned(m *wasm.Module, exactRoots bool, diagnostic *string
 }
 
 func rv64RootedBodyHasTailBridge(m *wasm.Module, body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
-	if m == nil || classifier == nil {
+	if buildfeatures.TailCall == 0 || m == nil || classifier == nil {
 		return false
 	}
 	imports := uint64(m.ImportedFuncCount())

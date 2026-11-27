@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && (!wago_no_gc || !wago_no_exception_handling)
 
 package wago
 
@@ -20,7 +20,7 @@ func TestRV64ManagedFunctionReclaimsAfterHostReentry(t *testing.T) {
 	code := rv64TableStageCompile(t, "managed-function-host-reentry-root", rv64LocalMutableReferenceImportModule(false), false)
 	defer code.Close()
 	var root *Instance
-	in, _ := ownedExceptionTestInstance(t, gc.ProfileTiny, nil)
+	in := managedCollectorTestInstance(t, gc.ProfileTiny)
 	in.refStore = rt.refStore
 	state := in.managedFunctionCollector(nil)
 	callback := CallerHostCallFunc(func(caller Caller, _ HostCall) {
@@ -67,7 +67,7 @@ func TestRV64ManagedFunctionReclaimsAfterOutermostGate(t *testing.T) {
 			root := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 			nested := rv64NativeTokenInstantiate(t, rt, c, NewImports())
 			producer := rv64NativeTokenInstantiate(t, rt, c, NewImports())
-			in, _ := ownedExceptionTestInstance(t, gc.ProfileTiny, nil)
+			in := managedCollectorTestInstance(t, gc.ProfileTiny)
 			in.refStore = rt.refStore
 			state := in.managedFunctionCollector(nil)
 			if _, err := state.newManagedFunctionEnv(producer, gc.EmptyRoots{}); err != nil {
@@ -142,7 +142,7 @@ func TestRV64ManagedFunctionFinalizationAfterTopologyReader(t *testing.T) {
 	defer code.Close()
 	caller := rv64NativeTokenInstantiate(t, rt, code, NewImports())
 	producer := rv64NativeTokenInstantiate(t, rt, code, NewImports())
-	in, _ := ownedExceptionTestInstance(t, gc.ProfileTiny, nil)
+	in := managedCollectorTestInstance(t, gc.ProfileTiny)
 	in.refStore = rt.refStore
 	state := in.managedFunctionCollector(nil)
 	env, err := state.newManagedFunctionEnv(producer, gc.EmptyRoots{})
@@ -157,12 +157,12 @@ func TestRV64ManagedFunctionFinalizationAfterTopologyReader(t *testing.T) {
 	id := newInvocationID()
 	gate := caller.lockInvocation(id)
 	topology := rt.refStore.ensureGCTopology()
-	topology.RLock()
+	topology.gate.RLock()
 	producer.releaseResourceRoot()
 	if state.graph.pendingFinalizers.Load() != 1 || !producer.hasPhysicalResources() {
 		t.Fatal("reader-bound release did not defer producer finalization")
 	}
-	topology.RUnlock()
+	topology.gate.RUnlock()
 	gate.unlockInvocation()
 	if state.graph.pendingFinalizers.Load() != 0 || !producer.hasPhysicalResources() {
 		t.Fatal("outer gate did not drain finalization while preserving the Env pin")

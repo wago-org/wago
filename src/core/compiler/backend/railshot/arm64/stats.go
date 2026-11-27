@@ -58,11 +58,11 @@ var (
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
-	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
+	simdSuperoptEnabled bool
 	// v128DirectResultEnabled lets NEON's non-destructive destination forms read
 	// pinned locals directly instead of copying a source into an accumulator.
-	v128DirectResultEnabled = os.Getenv("WAGO_ARM64_NO_V128_DIRECT_RESULTS") != "1"
-	v128ConstCacheEnabled   = os.Getenv("WAGO_ARM64_NO_V128_CONST_CACHE") != "1"
+	v128DirectResultEnabled bool
+	v128ConstCacheEnabled   bool
 	// intervalRegionPinsEnabled reuses GP registers across integer-local
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
@@ -74,7 +74,7 @@ var (
 	// i64 reduction and executes the remaining iterations through four independent
 	// accumulators. RuntimeConfig optimization selection is the A/B oracle.
 	linearSumLoopEnabled     = true
-	memcopyTail4Enabled      = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
+	memcopyTail4Enabled      bool
 	commonBoundsLimitEnabled = os.Getenv("WAGO_ARM64_NO_COMMON_BOUNDS_LIMIT") != "1"
 	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
 	// small set of address sources. The kill switch restores the single proof.

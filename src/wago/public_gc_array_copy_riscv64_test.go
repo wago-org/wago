@@ -70,7 +70,7 @@ func TestRV64PublicGCArrayCopyExecutionAndArtifact(t *testing.T) {
 			compiled := rv64PublicGCArrayCopyCompile(t, artifact)
 			view := compiled.executionView()
 			if err := railshotValidateCompiled(view); !rv64SourceContractValid(view) || err != nil {
-				t.Fatalf("missing exact array.copy witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals)
+				t.Fatalf("missing exact array.copy witness: validation=%v product=%v code=%d/%x entries=%v/%v globals=%#v", err, view.stagedGCArrayProduct(), len(view.code), sha256.Sum256(view.code), view.Entry, view.InternalEntry, view.memoryDir.gcArrayGlobals())
 			}
 			if params, results, err := railshotImportedCallSlots(view, 3, 1); err != nil || params != 3 || results != 1 {
 				t.Fatalf("array.copy call arena=%d/%d,%v, want 3/1", params, results, err)
@@ -98,11 +98,11 @@ func TestRV64PublicGCArrayCopyExecutionAndArtifact(t *testing.T) {
 					state := in.pluginState.Load()
 					stagedRoots := 0
 					if state != nil {
-						stagedRoots = int(state.gcGlobalRootCount)
+						stagedRoots = len(state.stagedGlobalRoots())
 					}
 					genericRoots := 0
 					if public := in.existingPublicGCState(); public != nil {
-						genericRoots = len(public.globalRoots)
+						genericRoots = len(public.globalRootMappings())
 					}
 					if stagedRoots+genericRoots != 2 {
 						t.Fatalf("array.copy roots staged/generic=%d/%d, want two mappings", stagedRoots, genericRoots)
@@ -110,14 +110,14 @@ func TestRV64PublicGCArrayCopyExecutionAndArtifact(t *testing.T) {
 					var mutableRoot gcGlobalRootMapping
 					var foundMutableRoot bool
 					if state != nil {
-						for _, mapping := range state.gcGlobalRoots[:state.gcGlobalRootCount] {
+						for _, mapping := range state.stagedGlobalRoots() {
 							if mapping.GlobalIndex == 1 {
 								mutableRoot, foundMutableRoot = mapping, true
 							}
 						}
 					}
 					if public := in.existingPublicGCState(); public != nil {
-						for _, mapping := range public.globalRoots {
+						for _, mapping := range public.globalRootMappings() {
 							if mapping.GlobalIndex == 1 {
 								mutableRoot, foundMutableRoot = mapping, true
 							}

@@ -44,7 +44,7 @@ func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, meta
 	codeLimit := opts.railshotTailPolicy.codeLimit
 	if !opts.hasExecutionPolicy {
 		if indexes := in.c.loadCompileIndexes(); indexes != nil {
-			codeLimit = indexes.railshotTail.sourceCodeLimit
+			codeLimit = indexes.railshotTail.tailCode.get().sourceCodeLimit
 		}
 	}
 	if codeLimit != 0 && codeLimit <= uint64(policy.limits.code) {
@@ -58,7 +58,7 @@ func railshotCaptureNativeTailPolicy(in *Instance, opts InstantiateOptions, meta
 			policy.limits.metadata, policy.metadataConfigured = int(remaining), true
 		}
 	}
-	in.ensurePluginState().railshotInvocation.tailPolicy = policy
+	in.ensurePluginState().railshotInvocation.tail.get().policy = policy
 }
 
 type rv64TailReservationError struct {

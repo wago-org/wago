@@ -5,10 +5,27 @@ package arm64
 import (
 	"bytes"
 	"testing"
+	"unsafe"
 
+	"github.com/wago-org/wago/internal/buildfeatures"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	enc "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+func TestMemory64WidthCacheBuildProfile(t *testing.T) {
+	f := fn{m: &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Addr64: true}}, {}}}}
+	enabled := buildfeatures.Memory64 != 0
+	if f.memoryAddr64(0) != enabled || f.memoryAddr64(1) || f.memoryAddr64(0) != enabled {
+		t.Fatal("memory width lookup failed across memory indices")
+	}
+	var want uintptr
+	if enabled {
+		want = 2
+	}
+	if got := unsafe.Sizeof(f.memory0Width); got != want {
+		t.Fatalf("cached memory width uses %d bytes, want %d", got, want)
+	}
+}
 
 // Check header widths at the native emission boundary.
 func TestIndexedMemoryReadsBackingHeaders(t *testing.T) {

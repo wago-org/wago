@@ -168,11 +168,24 @@ func TestCompactExecutionDataMatchesLegacyEncoding(t *testing.T) {
 		if snapshot.compactData == nil {
 			t.Fatal("fixture did not use compact directory")
 		}
-		var legacy, compact compiledWriter
-		legacy.data(c.Data)
-		compact.compiledData(snapshot)
-		if !bytes.Equal(legacy.buf, compact.buf) {
-			t.Fatal("compact directory changed legacy wire encoding")
+		var legacy compiledWriter
+		legacy.uvar(uint64(len(c.Data)))
+		for _, data := range c.Data {
+			legacy.u32(data.MemoryIndex)
+			legacy.u32(data.Offset.Base)
+			legacy.bool(data.Offset.HasGlobal)
+			legacy.ivar(data.Offset.Global)
+			legacy.bytes(data.Offset.Expr)
+			legacy.bytes(data.Bytes)
+		}
+		for _, candidate := range []*Compiled{c, snapshot} {
+			var encoded compiledWriter
+			if err := encoded.compiledData(candidate); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(legacy.buf, encoded.buf) {
+				t.Fatal("active data changed legacy wire encoding")
+			}
 		}
 		for i := range c.Data {
 			if !reflect.DeepEqual(c.Data[i], snapshot.activeDataAt(i)) {

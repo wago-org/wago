@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_exception_handling
 
 package wago
 
@@ -33,10 +33,10 @@ func TestRV64CompactExternAggregateEdges(t *testing.T) {
 			field := FieldTypeDescriptor{Mutable: true, Storage: StorageTypeDescriptor{Value: ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Nullable: true, Heap: HeapTypeDescriptor{Abstract: AbstractHeapExtern}}}}}
 			in.c.Types = append(in.c.Types, DefinedTypeDescriptor{Kind: CompositeTypeArray, Array: field}, DefinedTypeDescriptor{Kind: CompositeTypeStruct, Fields: []FieldTypeDescriptor{field}})
 			in.c.GCTypeDescs = []gc.TypeDesc{leafDesc, arrayDesc, structDesc}
-			in.gcTypeMap = &gcTypeMapping{localToDomain: []gc.TypeID{0, 1, 2}}
+			in.instanceCollectorMetadata = newInstanceCollectorMetadata(&gcTypeMapping{localToDomain: []gc.TypeID{0, 1, 2}}, in.gcNativeView())
 			in.c.requiredFeatures |= CoreFeatureExceptionHandling
 			in.c.codeCache.setNativeGCABIVersion(gc.NativeABIVersion)
-			in.c.validateMemo.gcFrameRoots = &compiledGCFrameRoots{}
+			in.c.validateMemo.compiledGCFrameRootState = testCompiledGCFrameRootState(&compiledGCFrameRoots{})
 			public := in.publicGCState()
 			var result [1]uint64
 			call := func(helper uint32, args []uint64, roots gc.RootSet) {
@@ -50,7 +50,7 @@ func TestRV64CompactExternAggregateEdges(t *testing.T) {
 				if err := in.gc.CollectFull(roots); err != nil {
 					t.Fatal(err)
 				}
-				drainExceptionReclaims(in.gc)
+				drainGCMetadataReclaims(in.gc)
 			}
 			state, err := in.compactExternCollector(nil)
 			if err != nil {

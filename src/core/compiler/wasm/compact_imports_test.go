@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
 )
 
 func TestCompactImportsDecodeValidateAndPreserveOrder(t *testing.T) {
@@ -19,6 +21,18 @@ func TestCompactImportsDecodeValidateAndPreserveOrder(t *testing.T) {
 		),
 	)
 	m, err := DecodeModule(mixed)
+	if buildfeatures.CompactImports == 0 {
+		var de *DecodeError
+		if !errors.As(err, &de) || de.Code != ErrDisabledInstruction {
+			t.Fatalf("DecodeModule compact imports in disabled profile: %v", err)
+		}
+		features := ValidationFeatures{CompactImports: true}
+		var ve *ValidationError
+		if err := ValidateModuleWithFeatures(&Module{UsesCompactImports: true}, features); !errors.As(err, &ve) || ve.Code != ErrUnsupportedFeature {
+			t.Fatalf("ValidateModuleWithFeatures compact imports in disabled profile: %v", err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("DecodeModule mixed compact imports: %v", err)
 	}

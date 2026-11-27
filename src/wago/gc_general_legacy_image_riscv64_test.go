@@ -34,6 +34,9 @@ func TestRV64GeneralGCImageMayMatchLegacyCode(t *testing.T) {
 			if tc.legacy != nil && !tc.legacy(c) {
 				t.Fatal("fixture no longer exercises native byte collision")
 			}
+			if railshotNeedsLegacyGCProducts(c.executionView()) {
+				t.Fatal("general image requires legacy GC products despite its rooted execution contract")
+			}
 
 			if e != nil {
 				t.Fatal(e)

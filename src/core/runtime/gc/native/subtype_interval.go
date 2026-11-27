@@ -9,12 +9,9 @@ package gc
 
 import (
 	"fmt"
-	"os"
-)
 
-// WAGO_GC_SUBTYPE_INTERVALS=0 restores validated parent-chain traversal for
-// differential qualification without changing collector semantics.
-var gcSubtypeIntervalsEnabled = os.Getenv("WAGO_GC_SUBTYPE_INTERVALS") != "0"
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 // buildSubtypeIntervals assigns one DFS interval to every validated descriptor.
 // TypeDesc admits at most one declared supertype, so the descriptor graph is a
@@ -103,7 +100,7 @@ func (c *Collector) typeSubtypeIDs(actual, required TypeID) (bool, error) {
 		}
 		dynamic = &c.types[dynamic.Super]
 	}
-	if !gcSubtypeIntervalsEnabled {
+	if buildfeatures.GC == 0 || !gcSubtypeIntervalsEnabled {
 		for {
 			if dynamic.ID == required {
 				return true, nil

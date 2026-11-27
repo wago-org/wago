@@ -19,7 +19,7 @@
     },
     "settings": {
       "$ref": "#/$defs/settings",
-      "description": "Sparse project-local runtime defaults."
+      "description": "Sparse project-local runtime and build settings."
     },
     "package": {
       "$ref": "#/$defs/package",
@@ -241,6 +241,24 @@
             ]
           },
           "additionalProperties": { "type": "boolean" }
+        },
+        "build": {
+          "type": "object",
+          "description": "Compile-time WebAssembly feature profile.",
+          "additionalProperties": false,
+          "properties": {
+            "core": { "enum": ["auto", "1.0", "2.0", "3.0"] },
+            "features": {
+              "type": "object",
+              "propertyNames": {
+                "anyOf": [
+                  { "$ref": "#/$defs/settings/properties/features/propertyNames" },
+                  { "const": "relaxed-simd" }
+                ]
+              },
+              "additionalProperties": { "type": "boolean" }
+            }
+          }
         },
         "runtime": {
           "type": "object",

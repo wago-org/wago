@@ -138,6 +138,51 @@ Go stack transition for every call. Events are delivered in order after the
 native invocation returns. This is an explicit deferred contract; use a normal
 host function when Wasm must observe the callback's effects immediately.
 
+## Build with selected WebAssembly features
+
+Set the Core release and proposal overrides in `wago.json`.
+
+```json
+{
+  "settings": {
+    "build": {
+      "core": "1.0",
+      "features": { "bulk-memory-operations": true }
+    }
+  }
+}
+```
+
+Use `wago config set build.core 1.0` and
+`wago config set build.features.bulk-memory-operations on` to write the same
+settings. Use `--global` for defaults across projects. The release can be
+`1.0`, `2.0`, `3.0`, or `auto` for the full feature set available on the target.
+Proposal overrides apply after the release. The Core 2.0 build includes fixed
+SIMD, and the Core 3.0 build adds relaxed SIMD. The `relaxed-simd` build setting
+can override that selection. Runtime settings still control which compiled
+features a particular runtime accepts. For example, threads remain opt-in
+when the build includes them.
+
+From a Wago source checkout, `just build runtime` reads the build profile and
+produces `wago-runtime-standard-normal`. Use
+`just build runtime minimal tinygo` for the Minimal CLI built with TinyGo.
+`wago compile` applies the same profile to standalone executables.
+
+For a Go application that imports Wago, run this from the application's project
+directory.
+
+```sh
+tags=$(wago config build-tags)
+go build -trimpath -ldflags="-s -w" -tags "$tags" ./...
+```
+
+Use the same tags with TinyGo or add them to your existing build tags.
+`wago.SupportedFeatures()` reports availability in the linked library.
+
+From the source checkout, `scripts/check-build-profile-dce.sh` checks linked
+code and data in Go runtime and embedding binaries. Add `--tinygo` to check
+the native TinyGo binaries with a compatible toolchain.
+
 ## Performance
 
 [**View the benchmarks (wasm.fyi) →**](https://wasm.fyi/benchmarks)

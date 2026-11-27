@@ -132,119 +132,6 @@ func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 	}
 }
 
-func collectorObjectFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapStruct, wasm.HeapArray:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		return !valid || kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		if m == nil {
-			return true
-		}
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
-	}
-}
-
-func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool {
-	if ft == nil {
-		return false
-	}
-	for _, typ := range ft.Params {
-		if collectorObjectFrameRefType(m, typ) {
-			return true
-		}
-	}
-	for _, typ := range ft.Results {
-		if collectorObjectFrameRefType(m, typ) {
-			return true
-		}
-	}
-	return false
-}
-
-func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for i := range m.Imports {
-		if m.Imports[i].Type.Kind != wasm.ExternFunc {
-			continue
-		}
-		ft, ok := m.ImportFuncType(i)
-		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
-			return true
-		}
-	}
-	if compiledArchitecture == 4 {
-		for _, export := range m.Exports {
-			if export.Index.Kind != wasm.ExternFunc {
-				continue
-			}
-			ft, ok := m.FuncSignature(export.Index.Index)
-			if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Internal collector-bearing signatures need exact frame declarations even
-// when no exported boundary or allocating instruction selects a GC product.
-func moduleHasInternalCollectorReferenceFunctions(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	imports := m.ImportedFuncCount()
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	for i := range m.Code {
-		ft, ok := m.FuncSignature(uint32(imports + i))
-		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
-			return true
-		}
-		r := wasm.NewReader(m.Code[i].BodyBytes)
-		for r.HasNext() {
-			op, err := r.Byte()
-			if err != nil {
-				return false
-			}
-			var imm wasm.InstructionImmediate
-			if classifier.ClassifyInto(r, op, &imm) != nil {
-				return false
-			}
-			switch imm.Kind {
-			case wasm.InstrCallRef, wasm.InstrReturnCallRef, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
-				ft, ok := m.TypeFunc(imm.Index)
-				if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
 func moduleHasGCAllocationSites(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -342,46 +229,6 @@ func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 	return validGCModuleFrameRootPlanMode(module, false)
-}
-
-func (c *Compiled) functionEnvironmentFrameRoots() bool {
-	return c != nil && c.genericGCFrameRoots() != nil && c.usesManagedFunctionStorage()
-}
-
-func (c *Compiled) compactExternFrameRoots() bool {
-	return compiledArchitecture == 4 && c != nil && c.nativeGCABIRequirement() == gc.NativeABIVersion && c.genericGCFrameRoots() != nil &&
-		(c.usesGenericGCExecution() || c.needsOwnedExceptionReferences() || c.hasCollectorDeclarationRoots())
-}
-
-// usesManagedFunctionStorage classifies validated runtime ownership needs. It
-// grants no source, frame-root, or artifact authority by itself. Plain unused
-// GC type declarations have no managed execution product or native GC ABI.
-func (c *Compiled) usesManagedFunctionStorage() bool {
-	if compiledArchitecture != 4 || c == nil || c.nativeGCABIRequirement() != gc.NativeABIVersion {
-		return false
-	}
-	if c.needsOwnedExceptionReferences() && c.requiredFeatures.IsEnabled(CoreFeatureExceptionHandling) {
-		return true
-	}
-	if c.hasFunctionEnvironmentFrames() && (c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.hasOpaqueExternFrames()) && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.hasInternalCollectorReferenceFunctions() || c.hasOpaqueExternFrames()) {
-		return true
-	}
-	if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !c.usesGenericGCExecution() {
-		return false
-	}
-	for _, desc := range c.GCTypeDescs {
-		if desc.Kind == gc.KindArray && (desc.Elem == gc.StorageFuncRef || desc.Elem == gc.StorageFuncRefNull) {
-			return true
-		}
-		if desc.Kind == gc.KindStruct {
-			for _, field := range desc.Fields {
-				if field.Kind == gc.StorageFuncRef || field.Kind == gc.StorageFuncRefNull {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 func validGCModuleFrameRootPlanMode(module *shared.GCModuleFrameRootPlan, allowFunctions bool) bool {
@@ -485,11 +332,11 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 		}
 		// Only the fresh RV64 compiler can prove that all function bodies are
 		// non-collecting. This proof is never carried by a saved artifact.
-		memo := c.loadValidateMemo()
+		receipt := c.loadValidateMemo().rootedReceipt()
 		if compiledArchitecture == 4 && rootMap == c.genericGCFrameRoots() && rv64SourceContractValid(c) && len(rootMap.adapterReturnOffsets) == 0 {
 			return nil
 		}
-		if compiledArchitecture == 4 && memo != nil && memo.rv64FreshRootedGC && memo.rv64RootedNoCollectingBodies && sha256.Sum256(c.code) == memo.rv64FreshRootedGCDigest && len(rootMap.adapterReturnOffsets) == 0 {
+		if compiledArchitecture == 4 && receipt != nil && receipt.noCollectingBodies && sha256.Sum256(c.code) == receipt.codeDigest && len(rootMap.adapterReturnOffsets) == 0 {
 			return nil
 		}
 		return fmt.Errorf("GC frame-root metadata has no safepoints or callsites")

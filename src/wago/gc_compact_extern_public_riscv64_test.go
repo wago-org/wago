@@ -1,4 +1,4 @@
-//go:build linux && riscv64 && !tinygo && !wago_target_tinygo
+//go:build linux && riscv64 && !tinygo && !wago_target_tinygo && !wago_no_gc
 
 package wago
 
@@ -43,7 +43,7 @@ func TestRV64CompactExternPublicTokenLifetime(t *testing.T) {
 		if err := in.translatePublicReferenceResults("compact rollback", bad, []ValType{ValExternRef, ValFuncRef}, []ValueTypeDescriptor{externType, {Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}}); err == nil {
 			t.Fatal("later invalid result did not reject converted extern batch")
 		}
-		if public := in.existingPublicGCState(); public.resultTokenCount != 0 {
+		if public := in.existingPublicGCState(); public.resultSlots().resultTokenCount != 0 {
 			t.Fatal("failed result batch retained its converted extern root")
 		}
 		for range 128 {
@@ -58,8 +58,8 @@ func TestRV64CompactExternPublicTokenLifetime(t *testing.T) {
 				t.Fatal("public converted extern token release/stale proof")
 			}
 		}
-		if public := in.existingPublicGCState(); public.resultRootsMade != 1 || public.resultTokenCount != 0 {
-			t.Fatalf("public extern roots grew after reuse: made=%d live=%d", public.resultRootsMade, public.resultTokenCount)
+		if public := in.existingPublicGCState(); public.resultSlots().resultRootsMade != 1 || public.resultSlots().resultTokenCount != 0 {
+			t.Fatalf("public extern roots grew after reuse: made=%d live=%d", public.resultSlots().resultRootsMade, public.resultSlots().resultTokenCount)
 		}
 		token, err := in.issueCompactExternPublicToken(word)
 		if err != nil {

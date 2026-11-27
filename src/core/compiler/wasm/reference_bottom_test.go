@@ -1,8 +1,15 @@
 package wasm
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wago-org/wago/internal/buildfeatures"
+)
 
 func TestReferenceInstructionsConstrainBottom(t *testing.T) {
+	if buildfeatures.TypedFunctionReferences == 0 {
+		t.Skip("requires typed function references")
+	}
 	for _, kind := range []InstrKind{InstrRefAsNonNull, InstrBrOnNull} {
 		for _, want := range []ValType{I32, I64, F32, F64, V128, FuncRef, ExternRef, AnyRef, RefVal(AbsRef(HeapExn).WithNullable(false))} {
 			t.Run(kind.String()+"/"+want.String(), func(t *testing.T) {

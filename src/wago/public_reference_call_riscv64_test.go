@@ -87,7 +87,7 @@ func TestRV64PublicReferenceCallMaximumPhysicalSignature(t *testing.T) {
 						t.Fatal("full physical call_ref transport/continuation", got, want, err)
 					}
 				}
-				if state := &in.pluginState.Load().railshotInvocation; state.tailDispatcher != nil || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+				if state := &in.pluginState.Load().railshotInvocation; state.tailForTest().dispatcher != nil || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 					t.Fatal("ordinary call_ref retained a tail factory")
 				}
 			})
@@ -165,7 +165,7 @@ func TestRV64PublicReferenceCallNativeEntryGraph(t *testing.T) {
 					if !in.retainResourceRoot() {
 						t.Fatal("relay physical owner")
 					}
-					view, viewErr := (rv64TailCodeOwner{in}).nativeOwnerCodeView(true)
+					view, viewErr := rv64PublishedCodeView(in, true)
 					_, strictErr := (rv64TailCodeOwner{in}).NativeTailCodeView()
 					in.releaseResourceRoot()
 					if viewErr != nil || len(view) != 0 || !errors.Is(strictErr, railshot.ErrUnsupported) {
@@ -217,8 +217,8 @@ func TestRV64PublicReferenceCallNativeEntryGraph(t *testing.T) {
 				}
 				for _, owner := range []*Instance{in, producer} {
 					state := &owner.pluginState.Load().railshotInvocation
-					if state.tableDepth != 0 || state.tailGenerationBudget.count != 0 || rv64EntryCapability(owner) != initialCapability[owner] {
-						t.Fatal("reference owner scope leaked", state.tableDepth, state.tailGenerationBudget.count, rv64EntryCapability(owner), initialCapability[owner])
+					if state.tableDepth != 0 || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(owner) != initialCapability[owner] {
+						t.Fatal("reference owner scope leaked", state.tableDepth, state.tailForTest().generationBudget.count, rv64EntryCapability(owner), initialCapability[owner])
 					}
 				}
 			})
@@ -250,7 +250,7 @@ func TestRV64PublicReferenceCallHostDescriptors(t *testing.T) {
 							panic("reference host caller/transport")
 						}
 						state := &in.pluginState.Load().railshotInvocation
-						if state.tableDepth == 0 || state.tailGenerationBudget.count != 0 || rv64EntryCapability(in) != 0 {
+						if state.tableDepth == 0 || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(in) != 0 {
 							panic("ordinary reference host owner scope")
 						}
 						view := rv64InvocationViewForTest(in)
@@ -289,7 +289,7 @@ func TestRV64PublicReferenceCallHostDescriptors(t *testing.T) {
 							t.Fatal("reference host trap", err)
 						}
 						state := &in.pluginState.Load().railshotInvocation
-						if state.tableDepth != 0 || state.tailDispatcher != nil {
+						if state.tableDepth != 0 || state.tailForTest().dispatcher != nil {
 							t.Fatal("reference host cold cleanup")
 						}
 					}
@@ -409,7 +409,7 @@ func TestRV64PublicReferenceCallDynamicTailContinuation(t *testing.T) {
 				}
 				for _, owner := range []*Instance{in, producer} {
 					state := &owner.pluginState.Load().railshotInvocation
-					if state.tableDepth != 0 || state.tailGenerationBudget.count != 0 || rv64EntryCapability(owner) != 0 {
+					if state.tableDepth != 0 || state.tailForTest().generationBudget.count != 0 || rv64EntryCapability(owner) != 0 {
 						t.Fatal("ordinary reference tail continuation leaked scope")
 					}
 				}
