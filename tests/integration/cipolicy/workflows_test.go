@@ -509,7 +509,7 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 		`if: needs.changes.outputs.profile == 'docs' || needs.changes.outputs.profile == 'full'`,
 		`run: just docs`,
 		`name: Draft smoke / Linux amd64`,
-		`CURRENT_GO_VERSION: "1.27.1"`,
+		`CURRENT_GO_VERSION: "1.27.4"`,
 		`name: Current Go / Linux amd64`,
 		`run: just test ci-smoke`,
 		`name: Verify every expected CI result`,

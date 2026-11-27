@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.27.1"
-  CURRENT_GO_VERSION: "1.27.1"
+  GO_VERSION: "1.27.4"
+  CURRENT_GO_VERSION: "1.27.4"
   TINYGO_VERSION: "0.42.0"
   JUST_VERSION: "1.58.0"
 
