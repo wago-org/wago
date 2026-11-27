@@ -1493,7 +1493,7 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 		}
 	}
 	if referenceStoreForImage && !standaloneStopsBeforeReferencePreparation {
-		if err := callShutdownSafely("reference store close", rt.references().closeRuntime); err != nil {
+		if err := closeRuntimeReferenceStore(rt.references()); err != nil {
 			errs = append(errs, err)
 		}
 	}

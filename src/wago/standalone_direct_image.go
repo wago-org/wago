@@ -41,7 +41,7 @@ func RunStandaloneImageInstance(image, owner *Compiled, config *RuntimeConfig, r
 		store := newReferenceStore(false)
 		opts.store = store
 		defer func() {
-			err = joinPrimary(err, callShutdownSafely("reference store close", store.closeRuntime))
+			err = joinPrimary(err, closeRuntimeReferenceStore(store))
 		}()
 	}
 	in, err := instantiateCoreWithModuleLease(image, owner, opts, moduleUseLease{})

@@ -18,3 +18,7 @@ func (*Runtime) references() *referenceStore { return nil }
 func (*Runtime) referenceStoreEmptyForInlineClose() bool { return true }
 
 func randomNonzeroUint64() (uint64, error) { return 0, ErrPermissionDenied }
+
+func closeRuntimeReferenceStore(store *referenceStore) error {
+	return nil
+}

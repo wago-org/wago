@@ -40,3 +40,7 @@ func randomNonzeroUint64() (uint64, error) {
 		}
 	}
 }
+
+func closeRuntimeReferenceStore(store *referenceStore) error {
+	return callShutdownSafely("reference store close", store.closeRuntime)
+}
