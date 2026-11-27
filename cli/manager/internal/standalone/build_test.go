@@ -2673,7 +2673,8 @@ func TestBuildStandaloneGCHelperFamilies(t *testing.T) {
 		},
 		{
 			name: "array-copy", family: "array", argument: "2", wantCopy: true,
-			typ: []byte{0x5e, 0x7f, 1},
+			// An open array type keeps the copy on the helper path.
+			typ: []byte{0x50, 0, 0x5e, 0x7f, 1},
 			body: []byte{
 				1, 1, 0x63, 0, // one (ref null 0) local
 				0x41, 0, 0x41, 4, 0xfb, 6, 0, // destination array filled with 0
