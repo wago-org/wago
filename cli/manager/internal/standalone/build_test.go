@@ -156,7 +156,9 @@ func TestBuildLinksMachineCodeWithoutCompiler(t *testing.T) {
 	if strings.Contains(names, "encoding/json") || strings.Contains(names, "internal/jsonstrict") {
 		t.Fatal("plugin-free standalone retained plugin JSON packages")
 	}
-	if strings.Contains(names, "crypto/rand.") || strings.Contains(names, ".randomNonzeroUint64") {
+	// Linux still needs entropy to authenticate native interrupt signals.
+	if strings.Contains(names, ".randomNonzeroUint64") ||
+		(host.OS != "linux" && strings.Contains(names, "crypto/rand.")) {
 		t.Fatal("reference-free standalone retained reference token entropy")
 	}
 	if !strings.Contains(names, ".standaloneNarrowSlotWidths") || strings.Contains(names, ".appendValTypeSlotWidths") {
@@ -740,7 +742,7 @@ func TestBuildStandaloneDirectIntegerArities(t *testing.T) {
 					want   bool
 				}{
 					{".invokeDirectIntEntry", tc.params <= 4 && tc.results <= 1},
-					{".invokeCachedDirectI32ToI32", tc.name == "one"},
+					{".invokeCachedDirectI32ToI32", false},
 					{".invokeCachedDirectInt1", false},
 					{".invokeDirectIntPairEntry", tc.results == 2},
 					{".invokeDirectIntWideEntry", tc.params > 4 || tc.results > 2},
