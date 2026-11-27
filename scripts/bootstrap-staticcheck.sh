@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-version=2026.2.1
+version=2026.2.2
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 root="$repo/.tools/staticcheck"
 bin="$root/staticcheck"

@@ -142,7 +142,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .tools/staticcheck
-          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-${{ steps.staticcheck-go.outputs.version }}-2026.2.1-${{ hashFiles('scripts/bootstrap-staticcheck.sh') }}
+          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-${{ steps.staticcheck-go.outputs.version }}-2026.2.2-${{ hashFiles('scripts/bootstrap-staticcheck.sh') }}
 
       - name: Install staticcheck
         run: |
