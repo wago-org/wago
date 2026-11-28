@@ -21,6 +21,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -167,9 +168,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, wrapContextError("compile", err)
 		}
 	}
-	customInstructions, err := resolveInstructionLowerings(m, instructions)
-	if err != nil {
-		return nil, err
+	var customInstructions map[uint32]coreplugins.Instruction
+	if pluginRuntimeBuilt {
+		customInstructions, err = resolveInstructionLowerings(m, instructions)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if buildfeatures.GC != 0 && !exactGCRootedScalarSource && len(customInstructions) != 0 {
 		exactGCRootedScalarSource = railshotGCRootedScalarCustomModule(m, customInstructions)
