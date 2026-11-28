@@ -8,10 +8,10 @@ import (
 )
 
 func TestProposalBindingAvailability(t *testing.T) {
-	old := catalog
+	old := definitions()
 	catalog = []Definition{
 		{Name: "scalar", Architectures: []string{"test"}},
-		requiring(buildfeatures.SIMDBit, Definition{Name: "vector", Architectures: []string{"test"}}),
+		{Name: "vector", Architectures: []string{"test"}, requiredFeatures: buildfeatures.SIMDBit},
 	}
 	t.Cleanup(func() { catalog = old })
 
