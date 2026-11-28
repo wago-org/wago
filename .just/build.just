@@ -13,7 +13,7 @@ manager version=env('WAGO_VERSION', '0.0.0'):
 runtime profile='standard' compiler='go' version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
     #!/usr/bin/env bash
     set -euo pipefail
-    case '{{ profile }}' in standard) tags=wago_runtime ;; minimal) tags=wago_runtime,wago_lean,wago_minimal ;; *) echo 'profile must be standard or minimal' >&2; exit 2 ;; esac
+    case '{{ profile }}' in standard) tags=wago_runtime,wago_runtime_no_plugins ;; minimal) tags=wago_runtime,wago_runtime_no_plugins,wago_lean,wago_minimal ;; *) echo 'profile must be standard or minimal' >&2; exit 2 ;; esac
     extra_tags=$(go run ./cli/wago config build-tags)
     [[ -z "$extra_tags" ]] || tags="$tags,$extra_tags"
     case '{{ compiler }}' in
@@ -42,7 +42,7 @@ engine version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 't
     if [[ "$(go env GOOS)/$(go env GOARCH)" == darwin/arm64 ]]; then
       build_args+=(-llvm-features=+lse)
     fi
-    {{ tinygo }} "${build_args[@]}" -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
+    {{ tinygo }} "${build_args[@]}" -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -no-debug -opt=z -gc=conservative -tags wago_runtime,wago_runtime_no_plugins,wago_lean,wago_minimal -ldflags '-X main.version={{ version }}' -o wago-engine ./cli/wago
     if [[ "$(go env GOOS)" == linux ]]; then
       strip -s --strip-section-headers --remove-section=.eh_frame --remove-section=.eh_frame_hdr --remove-section=.comment wago-engine
     fi
@@ -50,4 +50,4 @@ engine version=env('WAGO_VERSION', '0.0.0') scheduler=env('TINYGO_SCHEDULER', 't
 
 # Build the debug Minimal/TinyGo runtime used by CI.
 tinygo compiler=env('TINYGO', 'tinygo') scheduler=env('TINYGO_SCHEDULER', 'tasks'):
-    {{ compiler }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo ./cli/wago
+    {{ compiler }} build -scheduler='{{ scheduler }}' -stack-size='{{ tinygo_stack_size }}' -tags wago_runtime,wago_runtime_no_plugins,wago_lean,wago_minimal -o wago-tinygo ./cli/wago

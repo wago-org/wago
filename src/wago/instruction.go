@@ -153,28 +153,36 @@ func (r *CompilerInstructionRegistrar) validateCustomSignature(sig *CustomSignat
 	return nil
 }
 
-func resolveInstructionLowerings(m *wasm.Module, registered map[instructionKey]*registeredInstruction) map[uint32]coreplugins.Instruction {
-	if len(registered) == 0 {
-		return nil
+func resolveInstructionLowerings(m *wasm.Module, registered pluginInstructions) (map[uint32]coreplugins.Instruction, error) {
+	if !hasPluginInstructions(registered) {
+		return nil, nil
 	}
-	resolved := make(map[uint32]coreplugins.Instruction)
+	var resolved map[uint32]coreplugins.Instruction
 	var functionIndex uint32
 	for i := range m.Imports {
 		imp := &m.Imports[i]
 		if imp.Type.Kind != wasm.ExternFunc {
 			continue
 		}
-		if ins := registered[instructionKey{imp.Module, imp.Name}]; ins != nil {
+		if ins := lookupPluginInstruction(registered, instructionKey{imp.Module, imp.Name}); ins != nil {
+			ft, ok := m.FuncSignature(functionIndex)
+			if !ok {
+				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)
+			}
+			sig := FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results)}
+			if err := validateInstructionSignature(imp.Module+"."+imp.Name, ins.spec, sig); err != nil {
+				return nil, err
+			}
 			if native, ok := ins.definition.Native(); ok {
+				if resolved == nil {
+					resolved = make(map[uint32]coreplugins.Instruction)
+				}
 				resolved[functionIndex] = native
 			}
 		}
 		functionIndex++
 	}
-	if len(resolved) == 0 {
-		return nil
-	}
-	return resolved
+	return resolved, nil
 }
 
 // Instruction registers a custom instruction under its ordinary Wasm import

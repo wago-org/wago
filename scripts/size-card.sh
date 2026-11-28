@@ -49,9 +49,9 @@ budget_for() {
 profile_specs() {
   printf '%s|%s|%s|%s\n' \
     manager '' ./cli/wago go \
-    runtime-standard wago_runtime ./cli/wago go \
-    runtime-minimal wago_runtime,wago_minimal ./cli/wago go \
-    runtime-minimal-tiny wago_runtime,wago_lean,wago_minimal ./cli/wago tinygo
+    runtime-standard wago_runtime,wago_runtime_no_plugins ./cli/wago go \
+    runtime-minimal wago_runtime,wago_runtime_no_plugins,wago_minimal ./cli/wago go \
+    runtime-minimal-tiny wago_runtime,wago_runtime_no_plugins,wago_lean,wago_minimal ./cli/wago tinygo
 }
 
 build_profile() {

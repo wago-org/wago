@@ -12,12 +12,18 @@ for target_os in linux darwin windows; do
       build_tags=""
       build_package=./cli/wago
       case "$flavor" in
-        runtime) build_tags=wago_runtime ;;
-        minimal) build_tags=wago_runtime,wago_minimal ;;
+        runtime) build_tags=wago_runtime,wago_runtime_no_plugins ;;
+        minimal) build_tags=wago_runtime,wago_runtime_no_plugins,wago_minimal ;;
         embed) build_package=./scripts/testdata/diagnostic-dce ;;
       esac
       CGO_ENABLED=0 GOOS="$target_os" GOARCH="$arch" go build -tags="$build_tags" -o "$check_dir/wago-$arch" "$build_package"
       go tool nm "$check_dir/wago-$arch" > "$check_dir/symbols-$arch"
+      if [[ "$flavor" == runtime || "$flavor" == minimal ]]; then
+        if grep -E ' T github\.com/wago-org/wago/src/wago\.(validateImmutablePlan|resolveInstructionLowerings)$' "$check_dir/symbols-$arch"; then
+          echo "plugin implementation retained in $target_os/$arch $flavor" >&2
+          exit 1
+        fi
+      fi
       # Type equality functions and API no-op stubs may remain. These expressions
       # identify executable collection, journaling, attribution, and report bodies.
       scan_status=0

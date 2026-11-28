@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build wago_standalone && wago_standalone_no_plugins
+//go:build wago_runtime_no_plugins || (wago_standalone && wago_standalone_no_plugins)
 
 package wago
 
@@ -148,8 +148,10 @@ func (*Runtime) snapshotRuntimeCloseHooks() ([]func(RuntimeCloseEvent), []func()
 
 type pluginInstructions = struct{}
 
-func emptyPluginInstructions() pluginInstructions                      { return pluginInstructions{} }
-func clonePluginInstructions(pluginInstructions) pluginInstructions    { return pluginInstructions{} }
-func hasPluginInstructions(pluginInstructions) bool                    { return false }
+func emptyPluginInstructions() pluginInstructions                                       { return pluginInstructions{} }
+func clonePluginInstructions(pluginInstructions) pluginInstructions                     { return pluginInstructions{} }
+func hasPluginInstructions(pluginInstructions) bool                                     { return false }
+func lookupPluginInstruction(pluginInstructions, instructionKey) *registeredInstruction { return nil }
+
 func hasPluginInstruction(pluginInstructions, instructionKey) bool     { return false }
 func addPluginInstruction(*pluginInstructions, *registeredInstruction) {}
