@@ -10,6 +10,8 @@ with `v0.1.0-beta.8`; earlier prereleases remain available in the
 
 - Shrink standalone Wasm executables by linking only the runtime paths used
   by each compiled image.
+- Reduce the size of the standard and minimal runtime binaries shipped with
+  Wago.
 
 - Speed up eligible ARM64 search loops with guard-page bounds checks by
   unrolling conditional backedges.

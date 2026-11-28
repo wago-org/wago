@@ -10,6 +10,7 @@ mkdir -p "$test_root/bin"
 cat >"$test_root/bin/go" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'go %s\n' "$*" >>"$CAPTURE_BUILDS"
 output=""
 while (($# > 0)); do
   if [[ "$1" == "-o" ]]; then
@@ -25,6 +26,7 @@ EOF
 cat >"$test_root/bin/tinygo" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'tinygo %s\n' "$*" >>"$CAPTURE_BUILDS"
 printf "called\n" >> "$CAPTURE_TINYGO"
 output=""
 while (($# > 0)); do
@@ -54,6 +56,7 @@ run_case() {
   mkdir -p "$output"
   : >"$capture"
   PATH="$test_root/bin:$PATH" \
+    CAPTURE_BUILDS="$test_root/builds-$goos-$arch" \
     CAPTURE_STRIP="$capture" \
     CAPTURE_TINYGO="$test_root/tinygo-$goos-$arch" \
     GOOS="$goos" \
@@ -65,6 +68,13 @@ run_case() {
 
 run_case darwin
 darwin_capture="$test_root/strip-darwin-arm64"
+darwin_builds="$test_root/builds-darwin-arm64"
+stock_tags=wago_runtime,wago_runtime_no_plugins
+grep -F -- "-tags $stock_tags -o $test_root/out-darwin-arm64/wago-runtime-standard-normal-darwin-arm64" "$darwin_builds" >/dev/null
+grep -F -- "-tags $stock_tags,wago_minimal -o $test_root/out-darwin-arm64/wago-runtime-minimal-normal-darwin-arm64" "$darwin_builds" >/dev/null
+grep -F -- "-tags $stock_tags -llvm-features=+lse -o $test_root/out-darwin-arm64/wago-runtime-standard-tiny-darwin-arm64" "$darwin_builds" >/dev/null
+grep -F -- "-tags $stock_tags,wago_lean,wago_minimal -llvm-features=+lse -o $test_root/out-darwin-arm64/wago-runtime-minimal-tiny-darwin-arm64" "$darwin_builds" >/dev/null
+[[ $(grep -Fc -- "-tags $stock_tags" "$darwin_builds") -eq 4 ]]
 grep -Fx -- "-x $test_root/out-darwin-arm64/wago-runtime-standard-tiny-darwin-arm64" "$darwin_capture" >/dev/null
 grep -Fx -- "-x $test_root/out-darwin-arm64/wago-runtime-minimal-tiny-darwin-arm64" "$darwin_capture" >/dev/null
 [[ $(wc -l <"$darwin_capture") -eq 2 ]]

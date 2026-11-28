@@ -21,6 +21,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreplugins "github.com/wago-org/wago/src/core/plugins"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
@@ -39,7 +40,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	source := wasmBytes
 	var staged *wruntime.Arena
 	if compilerInputStaging && len(wasmBytes) >= 128<<10 && len(wasmBytes) <= 1<<20 &&
-		cfg.codeProfile == nil && !codegen.SourceChecks && len(instructions) == 0 {
+		cfg.codeProfile == nil && !codegen.SourceChecks && !hasPluginInstructions(instructions) {
 		staged, _ = wruntime.NewArena(len(wasmBytes))
 		if staged != nil {
 			defer staged.Close()
@@ -50,7 +51,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	var decodeScratch *wasm.CompilerDecodeScratch
 	if retainCompilerDecodeScratch && goruntime.GOARCH == "arm64" &&
-		cfg.codeProfile == nil && !codegen.SourceChecks && len(instructions) == 0 {
+		cfg.codeProfile == nil && !codegen.SourceChecks && !hasPluginInstructions(instructions) {
 		decodeScratch = borrowCompilerDecodeScratch()
 		defer returnCompilerDecodeScratch(decodeScratch)
 	}
@@ -68,7 +69,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	var validationAnalysis wasm.ValidatedModuleAnalysis
 	validationLimits := wasm.ValidationLimits{MaxFunctionLocals: cfg.maxFunctionLocals, MaxMemoriesPerModule: cfg.maxMemoriesPerModule}
 	usePrivateGCView := wasmGCBuilt && goruntime.GOARCH == "amd64" && goruntime.GOOS == "linux" &&
-		cfg.codeProfile == nil && len(instructions) == 0 && len(m.BranchHints) == 0 &&
+		cfg.codeProfile == nil && !hasPluginInstructions(instructions) && len(m.BranchHints) == 0 &&
 		os.Getenv("WAGO_AMD64_NO_GC_CARRIER_ELISION") != "1" && gcOptionMayContainCarrier(m)
 	if usePrivateGCView {
 		for _, custom := range m.Customs {
@@ -167,25 +168,13 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, wrapContextError("compile", err)
 		}
 	}
-	var functionIndex uint32
-	for i := range m.Imports {
-		imp := &m.Imports[i]
-		if imp.Type.Kind != wasm.ExternFunc {
-			continue
+	var customInstructions map[uint32]coreplugins.Instruction
+	if pluginRuntimeBuilt {
+		customInstructions, err = resolveInstructionLowerings(m, instructions)
+		if err != nil {
+			return nil, err
 		}
-		if ins := instructions[instructionKey{imp.Module, imp.Name}]; ins != nil {
-			ft, ok := m.FuncSignature(functionIndex)
-			if !ok {
-				return nil, fmt.Errorf("compile: instruction import %q has no function signature", imp.Module+"."+imp.Name)
-			}
-			sig := FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results)}
-			if err := validateInstructionSignature(imp.Module+"."+imp.Name, ins.spec, sig); err != nil {
-				return nil, err
-			}
-		}
-		functionIndex++
 	}
-	customInstructions := resolveInstructionLowerings(m, instructions)
 	if buildfeatures.GC != 0 && !exactGCRootedScalarSource && len(customInstructions) != 0 {
 		exactGCRootedScalarSource = railshotGCRootedScalarCustomModule(m, customInstructions)
 	}

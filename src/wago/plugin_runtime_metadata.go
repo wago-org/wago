@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Wago authors and contributors
 
-//go:build !wago_standalone || !wago_standalone_no_plugins
+//go:build !wago_runtime_no_plugins && (!wago_standalone || !wago_standalone_no_plugins)
 
 package wago
 
@@ -225,6 +225,10 @@ func clonePluginInstructions(instructions pluginInstructions) pluginInstructions
 }
 
 func hasPluginInstructions(instructions pluginInstructions) bool { return len(instructions) != 0 }
+
+func lookupPluginInstruction(instructions pluginInstructions, key instructionKey) *registeredInstruction {
+	return instructions[key]
+}
 
 func hasPluginInstruction(instructions pluginInstructions, key instructionKey) bool {
 	_, exists := instructions[key]

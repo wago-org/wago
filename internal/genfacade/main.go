@@ -85,7 +85,7 @@ func generate(root string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if standaloneOnly(f) {
+		if specializedBuildOnly(f) {
 			continue
 		}
 		for _, decl := range f.Decls {
@@ -159,8 +159,9 @@ func generate(root string) ([]byte, error) {
 	return src, nil
 }
 
-// standaloneOnly keeps generated-launcher entry points out of the public API.
-func standaloneOnly(file *ast.File) bool {
+// specializedBuildOnly keeps alternate implementations and generated-launcher
+// entry points out of the public API.
+func specializedBuildOnly(file *ast.File) bool {
 	for _, group := range file.Comments {
 		if group.Pos() >= file.Package {
 			break
@@ -168,21 +169,22 @@ func standaloneOnly(file *ast.File) bool {
 		for _, comment := range group.List {
 			if constraint.IsGoBuild(comment.Text) {
 				expr, err := constraint.Parse(comment.Text)
-				return err == nil && requiresStandalone(expr)
+				return err == nil && requiresSpecializedBuild(expr)
 			}
 		}
 	}
 	return false
 }
 
-func requiresStandalone(expr constraint.Expr) bool {
+func requiresSpecializedBuild(expr constraint.Expr) bool {
 	switch expr := expr.(type) {
 	case *constraint.TagExpr:
-		return expr.Tag == "wago_standalone" || expr.Tag == "wago_standalone_generator"
+		return expr.Tag == "wago_standalone" || expr.Tag == "wago_standalone_generator" ||
+			expr.Tag == "wago_runtime_no_plugins"
 	case *constraint.AndExpr:
-		return requiresStandalone(expr.X) || requiresStandalone(expr.Y)
+		return requiresSpecializedBuild(expr.X) || requiresSpecializedBuild(expr.Y)
 	case *constraint.OrExpr:
-		return requiresStandalone(expr.X) && requiresStandalone(expr.Y)
+		return requiresSpecializedBuild(expr.X) && requiresSpecializedBuild(expr.Y)
 	default:
 		return false
 	}

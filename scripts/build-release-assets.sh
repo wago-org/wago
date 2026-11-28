@@ -29,8 +29,10 @@ minimal_tiny="${release_out}/wago-runtime-minimal-tiny-${release_target}"
 
 go_build "" "$manager" ./cli/wago
 go_build "" "$installer" ./cli/wago-installer
-go_build wago_runtime "$standard_normal" ./cli/wago
-go_build wago_runtime,wago_minimal "$minimal_normal" ./cli/wago
+# The manager builds a separate runtime when plugin providers are selected.
+stock_runtime_tags=wago_runtime,wago_runtime_no_plugins
+go_build "$stock_runtime_tags" "$standard_normal" ./cli/wago
+go_build "$stock_runtime_tags,wago_minimal" "$minimal_normal" ./cli/wago
 
 tinygo_build() {
   local tags="$1"
@@ -67,8 +69,8 @@ if [[ "$release_target" == linux-riscv64 ]]; then
   # Wago's riscv64 backend requires standard Go; do not publish TinyGo stubs.
   rm -f "$standard_tiny" "$minimal_tiny" "$standard_tiny.sha256" "$minimal_tiny.sha256"
 else
-  try_tinygo_build wago_runtime "$standard_tiny" ./cli/wago
-  try_tinygo_build wago_runtime,wago_lean,wago_minimal "$minimal_tiny" ./cli/wago
+  try_tinygo_build "$stock_runtime_tags" "$standard_tiny" ./cli/wago
+  try_tinygo_build "$stock_runtime_tags,wago_lean,wago_minimal" "$minimal_tiny" ./cli/wago
 fi
 
 # TinyGo's no-debug Linux binaries do not use DWARF unwind tables for panic
